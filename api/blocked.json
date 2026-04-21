@@ -1,0 +1,17 @@
+{
+    "page": 1,
+    "language": "ru",
+    "results": [
+        {
+            "id": "blocked",
+            "title": "🚫 Uncensored Lampa is not supported",
+            "original_title": "This version is blocked",
+            "description": "This unofficial version is blocked. Please use official Lampa. (lampa.mx)",
+            "img": "https://numparser.igorek1986.ru/blocked.jpg"
+        }
+    ],
+    "total_pages": 1,
+    "total_results": 1,
+    "blocked": true,
+    "message": "This API does not support uncensored Lampa versions"
+}

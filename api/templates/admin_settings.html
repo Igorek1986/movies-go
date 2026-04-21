@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Настройки — Админ{% endblock %}
+
+{% block body %}
+{% if not user %}
+<header class="container-fluid site-header">
+  <nav>
+    <ul><li><strong>NUMParser Admin</strong></li></ul>
+    <ul>
+      <li><a href="/admin/logout" role="button" class="outline secondary btn-sm">Выйти</a></li>
+    </ul>
+  </nav>
+</header>
+{% endif %}
+
+<main class="container" style="padding-top:1.5rem;max-width:720px">
+  {% if success %}
+  <div role="alert" class="alert-success" id="settingsAlert"
+       style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem">
+    <span>{{ success }}</span>
+    <button onclick="document.getElementById('settingsAlert').remove()"
+            style="background:none;border:none;cursor:pointer;font-size:1.2rem;line-height:1;color:inherit;padding:0">×</button>
+  </div>
+  {% endif %}
+
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
+    <h2 style="margin:0">Настройки приложения</h2>
+    <a href="/admin" role="button" class="outline secondary btn-sm">← Пользователи</a>
+  </div>
+
+  <form method="post" action="/admin/settings">
+    {% for group_name, keys in groups %}
+    <details open style="margin-bottom:1rem;border:1px solid var(--pico-table-border-color);border-radius:var(--pico-border-radius);padding:.8rem 1rem">
+      <summary style="font-weight:600;cursor:pointer;margin-bottom:.6rem">{{ group_name }}</summary>
+
+      <div class="settings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem .8rem;align-items:center">
+      {% for key in keys %}
+      {% set val = settings.get(key, '') %}
+
+      {% if key in textarea_keys %}
+        {# Textarea — полная ширина, выбиваем из сетки #}
+        <div style="grid-column:1/-1;margin:.2rem 0">
+          <label for="{{ key }}" style="font-size:.9rem;color:var(--pico-muted-color);display:block;margin-bottom:.3rem">
+            {{ labels.get(key, key) }}
+          </label>
+          <textarea id="{{ key }}" name="{{ key }}" rows="10"
+                    style="width:100%;font-size:.85rem;font-family:monospace;padding:.5rem .6rem"
+                    autocomplete="off">{{ val }}</textarea>
+        </div>
+
+      {% elif key in checkbox_keys %}
+        {# Checkbox — полная ширина #}
+        <label style="grid-column:1/-1;display:flex;align-items:center;gap:.6rem;cursor:pointer;margin:0;font-size:.9rem;color:var(--pico-muted-color)">
+          <input type="checkbox" id="{{ key }}" name="{{ key }}" value="1"
+                 {% if val == '1' %}checked{% endif %}
+                 data-shows="{{ key | replace('_enabled', '_id') }}_row">
+          {{ labels.get(key, key) }}
+        </label>
+
+      {% else %}
+        {# Обычное текстовое поле #}
+        <label for="{{ key }}" style="margin:0;font-size:.9rem;color:var(--pico-muted-color)">
+          {{ labels.get(key, key) }}
+        </label>
+        <input id="{{ key }}" name="{{ key }}" type="text"
+               value="{{ val }}"
+               style="margin:0;padding:.35rem .6rem;font-size:.9rem"
+               autocomplete="off">
+      {% endif %}
+
+      {% endfor %}
+      </div>
+    </details>
+    {% endfor %}
+
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+      <a href="/admin/settings" role="button" class="outline secondary">Сбросить изменения</a>
+      <button type="submit">Сохранить настройки</button>
+    </div>
+  </form>
+</main>
+
+<script>
+  // Связываем чекбоксы с полями ID: data-shows указывает id строки
+  document.querySelectorAll('input[type="checkbox"][data-shows]').forEach(function(cb) {
+    var targetId = cb.getAttribute('data-shows');
+
+    function toggle() {
+      // Ищем label + input с id = targetId без суффикса _row
+      var fieldId = targetId.replace('_row', '');
+      var label = document.querySelector('label[for="' + fieldId + '"]');
+      var input = document.getElementById(fieldId);
+      if (label) label.style.display = cb.checked ? '' : 'none';
+      if (input) input.parentElement === label ? null : (input.style.display = cb.checked ? '' : 'none');
+      // Скрываем пару (label + следующий input в гриде)
+      if (label && input) {
+        label.style.display = cb.checked ? '' : 'none';
+        input.style.display = cb.checked ? '' : 'none';
+      }
+    }
+
+    toggle();
+    cb.addEventListener('change', toggle);
+  });
+</script>
+{% endblock %}
