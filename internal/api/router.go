@@ -28,6 +28,22 @@ func NewRouter() http.Handler {
 	r.Get("/device/code", handleDeviceGetCode)
 	r.Get("/device/status", handleDeviceStatus)
 
+	// Timecodes — authenticated via ?token= (Lampa device token)
+	r.Route("/timecode", func(r chi.Router) {
+		r.Post("", handleSaveTimecode)
+		r.Delete("", handleDeleteTimecode)
+		r.Post("/batch", handleBatchTimecodes)
+		r.Get("/export", handleExportTimecodes)
+		r.Post("/import/lampac", handleImportLampac)
+		r.Get("/history", handleHistory)
+		r.Get("/profiles", handleListProfiles)
+		r.Post("/profiles", handleCreateProfile)
+		r.Patch("/profiles/{profile_id}", handleUpdateProfile)
+		r.Delete("/profiles/{profile_id}", handleDeleteProfile)
+		r.Get("/favorite", handleGetFavorite)
+		r.Put("/favorite", handlePutFavorite)
+	})
+
 	// API — authenticated
 	r.Route("/api", func(r chi.Router) {
 		// Auth (public)
