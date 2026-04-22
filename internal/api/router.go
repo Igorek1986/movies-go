@@ -25,7 +25,8 @@ func NewRouter() http.Handler {
 	r.Get("/health", handleHealth)
 
 	// Device activation (public — Lampa polls these)
-	r.Get("/device/code", handleDeviceGetCode)
+	r.Post("/device/code", handleDeviceGetCode) // plugin sends POST
+	r.Get("/device/code", handleDeviceGetCode)  // web UI fallback
 	r.Get("/device/status", handleDeviceStatus)
 
 	// Timecodes — authenticated via ?token= (Lampa device token)
@@ -55,6 +56,8 @@ func NewRouter() http.Handler {
 	for route := range categoryRoutes {
 		r.Get("/"+route, handleCategory)
 	}
+	r.Get("/movies_id_{year:[0-9]+}", handleCategory)
+	// Continues and popular
 	r.Get("/continues", handleCategory)
 	r.Get("/continues_movie", handleCategory)
 	r.Get("/continues_tv", handleCategory)

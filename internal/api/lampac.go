@@ -8,28 +8,31 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // ─── Category route map ───────────────────────────────────────────────────────
 
-// categoryFilter maps URL path to a store.CategoryFilter preset.
+// categoryRoutes maps URL path (after stripping lm_ prefix) to a store.CategoryFilter preset.
+// Keys must match exactly what lm.js sends: lm_KEY → /KEY
 var categoryRoutes = map[string]store.CategoryFilter{
-	"movies_new":    {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "notru", OrderByNew: true},
-	"movies_ru_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "ru", OrderByNew: true},
+	// Movies
 	"movies":        {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "notru"},
+	"movies_new":    {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "notru", OrderByNew: true},
 	"movies_ru":     {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "ru"},
-	"4k_new":        {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVideoQuality: 300, OrderByNew: true},
-	"4k":            {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVideoQuality: 300},
-	"all_tv":        {MediaTypes: []string{"tv"}, Categories: []string{models.CatSeries}},
-	"tv_new":        {MediaTypes: []string{"tv"}, Categories: []string{models.CatSeries}, Language: "notru", OrderByNew: true},
-	"tv_ru_new":     {MediaTypes: []string{"tv"}, Categories: []string{models.CatSeries}, Language: "ru", OrderByNew: true},
-	"tv_ru":         {MediaTypes: []string{"tv"}, Categories: []string{models.CatSeries}, Language: "ru"},
-	"russian_tv":    {MediaTypes: []string{"tv"}, Categories: []string{models.CatSeries}, Language: "ru"},
-	"cartoons":      {MediaTypes: []string{"movie"}, Categories: []string{models.CatCartoonMovie}},
-	"cartoons_new":  {MediaTypes: []string{"movie"}, Categories: []string{models.CatCartoonMovie}, OrderByNew: true},
-	"cartoons_tv":   {MediaTypes: []string{"tv"}, Categories: []string{models.CatCartoonSeries}},
-	"anime":         {MediaTypes: []string{"tv"}, Categories: []string{models.CatAnime}},
-	"anime_new":     {MediaTypes: []string{"tv"}, Categories: []string{models.CatAnime}, OrderByNew: true},
+	"movies_ru_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "ru", OrderByNew: true},
+	"movies_4k":     {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVideoQuality: 300},
+	"movies_4k_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVideoQuality: 300, OrderByNew: true},
+	"legends_id":    {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVoteCount: 1000, OrderByRating: true},
+	// TV shows
+	"tv_shows":      {MediaTypes: []string{"tv"}, Categories: []string{models.CatSeries}},
+	"tv_shows_ru":   {MediaTypes: []string{"tv"}, Categories: []string{models.CatSeries}, Language: "ru"},
+	// Cartoons
+	"cartoon_movies": {MediaTypes: []string{"movie"}, Categories: []string{models.CatCartoonMovie}},
+	"cartoon_series": {MediaTypes: []string{"tv"}, Categories: []string{models.CatCartoonSeries}},
+	// Anime
+	"anime": {MediaTypes: []string{"tv"}, Categories: []string{models.CatAnime}},
 }
 
 // handleCategory handles /{category}?page=&token=&profile_id=&search=
@@ -38,16 +41,17 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 	category := strings.TrimPrefix(r.URL.Path, "/")
 	category = strings.SplitN(category, "/", 2)[0]
 
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
 	if page < 1 {
 		page = 1
 	}
-	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+	perPage, _ := strconv.Atoi(q.Get("per_page"))
 	if perPage < 1 || perPage > 100 {
 		perPage = 20
 	}
-	searchQ := r.URL.Query().Get("search")
-	profileID := r.URL.Query().Get("profile_id")
+	searchQ := q.Get("search")
+	profileID := q.Get("profile_id")
 
 	// ── continues — watch-in-progress ────────────────────────────────────────
 	if category == "continues" || strings.HasPrefix(category, "continues_") {
@@ -58,6 +62,29 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 	// ── np_popular ────────────────────────────────────────────────────────────
 	if category == "np_popular" {
 		handlePopular(w, r, page, perPage, searchQ)
+		return
+	}
+
+	// ── movies_id_{year} ─────────────────────────────────────────────────────
+	if strings.HasPrefix(category, "movies_id_") {
+		yearStr := chi.URLParam(r, "year")
+		if yearStr == "" {
+			yearStr = strings.TrimPrefix(category, "movies_id_")
+		}
+		year, err := strconv.Atoi(yearStr)
+		if err != nil || year < 1900 || year > 2100 {
+			http.NotFound(w, r)
+			return
+		}
+		f := store.CategoryFilter{
+			MediaTypes: []string{"movie"},
+			Year:       year,
+			Page:       page,
+			PerPage:    perPage,
+		}
+		applyHideWatched(r, &f, profileID)
+		rows, total := store.ListCategory(f)
+		sendCategoryResponse(w, rows, total, page, perPage)
 		return
 	}
 
@@ -74,30 +101,39 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 	if searchQ != "" {
 		f.Search = searchQ
 	}
+	applyHideWatched(r, &f, profileID)
 
-	// Hide watched if token provided.
-	if d := deviceFromRequest(r); d != nil {
-		minPct, _ := strconv.Atoi(r.URL.Query().Get("min_progress"))
-		if minPct < 1 {
-			minPct = 90
+	rows, total := store.ListCategory(f)
+	sendCategoryResponse(w, rows, total, page, perPage)
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+func applyHideWatched(r *http.Request, f *store.CategoryFilter, profileID string) {
+	q := r.URL.Query()
+	// Plugin sends hide_watched=1 and percent=90
+	hideWatched := q.Get("hide_watched") == "1" || q.Get("hide_watched") == "true"
+	if d := deviceFromRequest(r); d != nil && hideWatched {
+		pct, _ := strconv.Atoi(q.Get("percent"))
+		if pct < 1 {
+			pct = 90
 		}
 		f.HideWatched = true
 		f.DeviceID = d.ID
 		f.ProfileID = profileID
-		f.WatchedPercent = minPct
+		f.WatchedPercent = pct
 	}
+}
 
-	rows, total := store.ListCategory(f)
+func sendCategoryResponse(w http.ResponseWriter, rows []store.MediaRow, total, page, perPage int) {
 	totalPages := (total + perPage - 1) / perPage
 	if totalPages < 1 {
 		totalPages = 1
 	}
-
 	results := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, mediaRowToLampa(row))
 	}
-
 	JSON(w, http.StatusOK, map[string]any{
 		"page":          page,
 		"results":       results,

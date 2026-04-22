@@ -42,7 +42,11 @@ func handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status, token := store.DeviceCodeStatus(r.Context(), code)
-	resp := map[string]string{"status": status}
+	// Plugin checks data.linked && data.token
+	resp := map[string]any{
+		"status": status,
+		"linked": status == "linked",
+	}
 	if token != "" {
 		resp["token"] = token
 	}
