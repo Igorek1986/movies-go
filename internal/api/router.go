@@ -24,12 +24,23 @@ func NewRouter() http.Handler {
 	// Health
 	r.Get("/health", handleHealth)
 
-	// API
+	// Device activation (public — Lampa polls these)
+	r.Get("/device/code", handleDeviceGetCode)
+	r.Get("/device/status", handleDeviceStatus)
+
+	// API — authenticated
 	r.Route("/api", func(r chi.Router) {
+		// Auth (public)
 		r.Post("/login", handleLogin)
 		r.Post("/register", handleRegister)
 		r.Post("/logout", handleLogout)
 		r.Get("/me", handleMe)
+
+		// Device management (requires web session)
+		r.With(requireSession).Post("/device/link", handleDeviceLink)
+		r.With(requireSession).Get("/devices", handleListDevices)
+		r.With(requireSession).Delete("/devices/{id}", handleDeleteDevice)
+		r.With(requireSession).Patch("/devices/{id}", handleRenameDevice)
 	})
 
 	// SPA fallback
