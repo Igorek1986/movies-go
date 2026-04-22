@@ -1,0 +1,87 @@
+@use '@/styles/variables' as *;
+
+.page {
+  min-height: 100vh;
+  @include flex-center;
+  padding: $spacing-md;
+  background: $color-bg;
+}
+
+.card {
+  @include card;
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.title {
+  margin: 0;
+  font-size: $font-size-xl;
+  font-weight: 600;
+  color: $color-text;
+  text-align: center;
+}
+
+.error {
+  margin: 0;
+  padding: $spacing-sm $spacing-md;
+  background: rgba($color-danger, 0.12);
+  border: 1px solid rgba($color-danger, 0.4);
+  border-radius: $radius-sm;
+  color: $color-danger;
+  font-size: $font-size-sm;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.input {
+  @include input-base;
+  font-size: $font-size-base;
+  height: 44px;
+}
+
+.btn {
+  height: 44px;
+  border: none;
+  border-radius: $radius-sm;
+  background: $color-primary;
+  color: #fff;
+  font-size: $font-size-base;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background $transition-fast;
+  margin-top: $spacing-xs;
+
+  &:hover:not(:disabled) {
+    background: $color-primary-hover;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.hint {
+  margin: 0;
+  text-align: center;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+
+  a {
+    color: $color-primary;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}

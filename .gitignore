@@ -20,3 +20,9 @@ __pycache__/
 *.pyc
 *.pyo
 *.sync-conflict-*
+.rewrite-plan/
+
+# Web / Node
+web/node_modules/
+internal/web/dist/
+!/internal/web/dist/index.html

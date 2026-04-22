@@ -6,16 +6,22 @@ import (
 	"lampa-api/config"
 	"lampa-api/db"
 	"lampa-api/db/postgres"
+	"lampa-api/db/store"
+	"lampa-api/internal/api"
+	"lampa-api/internal/auth"
 	"lampa-api/movies/tmdb"
 	"lampa-api/parser"
 	"lampa-api/version"
 	"log"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -31,149 +37,147 @@ var params args
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-
 	arg.MustParse(&params)
 
+	cfg := config.Get()
+
 	fmt.Println("=========== START ===========")
-	fmt.Println("lm_"+version.Version+",", runtime.Version()+",", "CPU Num:", runtime.NumCPU())
+	fmt.Printf("lm_%s, %s, CPU: %d\n", version.Version, runtime.Version(), runtime.NumCPU())
 
-	if params.Proxy != "" {
-		_, err := url.Parse(params.Proxy)
-		if err != nil {
-			log.Println("Error parse proxy host:", err)
-		} else {
-			config.ProxyHost = params.Proxy
-		}
-	} else {
-		proxy, err := config.ReadConfigParser("Proxy")
-		if err == nil {
-			params.Proxy = proxy
-			_, err := url.Parse(params.Proxy)
-			if err == nil {
-				config.ProxyHost = params.Proxy
-			} else {
-				log.Println("Error parse proxy host:", err)
-			}
-		}
-	}
-
-	if params.UseProxy {
-		config.UseProxy = params.UseProxy
-	} else {
-		use_proxy, err := config.ReadConfigParser("UseProxy")
-		if err == nil && use_proxy == "true" {
-			params.UseProxy = true
-		} else {
-			params.UseProxy = false
-		}
-	}
-
+	setupProxy(cfg)
 	dnsResolve()
 
 	db.Init()
+	ensureSuperuser(cfg)
 	loadProxy()
 	tmdb.Init()
 
 	getDbInfo()
 
-	scanReleases()
+	// HTTP сервер
+	srv := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.HTTPPort),
+		Handler:      api.NewRouter(),
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
 
-	log.Println("Start timer")
-	gocron.Every(3).Hours().From(calcTime()).Do(scanReleases)
-	<-gocron.Start()
+	go func() {
+		log.Printf("HTTP server listening on :%d", cfg.HTTPPort)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("HTTP server error: %v", err)
+		}
+	}()
+
+	// Парсер по расписанию
+	go func() {
+		scanReleases()
+		log.Println("Start parser timer")
+		gocron.Every(3).Hours().From(calcTime()).Do(scanReleases)
+		<-gocron.Start()
+	}()
+
+	// Graceful shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+	<-stop
+
+	log.Println("Shutting down...")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	srv.Shutdown(ctx) //nolint:errcheck
+	log.Println("Done")
+}
+
+func ensureSuperuser(cfg *config.ConfigParser) {
+	if cfg.SuperUsername == "" || cfg.SuperPassword == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	hash, err := auth.HashPassword(cfg.SuperPassword)
+	if err != nil {
+		log.Println("ensureSuperuser: hash error:", err)
+		return
+	}
+	if err := store.EnsureSuperuser(ctx, cfg.SuperUsername, hash); err != nil {
+		log.Println("ensureSuperuser:", err)
+	} else {
+		log.Printf("Superuser %q ready", cfg.SuperUsername)
+	}
+}
+
+func setupProxy(cfg *config.ConfigParser) {
+	if params.Proxy != "" {
+		if _, err := url.Parse(params.Proxy); err == nil {
+			config.ProxyHost = params.Proxy
+		}
+	} else if cfg.Proxy != "" {
+		if _, err := url.Parse(cfg.Proxy); err == nil {
+			config.ProxyHost = cfg.Proxy
+		}
+	}
+
+	if params.UseProxy || cfg.UseProxy == "true" {
+		config.UseProxy = true
+	}
 }
 
 func dnsResolve() {
-	hosts := [6]string{"1.1.1.1", "1.0.0.1", "208.67.222.222", "208.67.220.220", "8.8.8.8", "8.8.4.4"}
-	ret := 0
+	hosts := []string{"1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"}
 	for _, ip := range hosts {
-		ret = toolResolve("www.google.com", ip)
-		switch {
-		case ret == 2:
-			fmt.Println("DNS resolver OK")
-		case ret == 1:
-			fmt.Println("New DNS resolver OK")
-		case ret == 0:
-			fmt.Println("New DNS resolver failed")
-		}
-		if ret == 2 || ret == 1 {
-			break
+		if tryDNS("www.google.com", ip) {
+			return
 		}
 	}
 }
 
-func toolResolve(host string, serverDNS string) int {
-	addrs, err := net.LookupHost(host)
-	addr_dns := fmt.Sprintf("%s:53", serverDNS)
-	a := 0
-	if len(addrs) == 0 {
-		fmt.Println("Check dns", addrs, err)
-		fn := func(ctx context.Context, network, address string) (net.Conn, error) {
-			d := net.Dialer{}
-			return d.DialContext(ctx, "udp", addr_dns)
-		}
-		net.DefaultResolver = &net.Resolver{
-			Dial: fn,
-		}
-		addrs, err = net.LookupHost(host)
-		fmt.Println("Check new dns", addrs, err)
-		if err == nil || len(addrs) > 0 {
-			a = 1
-		} else {
-			a = 0
-		}
-	} else {
-		a = 2
+func tryDNS(host, serverDNS string) bool {
+	addrs, _ := net.LookupHost(host)
+	if len(addrs) > 0 {
+		return true
 	}
-	return a
+	net.DefaultResolver = &net.Resolver{
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "udp", serverDNS+":53")
+		},
+	}
+	addrs, _ = net.LookupHost(host)
+	return len(addrs) > 0
 }
 
 func scanReleases() {
 	loadProxy()
-	rutorParser := parser.NewRutor()
-	rutorParser.Parse()
+	parser.NewRutor().Parse()
 	getDbInfo()
 }
 
-// loadProxy runs proxy.sh to populate proxy.list when UseProxy is enabled.
 func loadProxy() {
 	if config.UseProxy {
 		log.Println("Load proxy list...")
 		dir := filepath.Dir(os.Args[0])
-		logOut, err := exec.Command("/bin/sh", filepath.Join(dir, "proxy.sh")).CombinedOutput()
+		out, err := exec.Command("/bin/sh", filepath.Join(dir, "proxy.sh")).CombinedOutput()
 		if err != nil {
 			log.Println("Error loading proxy:", err)
 		}
-		log.Println(string(logOut))
+		log.Println(string(out))
 	}
 }
 
 func calcTime() *time.Time {
-	//2 5 8 11 14 17 20 23
 	hour := time.Now().Hour()
-	t := time.Date(time.Now().Year(),
-		time.Now().Month(),
-		time.Now().Day(),
+	t := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(),
 		0, 0, 0, 0, time.Local)
-	if hour < 2 {
-		t = t.Add(2 * time.Hour)
-	} else if hour < 5 {
-		t = t.Add(5 * time.Hour)
-	} else if hour < 11 {
-		t = t.Add(11 * time.Hour)
-	} else if hour < 14 {
-		t = t.Add(14 * time.Hour)
-	} else if hour < 17 {
-		t = t.Add(17 * time.Hour)
-	} else if hour < 20 {
-		t = t.Add(20 * time.Hour)
-	} else if hour < 23 {
-		t = t.Add(23 * time.Hour)
-	} else if hour >= 23 {
-		t = t.Add(26 * time.Hour)
+	for _, h := range []int{2, 5, 8, 11, 14, 17, 20, 23} {
+		if hour < h {
+			return timePtr(t.Add(time.Duration(h) * time.Hour))
+		}
 	}
-	return &t
+	return timePtr(t.Add(26 * time.Hour))
 }
+
+func timePtr(t time.Time) *time.Time { return &t }
 
 func getDbInfo() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -193,13 +197,13 @@ func getDbInfo() {
 	for rows.Next() {
 		var cat string
 		var n int
-		rows.Scan(&cat, &n)
+		rows.Scan(&cat, &n) //nolint:errcheck
 		fmt.Printf("%-20s %d\n", cat+":", n)
 		total += n
 	}
 
 	var cached int
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM torrent_cache`).Scan(&cached)
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM torrent_cache`).Scan(&cached) //nolint:errcheck
 	fmt.Println("Total media cards:", total)
 	fmt.Println("Torrent cache entries:", cached)
 }
