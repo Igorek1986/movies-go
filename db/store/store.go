@@ -135,38 +135,39 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 
 // ─── Category listing ─────────────────────────────────────────────────────────
 
-const pageSize = 20
+const defaultPageSize = 20
 
 // MediaRow is a joined result from media_cards.
 type MediaRow struct {
-	TmdbID           int64
-	MediaType        string
-	Title            string
-	OriginalTitle    string
-	Overview         string
-	PosterPath       string
-	BackdropPath     string
-	ReleaseDate      *string
-	FirstAirDate     *string
-	LastAirDate      *string
-	VoteAverage      float64
-	VoteCount        int
-	OriginalLanguage *string
-	Adult            bool
-	Status           *string
-	NumberOfSeasons  *int
-	Seasons          []byte
-	LastEpSeason     *int
-	LastEpNumber     *int
-	UpdatedAt        time.Time
-	VideoQuality     int
-	AudioQuality     int
+	TmdbID            int64
+	MediaType         string
+	Title             string
+	OriginalTitle     string
+	Overview          string
+	PosterPath        string
+	BackdropPath      string
+	ReleaseDate       *string
+	FirstAirDate      *string
+	LastAirDate       *string
+	VoteAverage       float64
+	VoteCount         int
+	OriginalLanguage  *string
+	Adult             bool
+	Status            *string
+	NumberOfSeasons   *int
+	Seasons           []byte
+	LastEpSeason      *int
+	LastEpNumber      *int
+	UpdatedAt         time.Time
+	VideoQuality      int
+	AudioQuality      int
 	LatestTorrentDate *time.Time
 }
 
 // CategoryFilter defines how to filter and sort a category listing.
 type CategoryFilter struct {
 	MediaTypes      []string // "movie", "tv"
+	Categories      []string // rutor_category values e.g. "Movie", "Series"
 	Language        string   // "ru", "notru", or ""
 	MinVideoQuality int
 	MaxVideoQuality int
@@ -176,8 +177,10 @@ type CategoryFilter struct {
 	Child           bool
 	Year            int
 	Page            int
+	PerPage         int
+	Search          string
 	HideWatched     bool
-	DeviceID        int
+	DeviceID        int64
 	ProfileID       string
 	WatchedPercent  int
 }
@@ -190,7 +193,11 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 	if f.Page < 1 {
 		f.Page = 1
 	}
-	offset := (f.Page - 1) * pageSize
+	perPage := f.PerPage
+	if perPage < 1 {
+		perPage = defaultPageSize
+	}
+	offset := (f.Page - 1) * perPage
 
 	var where []string
 	var args []interface{}
@@ -236,6 +243,20 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		args = append(args, f.MinVoteCount)
 		n++
 	}
+	if len(f.Categories) > 0 {
+		placeholders := make([]string, len(f.Categories))
+		for i, cat := range f.Categories {
+			placeholders[i] = fmt.Sprintf("$%d", n)
+			args = append(args, cat)
+			n++
+		}
+		where = append(where, "m.rutor_category IN ("+strings.Join(placeholders, ",")+")")
+	}
+	if f.Search != "" {
+		where = append(where, fmt.Sprintf("(m.title ILIKE $%d OR m.original_title ILIKE $%d)", n, n))
+		args = append(args, "%"+f.Search+"%")
+		n++
+	}
 	if f.HideWatched && f.DeviceID > 0 {
 		where = append(where, fmt.Sprintf(`NOT EXISTS (
 			SELECT 1 FROM timecodes tc
@@ -276,7 +297,7 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		FROM media_cards m
 		%s
 		ORDER BY %s
-		LIMIT %d OFFSET %d`, whereClause, orderBy, pageSize, offset)
+		LIMIT %d OFFSET %d`, whereClause, orderBy, perPage, offset)
 
 	qrows, err := postgres.Pool.Query(ctx, dataSQL, args...)
 	if err != nil {

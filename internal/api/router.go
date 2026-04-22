@@ -44,6 +44,23 @@ func NewRouter() http.Handler {
 		r.Put("/favorite", handlePutFavorite)
 	})
 
+	// Plugin settings (device token auth)
+	r.Get("/api/plugin-settings", handleGetPluginSettings)
+	r.Patch("/api/plugin-settings", handlePatchPluginSettings)
+
+	// Search
+	r.Get("/search", handleSearch)
+
+	// Content categories (device token optional for hide-watched)
+	for route := range categoryRoutes {
+		r.Get("/"+route, handleCategory)
+	}
+	r.Get("/continues", handleCategory)
+	r.Get("/continues_movie", handleCategory)
+	r.Get("/continues_tv", handleCategory)
+	r.Get("/continues_anime", handleCategory)
+	r.Get("/np_popular", handleCategory)
+
 	// API — authenticated
 	r.Route("/api", func(r chi.Router) {
 		// Auth (public)
