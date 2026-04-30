@@ -151,7 +151,7 @@ func handleMediaCardCredits(w http.ResponseWriter, r *http.Request) {
 	req.Header.Set("Authorization", token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := tmdb.HTTPClient().Do(req)
 	if err != nil || resp.StatusCode != 200 {
 		JSON(w, http.StatusOK, map[string]any{"cast": []any{}})
 		return
