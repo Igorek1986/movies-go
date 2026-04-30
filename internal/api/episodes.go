@@ -301,18 +301,20 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 	var out []episodeOut
 	for _, s := range seasons {
 		snum := s.SeasonNumber
-		if snum == 0 && !includeSpecials {
+		if snum == 0 {
+			// Specials come from MyShows only — skip from TMDB fallback
 			continue
 		}
 		var airedTo int
-		if snum == 0 {
-			// Specials: include all (no reliable per-episode air dates from TMDB)
-			airedTo = s.EpisodeCount
-		} else if lastS > 0 {
+		if lastS > 0 {
 			if snum < lastS {
 				airedTo = s.EpisodeCount
 			} else if snum == lastS {
+				// lastE may be cumulative (e.g. long-running anime) — cap at episode_count
 				airedTo = lastE
+				if s.EpisodeCount > 0 && airedTo > s.EpisodeCount {
+					airedTo = s.EpisodeCount
+				}
 			} else {
 				continue
 			}
@@ -331,7 +333,7 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 				Episode:     int16(ep),
 				Hash:        h,
 				Watched:     td.percent >= 90 || td.special,
-				Special:     snum == 0 || td.special,
+				Special:     td.special,
 				UserSpecial: td.special,
 				Percent:     td.percent,
 				DurationSec: durSec,
