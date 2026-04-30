@@ -335,15 +335,25 @@ func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 	var rows []store.EpisodeRow
 
 	for _, ep := range show.Episodes {
-		if ep.SeasonNumber == nil || ep.EpisodeNumber == nil {
+		if ep.SeasonNumber == nil {
 			continue
 		}
-		if ep.AirDate == "" && ep.AirDateUTC == "" {
-			continue // announced-only, skip
+		// Regular episodes must have an episode number and air date.
+		// Specials (isSpecial:true) are kept even without an episode number or air date.
+		if !ep.IsSpecial {
+			if ep.EpisodeNumber == nil {
+				continue
+			}
+			if ep.AirDate == "" && ep.AirDateUTC == "" {
+				continue
+			}
 		}
 
 		snum := int16(*ep.SeasonNumber)
-		enum := int16(*ep.EpisodeNumber)
+		var enum int16
+		if ep.EpisodeNumber != nil {
+			enum = int16(*ep.EpisodeNumber)
+		}
 		key := [2]int16{snum, enum}
 		if seen[key] {
 			continue
