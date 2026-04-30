@@ -331,13 +331,20 @@ func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 		return fmt.Errorf("no episodes returned for show_id=%d", *mc.MyshowsID)
 	}
 
-	seen := map[[2]int16]bool{}
+	seenID := map[int]bool{}       // deduplicate by MyShows episode ID
+	seenKey := map[[2]int16]bool{} // guard against PK conflicts
+	specialSeq := map[int16]int16{} // season → next counter for ep-0 specials
 	var rows []store.EpisodeRow
 
 	for _, ep := range show.Episodes {
-		if ep.SeasonNumber == nil {
+		if ep.SeasonNumber == nil || ep.ID == 0 {
 			continue
 		}
+		if seenID[ep.ID] {
+			continue
+		}
+		seenID[ep.ID] = true
+
 		// Regular episodes must have an episode number and air date.
 		// Specials (isSpecial:true) are kept even without an episode number or air date.
 		if !ep.IsSpecial {
@@ -354,11 +361,19 @@ func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 		if ep.EpisodeNumber != nil {
 			enum = int16(*ep.EpisodeNumber)
 		}
+
+		// Multiple specials in the same season share episodeNumber=0 in MyShows.
+		// Assign unique negative episode numbers (-1, -2, …) to avoid PK conflicts.
+		if ep.IsSpecial && enum == 0 {
+			specialSeq[snum]++
+			enum = -specialSeq[snum]
+		}
+
 		key := [2]int16{snum, enum}
-		if seen[key] {
+		if seenKey[key] {
 			continue
 		}
-		seen[key] = true
+		seenKey[key] = true
 
 		var airDate *time.Time
 		for _, s := range []string{ep.AirDateUTC, ep.AirDate} {
@@ -382,10 +397,11 @@ func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 			titlePtr = &title
 		}
 
-		isSpecial := ep.IsSpecial || enum == 0 || snum == 0
+		isSpecial := ep.IsSpecial || enum <= 0 || snum == 0
 		h := EpisodeHash(int(snum), int(enum), mc.OriginalTitle)
 
 		rows = append(rows, store.EpisodeRow{
+			MyshowsEpID: ep.ID,
 			Season:      snum,
 			Episode:     enum,
 			Title:       titlePtr,
