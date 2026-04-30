@@ -5,11 +5,12 @@ import (
 	"lampa-api/db/models"
 	"lampa-api/db/store"
 	"lampa-api/utils"
-	"github.com/jmcvetta/napping"
 	"log"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -20,39 +21,44 @@ const (
 var (
 	genres      []*models.Genre
 	TMDBAuthKey string
+	tmdbClient  = &http.Client{Timeout: 120 * time.Second}
 )
+
+// HTTPClient returns the configured TMDB HTTP client (proxy-aware).
+func HTTPClient() *http.Client { return tmdbClient }
 
 func Init() {
 	log.Println("Init tmdb")
 
-	//	dir := filepath.Dir(os.Args[0])
-	//	buf, err := os.ReadFile(filepath.Join(dir, "tmdb.key"))
-	//	if err != nil || strings.TrimSpace(string(buf)) == "" {
-	//		log.Println("Fatal error read tmdb auth key:", err)
-	//		os.Exit(1)
-	//	}
-	//	TMDBAuthKey = strings.TrimSpace(string(buf))
-
-	buf, err := config.ReadConfigParser("TmdbToken")
-	if err == nil && buf != "" {
-		TMDBAuthKey = strings.TrimSpace(buf)
-	} else {
+	cfg := config.Get()
+	if cfg.TmdbToken == "" {
 		log.Println("TMDB token not set — enrichment disabled")
 		return
 	}
+	TMDBAuthKey = strings.TrimSpace(cfg.TmdbToken)
 
-	lstmg := GetGenres("movie")
-	lsttvg := GetGenres("tv")
-
-	if lstmg == nil && lsttvg == nil {
-		return
+	if cfg.ProxyURL != "" {
+		if t, err := buildSocks5Transport(cfg.ProxyURL, cfg.ProxyUser, cfg.ProxyPass); err == nil {
+			tmdbClient = &http.Client{Transport: t, Timeout: 120 * time.Second}
+			log.Printf("TMDB: using SOCKS5 proxy %s", cfg.ProxyURL)
+		} else {
+			log.Println("TMDB: proxy setup failed:", err)
+		}
 	}
 
-	genres = append(lstmg, lsttvg...)
-
-	sort.Slice(genres, func(i, j int) bool {
-		return genres[i].Name < genres[j].Name
-	})
+	go func() {
+		lstmg := GetGenres("movie")
+		lsttvg := GetGenres("tv")
+		if lstmg == nil && lsttvg == nil {
+			return
+		}
+		merged := append(lstmg, lsttvg...)
+		sort.Slice(merged, func(i, j int) bool {
+			return merged[i].Name < merged[j].Name
+		})
+		genres = merged
+		log.Println("TMDB: genres loaded")
+	}()
 
 }
 
@@ -62,7 +68,10 @@ func GetVideoDetails(isMovie bool, id int64) *models.Entity {
 		mediaType = "movie"
 	}
 	if ent := store.GetMediaCard(id, mediaType); ent != nil {
-		return ent
+		// For TV shows: if seasons are missing, fall through to TMDB re-fetch.
+		if isMovie || len(ent.Seasons) > 0 {
+			return ent
+		}
 	}
 
 	params := map[string]string{}
@@ -111,9 +120,7 @@ func FindByID(isMovie bool, id string, idType string) *models.Entity {
 		return ent
 	}
 
-	params := napping.Params{}
-
-	//params["api_key"] = apiKey
+	params := map[string]string{}
 	params["external_source"] = idType
 	params["language"] = "ru"
 
@@ -151,8 +158,7 @@ func FindByID(isMovie bool, id string, idType string) *models.Entity {
 }
 
 func alternativeTitles(isMovie bool, id int64) []string {
-	params := napping.Params{}
-	//params["api_key"] = apiKey
+	params := map[string]string{}
 
 	var st = "movie"
 	if !isMovie {
@@ -180,7 +186,7 @@ func alternativeTitles(isMovie bool, id int64) []string {
 	return list
 }
 
-func listVideoPages(endpoint string, params napping.Params) []*models.Entity {
+func listVideoPages(endpoint string, params map[string]string) []*models.Entity {
 	p := map[string]string{}
 	for k, v := range params {
 		p[k] = v
@@ -208,15 +214,13 @@ func listVideoPages(endpoint string, params napping.Params) []*models.Entity {
 	return lst
 }
 
-func listVideo(endpoint string, params napping.Params) ([]*models.Entity, int) {
-	//params["api_key"] = apiKey
-
+func listVideo(endpoint string, params map[string]string) ([]*models.Entity, int) {
 	if _, ok := params["language"]; !ok {
 		params["language"] = "ru"
 	}
 
 	var results *models.EntityRequest
-	pageParams := napping.Params{}
+	pageParams := map[string]string{}
 	for k, v := range params {
 		pageParams[k] = v
 	}
@@ -235,4 +239,101 @@ func listVideo(endpoint string, params napping.Params) ([]*models.Entity, int) {
 	}
 
 	return results.Results, results.TotalPages
+}
+
+// ─── Person / Actor ───────────────────────────────────────────────────────────
+
+type PersonDetails struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Biography   string `json:"biography"`
+	Birthday    string `json:"birthday"`
+	ProfilePath string `json:"profile_path"`
+}
+
+type PersonCreditItem struct {
+	ID           int64   `json:"id"`
+	MediaType    string  `json:"media_type"`
+	Title        string  `json:"title"`
+	OriginalTitle string `json:"original_title"`
+	PosterPath   string  `json:"poster_path"`
+	Year         string  `json:"year"`
+	VoteAverage  float64 `json:"vote_average"`
+	Character    string  `json:"character"`
+	Popularity   float64 `json:"-"`
+}
+
+type personCreditsRaw struct {
+	Cast []struct {
+		ID           int64   `json:"id"`
+		MediaType    string  `json:"media_type"`
+		Title        string  `json:"title"`
+		Name         string  `json:"name"`
+		OriginalTitle string `json:"original_title"`
+		OriginalName  string `json:"original_name"`
+		PosterPath   string  `json:"poster_path"`
+		ReleaseDate  string  `json:"release_date"`
+		FirstAirDate string  `json:"first_air_date"`
+		VoteAverage  float64 `json:"vote_average"`
+		Character    string  `json:"character"`
+		Popularity   float64 `json:"popularity"`
+	} `json:"cast"`
+}
+
+func GetPerson(personID int64) (*PersonDetails, []PersonCreditItem, error) {
+	params := map[string]string{"language": "ru-RU"}
+
+	var person PersonDetails
+	if err := readPageTmdb("person/"+strconv.FormatInt(personID, 10), params, &person); err != nil {
+		return nil, nil, err
+	}
+
+	var credits personCreditsRaw
+	_ = readPageTmdb("person/"+strconv.FormatInt(personID, 10)+"/combined_credits", params, &credits)
+
+	seen := map[int64]bool{}
+	works := make([]PersonCreditItem, 0, len(credits.Cast))
+	type sortItem struct {
+		item PersonCreditItem
+		pop  float64
+	}
+	sortItems := make([]sortItem, 0, len(credits.Cast))
+	for _, c := range credits.Cast {
+		if seen[c.ID] {
+			continue
+		}
+		seen[c.ID] = true
+		title := c.Title
+		if title == "" {
+			title = c.Name
+		}
+		origTitle := c.OriginalTitle
+		if origTitle == "" {
+			origTitle = c.OriginalName
+		}
+		date := c.ReleaseDate
+		if date == "" {
+			date = c.FirstAirDate
+		}
+		year := ""
+		if len(date) >= 4 {
+			year = date[:4]
+		}
+		sortItems = append(sortItems, sortItem{
+			pop: c.Popularity,
+			item: PersonCreditItem{
+				ID: c.ID, MediaType: c.MediaType, Title: title,
+				OriginalTitle: origTitle, PosterPath: c.PosterPath,
+				Year: year, VoteAverage: c.VoteAverage, Character: c.Character,
+			},
+		})
+	}
+	sort.Slice(sortItems, func(i, j int) bool { return sortItems[i].pop > sortItems[j].pop })
+	for _, s := range sortItems {
+		works = append(works, s.item)
+		if len(works) >= 100 {
+			break
+		}
+	}
+	return &person, works, nil
 }
