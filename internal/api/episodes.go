@@ -62,7 +62,7 @@ func handleEpisodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fallback: TMDB seasons JSON
-	JSON(w, http.StatusOK, buildFromTMDB(ctx, mc, timecodeData))
+	JSON(w, http.StatusOK, buildFromTMDB(ctx, mc, timecodeData, includeSpecials))
 }
 
 // GET /api/refresh-card-episodes?card_id= (device-token auth, fire-and-forget)
@@ -220,7 +220,7 @@ func buildFromTable(mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[st
 	return map[string]any{"episodes": out, "original_title": mc.OriginalTitle, "source": "myshows"}
 }
 
-func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string]timecodeInfo) map[string]any {
+func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string]timecodeInfo, includeSpecials bool) map[string]any {
 	var seasonsJSON []byte
 	var lastEpSeason, lastEpNumber *int
 
@@ -301,11 +301,14 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 	var out []episodeOut
 	for _, s := range seasons {
 		snum := s.SeasonNumber
-		if snum == 0 {
+		if snum == 0 && !includeSpecials {
 			continue
 		}
 		var airedTo int
-		if lastS > 0 {
+		if snum == 0 {
+			// Specials: include all (no reliable per-episode air dates from TMDB)
+			airedTo = s.EpisodeCount
+		} else if lastS > 0 {
 			if snum < lastS {
 				airedTo = s.EpisodeCount
 			} else if snum == lastS {
@@ -328,7 +331,7 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 				Episode:     int16(ep),
 				Hash:        h,
 				Watched:     td.percent >= 90 || td.special,
-				Special:     td.special,
+				Special:     snum == 0 || td.special,
 				UserSpecial: td.special,
 				Percent:     td.percent,
 				DurationSec: durSec,
