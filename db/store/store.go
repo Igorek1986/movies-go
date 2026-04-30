@@ -14,24 +14,39 @@ import (
 
 // ─── Torrent cache ────────────────────────────────────────────────────────────
 
-// TorrentCached returns true if we have already attempted TMDB lookup for this hash.
-func TorrentCached(hash string) bool {
+// TorrentStatus checks if a hash has been processed before.
+// Returns (cached=false, "") if hash unknown.
+// Returns (cached=true, "") if processed but TMDB not found (retry allowed).
+// Returns (cached=true, cardID) if enriched successfully.
+func TorrentStatus(hash string) (cached bool, cardID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	var exists bool
-	postgres.Pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM torrents WHERE hash = $1)`, hash,
-	).Scan(&exists) //nolint:errcheck
-	return exists
+	var id *string
+	err := postgres.Pool.QueryRow(ctx,
+		`SELECT card_id FROM torrents WHERE hash = $1`, hash,
+	).Scan(&id)
+	if err != nil {
+		return false, "" // not in table
+	}
+	if id == nil {
+		return true, "" // processed but not found in TMDB
+	}
+	return true, *id
 }
 
-// CacheTorrent marks this torrent hash as already processed.
-func CacheTorrent(hash string) {
+// CacheTorrent records a processed torrent hash with its linked card (empty if not found).
+// On conflict: only upgrades card_id from NULL → real value, never clears it.
+func CacheTorrent(hash, cardID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	var id *string
+	if cardID != "" {
+		id = &cardID
+	}
 	postgres.Pool.Exec(ctx, //nolint:errcheck
-		`INSERT INTO torrents (hash) VALUES ($1) ON CONFLICT (hash) DO NOTHING`,
-		hash,
+		`INSERT INTO torrents (hash, card_id) VALUES ($1, $2)
+		 ON CONFLICT (hash) DO UPDATE SET card_id = COALESCE(torrents.card_id, EXCLUDED.card_id)`,
+		hash, id,
 	)
 }
 
@@ -57,13 +72,30 @@ func LastParsedAt() time.Time {
 
 // SetLastParsedAt records the current time as the last successful rutor parse.
 func SetLastParsedAt() {
+	SetLastParsedAtTime(time.Now().UTC())
+}
+
+// SetLastParsedAtTime records a specific time as the last successful rutor parse.
+func SetLastParsedAtTime(t time.Time) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	val := time.Now().UTC().Format(time.RFC3339)
+	val := t.UTC().Format(time.RFC3339)
 	postgres.Pool.Exec(ctx, //nolint:errcheck
 		`INSERT INTO app_settings (key, value) VALUES ('rutor_last_parsed_at', $1)
 		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
 		val,
+	)
+}
+
+// UpdateQuality bumps best_video_quality for an already-known torrent (no TMDB call).
+// Uses GREATEST so quality never decreases.
+func UpdateQuality(cardID string, quality int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`UPDATE media_cards SET best_video_quality = GREATEST(best_video_quality, $2)
+		 WHERE card_id = $1 AND best_video_quality < $2`,
+		cardID, quality,
 	)
 }
 
@@ -84,6 +116,16 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 		firstAirDate = releaseDate
 	}
 
+	var lastEpSeason, lastEpNumber *int
+	if e.LastEpisodeToAir != nil && e.LastEpisodeToAir.SeasonNumber > 0 {
+		lastEpSeason = &e.LastEpisodeToAir.SeasonNumber
+		lastEpNumber = &e.LastEpisodeToAir.EpisodeNumber
+	}
+	var episodeRunTime *int
+	if len(e.EpisodeRunTime) > 0 && e.EpisodeRunTime[0] > 0 {
+		episodeRunTime = &e.EpisodeRunTime[0]
+	}
+
 	_, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO media_cards
 			(card_id, tmdb_id, media_type, title, original_title, overview,
@@ -92,8 +134,9 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			 genres, number_of_seasons, number_of_episodes, seasons,
 			 myshows_id, kinopoisk_id,
 			 rutor_category, best_video_quality, latest_torrent_date,
+			 last_ep_season, last_ep_number, episode_run_time,
 			 tmdb_updated_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,now(),now())
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,now(),now())
 		ON CONFLICT (tmdb_id, media_type) DO UPDATE SET
 			title              = EXCLUDED.title,
 			original_title     = EXCLUDED.original_title,
@@ -111,14 +154,17 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			status             = EXCLUDED.status,
 			imdb_id            = COALESCE(EXCLUDED.imdb_id, media_cards.imdb_id),
 			genres             = EXCLUDED.genres,
-			number_of_seasons  = EXCLUDED.number_of_seasons,
-			number_of_episodes = EXCLUDED.number_of_episodes,
-			seasons            = EXCLUDED.seasons,
+			number_of_seasons  = COALESCE(EXCLUDED.number_of_seasons, media_cards.number_of_seasons),
+			number_of_episodes = COALESCE(EXCLUDED.number_of_episodes, media_cards.number_of_episodes),
+			seasons            = COALESCE(EXCLUDED.seasons, media_cards.seasons),
 			myshows_id         = COALESCE(EXCLUDED.myshows_id, media_cards.myshows_id),
 			kinopoisk_id       = COALESCE(EXCLUDED.kinopoisk_id, media_cards.kinopoisk_id),
 			rutor_category     = COALESCE(EXCLUDED.rutor_category, media_cards.rutor_category),
 			best_video_quality = GREATEST(media_cards.best_video_quality, EXCLUDED.best_video_quality),
 			latest_torrent_date = GREATEST(media_cards.latest_torrent_date, EXCLUDED.latest_torrent_date),
+			last_ep_season     = COALESCE(EXCLUDED.last_ep_season, media_cards.last_ep_season),
+			last_ep_number     = COALESCE(EXCLUDED.last_ep_number, media_cards.last_ep_number),
+			episode_run_time   = COALESCE(EXCLUDED.episode_run_time, media_cards.episode_run_time),
 			tmdb_updated_at    = now(),
 			updated_at         = now()`,
 		cardID, e.ID, e.MediaType, e.Title, e.OriginalTitle, e.Overview,
@@ -127,10 +173,66 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 		marshalJSON(e.Genres), e.NumberOfSeasons, e.NumberOfEpisodes, marshalJSON(e.Seasons),
 		nilInt(e.MyShowsID), nilInt64(e.KinopoiskID),
 		nilStr(t.Categories), t.VideoQuality, nilTime(t.CreateDate),
+		lastEpSeason, lastEpNumber, episodeRunTime,
 	)
 	if err != nil {
 		log.Printf("store: upsert media_card tmdb=%d %s: %v", e.ID, e.MediaType, err)
 	}
+}
+
+// RefreshCardTMDB обновляет только TMDB-поля карточки, не трогая торрент-данные.
+// Вызывается из фоновой горутины при сохранении таймкода.
+func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
+	seasonsJSON := marshalJSON(e.Seasons)
+	genresJSON := marshalJSON(e.Genres)
+
+	var lastEpSeason, lastEpNumber *int
+	if e.LastEpisodeToAir != nil && e.LastEpisodeToAir.SeasonNumber > 0 {
+		lastEpSeason = &e.LastEpisodeToAir.SeasonNumber
+		lastEpNumber = &e.LastEpisodeToAir.EpisodeNumber
+	}
+	var episodeRunTime *int
+	if len(e.EpisodeRunTime) > 0 && e.EpisodeRunTime[0] > 0 {
+		episodeRunTime = &e.EpisodeRunTime[0]
+	}
+
+	_, err := postgres.Pool.Exec(ctx, `
+		UPDATE media_cards SET
+			title              = $1,
+			original_title     = $2,
+			overview           = $3,
+			poster_path        = $4,
+			backdrop_path      = $5,
+			vote_average       = $6,
+			vote_count         = $7,
+			status             = $8,
+			genres             = $9,
+			number_of_seasons  = COALESCE($10, number_of_seasons),
+			number_of_episodes = COALESCE($11, number_of_episodes),
+			seasons            = COALESCE($12, seasons),
+			last_ep_season     = COALESCE($13, last_ep_season),
+			last_ep_number     = COALESCE($14, last_ep_number),
+			episode_run_time   = COALESCE($15, episode_run_time),
+			tmdb_updated_at    = now(),
+			updated_at         = now()
+		WHERE card_id = $16`,
+		e.Title, e.OriginalTitle, e.Overview, e.PosterPath, e.BackdropPath,
+		e.VoteAverage, e.VoteCount, e.Status,
+		genresJSON,
+		nilIntFromInt(e.NumberOfSeasons), nilIntFromInt(e.NumberOfEpisodes), seasonsJSON,
+		lastEpSeason, lastEpNumber, episodeRunTime,
+		cardID,
+	)
+	if err != nil {
+		log.Printf("store: refresh card tmdb %s: %v", cardID, err)
+	}
+}
+
+func nilIntFromInt(v int) *int {
+	if v == 0 {
+		return nil
+	}
+	return &v
 }
 
 // ─── Category listing ─────────────────────────────────────────────────────────
@@ -172,10 +274,13 @@ type CategoryFilter struct {
 	MinVideoQuality int
 	MaxVideoQuality int
 	MinVoteCount    int
-	OrderByNew      bool
+	OrderByNew      bool   // sort by latest_torrent_date DESC
 	OrderByRating   bool
 	Child           bool
-	Year            int
+	Year            int    // exact release year filter
+	NewOnly         bool   // only items released within last YearDelta years AND quality >= 200
+	OldOnly         bool   // only items released more than YearDelta years ago (complement of NewOnly)
+	YearDelta       int    // years window for NewOnly/OldOnly (default 2, use 4 for 4K)
 	Page            int
 	PerPage         int
 	Search          string
@@ -202,6 +307,33 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 	var where []string
 	var args []interface{}
 	n := 1
+
+	if f.NewOnly || f.OldOnly {
+		delta := f.YearDelta
+		if delta < 1 {
+			delta = 2
+		}
+		// NUMParser: |year - currentYear| < delta  →  year >= currentYear - delta + 1
+		cutoffStr := fmt.Sprintf("%d", time.Now().Year()-delta+1)
+		if f.NewOnly {
+			where = append(where, fmt.Sprintf(
+				"LEFT(COALESCE(m.release_date::text, m.first_air_date::text, ''), 4) >= $%d", n))
+			args = append(args, cutoffStr)
+			n++
+			if f.MinVideoQuality < 200 {
+				where = append(where, fmt.Sprintf("m.best_video_quality >= $%d", n))
+				args = append(args, 200)
+				n++
+			}
+		}
+		if f.OldOnly {
+			where = append(where, fmt.Sprintf(
+				"(COALESCE(m.release_date::text, m.first_air_date::text, '') = '' OR "+
+					"LEFT(COALESCE(m.release_date::text, m.first_air_date::text), 4) < $%d)", n))
+			args = append(args, cutoffStr)
+			n++
+		}
+	}
 
 	if len(f.MediaTypes) > 0 {
 		placeholders := make([]string, len(f.MediaTypes))
@@ -234,8 +366,8 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		where = append(where, "NOT (m.genres @> '[{\"id\":27}]' OR m.genres @> '[{\"id\":53}]' OR m.genres @> '[{\"id\":80}]')")
 	}
 	if f.Year > 0 {
-		where = append(where, fmt.Sprintf("EXTRACT(YEAR FROM COALESCE(m.release_date, m.first_air_date)) = $%d", n))
-		args = append(args, f.Year)
+		where = append(where, fmt.Sprintf("LEFT(COALESCE(m.release_date::text, m.first_air_date::text, ''), 4) = $%d", n))
+		args = append(args, fmt.Sprintf("%d", f.Year))
 		n++
 	}
 	if f.MinVoteCount > 0 {
@@ -274,11 +406,12 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		whereClause = "WHERE " + strings.Join(where, " AND ")
 	}
 
-	orderBy := "m.release_date DESC"
-	if f.OrderByNew {
-		orderBy = "m.latest_torrent_date DESC"
-	} else if f.OrderByRating {
-		orderBy = "m.vote_average DESC, m.vote_count DESC"
+	orderBy := "m.latest_torrent_date DESC NULLS LAST"
+	if f.OrderByRating {
+		orderBy = "m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST"
+	} else if f.OldOnly || f.Year > 0 {
+		// Archive / year categories: sort by release/air date descending
+		orderBy = "COALESCE(m.release_date, m.first_air_date) DESC NULLS LAST"
 	}
 
 	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM media_cards m %s`, whereClause)
@@ -290,7 +423,7 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 	dataSQL := fmt.Sprintf(`
 		SELECT m.tmdb_id, m.media_type, m.title, m.original_title,
 			m.overview, m.poster_path, m.backdrop_path,
-			m.release_date, m.first_air_date, m.last_air_date,
+			m.release_date::text, m.first_air_date::text, m.last_air_date::text,
 			m.vote_average, m.vote_count, m.original_language, m.adult, m.status,
 			m.number_of_seasons, m.seasons, m.last_ep_season, m.last_ep_number, m.updated_at,
 			m.best_video_quality, m.latest_torrent_date
@@ -336,7 +469,7 @@ func SearchMedia(query string, limit int) []MediaRow {
 	qrows, err := postgres.Pool.Query(ctx, `
 		SELECT m.tmdb_id, m.media_type, m.title, m.original_title,
 			m.overview, m.poster_path, m.backdrop_path,
-			m.release_date, m.first_air_date, m.last_air_date,
+			m.release_date::text, m.first_air_date::text, m.last_air_date::text,
 			m.vote_average, m.vote_count, m.original_language, m.adult, m.status,
 			m.number_of_seasons, m.seasons, m.last_ep_season, m.last_ep_number, m.updated_at,
 			m.best_video_quality, m.latest_torrent_date
@@ -382,7 +515,7 @@ func GetMediaCard(tmdbID int64, mediaType string) *models.Entity {
 
 	err := postgres.Pool.QueryRow(ctx, `
 		SELECT tmdb_id, media_type, title, original_title, overview,
-		       poster_path, backdrop_path, release_date, first_air_date, last_air_date,
+		       poster_path, backdrop_path, release_date::text, first_air_date::text, last_air_date::text,
 		       vote_average, vote_count, original_language, adult, runtime, status, imdb_id,
 		       genres, number_of_seasons, number_of_episodes, seasons,
 		       myshows_id, kinopoisk_id
