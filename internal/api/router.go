@@ -32,8 +32,10 @@ func NewRouter(mode string) http.Handler {
 
 	for route := range categoryRoutes {
 		r.Get("/"+route, handleCategory)
+		r.Get("/lampac_"+route, handleCategory) // lampac_ prefix alias
 	}
 	r.Get("/movies_id_{year:[0-9]+}", handleCategory)
+	r.Get("/lampac_movies_id_{year:[0-9]+}", handleCategory)
 	r.Get("/continues", handleCategory)
 	r.Get("/continues_movie", handleCategory)
 	r.Get("/continues_tv", handleCategory)
