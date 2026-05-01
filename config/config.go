@@ -40,6 +40,9 @@ type ConfigParser struct {
 	MyShowsAPI     string `env:"MYSHOWS_API"      env-default:"https://myshows.me/v3/rpc/"`
 	MyShowsAuthURL string `env:"MYSHOWS_AUTH_URL" env-default:"https://myshows.me/api/session"`
 
+	// Режим запуска: "all" (по умолчанию) или "parser" (только контент API, без web/auth)
+	AppMode string `env:"APP_MODE" env-default:"all"`
+
 	// Контент
 	BannedPatterns     string `env:"BANNED_PATTERNS"`
 	CacheClearPassword string `env:"CACHE_CLEAR_PASSWORD"`

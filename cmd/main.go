@@ -46,14 +46,21 @@ func main() {
 		httpPort = 8080
 	}
 
+	mode := cfg.AppMode
+	if mode != "parser" {
+		mode = "all"
+	}
+
 	fmt.Println("=========== START ===========")
-	fmt.Printf("lm_%s, %s, CPU: %d\n", version.Version, runtime.Version(), runtime.NumCPU())
+	fmt.Printf("lm_%s, %s, CPU: %d, mode: %s\n", version.Version, runtime.Version(), runtime.NumCPU(), mode)
 
 	setupProxy(cfg)
 	dnsResolve()
 
 	db.Init()
-	ensureSuperuser(cfg)
+	if mode == "all" {
+		ensureSuperuser(cfg)
+	}
 	loadProxy()
 	tmdb.Init()
 
@@ -62,7 +69,7 @@ func main() {
 	// HTTP сервер
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", httpPort),
-		Handler:      api.NewRouter(),
+		Handler:      api.NewRouter(mode),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
