@@ -1,0 +1,85 @@
+@use '@/styles/variables' as *;
+
+.layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: $color-bg;
+}
+
+.nav {
+  @include flex-between;
+  padding: $spacing-sm $spacing-lg;
+  background: $color-bg-card;
+  border-bottom: 1px solid $color-border;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.brand {
+  font-size: $font-size-lg;
+  font-weight: 700;
+  color: $color-primary;
+  text-decoration: none;
+  letter-spacing: -0.5px;
+}
+
+.navLinks {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.navLink {
+  padding: $spacing-xs $spacing-md;
+  border-radius: $radius-sm;
+  color: $color-text-muted;
+  text-decoration: none;
+  font-size: $font-size-sm;
+  transition: color $transition-fast, background $transition-fast;
+
+  &:hover {
+    color: $color-text;
+    background: rgba($color-border, 0.5);
+  }
+
+  &.active {
+    color: $color-primary;
+    background: rgba($color-primary, 0.12);
+  }
+}
+
+.navUser {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  padding: $spacing-xs $spacing-sm;
+}
+
+.btnLogout {
+  padding: $spacing-xs $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: color $transition-fast, border-color $transition-fast;
+
+  &:hover {
+    color: $color-danger;
+    border-color: $color-danger;
+  }
+}
+
+.main {
+  flex: 1;
+  padding: $spacing-xl $spacing-lg;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+
+  @media (max-width: $bp-md) {
+    padding: $spacing-lg $spacing-md;
+  }
+}

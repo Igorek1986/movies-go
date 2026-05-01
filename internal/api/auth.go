@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"lampa-api/config"
 	"lampa-api/db/models"
 	"lampa-api/db/store"
 	"lampa-api/internal/auth"
@@ -40,6 +41,20 @@ func requireAdmin(next http.Handler) http.Handler {
 	}))
 }
 
+// optionalSession resolves session but does not block unauthenticated requests.
+func optionalSession(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := auth.SessionFromRequest(r)
+		if key != "" {
+			if user := auth.GetSessionUser(r.Context(), key); user != nil {
+				ctx := context.WithValue(r.Context(), ctxKeyUser{}, user)
+				r = r.WithContext(ctx)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func userFromCtx(r *http.Request) *models.User {
 	if v := r.Context().Value(ctxKeyUser{}); v != nil {
 		if u, ok := v.(*models.User); ok {
@@ -70,6 +85,18 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		"totp_enabled":  u.TotpEnabled,
 		"premium_until": u.PremiumUntil,
 		"blocked_at":    u.BlockedAt,
+	})
+}
+
+// GET /api/config — public non-sensitive config for the frontend
+func handleAppConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := config.Get()
+	imgProxy := ""
+	if cfg.ProxyURL != "" {
+		imgProxy = "/imgproxy"
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"image_proxy_url": imgProxy,
 	})
 }
 
@@ -175,6 +202,67 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
+	key := auth.SessionFromRequest(r)
+	if key != "" {
+		auth.DeleteSession(r.Context(), key)
+	}
+	auth.ClearSessionCookie(w)
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// POST /api/change-password
+func handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if !auth.CheckPassword(u.PasswordHash, req.CurrentPassword) {
+		Error(w, http.StatusUnauthorized, "wrong password")
+		return
+	}
+	if len(req.NewPassword) < 6 {
+		Error(w, http.StatusBadRequest, "password too short")
+		return
+	}
+	hash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "hash error")
+		return
+	}
+	if err := store.UpdatePassword(r.Context(), u.ID, hash); err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// DELETE /api/account
+func handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	if u.IsAdmin {
+		Error(w, http.StatusForbidden, "cannot delete admin account")
+		return
+	}
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if !auth.CheckPassword(u.PasswordHash, req.Password) {
+		Error(w, http.StatusUnauthorized, "wrong password")
+		return
+	}
+	if err := store.DeleteUser(r.Context(), u.ID); err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
 	key := auth.SessionFromRequest(r)
 	if key != "" {
 		auth.DeleteSession(r.Context(), key)

@@ -41,6 +41,11 @@ func main() {
 
 	cfg := config.Get()
 
+	httpPort := cfg.HTTPPort
+	if httpPort == 0 {
+		httpPort = 8080
+	}
+
 	fmt.Println("=========== START ===========")
 	fmt.Printf("lm_%s, %s, CPU: %d\n", version.Version, runtime.Version(), runtime.NumCPU())
 
@@ -56,7 +61,7 @@ func main() {
 
 	// HTTP сервер
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.HTTPPort),
+		Addr:         fmt.Sprintf(":%d", httpPort),
 		Handler:      api.NewRouter(),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
@@ -64,7 +69,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("HTTP server listening on :%d", cfg.HTTPPort)
+		log.Printf("HTTP server listening on :%d", httpPort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
 		}
@@ -203,7 +208,7 @@ func getDbInfo() {
 	}
 
 	var cached int
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM torrent_cache`).Scan(&cached) //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM torrents`).Scan(&cached) //nolint:errcheck
 	fmt.Println("Total media cards:", total)
 	fmt.Println("Torrent cache entries:", cached)
 }

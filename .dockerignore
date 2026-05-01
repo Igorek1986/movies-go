@@ -1,0 +1,12 @@
+/api/
+dev/
+web/node_modules/
+internal/web/dist/
+.git/
+.gitignore
+.env
+*.dump
+*.log
+lampa-api-linux
+lampa-api-bin
+lampa-parser

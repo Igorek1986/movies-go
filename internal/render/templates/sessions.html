@@ -1,0 +1,43 @@
+{{define "title"}}Активные сессии — {{if .User}}{{.User.Username}}{{end}}{{end}}
+
+{{define "body"}}
+<main class="container" style="padding-top:1.5rem;max-width:800px">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:.5rem">
+    <h2 style="margin:0">Активные сессии</h2>
+    <form method="POST" action="/sessions/revoke-all"
+          onsubmit="return confirm('Завершить все сессии? Вы будете выйдены отовсюду.')">
+      <button type="submit" class="outline secondary btn-sm">Завершить все</button>
+    </form>
+  </div>
+  <p class="muted small">Список устройств, с которых выполнен вход в аккаунт. Текущая сессия отмечена.</p>
+
+  {{with .Data}}
+  {{if .Sessions}}
+  <div style="display:flex;flex-direction:column;gap:.5rem">
+    {{range .Sessions}}
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;
+                padding:.75rem 1rem;border:1px solid var(--pico-table-border-color);
+                border-radius:var(--pico-border-radius);
+                {{if .IsCurrent}}border-color:var(--pico-primary){{end}}">
+      <div style="min-width:0">
+        <div style="font-weight:500">{{.Browser}}</div>
+        <div style="font-size:.82rem;color:var(--pico-muted-color);margin-top:.15rem">
+          {{.IP}} · {{.CreatedAt.Format "02.01.2006"}}
+          {{if .IsCurrent}} · <em>эта сессия</em>{{end}}
+        </div>
+      </div>
+      <form method="POST" action="/sessions/{{.ID}}/revoke" style="flex-shrink:0"
+            onsubmit="return confirm('Завершить эту сессию?{{if .IsCurrent}} Вы будете выйдены из текущего устройства.{{end}}')">
+        <button type="submit" class="btn-sm outline {{if .IsCurrent}}danger-btn{{else}}secondary{{end}}">
+          {{if .IsCurrent}}Выйти{{else}}Завершить{{end}}
+        </button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <p class="muted">Активных сессий нет.</p>
+  {{end}}
+  {{end}}
+</main>
+{{end}}

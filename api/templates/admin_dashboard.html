@@ -39,6 +39,10 @@
         <button type="submit" class="btn-sm outline secondary" id="findBtn" title="Найти MyShows ID для сериалов без него">🔍&nbspНайти MyShows ID</button>
       </form>
       <a href="/admin/settings" role="button" class="outline secondary btn-sm">⚙&nbspНастройки</a>
+      <form method="POST" action="/admin/parser-reset-date" style="margin:0" id="parser-reset-form">
+        <input type="date" name="date" id="parser-date-input" value="{{ parser_date }}" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0" required>
+        <button type="button" class="btn-sm outline secondary" onclick="document.getElementById('parser-date-input').showPicker()">↩&nbspСброс парсера</button>
+      </form>
     </div>
   </div>
 
@@ -278,6 +282,14 @@ function blockUser(uid, username) {
   form.appendChild(inp);
   document.body.appendChild(form);
   form.submit();
+}
+document.getElementById('parser-date-input').addEventListener('change', function() {
+  document.getElementById('parser-reset-form').submit();
+});
+const _alert = document.getElementById('adminAlert');
+if (_alert) {
+  setTimeout(() => _alert.remove(), 4000);
+  history.replaceState(null, '', location.pathname);
 }
 </script>
 {% endblock %}

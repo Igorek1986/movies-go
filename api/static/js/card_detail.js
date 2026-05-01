@@ -145,6 +145,13 @@ const _WATCHED_THR   = 90;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Форматирует дату "YYYY-MM-DD" → "DD.MM.YYYY" */
+function _fmtDate(s) {
+  if (!s || s.length < 10) return s || '';
+  const [y, m, d] = s.split('-');
+  return `${d}.${m}.${y}`;
+}
+
 function _pluralView(n) {
   const mod10 = n % 10, mod100 = n % 100;
   if (mod10 === 1 && mod100 !== 11) return 'просмотр';
@@ -618,7 +625,6 @@ function _renderCard(card, cardId) {
   }
 
   const tags = [];
-  if (card.year)         tags.push({ text: card.year, accent: true });
   if (card.vote_average) tags.push({ text: `★ ${Number(card.vote_average).toFixed(1)}` });
   if (card.media_type === 'movie' && card.runtime) {
     tags.push({ text: _fmtRuntime(card.runtime) });
@@ -630,6 +636,9 @@ function _renderCard(card, cardId) {
     tags.push({ text: `~${card.episode_run_time} мин / серия` });
   }
   tags.push({ text: card.media_type === 'movie' ? 'Фильм' : 'Сериал' });
+  // Release date (full for movies, first air date for TV)
+  const releaseDate = card.media_type === 'movie' ? card.release_date : card.first_air_date;
+  if (releaseDate) tags.push({ text: _fmtDate(releaseDate), accent: true });
   document.getElementById('cardTags').innerHTML = tags
     .map(t => `<span class="card-detail-tag${t.accent ? ' accent' : ''}">${t.text}</span>`)
     .join('');

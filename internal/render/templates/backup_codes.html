@@ -1,0 +1,49 @@
+{{define "title"}}Резервные коды — 2FA{{end}}
+
+{{define "body"}}
+<main class="container auth-container">
+  <article style="max-width:480px;margin:0 auto">
+    <hgroup>
+      <h2>2FA включена</h2>
+      <p>Сохраните резервные коды в надёжном месте</p>
+    </hgroup>
+
+    <div role="alert" class="alert-warning" style="margin-bottom:1rem">
+      <strong>Важно:</strong> эти коды отображаются только один раз.
+      Если вы потеряете доступ к приложению-аутентификатору, их можно использовать для входа.
+      Каждый код работает только один раз.
+    </div>
+
+    {{with .Data}}
+    <div id="backupCodesBox" style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem .8rem;
+         padding:.75rem 1rem;background:var(--pico-code-background-color);
+         border-radius:var(--pico-border-radius);margin-bottom:1rem">
+      {{range .Codes}}
+      <code style="font-size:.9rem;letter-spacing:.05em">{{.}}</code>
+      {{end}}
+    </div>
+    {{end}}
+
+    <div style="display:flex;gap:.5rem;margin-bottom:1.5rem">
+      <button onclick="copyCodes()" class="outline secondary" style="flex:1">Копировать все</button>
+      <button onclick="window.print()" class="outline secondary" style="flex:1">Распечатать</button>
+    </div>
+
+    <a href="/profiles" role="button" style="width:100%">Готово — к настройкам</a>
+  </article>
+</main>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function copyCodes() {
+  const codes = Array.from(document.querySelectorAll('#backupCodesBox code'))
+    .map(el => el.textContent.trim()).join('\n');
+  navigator.clipboard.writeText(codes).then(() => {
+    const btn = event.target;
+    btn.textContent = 'Скопировано!';
+    setTimeout(() => btn.textContent = 'Копировать все', 2000);
+  }).catch(() => {});
+}
+</script>
+{{end}}

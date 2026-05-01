@@ -1,23 +1,9 @@
 @use '@/styles/variables' as *;
 
 .page {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: $spacing-xl $spacing-md;
   display: flex;
   flex-direction: column;
   gap: $spacing-xl;
-}
-
-.header {
-  @include flex-between;
-}
-
-.title {
-  margin: 0;
-  font-size: $font-size-xl;
-  font-weight: 700;
-  color: $color-text;
 }
 
 .section {
@@ -27,77 +13,239 @@
   gap: $spacing-md;
 }
 
+.sectionHeader {
+  @include flex-between;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+}
+
 .sectionTitle {
   margin: 0;
   font-size: $font-size-lg;
   font-weight: 600;
   color: $color-text;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.roleBadge {
+  display: inline-block;
+  padding: 2px $spacing-sm;
+  border-radius: $radius-full;
+  font-size: $font-size-xs;
+  font-weight: 500;
+  background: rgba($color-primary, 0.15);
+  color: $color-primary;
+}
+
+.limitHint {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
 }
 
 .empty {
-  margin: 0;
   color: $color-text-muted;
   font-size: $font-size-sm;
 }
 
-.deviceList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.deviceTable {
   display: flex;
   flex-direction: column;
   gap: $spacing-sm;
 }
 
-.deviceItem {
-  display: flex;
-  align-items: center;
-  gap: $spacing-sm;
-  padding: $spacing-sm $spacing-md;
+.deviceRow {
   background: $color-bg-input;
-  border-radius: $radius-sm;
   border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  padding: $spacing-md;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.deviceInfo {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
 }
 
 .deviceName {
-  flex: 1;
-  font-weight: 500;
+  font-size: $font-size-base;
   color: $color-text;
 }
 
-.deviceDate {
+.tokenRow {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  flex-wrap: wrap;
+}
+
+.tokenCode {
+  font-family: 'Courier New', monospace;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  cursor: pointer;
+  padding: 2px $spacing-xs;
+  border-radius: $radius-sm;
+  background: rgba($color-border, 0.5);
+  transition: color $transition-fast;
+
+  &:hover { color: $color-primary; }
+}
+
+.copiedHint {
+  font-size: $font-size-xs;
+  color: $color-success;
+}
+
+.deviceMeta {
   font-size: $font-size-xs;
   color: $color-text-muted;
 }
 
 .deviceActions {
   display: flex;
+  flex-wrap: wrap;
   gap: $spacing-xs;
 }
 
-.renameRow {
+.btnSm {
+  height: 30px;
+  padding: 0 $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover { border-color: $color-primary; color: $color-primary; }
+
+  &.warning:hover { border-color: $color-warning; color: $color-warning; }
+  &.danger:hover  { border-color: $color-danger;  color: $color-danger;  }
+  &.active { border-color: $color-primary; color: $color-primary; background: rgba($color-primary, 0.1); }
+}
+
+.btnIcon {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: $radius-sm;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background $transition-fast;
+
+  &:hover { background: rgba(white, 0.08); }
+}
+
+// ── Profiles panel ────────────────────────────────────────────────────────────
+
+.profilesPanel {
+  border-top: 1px solid $color-border;
+  padding-top: $spacing-md;
   display: flex;
-  flex: 1;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.profilesTitle {
+  margin: 0;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.profileCard {
+  background: rgba($color-border, 0.25);
+  border: 1px solid rgba($color-border, 0.6);
+  border-radius: $radius-sm;
+  padding: $spacing-sm $spacing-md;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.profileCardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.profileCardLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profileName {
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.profileMeta {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+.profileId {
+  font-family: monospace;
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  background: rgba($color-border, 0.5);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.profileCardActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  flex-shrink: 0;
+}
+
+.profileCardBottom {
+  display: flex;
+  gap: $spacing-xs;
+  flex-wrap: wrap;
+  padding-top: $spacing-xs;
+}
+
+// ── Forms ─────────────────────────────────────────────────────────────────────
+
+.inlineForm {
+  display: flex;
   gap: $spacing-sm;
   align-items: center;
   flex-wrap: wrap;
 }
 
-.hint {
-  margin: 0;
-  font-size: $font-size-sm;
-  color: $color-text-muted;
-  line-height: 1.5;
+.formGrid {
+  display: flex;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+
+  > * { flex: 1; min-width: 140px; }
 }
 
-.error {
-  margin: 0;
-  padding: $spacing-sm $spacing-md;
-  background: rgba($color-danger, 0.12);
-  border: 1px solid rgba($color-danger, 0.4);
-  border-radius: $radius-sm;
-  color: $color-danger;
-  font-size: $font-size-sm;
+.formCol {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  max-width: 400px;
 }
 
 .linkForm {
@@ -106,25 +254,33 @@
   gap: $spacing-md;
 }
 
-.formRow {
-  display: flex;
-  gap: $spacing-md;
-  flex-wrap: wrap;
-
-  > * {
-    flex: 1;
-    min-width: 160px;
-  }
-}
-
 .input {
   @include input-base;
-  height: 40px;
+  height: 38px;
   font-size: $font-size-sm;
+  flex: 1;
+  min-width: 0;
+}
+
+.inputMono {
+  font-family: 'Courier New', monospace;
+  font-size: $font-size-xs;
+  flex: 0 1 160px;
+  min-width: 0;
+  color: $color-text-muted;
+}
+
+.select {
+  @include input-base;
+  height: 38px;
+  font-size: $font-size-sm;
+  flex: 1;
+  min-width: 140px;
+  cursor: pointer;
 }
 
 .btnPrimary {
-  height: 40px;
+  height: 38px;
   padding: 0 $spacing-lg;
   border: none;
   border-radius: $radius-sm;
@@ -133,72 +289,85 @@
   font-size: $font-size-sm;
   font-weight: 600;
   cursor: pointer;
-  transition: background $transition-fast;
   white-space: nowrap;
+  transition: background $transition-fast;
 
   &:hover:not(:disabled) { background: $color-primary-hover; }
   &:disabled { opacity: 0.6; cursor: default; }
-}
 
-.btnSecondary {
-  height: 40px;
-  padding: 0 $spacing-lg;
-  border: 1px solid $color-border;
-  border-radius: $radius-sm;
-  background: transparent;
-  color: $color-text;
-  font-size: $font-size-sm;
-  cursor: pointer;
-  transition: border-color $transition-fast, color $transition-fast;
-
-  &:hover { border-color: $color-primary; color: $color-primary; }
-}
-
-.btnIcon {
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: $radius-sm;
-  background: transparent;
-  cursor: pointer;
-  font-size: 16px;
-  transition: background $transition-fast;
-
-  &:hover { background: rgba(white, 0.08); }
-}
-
-.divider {
-  text-align: center;
-  color: $color-text-muted;
-  font-size: $font-size-sm;
-  position: relative;
-
-  &::before, &::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    width: calc(50% - 20px);
-    height: 1px;
-    background: $color-border;
+  &.danger {
+    background: $color-danger;
+    &:hover:not(:disabled) { background: #c44; }
   }
-  &::before { left: 0; }
-  &::after  { right: 0; }
 }
 
-.code {
-  text-align: center;
-  font-size: 36px;
-  font-weight: 700;
-  letter-spacing: 8px;
-  color: $color-primary;
-  padding: $spacing-md;
-  background: rgba($color-primary, 0.08);
-  border-radius: $radius-md;
-  border: 2px solid rgba($color-primary, 0.3);
-}
-
-.userInfo {
-  text-align: center;
+.limitReached {
   font-size: $font-size-sm;
   color: $color-text-muted;
+  font-style: italic;
+}
+
+// ── Details / accordion ───────────────────────────────────────────────────────
+
+.details {
+  @include card;
+}
+
+.summary {
+  cursor: pointer;
+  font-size: $font-size-base;
+  font-weight: 600;
+  color: $color-text;
+  padding: $spacing-xs 0;
+  list-style: none;
+
+  &::marker, &::-webkit-details-marker { display: none; }
+
+  &::before {
+    content: '▶ ';
+    font-size: 10px;
+    color: $color-text-muted;
+    transition: transform $transition-fast;
+  }
+
+  details[open] > &::before { content: '▼ '; }
+}
+
+.detailsBody {
+  padding-top: $spacing-md;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.hint {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.subTitle {
+  margin: 0;
+  font-size: $font-size-base;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.hr {
+  border: none;
+  border-top: 1px solid $color-border;
+  margin: $spacing-xs 0;
+}
+
+.errorText {
+  margin: 0;
+  font-size: $font-size-sm;
+  color: $color-danger;
+}
+
+.successText {
+  margin: 0;
+  font-size: $font-size-sm;
+  color: $color-success;
 }

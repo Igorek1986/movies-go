@@ -1,0 +1,74 @@
+{{define "title"}}NUMParser{{end}}
+
+{{define "body"}}
+<main class="container" style="max-width: 860px; padding-top: 3rem;">
+  <div style="text-align: center; margin-bottom: 3rem;">
+    <h1 style="margin-bottom: .5rem;">NUMParser</h1>
+    <p class="muted">Мощный источник актуального контента с удобной фильтрацией просмотренного контента!</p>
+  </div>
+
+  <div style="text-align: center; margin-bottom: 2.5rem; display: flex; gap: 1rem; justify-content: center;">
+    <a href="/login" role="button">Войти</a>
+    <a href="/register" role="button" class="outline">Регистрация</a>
+  </div>
+
+  {{with .Data}}
+  <div class="landing-grid">
+    <article>
+      <header><strong>История просмотров</strong></header>
+      <p>Прогресс просмотра сохраняется и отображается на сайте. Видно что и до какого момента смотрели на каждом устройстве.</p>
+    </article>
+    <article>
+      <header><strong>Фильтрация просмотренного</strong></header>
+      <p>Уже просмотренные фильмы и сериалы убираются из категорий автоматически.</p>
+    </article>
+    <article>
+      <header><strong>Подключение к Lampa</strong></header>
+      <p>Установите плагин NUMParser в Lampa, введите токен устройства — и всё готово.</p>
+    </article>
+    <article style="border: 1px solid var(--pico-muted-border-color);">
+      <header><strong>Базовый</strong> <small class="muted">— бесплатно</small></header>
+      <ul>
+        <li>До {{.SimpleDeviceLimit}} {{plural .SimpleDeviceLimit "устройство" "устройства" "устройств"}}</li>
+        <li>До {{.SimpleTCLimit}} {{plural .SimpleTCLimit "таймкод" "таймкода" "таймкодов"}}</li>
+        <li>Привязка Telegram для восстановления пароля</li>
+      </ul>
+    </article>
+    <article style="border: 1px solid var(--pico-primary);">
+      <header><strong>Премиум</strong> <small class="muted">— по запросу</small></header>
+      <ul>
+        <li>До {{.PremiumDeviceLimit}} {{plural .PremiumDeviceLimit "устройства" "устройств" "устройств"}}</li>
+        <li>До {{.PremiumTCLimit}} {{plural .PremiumTCLimit "таймкода" "таймкодов" "таймкодов"}}</li>
+        <li>Синхронизация просмотренного из MyShows</li>
+      </ul>
+    </article>
+    {{if .BotName}}
+    <article style="border: 1px solid var(--pico-muted-border-color);">
+      <header><strong>Telegram</strong> <small class="muted">— бесплатно</small></header>
+      <ul style="list-style:none;padding-left:0">
+        <li style="display:flex;gap:.4rem;align-items:baseline"><span>🔑</span><span>Сброс пароля через бота</span></li>
+        <li style="display:flex;gap:.4rem;align-items:baseline"><span>🔐</span><span>Уведомления о новых входах</span></li>
+        <li style="display:flex;gap:.4rem;align-items:baseline"><span>🔔</span><span>Напоминания об истечении подписки</span></li>
+        <li style="display:flex;gap:.4rem;align-items:baseline"><span>⚠️</span><span>Предупреждение за {{.InactiveWarnDays}} {{plural .InactiveWarnDays "день" "дня" "дней"}} до удаления аккаунта</span></li>
+      </ul>
+      <a href="https://t.me/{{.BotName}}" target="_blank" role="button" class="outline btn-sm">@{{.BotName}}</a>
+    </article>
+    {{end}}
+  </div>
+
+  {{if gt .InactiveDeleteDays 0}}
+  <p class="muted" style="font-size: .85rem; margin-top: .5rem;">
+    * Аккаунты удаляются автоматически при отсутствии активности более {{.InactiveDeleteDays}} {{plural .InactiveDeleteDays "дня" "дней" "дней"}}.
+    {{if .BotName}}За {{.InactiveWarnDays}} {{plural .InactiveWarnDays "день" "дня" "дней"}} до удаления придёт уведомление в Telegram.{{end}}
+  </p>
+  {{end}}
+
+  <footer style="text-align:center; margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--pico-muted-border-color);">
+    <small class="muted">
+      Плагин для Lampa: <a href="{{.PluginURL}}">np.js</a>
+      {{if .BotName}} &nbsp;·&nbsp; <a href="https://t.me/{{.BotName}}">@{{.BotName}}</a>{{end}}
+    </small>
+  </footer>
+  {{end}}
+</main>
+{{end}}

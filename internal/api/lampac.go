@@ -17,17 +17,21 @@ import (
 // categoryRoutes maps URL path (after stripping lm_ prefix) to a store.CategoryFilter preset.
 // Keys must match exactly what lm.js sends: lm_KEY → /KEY
 var categoryRoutes = map[string]store.CategoryFilter{
-	// Movies
-	"movies":        {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "notru"},
-	"movies_new":    {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "notru", OrderByNew: true},
-	"movies_ru":     {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "ru"},
-	"movies_ru_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "ru", OrderByNew: true},
-	"movies_4k":     {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVideoQuality: 300},
-	"movies_4k_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVideoQuality: 300, OrderByNew: true},
-	"legends_id":    {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVoteCount: 1000, OrderByRating: true},
-	// TV shows
-	"tv_shows":      {MediaTypes: []string{"tv"}, Categories: []string{models.CatSeries}},
-	"tv_shows_ru":   {MediaTypes: []string{"tv"}, Categories: []string{models.CatSeries}, Language: "ru"},
+	// Movies — старые (year < currentYear-1), сортировка по release_date
+	"movies": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "notru", OldOnly: true},
+	// Новые фильмы — только 2025–2026, 1080p+, сортировка по дате торрента
+	"movies_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "notru", NewOnly: true, OrderByNew: true},
+	// Русские
+	"movies_ru":     {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "ru", OldOnly: true},
+	"movies_ru_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "ru", NewOnly: true, OrderByNew: true},
+	// 4K — yearDelta=4 в NUMParser: новые = 2023–2026, старые = до 2023
+	"movies_4k":     {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVideoQuality: 300, OldOnly: true, YearDelta: 4},
+	"movies_4k_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVideoQuality: 300, NewOnly: true, YearDelta: 4, OrderByNew: true},
+	// Легенды — рейтинговые
+	"legends_id": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVoteCount: 1000, OrderByRating: true},
+	// TV — no OldOnly because there is no separate tv_shows_new category
+	"tv_shows":    {MediaTypes: []string{"tv"}, Categories: []string{models.CatSeries}, Language: "notru"},
+	"tv_shows_ru": {MediaTypes: []string{"tv"}, Categories: []string{models.CatSeries}, Language: "ru"},
 	// Cartoons
 	"cartoon_movies": {MediaTypes: []string{"movie"}, Categories: []string{models.CatCartoonMovie}},
 	"cartoon_series": {MediaTypes: []string{"tv"}, Categories: []string{models.CatCartoonSeries}},
@@ -200,7 +204,10 @@ func handlePopular(w http.ResponseWriter, r *http.Request, page, perPage int, se
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("query")
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		query = r.URL.Query().Get("query")
+	}
 	if query == "" {
 		query = r.URL.Query().Get("search")
 	}

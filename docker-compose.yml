@@ -2,51 +2,37 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
-    env_file: .env
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER:-lampa}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-lampa}
+      POSTGRES_DB: ${DB_NAME:-lampa}
     volumes:
       - pg_data:/var/lib/postgresql/data
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-lampa} -d ${DB_NAME:-lampa}"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  api:
-    build: ./api
+  app:
+    build: .
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
-      DB_HOST: db
+      - DATABASE_URL=postgres://${DB_USER:-lampa}:${DB_PASSWORD:-lampa}@db:5432/${DB_NAME:-lampa}?sslmode=disable
+      - HTTP_PORT=${PORT:-8888}
     ports:
-      - "${PORT:-8888}:8888"
-    volumes:
-      - ./api/app:/app/app
-      - ./api/lampa-plugins:/app/lampa-plugins
-      - ./api/static:/app/static
+      - "${PORT:-8888}:${PORT:-8888}"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       db:
         condition: service_healthy
-
-  parser:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable
-      - TMDB_TOKEN=${TMDB_TOKEN}
-    depends_on:
-      db:
-        condition: service_healthy
-      api:
-        condition: service_started
 
 volumes:
   pg_data:

@@ -101,7 +101,7 @@ func GetContinues(ctx context.Context, deviceID int64, profileID, mediaFilter st
 	mcRows, err := postgres.Pool.Query(ctx,
 		fmt.Sprintf(`SELECT card_id, tmdb_id, media_type, title, original_title,
 			poster_path, backdrop_path, overview, vote_average,
-			release_date, first_air_date
+			release_date::text, first_air_date::text
 			FROM media_cards WHERE card_id IN (%s)`, strings.Join(placeholders, ",")),
 		pargs...,
 	)
@@ -176,7 +176,7 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 		FROM timecodes t
 		JOIN media_cards m ON m.card_id = t.card_id
 		WHERE t.view_count > 0
-		  AND t.counted_at >= (CURRENT_DATE - ($1 || ' days')::interval)
+		  AND t.counted_at >= (CURRENT_DATE - ($1::int * INTERVAL '1 day'))
 		  %s
 		GROUP BY t.card_id
 		HAVING SUM(t.view_count) > 0

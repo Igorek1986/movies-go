@@ -2,7 +2,6 @@ package tmdb
 
 import (
 	"lampa-api/db/models"
-	"github.com/jmcvetta/napping"
 	"strings"
 	"time"
 )
@@ -28,10 +27,7 @@ func FixDate(date string) string {
 func GetGenres(gtype string) []*models.Genre {
 	var genres *models.GenresRequest
 
-	urlPages := napping.Params{
-		//"api_key":  apiKey,
-		"language": "ru",
-	}
+	urlPages := map[string]string{"language": "ru"}
 	endpoint := "genre/" + gtype + "/list"
 
 	err := readPageTmdb(endpoint, urlPages, &genres)

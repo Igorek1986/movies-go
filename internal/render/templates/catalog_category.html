@@ -1,0 +1,40 @@
+{{define "title"}}{{with .Data}}{{.CategoryName}}{{end}} — NUMParser{{end}}
+
+{{define "body"}}
+<main class="container" style="padding-top: 1.5rem; max-width: 1200px;" data-no-card-autofocus>
+  {{with .Data}}
+  {{template "back_button" (dict "Label" "← Каталог" "Fallback" "/")}}
+  <h2 style="margin-bottom: 1rem;">{{.CategoryName}}</h2>
+
+  <div class="history-controls" style="margin-bottom: 1.25rem;">
+    {{if .Devices}}
+    {{if gt (len .Devices) 1}}
+    <select id="catalogDeviceSelect">
+      {{range .Devices}}
+      <option value="{{.ID}}">{{.Name}}</option>
+      {{end}}
+    </select>
+    {{else}}
+    <input type="hidden" id="catalogDeviceSelect" value="{{(index .Devices 0).ID}}">
+    {{end}}
+    <div id="catalogProfileTabs"></div>
+    {{end}}
+    <div style="margin-left: auto; width: 200px;">
+      <input type="search" id="catalogSearch" placeholder="Поиск…" class="history-search">
+    </div>
+  </div>
+  {{end}}
+
+  <div id="gridLoading" class="muted small" style="text-align:center; padding: 2rem 0;">Загрузка...</div>
+  <div id="gridEmpty" class="history-empty" style="display:none">Нет данных</div>
+  <div id="catalogGrid" class="catalog-grid"></div>
+  <div id="loadSentinel" style="height:1px; margin-top:1.5rem;"></div>
+</main>
+{{end}}
+
+{{define "scripts"}}
+{{with .Data}}
+<script src="/static/js/catalog.js"></script>
+<script>initCatalog("{{.Category}}", "{{.ImageBase}}");</script>
+{{end}}
+{{end}}

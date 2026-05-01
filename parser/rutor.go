@@ -18,11 +18,7 @@ import (
 )
 
 func loadRutorHost() string {
-	ret, err := config.ReadConfigParser("Host")
-	if err == nil {
-		return ret
-	}
-	return ""
+	return config.Get().Host
 }
 
 var (
@@ -108,23 +104,47 @@ func (self *RutorParser) Parse() {
 				if len(list) == 0 {
 					return false
 				}
+
+				type enrichJob struct {
+					d        *models.TorrentDetails
+					isMovie  bool
+				}
+				var toEnrich []enrichJob
+				hitCutoff := false
+
 				for _, d := range list {
 					// In incremental mode: stop when all remaining torrents are older than cutoff.
 					// Rutor pages are ordered newest→oldest, so once we pass cutoff we're done.
 					if !p.FullScan && !d.CreateDate.IsZero() && d.CreateDate.Before(p.Cutoff) {
 						log.Printf("parser: reached cutoff at %s, stopping cat %s",
 							d.CreateDate.Format("2006-01-02"), p.Cat)
-						return false
+						hitCutoff = true
+						break
 					}
-					if store.TorrentCached(d.Hash) {
-							continue
+					// Sports/news/humor (CatTVShow) are never in TMDB — skip enrichment.
+					if d.Categories == models.CatTVShow {
+						store.CacheTorrent(d.Hash, "")
+						continue
+					}
+					isMovie := d.Categories == models.CatMovie ||
+						d.Categories == models.CatDocMovie ||
+						d.Categories == models.CatCartoonMovie
+					cached, cardID := store.TorrentStatus(d.Hash)
+					if cached && cardID != "" {
+						if d.VideoQuality > 0 {
+							store.UpdateQuality(cardID, d.VideoQuality)
 						}
-						isMovie := d.Categories == models.CatMovie ||
-							d.Categories == models.CatDocMovie ||
-							d.Categories == models.CatCartoonMovie
-						releases.Enrich(p.Cat, isMovie, d)
+						continue
+					}
+					toEnrich = append(toEnrich, enrichJob{d, isMovie})
 				}
-				return true
+
+				// Enrich new/retry torrents in parallel (up to 20 concurrent TMDB calls).
+				utils.PForLim(toEnrich, 20, func(_ int, job enrichJob) {
+					releases.Enrich(p.Cat, job.isMovie, job.d)
+				})
+
+				return !hitCutoff
 			}, pl)
 		}
 	}
@@ -382,6 +402,7 @@ func (self *RutorParser) parseDate(date string) time.Time {
 func ParseVQuality(params string) int {
 	info := clear(strings.ToLower(params))
 	info = strings.ReplaceAll(info, "вdrip", "bdrip")
+	info = strings.ReplaceAll(info, "web dl", "webdl")
 
 	// check uhd bdremux 2160
 	if strings.Contains(info, "2160") && (strings.Contains(info, "bdremux") || strings.Contains(info, "bluray")) {

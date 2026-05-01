@@ -1,0 +1,36 @@
+{{define "title"}}Вход — NUMParser{{end}}
+
+{{define "body"}}
+<main class="container auth-container">
+  <article>
+    <hgroup>
+      <h1>NUMParser</h1>
+      <p>Войдите в аккаунт</p>
+    </hgroup>
+
+    {{with .Data}}
+    {{if .Error}}
+    <p role="alert" class="alert-error">{{.Error}}</p>
+    {{end}}
+    {{if .Success}}
+    <p role="alert" class="alert-success">{{.Success}}</p>
+    {{end}}
+    {{end}}
+
+    <form method="POST" action="/login">
+      <label for="username">
+        Имя пользователя
+        <input type="text" id="username" name="username" required autocomplete="username" autofocus>
+      </label>
+      <label for="password">
+        Пароль
+        <input type="password" id="password" name="password" required autocomplete="current-password">
+      </label>
+      <button type="submit">Войти</button>
+    </form>
+
+    <p class="auth-link">Нет аккаунта? <a href="/register">Зарегистрироваться</a></p>
+    <p class="auth-link"><a href="/forgot-password">Забыли пароль?</a></p>
+  </article>
+</main>
+{{end}}

@@ -81,6 +81,21 @@ func UsersExist(ctx context.Context) bool {
 	return n > 0
 }
 
+func UpdatePassword(ctx context.Context, id int64, hash string) error {
+	_, err := postgres.Pool.Exec(ctx, `UPDATE users SET password_hash = $1 WHERE id = $2`, hash, id)
+	return err
+}
+
+func SetUserRole(ctx context.Context, id int64, role string) error {
+	_, err := postgres.Pool.Exec(ctx, `UPDATE users SET role = $1 WHERE id = $2`, role, id)
+	return err
+}
+
+func DeleteUser(ctx context.Context, id int64) error {
+	_, err := postgres.Pool.Exec(ctx, `DELETE FROM users WHERE id = $1 AND is_admin = false`, id)
+	return err
+}
+
 // EnsureSuperuser creates the superuser if no users exist yet.
 func EnsureSuperuser(ctx context.Context, username, passwordHash string) error {
 	_, err := postgres.Pool.Exec(ctx, `

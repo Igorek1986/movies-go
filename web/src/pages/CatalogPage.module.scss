@@ -1,0 +1,313 @@
+@use '@/styles/variables' as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+}
+
+// ── Selector bar (devices + profiles + search) ────────────────────────────────
+
+.selectorBar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+}
+
+.selectorRow {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+// Device tabs — solid style
+.deviceTabs {
+  display: flex;
+  gap: 0;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  overflow: hidden;
+}
+
+.deviceTab {
+  padding: $spacing-xs $spacing-lg;
+  border: none;
+  border-right: 1px solid $color-border;
+  background: $color-bg-card;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background $transition-fast, color $transition-fast;
+  white-space: nowrap;
+
+  &:last-child { border-right: none; }
+  &:hover { background: rgba($color-primary, 0.08); color: $color-text; }
+}
+
+.deviceTabActive {
+  background: $color-primary;
+  color: #fff;
+  &:hover { background: $color-primary-hover; }
+}
+
+// Profile tabs — pill style, indented under device tabs
+.profileTabs {
+  display: flex;
+  gap: $spacing-xs;
+  flex-wrap: wrap;
+  padding-left: 2px;
+}
+
+.profileTab {
+  padding: 2px $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-full;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+  cursor: pointer;
+  transition: background $transition-fast, color $transition-fast, border-color $transition-fast;
+  white-space: nowrap;
+
+  &:hover {
+    border-color: $color-primary;
+    color: $color-primary;
+  }
+}
+
+.profileTabActive {
+  background: rgba($color-primary, 0.15);
+  border-color: $color-primary;
+  color: $color-primary;
+  font-weight: 600;
+}
+
+// Right side: hide-watched + search
+.profileBarRight {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.hideWatchedBtn {
+  height: 36px;
+  padding: 0 $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
+
+  &:hover { border-color: $color-primary; color: $color-primary; }
+}
+
+.hideWatchedActive {
+  border-color: $color-primary;
+  color: $color-primary;
+  background: rgba($color-primary, 0.1);
+}
+
+.searchForm { flex-shrink: 0; }
+
+.searchWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.searchIcon {
+  position: absolute;
+  left: $spacing-sm;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.searchInput {
+  @include input-base;
+  height: 36px;
+  padding-left: 30px;
+  font-size: $font-size-sm;
+  width: 200px;
+  border-radius: $radius-sm;
+
+  @media (max-width: $bp-sm) { width: 140px; }
+}
+
+// ── Category tabs ─────────────────────────────────────────────────────────────
+
+.categoryTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+}
+
+.categoryTab {
+  padding: $spacing-xs $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-full;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: background $transition-fast, color $transition-fast, border-color $transition-fast;
+  white-space: nowrap;
+
+  &:hover {
+    border-color: $color-primary;
+    color: $color-primary;
+  }
+}
+
+.categoryTabActive {
+  background: rgba($color-primary, 0.15);
+  border-color: $color-primary;
+  color: $color-primary;
+  font-weight: 600;
+}
+
+// ── Meta ──────────────────────────────────────────────────────────────────────
+
+.meta {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.searchTag {
+  color: $color-primary;
+}
+
+// ── Grid ─────────────────────────────────────────────────────────────────────
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: $spacing-md;
+
+  @media (max-width: $bp-sm) {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: $spacing-sm;
+  }
+}
+
+.card {
+  @include card;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+  text-decoration: none;
+  display: block;
+  transition: transform $transition-fast, border-color $transition-fast;
+  cursor: pointer;
+
+  &:hover {
+    transform: translateY(-3px);
+    border-color: rgba($color-primary, 0.5);
+  }
+}
+
+.poster {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  display: block;
+  background: $color-bg-input;
+}
+
+.posterPlaceholder {
+  width: 100%;
+  aspect-ratio: 2/3;
+  background: $color-bg-input;
+  @include flex-center;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+}
+
+.typeBadge {
+  position: absolute;
+  top: $spacing-xs;
+  right: $spacing-xs;
+  padding: 2px $spacing-xs;
+  border-radius: $radius-sm;
+  background: rgba($color-primary, 0.85);
+  color: #fff;
+  font-size: $font-size-xs;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+
+.cardBody {
+  padding: $spacing-sm;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: $font-size-xs;
+  font-weight: 600;
+  color: $color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardMeta {
+  display: flex;
+  justify-content: space-between;
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+.quality {
+  font-size: $font-size-xs;
+  font-weight: 600;
+  color: $color-warning;
+}
+
+.empty {
+  text-align: center;
+  color: $color-text-muted;
+  padding: $spacing-2xl 0;
+  font-size: $font-size-sm;
+}
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: $spacing-sm;
+  padding-top: $spacing-sm;
+}
+
+.pageBtn {
+  height: 36px;
+  padding: 0 $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover:not(:disabled) { border-color: $color-primary; color: $color-primary; }
+  &:disabled { opacity: 0.4; cursor: default; }
+
+  &.current {
+    border-color: $color-primary;
+    color: $color-primary;
+    background: rgba($color-primary, 0.1);
+    cursor: default;
+  }
+}

@@ -7,6 +7,7 @@ import (
 	"lampa-api/db/models"
 	"lampa-api/db/postgres"
 	"log"
+	"sort"
 	"strings"
 	"time"
 )
@@ -20,15 +21,35 @@ type RoleLimits struct {
 	MaxFavorite   int // per category
 }
 
+// LimitsFor returns limits for the given role, reading from DB settings (with 30s cache).
+// Falls back to hardcoded defaults if the DB is unavailable.
 func LimitsFor(role string) RoleLimits {
-	switch role {
-	case "premium":
-		return RoleLimits{MaxDevices: 8, MaxProfiles: 5, MaxTimecodes: 1000, MaxFavorite: 500}
-	case "super":
-		return RoleLimits{MaxDevices: 0, MaxProfiles: 0, MaxTimecodes: 0, MaxFavorite: 0}
-	default: // simple
-		return RoleLimits{MaxDevices: 3, MaxProfiles: 1, MaxTimecodes: 200, MaxFavorite: 100}
+	limitsCacheMu.RLock()
+	cached := limitsCache
+	fresh := time.Since(limitsCacheAt) < limitsCacheTTL
+	limitsCacheMu.RUnlock()
+
+	if cached != nil && fresh {
+		if lim, ok := cached[role]; ok {
+			return lim
+		}
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	loaded := loadLimitsFromDB(ctx)
+
+	if loaded != nil {
+		limitsCacheMu.Lock()
+		limitsCache = loaded
+		limitsCacheAt = time.Now()
+		limitsCacheMu.Unlock()
+		if lim, ok := loaded[role]; ok {
+			return lim
+		}
+	}
+
+	return LimitsForDefaults(role)
 }
 
 // ─── Timecode upsert ──────────────────────────────────────────────────────────
@@ -111,6 +132,184 @@ func DeleteTimecode(ctx context.Context, deviceID int64, profileID, cardID, item
 	)
 }
 
+// CardProgress holds aggregated watch progress for one card.
+type CardProgress struct {
+	MaxPercent    float64 `json:"max_percent"`
+	WatchedItems  int     `json:"watched_items"`
+	TotalItems    int     `json:"total_items"`
+	IsComplete    bool    `json:"is_complete"`
+}
+
+// GetCardProgress returns aggregated watch progress for device+profile+card.
+func GetCardProgress(ctx context.Context, deviceID int64, profileID, cardID string) CardProgress {
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT data FROM timecodes
+		 WHERE device_id=$1 AND lampa_profile_id=$2 AND card_id=$3`,
+		deviceID, profileID, cardID,
+	)
+	if err != nil {
+		return CardProgress{}
+	}
+	defer rows.Close()
+
+	var p CardProgress
+	for rows.Next() {
+		var data string
+		if rows.Scan(&data) != nil {
+			continue
+		}
+		pct := parsePercent(data)
+		p.TotalItems++
+		if pct > p.MaxPercent {
+			p.MaxPercent = pct
+		}
+		if pct >= 90 {
+			p.WatchedItems++
+		}
+	}
+	if p.TotalItems > 0 && p.WatchedItems == p.TotalItems {
+		p.IsComplete = true
+	}
+	return p
+}
+
+// ─── Card timecodes (web UI) ──────────────────────────────────────────────────
+
+type CardTimecodeRow struct {
+	Item        string   `json:"item"`
+	Percent     float64  `json:"percent"`
+	TimeSec     float64  `json:"time"`
+	DurationSec *float64 `json:"duration_sec"`
+	ProfileID   string   `json:"profile_id"`
+	Special     bool     `json:"special"`
+}
+
+// GetCardTimecodes returns all timecodes for device+card across all profiles.
+func GetCardTimecodes(ctx context.Context, deviceID int64, cardID string) []CardTimecodeRow {
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT item, data, lampa_profile_id FROM timecodes
+		 WHERE device_id=$1 AND card_id=$2`,
+		deviceID, cardID,
+	)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var result []CardTimecodeRow
+	for rows.Next() {
+		var item, data, profileID string
+		if rows.Scan(&item, &data, &profileID) != nil {
+			continue
+		}
+		var m map[string]any
+		if json.Unmarshal([]byte(data), &m) != nil {
+			continue
+		}
+		pct, _ := m["percent"].(float64)
+		timeSec, _ := m["time"].(float64)
+		special, _ := m["special"].(bool)
+		var durSec *float64
+		if d, ok := m["duration"].(float64); ok && d > 0 {
+			durSec = &d
+		}
+		result = append(result, CardTimecodeRow{
+			Item:        item,
+			Percent:     pct,
+			TimeSec:     timeSec,
+			DurationSec: durSec,
+			ProfileID:   profileID,
+			Special:     special,
+		})
+	}
+	return result
+}
+
+// SetCardTimecode upserts a timecode with given percent, preserving duration if known.
+func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string, percent float64) error {
+	percent = max(0, min(100, percent))
+
+	// Read existing to preserve duration
+	var existingData string
+	postgres.Pool.QueryRow(ctx, //nolint:errcheck
+		`SELECT data FROM timecodes
+		 WHERE device_id=$1 AND lampa_profile_id=$2 AND card_id=$3 AND item=$4`,
+		deviceID, profileID, cardID, item,
+	).Scan(&existingData)
+
+	var duration float64
+	if existingData != "" {
+		var m map[string]any
+		if json.Unmarshal([]byte(existingData), &m) == nil {
+			duration, _ = m["duration"].(float64)
+		}
+	}
+
+	timeSec := 0.0
+	if duration > 0 {
+		timeSec = duration * percent / 100
+	}
+	newData, _ := json.Marshal(map[string]any{
+		"time":     timeSec,
+		"duration": duration,
+		"percent":  percent,
+	})
+
+	today := time.Now().Format("2006-01-02")
+	var countedAt *string
+	if percent >= 90 {
+		countedAt = &today
+	}
+
+	_, err := postgres.Pool.Exec(ctx, `
+		INSERT INTO timecodes (device_id, lampa_profile_id, card_id, item, data, counted_at, view_count)
+		VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $6::date IS NOT NULL THEN 1 ELSE 0 END)
+		ON CONFLICT ON CONSTRAINT uq_timecode_unique DO UPDATE
+		SET data       = EXCLUDED.data,
+		    updated_at = now(),
+		    counted_at = COALESCE(timecodes.counted_at, EXCLUDED.counted_at),
+		    view_count = timecodes.view_count + CASE WHEN EXCLUDED.counted_at IS NOT NULL AND timecodes.counted_at IS NULL THEN 1 ELSE 0 END`,
+		deviceID, profileID, cardID, item, string(newData), countedAt,
+	)
+	return err
+}
+
+// MarkSpecialTimecode saves a timecode with percent=100 and special=true.
+func MarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string) error {
+	data, _ := json.Marshal(map[string]any{"time": 0, "duration": 0, "percent": 100, "special": true})
+	today := time.Now().Format("2006-01-02")
+	_, err := postgres.Pool.Exec(ctx, `
+		INSERT INTO timecodes (device_id, lampa_profile_id, card_id, item, data, counted_at, view_count)
+		VALUES ($1, $2, $3, $4, $5, $6, 1)
+		ON CONFLICT ON CONSTRAINT uq_timecode_unique DO UPDATE
+		SET data = EXCLUDED.data, updated_at = now(),
+		    counted_at = COALESCE(timecodes.counted_at, EXCLUDED.counted_at)`,
+		deviceID, profileID, cardID, item, string(data), today,
+	)
+	return err
+}
+
+// UnmarkSpecialTimecode resets a special-marked timecode to percent=0.
+func UnmarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string) error {
+	data, _ := json.Marshal(map[string]any{"time": 0, "duration": 0, "percent": 0})
+	_, err := postgres.Pool.Exec(ctx, `
+		INSERT INTO timecodes (device_id, lampa_profile_id, card_id, item, data, counted_at, view_count)
+		VALUES ($1, $2, $3, $4, $5, NULL, 0)
+		ON CONFLICT ON CONSTRAINT uq_timecode_unique DO UPDATE
+		SET data = EXCLUDED.data, updated_at = now(), counted_at = NULL`,
+		deviceID, profileID, cardID, item, string(data),
+	)
+	return err
+}
+
+// DeleteCardTimecodes removes all timecodes for device+card.
+func DeleteCardTimecodes(ctx context.Context, deviceID int64, cardID string) {
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`DELETE FROM timecodes WHERE device_id=$1 AND card_id=$2`,
+		deviceID, cardID,
+	)
+}
+
 // ExportTimecodes returns {card_id: {item: data_json}} — Lampac-compatible format.
 func ExportTimecodes(ctx context.Context, deviceID int64, profileID string) map[string]map[string]string {
 	rows, err := postgres.Pool.Query(ctx,
@@ -146,121 +345,170 @@ type HistoryEntry struct {
 	OriginalTitle string  `json:"original_title"`
 	PosterPath    string  `json:"poster_path"`
 	Year          string  `json:"year"`
+	ReleaseDate   string  `json:"release_date"`
 	LastWatched   string  `json:"last_watched"`
 	MaxPercent    float64 `json:"max_percent"`
 	Progress      float64 `json:"progress"`
 	IsComplete    bool    `json:"is_complete"`
 }
 
-func GetWatchHistory(ctx context.Context, deviceID int64, profileID string, page, limit int) ([]HistoryEntry, int) {
-	if page < 1 {
-		page = 1
+type HistoryFilter struct {
+	DeviceID   int64  // 0 = fall back to UserID
+	ProfileID  string // "" = all profiles of device
+	UserID     int64  // used when DeviceID == 0
+	MediaType  string // "", "movie", "tv"
+	InProgress bool   // only items with percent < 90
+	Sort       string // "watched"(default),"release","progress_asc","progress_desc"
+	Page       int
+	PerPage    int
+}
+
+type HistoryCounts struct {
+	All        int `json:"all"`
+	Movies     int `json:"movies"`
+	TV         int `json:"tv"`
+	InProgress int `json:"in_progress"`
+}
+
+// GetHistoryFiltered loads watch history for a device+profile (or all user devices),
+// computes tab counts on the full set, then applies filters, sort, and pagination.
+func GetHistoryFiltered(ctx context.Context, f HistoryFilter) ([]HistoryEntry, HistoryCounts, int) {
+	if f.Page < 1 {
+		f.Page = 1
 	}
-	if limit < 1 {
-		limit = 20
+	if f.PerPage < 1 {
+		f.PerPage = 24
 	}
 
-	rows, err := postgres.Pool.Query(ctx, `
+	const baseSelect = `
 		SELECT t.card_id,
-		       MAX(t.updated_at) AS last_watched,
-		       MAX((t.data::jsonb->>'percent')::float) AS max_pct
+		       MAX(t.updated_at)                              AS last_watched,
+		       MAX((t.data::jsonb->>'percent')::float)        AS max_pct,
+		       COALESCE(MAX(mc.tmdb_id), 0),
+		       COALESCE(MAX(mc.media_type), ''),
+		       COALESCE(MAX(mc.title), ''),
+		       COALESCE(MAX(mc.original_title), ''),
+		       COALESCE(MAX(mc.poster_path), ''),
+		       MAX(mc.release_date)::text,
+		       MAX(mc.first_air_date)::text
 		FROM timecodes t
-		WHERE t.device_id = $1 AND t.lampa_profile_id = $2
+		LEFT JOIN media_cards mc ON mc.card_id = t.card_id`
+
+	var rows interface {
+		Next() bool
+		Scan(...any) error
+		Close()
+		Err() error
+	}
+
+	if f.DeviceID > 0 {
+		profileCond := ""
+		args := []any{f.DeviceID}
+		if f.ProfileID != "" {
+			profileCond = " AND t.lampa_profile_id = $2"
+			args = append(args, f.ProfileID)
+		}
+		r, err := postgres.Pool.Query(ctx, baseSelect+`
+		WHERE t.device_id = $1`+profileCond+`
 		  AND t.card_id ~ '^[0-9]+_(movie|tv)$'
 		GROUP BY t.card_id
-		ORDER BY last_watched DESC`,
-		deviceID, profileID,
-	)
-	if err != nil {
-		return nil, 0
+		ORDER BY last_watched DESC`, args...)
+		if err != nil {
+			return nil, HistoryCounts{}, 0
+		}
+		rows = r
+	} else {
+		r, err := postgres.Pool.Query(ctx, baseSelect+`
+		JOIN devices d ON d.id = t.device_id
+		WHERE d.user_id = $1
+		  AND t.card_id ~ '^[0-9]+_(movie|tv)$'
+		GROUP BY t.card_id
+		ORDER BY last_watched DESC`, f.UserID)
+		if err != nil {
+			return nil, HistoryCounts{}, 0
+		}
+		rows = r
 	}
 	defer rows.Close()
 
-	type agg struct {
-		lastWatched time.Time
-		maxPct      float64
-	}
-	byCard := map[string]agg{}
-	var order []string
+	var all []HistoryEntry
 	for rows.Next() {
-		var cardID string
+		var e HistoryEntry
 		var lastWatched time.Time
-		var maxPct float64
-		if err := rows.Scan(&cardID, &lastWatched, &maxPct); err == nil {
-			byCard[cardID] = agg{lastWatched, maxPct}
-			order = append(order, cardID)
+		var releaseDate, firstAirDate *string
+		if err := rows.Scan(
+			&e.CardID, &lastWatched, &e.MaxPercent,
+			&e.TmdbID, &e.MediaType, &e.Title, &e.OriginalTitle,
+			&e.PosterPath, &releaseDate, &firstAirDate,
+		); err != nil {
+			continue
+		}
+		e.LastWatched = lastWatched.Format(time.RFC3339)
+		e.Progress = e.MaxPercent
+		e.IsComplete = e.MaxPercent >= 90
+		if releaseDate != nil && len(*releaseDate) >= 4 {
+			e.ReleaseDate = *releaseDate
+			e.Year = (*releaseDate)[:4]
+		} else if firstAirDate != nil && len(*firstAirDate) >= 4 {
+			e.ReleaseDate = *firstAirDate
+			e.Year = (*firstAirDate)[:4]
+		}
+		all = append(all, e)
+	}
+
+	// Counts from full unfiltered set
+	var counts HistoryCounts
+	counts.All = len(all)
+	for _, e := range all {
+		if e.MediaType == "movie" {
+			counts.Movies++
+		}
+		if e.MediaType == "tv" {
+			counts.TV++
+		}
+		if !e.IsComplete {
+			counts.InProgress++
 		}
 	}
-	rows.Close()
 
-	if len(order) == 0 {
-		return nil, 0
-	}
-
-	// Fetch media cards for the full set.
-	placeholders := make([]string, len(order))
-	args := make([]any, len(order))
-	for i, cid := range order {
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
-		args[i] = cid
-	}
-	mcRows, err := postgres.Pool.Query(ctx,
-		fmt.Sprintf(`SELECT card_id, tmdb_id, media_type, title, original_title,
-			poster_path, release_date, first_air_date
-			FROM media_cards WHERE card_id IN (%s)`, strings.Join(placeholders, ",")),
-		args...,
-	)
-
-	type mc struct {
-		cardID, mediaType, title, origTitle, poster string
-		tmdbID                                       int64
-		releaseDate, firstAirDate                    *string
-	}
-	cardMap := map[string]mc{}
-	if err == nil {
-		for mcRows.Next() {
-			var m mc
-			mcRows.Scan(&m.cardID, &m.tmdbID, &m.mediaType, &m.title, &m.origTitle, &m.poster, &m.releaseDate, &m.firstAirDate) //nolint:errcheck
-			cardMap[m.cardID] = m
+	// Apply media_type / in_progress filters
+	filtered := all[:0:len(all)]
+	for _, e := range all {
+		if f.MediaType != "" && e.MediaType != f.MediaType {
+			continue
 		}
-		mcRows.Close()
-	}
-
-	total := len(order)
-	start := (page - 1) * limit
-	if start >= total {
-		return nil, total
-	}
-	pageCards := order[start:]
-	if len(pageCards) > limit {
-		pageCards = pageCards[:limit]
-	}
-
-	var result []HistoryEntry
-	for _, cardID := range pageCards {
-		a := byCard[cardID]
-		m := cardMap[cardID]
-		year := ""
-		if m.releaseDate != nil && len(*m.releaseDate) >= 4 {
-			year = (*m.releaseDate)[:4]
-		} else if m.firstAirDate != nil && len(*m.firstAirDate) >= 4 {
-			year = (*m.firstAirDate)[:4]
+		if f.InProgress && e.IsComplete {
+			continue
 		}
-		result = append(result, HistoryEntry{
-			CardID:        cardID,
-			TmdbID:        m.tmdbID,
-			MediaType:     m.mediaType,
-			Title:         m.title,
-			OriginalTitle: m.origTitle,
-			PosterPath:    m.poster,
-			Year:          year,
-			LastWatched:   a.lastWatched.Format(time.RFC3339),
-			MaxPercent:    a.maxPct,
-			Progress:      a.maxPct,
-			IsComplete:    a.maxPct >= 90,
+		filtered = append(filtered, e)
+	}
+
+	// Sort (default order from SQL is last_watched DESC)
+	switch f.Sort {
+	case "release":
+		sort.SliceStable(filtered, func(i, j int) bool {
+			return filtered[i].ReleaseDate > filtered[j].ReleaseDate
+		})
+	case "progress_asc":
+		sort.SliceStable(filtered, func(i, j int) bool {
+			return filtered[i].MaxPercent < filtered[j].MaxPercent
+		})
+	case "progress_desc":
+		sort.SliceStable(filtered, func(i, j int) bool {
+			return filtered[i].MaxPercent > filtered[j].MaxPercent
 		})
 	}
-	return result, total
+
+	totalFiltered := len(filtered)
+	start := (f.Page - 1) * f.PerPage
+	if start >= totalFiltered {
+		return nil, counts, totalFiltered
+	}
+	end := start + f.PerPage
+	if end > totalFiltered {
+		end = totalFiltered
+	}
+	return filtered[start:end], counts, totalFiltered
 }
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
@@ -275,15 +523,28 @@ type ProfileInfo struct {
 }
 
 func ListProfiles(ctx context.Context, deviceID int64) []ProfileInfo {
+	// UNION: named profiles + "orphan" profiles (have timecodes but no lampa_profiles entry)
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT lp.lampa_profile_id, lp.name, COALESCE(lp.icon,''), lp.child, lp.params,
+		SELECT lp.lampa_profile_id, lp.name, COALESCE(lp.icon,''), lp.child, lp.params::text,
 		       COUNT(t.id) AS tc_count
 		FROM lampa_profiles lp
 		LEFT JOIN timecodes t ON t.device_id = lp.device_id
 		                      AND t.lampa_profile_id = lp.lampa_profile_id
 		WHERE lp.device_id = $1
-		GROUP BY lp.lampa_profile_id, lp.name, lp.icon, lp.child, lp.params
-		ORDER BY lp.id`,
+		GROUP BY lp.id
+
+		UNION ALL
+
+		SELECT t.lampa_profile_id, t.lampa_profile_id, '', false, '{}',
+		       COUNT(t.id) AS tc_count
+		FROM timecodes t
+		WHERE t.device_id = $1
+		  AND t.lampa_profile_id NOT IN (
+		      SELECT lampa_profile_id FROM lampa_profiles WHERE device_id = $1
+		  )
+		GROUP BY t.lampa_profile_id
+
+		ORDER BY name`,
 		deviceID,
 	)
 	if err != nil {
@@ -295,13 +556,17 @@ func ListProfiles(ctx context.Context, deviceID int64) []ProfileInfo {
 	for rows.Next() {
 		var p ProfileInfo
 		var paramsRaw []byte
-		if err := rows.Scan(&p.ProfileID, &p.Name, &p.Icon, &p.Child, &paramsRaw, &p.TimecodesCount); err == nil {
-			json.Unmarshal(paramsRaw, &p.Params) //nolint:errcheck
-			if p.Params == nil {
-				p.Params = map[string]any{}
-			}
-			result = append(result, p)
+		err := rows.Scan(&p.ProfileID, &p.Name, &p.Icon, &p.Child, &paramsRaw, &p.TimecodesCount)
+		if err != nil {
+			continue
 		}
+		if len(paramsRaw) > 0 {
+			json.Unmarshal(paramsRaw, &p.Params) //nolint:errcheck
+		}
+		if p.Params == nil {
+			p.Params = map[string]any{}
+		}
+		result = append(result, p)
 	}
 	return result
 }
@@ -384,6 +649,14 @@ func DeleteProfile(ctx context.Context, deviceID int64, profileID string) error 
 	return err
 }
 
+func ClearProfileTimecodes(ctx context.Context, deviceID int64, profileID string) error {
+	_, err := postgres.Pool.Exec(ctx,
+		`DELETE FROM timecodes WHERE device_id=$1 AND lampa_profile_id=$2`,
+		deviceID, profileID,
+	)
+	return err
+}
+
 // ─── Favorite ─────────────────────────────────────────────────────────────────
 
 func GetFavorite(ctx context.Context, deviceID int64, profileID string) any {
@@ -446,3 +719,4 @@ func parsePercent(dataJSON string) float64 {
 	}
 	return 0
 }
+

@@ -1,0 +1,36 @@
+{{define "title"}}Подтверждение входа — 2FA{{end}}
+
+{{define "body"}}
+<main class="container auth-container">
+  <article style="max-width:400px;margin:0 auto">
+    <hgroup>
+      <h2>Двухфакторная аутентификация</h2>
+      <p>Введите код из приложения-аутентификатора</p>
+    </hgroup>
+
+    {{with .Data}}
+    {{if .Error}}
+    <div role="alert" class="alert-error" style="margin-bottom:1rem">{{.Error}}</div>
+    {{end}}
+
+    <form method="POST" action="/verify-2fa">
+      <input type="hidden" name="token" value="{{.Token}}">
+      <label for="code">
+        Код аутентификации
+        <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9]{6,}"
+               maxlength="10" placeholder="123456" autocomplete="one-time-code"
+               required autofocus style="letter-spacing:.15em;font-size:1.2rem;text-align:center">
+      </label>
+      <p class="muted" style="font-size:.82rem;margin-top:-.5rem">
+        Также можно ввести резервный код (формат XXXX-XXXX)
+      </p>
+      <button type="submit" style="width:100%">Войти</button>
+    </form>
+
+    <div style="text-align:center;margin-top:.75rem">
+      <a href="/login" class="secondary" style="font-size:.9rem">← Назад ко входу</a>
+    </div>
+    {{end}}
+  </article>
+</main>
+{{end}}

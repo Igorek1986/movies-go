@@ -1,16 +1,23 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"lampa-api/db/postgres"
 	"lampa-api/db/store"
+	"lampa-api/movies/tmdb"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
+
+var cardIDRe = regexp.MustCompile(`^(\d+)_(movie|tv)$`)
 
 // ─── POST /timecode ───────────────────────────────────────────────────────────
 
@@ -44,7 +51,42 @@ func handleSaveTimecode(w http.ResponseWriter, r *http.Request) {
 	store.TrimToLimit(r.Context(), d.ID, profileID, deviceUserRole(r, d))
 	store.UpsertProfileName(r.Context(), d.ID, profileID, profileName)
 
+	// Фоновое обновление метаданных карточки из TMDB, не чаще раза в сутки.
+	if m := cardIDRe.FindStringSubmatch(body.CardID); m != nil {
+		go refreshCardFromTMDB(body.CardID)
+	}
+
 	JSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+// refreshCardFromTMDB обновляет media_card из TMDB API если прошли сутки с последнего обновления.
+func refreshCardFromTMDB(cardID string) {
+	m := cardIDRe.FindStringSubmatch(cardID)
+	if m == nil {
+		return
+	}
+	tmdbID, _ := strconv.ParseInt(m[1], 10, 64)
+	mediaType := m[2]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Проверяем cooldown: обновляем не чаще раза в сутки.
+	var updatedAt *time.Time
+	postgres.Pool.QueryRow(ctx, //nolint:errcheck
+		`SELECT tmdb_updated_at FROM media_cards WHERE card_id = $1`, cardID,
+	).Scan(&updatedAt)
+	if updatedAt != nil && time.Since(*updatedAt) < 24*time.Hour {
+		return
+	}
+
+	isMovie := mediaType == "movie"
+	ent := tmdb.GetVideoDetails(isMovie, tmdbID)
+	if ent == nil {
+		return
+	}
+	// Сохраняем только TMDB-поля (без перезаписи torrent-специфичных данных).
+	store.RefreshCardTMDB(ctx, cardID, ent)
 }
 
 // ─── POST /timecode/batch ─────────────────────────────────────────────────────
@@ -147,7 +189,12 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 		limit = 20
 	}
 
-	entries, total := store.GetWatchHistory(r.Context(), d.ID, r.URL.Query().Get("profile_id"), page, limit)
+	entries, _, total := store.GetHistoryFiltered(r.Context(), store.HistoryFilter{
+		DeviceID:  d.ID,
+		ProfileID: r.URL.Query().Get("profile_id"),
+		Page:      page,
+		PerPage:   limit,
+	})
 	if entries == nil {
 		entries = []store.HistoryEntry{}
 	}

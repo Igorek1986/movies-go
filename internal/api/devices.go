@@ -99,24 +99,82 @@ func handleDeviceLink(w http.ResponseWriter, r *http.Request) {
 // GET /api/devices
 func handleListDevices(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
-	devices := store.GetDevicesByUser(r.Context(), u.ID)
-	if devices == nil {
-		devices = nil
-	}
+	devices := store.GetDevicesWithStats(r.Context(), u.ID)
 	type deviceView struct {
-		ID        int64  `json:"id"`
-		Name      string `json:"name"`
-		CreatedAt string `json:"created_at"`
+		ID             int64  `json:"id"`
+		Name           string `json:"name"`
+		Token          string `json:"token"`
+		CreatedAt      string `json:"created_at"`
+		TimecodesCount int    `json:"timecodes_count"`
 	}
 	result := make([]deviceView, len(devices))
 	for i, d := range devices {
 		result[i] = deviceView{
-			ID:        d.ID,
-			Name:      d.Name,
-			CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			ID:             d.ID,
+			Name:           d.Name,
+			Token:          d.Token,
+			CreatedAt:      d.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			TimecodesCount: d.TimecodesCount,
 		}
 	}
 	JSON(w, http.StatusOK, result)
+}
+
+// POST /api/devices
+func handleCreateDevice(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		Error(w, http.StatusBadRequest, "name required")
+		return
+	}
+	maxDev := deviceLimit(u.Role)
+	if maxDev > 0 && store.CountUserDevices(r.Context(), u.ID) >= maxDev {
+		Error(w, http.StatusForbidden, "device limit reached")
+		return
+	}
+	dev, err := store.CreateDevice(r.Context(), u.ID, req.Name)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"id": dev.ID, "name": dev.Name, "token": dev.Token,
+		"created_at": dev.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	})
+}
+
+// POST /api/devices/{id}/regenerate-token
+func handleRegenerateToken(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	token, err := store.RegenerateToken(r.Context(), id, u.ID)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"token": token})
+}
+
+// DELETE /api/devices/{id}/timecodes
+func handleClearDeviceTimecodes(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := store.ClearDeviceTimecodes(r.Context(), id, u.ID); err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // DELETE /api/devices/{id}

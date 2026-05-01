@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"lampa-api/db/models"
 	"lampa-api/db/postgres"
@@ -13,10 +12,21 @@ import (
 
 // ─── Device tokens ────────────────────────────────────────────────────────────
 
+const tokenAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no I,O,0,1 — easy to type
+
 func generateToken() (string, error) {
-	b := make([]byte, 32)
-	_, err := rand.Read(b)
-	return hex.EncodeToString(b), err
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	parts := make([]byte, 0, 19)
+	for i, v := range b {
+		if i > 0 && i%4 == 0 {
+			parts = append(parts, '-')
+		}
+		parts = append(parts, tokenAlphabet[int(v)%len(tokenAlphabet)])
+	}
+	return string(parts), nil
 }
 
 func GetDeviceByToken(ctx context.Context, token string) *models.Device {
@@ -24,6 +34,47 @@ func GetDeviceByToken(ctx context.Context, token string) *models.Device {
 	err := postgres.Pool.QueryRow(ctx,
 		`SELECT id, user_id, name, token, created_at FROM devices WHERE token = $1`,
 		token,
+	).Scan(&d.ID, &d.UserID, &d.Name, &d.Token, &d.CreatedAt)
+	if err != nil {
+		return nil
+	}
+	return &d
+}
+
+type DeviceWithStats struct {
+	models.Device
+	TimecodesCount int `json:"timecodes_count"`
+}
+
+func GetDevicesWithStats(ctx context.Context, userID int64) []DeviceWithStats {
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT d.id, d.user_id, d.name, d.token, d.created_at,
+		       COUNT(t.id) AS timecodes_count
+		FROM devices d
+		LEFT JOIN timecodes t ON t.device_id = d.id
+		WHERE d.user_id = $1
+		GROUP BY d.id
+		ORDER BY d.created_at`,
+		userID,
+	)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []DeviceWithStats
+	for rows.Next() {
+		var d DeviceWithStats
+		if err := rows.Scan(&d.ID, &d.UserID, &d.Name, &d.Token, &d.CreatedAt, &d.TimecodesCount); err == nil {
+			result = append(result, d)
+		}
+	}
+	return result
+}
+
+func GetDeviceByID(ctx context.Context, id int64) *models.Device {
+	var d models.Device
+	err := postgres.Pool.QueryRow(ctx,
+		`SELECT id, user_id, name, token, created_at FROM devices WHERE id = $1`, id,
 	).Scan(&d.ID, &d.UserID, &d.Name, &d.Token, &d.CreatedAt)
 	if err != nil {
 		return nil
@@ -84,6 +135,30 @@ func RenameDevice(ctx context.Context, deviceID, userID int64, name string) erro
 	_, err := postgres.Pool.Exec(ctx,
 		`UPDATE devices SET name = $1 WHERE id = $2 AND user_id = $3`,
 		name, deviceID, userID,
+	)
+	return err
+}
+
+func RegenerateToken(ctx context.Context, deviceID, userID int64) (string, error) {
+	token, err := generateToken()
+	if err != nil {
+		return "", err
+	}
+	_, err = postgres.Pool.Exec(ctx,
+		`UPDATE devices SET token = $1 WHERE id = $2 AND user_id = $3`,
+		token, deviceID, userID,
+	)
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func ClearDeviceTimecodes(ctx context.Context, deviceID, userID int64) error {
+	_, err := postgres.Pool.Exec(ctx, `
+		DELETE FROM timecodes WHERE device_id = (
+			SELECT id FROM devices WHERE id = $1 AND user_id = $2
+		)`, deviceID, userID,
 	)
 	return err
 }

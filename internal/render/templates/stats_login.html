@@ -1,0 +1,24 @@
+{{define "title"}}Статистика — Вход{{end}}
+
+{{define "body"}}
+<main class="container auth-container" style="padding-top: 3rem;">
+  <article>
+    <hgroup>
+      <h2>Статистика API</h2>
+      <p>Введите пароль для доступа к дашборду</p>
+    </hgroup>
+
+    {{with .Data}}{{if .Error}}
+    <p role="alert" class="alert-error">{{.Error}}</p>
+    {{end}}{{end}}
+
+    <form method="POST" action="/stats">
+      <label>
+        Пароль
+        <input type="password" name="password" required autofocus>
+      </label>
+      <button type="submit">Войти</button>
+    </form>
+  </article>
+</main>
+{{end}}

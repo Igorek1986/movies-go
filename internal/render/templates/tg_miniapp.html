@@ -1,0 +1,71 @@
+{{define "title"}}Привязка устройства{{end}}
+
+{{define "body"}}
+<main class="container" style="padding-top:1.5rem;max-width:480px">
+  {{with .Data}}
+
+  {{if .Success}}
+  <div style="text-align:center;padding:2rem 0">
+    <div style="font-size:3rem;margin-bottom:1rem">✅</div>
+    <h2 style="margin-bottom:.5rem">Устройство привязано</h2>
+    <p class="muted">Можете закрыть это окно и вернуться в Lampa.</p>
+  </div>
+
+  {{else if .Error}}
+  <div style="text-align:center;padding:2rem 0">
+    <div style="font-size:3rem;margin-bottom:1rem">❌</div>
+    <h2 style="margin-bottom:.5rem">Ошибка</h2>
+    <p class="muted">{{.Error}}</p>
+    <a href="/tg-miniapp" role="button" class="outline secondary" style="margin-top:1rem">Попробовать снова</a>
+  </div>
+
+  {{else if not .User}}
+  <div style="text-align:center;padding:2rem 0">
+    <h2 style="margin-bottom:.5rem">Войдите в аккаунт</h2>
+    <p class="muted">Для привязки устройства необходимо авторизоваться.</p>
+    <a href="/login?next=/tg-miniapp{{if .DeviceCode}}%3Fcode%3D{{.DeviceCode}}{{end}}" role="button" style="margin-top:1rem">Войти</a>
+  </div>
+
+  {{else}}
+  <hgroup style="margin-bottom:1.5rem">
+    <h2>Привязка устройства</h2>
+    <p>Подтвердите привязку устройства Lampa к аккаунту <strong>{{.User.Username}}</strong></p>
+  </hgroup>
+
+  {{if .DeviceCode}}
+  <div style="padding:1rem;background:var(--pico-code-background-color);border-radius:var(--pico-border-radius);text-align:center;margin-bottom:1.25rem">
+    <div class="muted" style="font-size:.85rem;margin-bottom:.3rem">Код устройства</div>
+    <div style="font-size:1.8rem;font-weight:700;letter-spacing:.1em">{{.DeviceCode}}</div>
+  </div>
+
+  <form method="POST" action="/tg-miniapp">
+    <input type="hidden" name="code" value="{{.DeviceCode}}">
+    <button type="submit" style="width:100%">Подтвердить привязку</button>
+  </form>
+
+  <div style="text-align:center;margin-top:.75rem">
+    <a href="/tg-miniapp" class="secondary" style="font-size:.9rem">Отмена</a>
+  </div>
+  {{else}}
+  <p class="muted">Код устройства не указан. Запустите привязку из приложения Lampa.</p>
+  {{end}}
+  {{end}}
+
+  {{end}}
+</main>
+{{end}}
+
+{{define "scripts"}}
+<script>
+// Telegram WebApp SDK integration
+if (window.Telegram && window.Telegram.WebApp) {
+  Telegram.WebApp.ready();
+  Telegram.WebApp.expand();
+  // Apply Telegram color scheme if available
+  const tg = Telegram.WebApp;
+  if (tg.colorScheme === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+}
+</script>
+{{end}}

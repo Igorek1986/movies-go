@@ -1,0 +1,760 @@
+@use '@/styles/variables' as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-2xl;
+  padding-bottom: $spacing-2xl;
+}
+
+.loading,
+.notFound {
+  text-align: center;
+  color: $color-text-muted;
+  padding: $spacing-2xl 0;
+  font-size: $font-size-sm;
+
+  button { margin-top: $spacing-md; }
+}
+
+// ── Backdrop ─────────────────────────────────────────────────────────────────
+
+.backdrop {
+  position: relative;
+  width: calc(100% + $spacing-2xl * 2);
+  margin: -$spacing-2xl (-$spacing-2xl) 0;
+  height: 320px;
+  overflow: hidden;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  @media (max-width: $bp-sm) {
+    height: 200px;
+    margin: -$spacing-lg (-$spacing-lg) 0;
+    width: calc(100% + $spacing-lg * 2);
+  }
+}
+
+.backdropOverlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 30%, $color-bg 100%);
+}
+
+// ── Hero ──────────────────────────────────────────────────────────────────────
+
+.hero {
+  display: flex;
+  gap: $spacing-2xl;
+  align-items: flex-start;
+  margin-top: -120px;
+  position: relative;
+  z-index: 1;
+
+  @media (max-width: $bp-md) {
+    flex-direction: column;
+    margin-top: -60px;
+    gap: $spacing-lg;
+  }
+}
+
+.posterWrap {
+  flex-shrink: 0;
+  width: 200px;
+
+  @media (max-width: $bp-md) { width: 140px; }
+}
+
+.poster {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  border-radius: $radius-md;
+  display: block;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.posterPlaceholder {
+  width: 100%;
+  aspect-ratio: 2/3;
+  background: $color-bg-input;
+  border-radius: $radius-md;
+  @include flex-center;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+}
+
+.heroInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding-top: $spacing-md;
+}
+
+.backBtn {
+  align-self: flex-start;
+  padding: $spacing-xs $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover { border-color: $color-primary; color: $color-primary; }
+}
+
+.title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: $color-text;
+
+  @media (max-width: $bp-sm) { font-size: $font-size-xl; }
+}
+
+.origTitle {
+  margin: 0;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  font-style: italic;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+  margin-top: $spacing-xs;
+}
+
+.tag {
+  padding: 2px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+.tagType {
+  @extend .tag;
+  border-color: $color-primary;
+  color: $color-primary;
+  font-weight: 600;
+}
+
+.tagRating {
+  @extend .tag;
+  border-color: rgba(#f5c518, 0.5);
+  color: #f5c518;
+  font-weight: 600;
+}
+
+.genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+}
+
+.genre {
+  padding: 2px $spacing-sm;
+  background: rgba($color-primary, 0.1);
+  border-radius: $radius-full;
+  font-size: $font-size-xs;
+  color: $color-primary;
+}
+
+// ── Movie progress ────────────────────────────────────────────────────────────
+
+.progressWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 360px;
+}
+
+.progressTop {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.progressLabel {
+  flex: 1;
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+.progressComplete {
+  color: $color-success;
+  font-weight: 600;
+}
+
+.deleteBtn {
+  background: none;
+  border: none;
+  color: $color-text-muted;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color $transition-fast;
+  &:hover { color: #e05252; }
+}
+
+// ── Interactive bar ───────────────────────────────────────────────────────────
+
+.iBar {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 8px;
+  background: $color-bg-input;
+  border-radius: $radius-full;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover { opacity: 0.85; }
+}
+
+.iBarFill {
+  height: 100%;
+  background: $color-primary;
+  border-radius: $radius-full;
+  transition: width 0.15s ease;
+  pointer-events: none;
+}
+
+// ── Overview / status ─────────────────────────────────────────────────────────
+
+.overview {
+  margin: 0;
+  font-size: $font-size-sm;
+  line-height: 1.65;
+  color: $color-text;
+  max-width: 720px;
+}
+
+.statusLine {
+  margin: 0;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.statusLabel {
+  color: $color-text;
+  font-weight: 600;
+}
+
+// ── Sections ──────────────────────────────────────────────────────────────────
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: $font-size-lg;
+  font-weight: 700;
+  color: $color-text;
+}
+
+// ── Cast (horizontal scroll row, round photos) ────────────────────────────────
+
+.castRow {
+  display: flex;
+  gap: $spacing-md;
+  overflow-x: auto;
+  padding-bottom: $spacing-sm;
+  scrollbar-width: thin;
+  scrollbar-color: $color-border transparent;
+
+  &::-webkit-scrollbar { height: 4px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: $color-border; border-radius: 2px; }
+}
+
+.castCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  text-decoration: none;
+  flex-shrink: 0;
+  width: 80px;
+}
+
+.castPhoto {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  background: $color-bg-input;
+  border: 2px solid $color-border;
+  transition: border-color $transition-fast;
+
+  .castCard:hover & { border-color: $color-primary; }
+}
+
+.castPhotoPlaceholder {
+  width: 72px;
+  height: 72px;
+  background: $color-bg-input;
+  border-radius: 50%;
+  border: 2px solid $color-border;
+  @include flex-center;
+  font-size: 28px;
+  color: $color-text-muted;
+}
+
+.castName {
+  margin: 0;
+  font-size: $font-size-xs;
+  font-weight: 600;
+  color: $color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.castChar {
+  margin: 0;
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+// ── TV Episode Summary ────────────────────────────────────────────────────────
+
+.epSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+}
+
+.epSummaryChip {
+  padding: 2px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+// ── Season accordion ──────────────────────────────────────────────────────────
+
+.seasonBlock {
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  overflow: hidden;
+}
+
+.seasonHeader {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  cursor: pointer;
+  background: $color-bg-card;
+  user-select: none;
+
+  &:hover { background: rgba($color-primary, 0.05); }
+}
+
+.seasonArrow {
+  font-size: 10px;
+  color: $color-text-muted;
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.seasonName {
+  flex: 1;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.seasonCount {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+.markAllBtn {
+  padding: 2px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast;
+  flex-shrink: 0;
+
+  &:hover { border-color: $color-success; color: $color-success; }
+}
+
+// ── Episode rows ──────────────────────────────────────────────────────────────
+
+.epList {
+  display: flex;
+  flex-direction: column;
+}
+
+.epRow {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-xs $spacing-md;
+  border-top: 1px solid $color-border;
+  min-height: 36px;
+}
+
+.epCode {
+  font-size: $font-size-xs;
+  font-weight: 600;
+  color: $color-text;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  min-width: 52px;
+  white-space: nowrap;
+}
+
+.epTime {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.epDelete {
+  background: none;
+  border: none;
+  color: $color-text-muted;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color $transition-fast;
+  &:hover { color: #e05252; }
+}
+
+.epRowSpecial {
+  background: rgba($color-primary, 0.04);
+}
+
+.epRowFuture {
+  opacity: 0.45;
+}
+
+.epTitle {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  font-weight: 400;
+  margin-left: $spacing-xs;
+}
+
+.epTimeSpecial {
+  color: $color-primary;
+  font-weight: 600;
+}
+
+.epSpecialBadge {
+  color: $color-primary;
+  font-size: 13px;
+  padding: 0 2px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.epSpecial {
+  background: none;
+  border: none;
+  color: $color-text-muted;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color $transition-fast;
+  &:hover { color: $color-primary; }
+}
+
+.epUnspecial {
+  background: none;
+  border: none;
+  color: $color-primary;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color $transition-fast;
+  &:hover { color: $color-text-muted; }
+}
+
+// ── Drum time picker ──────────────────────────────────────────────────────────
+
+.tpOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 200;
+  @include flex-center;
+}
+
+.tpDialog {
+  background: $color-bg-card;
+  border: 1px solid $color-border;
+  border-radius: $radius-md;
+  padding: $spacing-xl;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+  min-width: 260px;
+}
+
+.tpTitle {
+  margin: 0;
+  font-size: $font-size-base;
+  font-weight: 700;
+  color: $color-text;
+  text-align: center;
+}
+
+// row that holds drum columns + separators
+.drumRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+}
+
+.drumSep {
+  font-size: 24px;
+  font-weight: 700;
+  color: $color-text;
+  align-self: center;
+  margin-bottom: 28px; // compensate for input below drum
+  user-select: none;
+}
+
+// ── Drum column ───────────────────────────────────────────────────────────────
+
+$drum-item-h: 44px;
+$drum-visible: 5;
+
+.drumCol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.drumOuter {
+  position: relative;
+  width: 56px;
+  height: $drum-item-h * $drum-visible;
+  overflow: hidden;
+  border-radius: $radius-sm;
+  border: 1px solid $color-border;
+}
+
+// highlighted band in the center
+.drumBand {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: $drum-item-h;
+  transform: translateY(-50%);
+  background: rgba($color-primary, 0.12);
+  border-top: 1px solid rgba($color-primary, 0.3);
+  border-bottom: 1px solid rgba($color-primary, 0.3);
+  pointer-events: none;
+  z-index: 2;
+}
+
+// fade gradients top/bottom
+.drumFadeTop,
+.drumFadeBot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: $drum-item-h * 2;
+  pointer-events: none;
+  z-index: 3;
+}
+.drumFadeTop {
+  top: 0;
+  background: linear-gradient(to bottom, $color-bg-card 0%, transparent 100%);
+}
+.drumFadeBot {
+  bottom: 0;
+  background: linear-gradient(to top, $color-bg-card 0%, transparent 100%);
+}
+
+.drumScroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+// top/bottom padding so first/last items can center
+.drumPad {
+  height: $drum-item-h * 2;
+  scroll-snap-align: none;
+}
+
+.drumItem {
+  height: $drum-item-h;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 400;
+  color: $color-text-muted;
+  scroll-snap-align: center;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.1s;
+}
+
+.drumItemActive {
+  color: $color-text;
+  font-weight: 700;
+}
+
+.drumInput {
+  @include input-base;
+  width: 56px;
+  text-align: center;
+  font-size: $font-size-base;
+  font-variant-numeric: tabular-nums;
+  padding: $spacing-xs;
+}
+
+.drumLabel {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+// ── Time picker buttons ───────────────────────────────────────────────────────
+
+.tpBtns {
+  display: flex;
+  gap: $spacing-sm;
+}
+
+.tpOk {
+  flex: 1;
+  height: 42px;
+  border: none;
+  border-radius: $radius-sm;
+  background: $color-primary;
+  color: #fff;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background $transition-fast;
+  &:hover { background: $color-primary-hover; }
+}
+
+.tpCancel {
+  flex: 1;
+  height: 42px;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast;
+  &:hover { border-color: $color-text-muted; color: $color-text; }
+}
+
+// ── Similar ───────────────────────────────────────────────────────────────────
+
+.similarGrid {
+  display: flex;
+  gap: $spacing-md;
+  overflow-x: auto;
+  padding-bottom: $spacing-sm;
+  scrollbar-width: thin;
+  scrollbar-color: $color-border transparent;
+
+  &::-webkit-scrollbar { height: 4px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: $color-border; border-radius: 2px; }
+}
+
+.similarCard {
+  @include card;
+  padding: 0;
+  overflow: hidden;
+  text-decoration: none;
+  display: block;
+  flex-shrink: 0;
+  width: 120px;
+  transition: transform $transition-fast, border-color $transition-fast;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: rgba($color-primary, 0.4);
+  }
+}
+
+.similarPoster {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  display: block;
+  background: $color-bg-input;
+}
+
+.similarPosterPlaceholder {
+  width: 100%;
+  aspect-ratio: 2/3;
+  background: $color-bg-input;
+  @include flex-center;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+}
+
+.similarTitle {
+  margin: 0;
+  padding: $spacing-xs $spacing-xs 2px;
+  font-size: $font-size-xs;
+  font-weight: 600;
+  color: $color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.similarYear {
+  margin: 0;
+  padding: 0 $spacing-xs $spacing-xs;
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
