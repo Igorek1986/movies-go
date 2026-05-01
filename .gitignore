@@ -26,3 +26,4 @@ __pycache__/
 web/node_modules/
 internal/web/dist/
 !/internal/web/dist/index.html
+lampa-api-linux
