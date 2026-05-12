@@ -1,7 +1,20 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import Layout from '@/components/Layout'
 import styles from './ProfilesPage.module.scss'
+
+interface TelegramStatus {
+  linked: boolean
+  username?: string
+  telegram_id?: number
+}
+
+interface NotificationSettings {
+  enabled: boolean
+  timezone: string
+  notify_start: number
+  notify_end: number
+}
 
 interface Device {
   id: number
@@ -20,6 +33,52 @@ interface LampaProfile {
   timecodes_count: number
 }
 
+interface SyncLogEntry {
+  type: 'status' | 'error' | 'stage'
+  message?: string
+  stage?: string
+  current?: number
+  total?: number
+}
+
+const PROFILE_ICON_EXTS: Record<string, string> = {
+  id1: 'png', id2: 'png', id3: 'png', id4: 'png', id5: 'png', id6: 'png', id7: 'png',
+  id8: 'svg', id9: 'svg', id10: 'svg', id11: 'svg', id12: 'svg', id13: 'png',
+  id14: 'svg', id15: 'svg', id16: 'svg', id17: 'svg', id18: 'svg',
+}
+const PROFILE_ICON_IDS = Object.keys(PROFILE_ICON_EXTS)
+
+function profileIconSrc(id: string) {
+  const ext = PROFILE_ICON_EXTS[id] ?? 'svg'
+  return `/static/profileIcons/${id}.${ext}`
+}
+
+function IconPicker({ current, onSelect, onClose }: { current: string; onSelect: (id: string) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [onClose])
+
+  return (
+    <div ref={ref} className={styles.iconPicker}>
+      {PROFILE_ICON_IDS.map(id => (
+        <button
+          key={id}
+          className={`${styles.iconPickerBtn}${id === current ? ' ' + styles.iconPickerBtnActive : ''}`}
+          onClick={() => onSelect(id)}
+        >
+          <img src={profileIconSrc(id)} alt={id} />
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function ProfilesPage() {
   const { user } = useAuth()
   const [devices, setDevices] = useState<Device[]>([])
@@ -35,6 +94,8 @@ export default function ProfilesPage() {
   const [linkLoading, setLinkLoading] = useState(false)
   const [linkError, setLinkError] = useState('')
   const [linkSuccess, setLinkSuccess] = useState('')
+  const [linkedToken, setLinkedToken] = useState<string | null>(null)
+  const [tokenCopied, setTokenCopied] = useState(false)
   // Profiles per device
   const [openProfilesFor, setOpenProfilesFor] = useState<number | null>(null)
   const [profiles, setProfiles] = useState<LampaProfile[]>([])
@@ -42,21 +103,115 @@ export default function ProfilesPage() {
   const [newProfileName, setNewProfileName] = useState('')
   const [newProfileId, setNewProfileId] = useState('')
   const [profileError, setProfileError] = useState('')
+  const [iconPickerFor, setIconPickerFor] = useState<string | null>(null)
+  // Telegram
+  const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null)
+  const [tgCode, setTgCode] = useState<{ code: string; link: string; ttl_min: number } | null>(null)
+  const [tgLoading, setTgLoading] = useState(false)
+  // Notifications
+  const [notifSettings, setNotifSettings] = useState<NotificationSettings | null>(null)
+  const [notifSaving, setNotifSaving] = useState(false)
+  const [notifMsg, setNotifMsg] = useState('')
+  // 2FA disable
+  const [disable2faPw, setDisable2faPw] = useState('')
+  const [disable2faCode, setDisable2faCode] = useState('')
+  const [disable2faLoading, setDisable2faLoading] = useState(false)
+  const [disable2faMsg, setDisable2faMsg] = useState('')
   // Change password
   const [pwCurrent, setPwCurrent] = useState('')
   const [pwNew, setPwNew] = useState('')
+  const [pwNew2, setPwNew2] = useState('')
+  const [pwTotp, setPwTotp] = useState('')
   const [pwLoading, setPwLoading] = useState(false)
   const [pwMsg, setPwMsg] = useState('')
   // Delete account
   const [delPw, setDelPw] = useState('')
+  const [delTotp, setDelTotp] = useState('')
   const [delLoading, setDelLoading] = useState(false)
+  // Backup
+  const [backupMsg, setBackupMsg] = useState('')
+  const [backupError, setBackupError] = useState('')
+  // MyShows sync
+  const [syncDeviceId, setSyncDeviceId] = useState<number | ''>('')
+  const [syncProfileId, setSyncProfileId] = useState('')
+  const [syncDeviceProfiles, setSyncDeviceProfiles] = useState<LampaProfile[]>([])
+  const [syncLogin, setSyncLogin] = useState('')
+  const [syncPassword, setSyncPassword] = useState('')
+  const [syncLoading, setSyncLoading] = useState(false)
+  const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([])
+  const syncLogRef = useRef<HTMLDivElement>(null)
+  // LampaC import
+  const [importDeviceId, setImportDeviceId] = useState<number | ''>('')
+  const [importProfileId, setImportProfileId] = useState('')
+  const [importDeviceProfiles, setImportDeviceProfiles] = useState<LampaProfile[]>([])
+  const [importJson, setImportJson] = useState('')
+  const [importLoading, setImportLoading] = useState(false)
+  const [importMsg, setImportMsg] = useState('')
+  const [importError, setImportError] = useState('')
+  // Lampa import (file_view format)
+  const [lampaDeviceId, setLampaDeviceId] = useState<number | ''>('')
+  const [lampaProfileId, setLampaProfileId] = useState('')
+  const [lampaDeviceProfiles, setLampaDeviceProfiles] = useState<LampaProfile[]>([])
+  const [lampaJson, setLampaJson] = useState('')
+  const [lampaLoading, setLampaLoading] = useState(false)
+  const [lampaMsg, setLampaMsg] = useState('')
+  const [lampaError, setLampaError] = useState('')
 
   const fetchDevices = useCallback(async () => {
     const res = await fetch('/api/devices')
-    if (res.ok) setDevices(await res.json())
+    if (!res.ok) return
+    const data: Device[] = await res.json()
+    setDevices(data)
+    if (data.length === 0) return
+    const firstId = data[0].id
+    // load profiles for the first device upfront so selects are populated on initial render
+    const profileRes = await fetch(`/api/devices/${firstId}/profiles`)
+    const profileData = profileRes.ok ? await profileRes.json() : {}
+    const firstProfiles: LampaProfile[] = profileData.profiles || []
+    setSyncDeviceId(id => id === '' ? firstId : id)
+    setImportDeviceId(id => id === '' ? firstId : id)
+    setLampaDeviceId(id => id === '' ? firstId : id)
+    setSyncDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
+    setImportDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
+    setLampaDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchTgStatus = useCallback(async () => {
+    const res = await fetch('/api/telegram/status')
+    if (res.ok) setTgStatus(await res.json())
   }, [])
 
-  useEffect(() => { fetchDevices() }, [fetchDevices])
+  const fetchNotifSettings = useCallback(async () => {
+    const res = await fetch('/api/notification-settings')
+    if (res.ok) setNotifSettings(await res.json())
+  }, [])
+
+  useEffect(() => {
+    fetchDevices()
+    fetchTgStatus()
+    fetchNotifSettings()
+  }, [fetchDevices, fetchTgStatus, fetchNotifSettings])
+
+  async function fetchProfilesForDevice(deviceId: number): Promise<LampaProfile[]> {
+    const res = await fetch(`/api/devices/${deviceId}/profiles`)
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.profiles || []
+  }
+
+  async function handleSyncDeviceChange(id: number) {
+    setSyncDeviceId(id)
+    setSyncProfileId('')
+    const p = await fetchProfilesForDevice(id)
+    setSyncDeviceProfiles(p)
+  }
+
+  async function handleImportDeviceChange(id: number) {
+    setImportDeviceId(id)
+    setImportProfileId('')
+    const p = await fetchProfilesForDevice(id)
+    setImportDeviceProfiles(p)
+  }
 
   function toggleToken(id: number) {
     setVisibleTokens(s => {
@@ -95,12 +250,10 @@ export default function ProfilesPage() {
     setLinkError('')
     setLinkSuccess('')
     setLinkLoading(true)
-    const body: Record<string, any> = { code: linkCode }
+    const body: Record<string, string> = { code: linkCode }
     if (linkDeviceId === 'new') {
       body.name = linkNewName || 'Lampa'
     } else {
-      // link to existing device — not supported by backend directly,
-      // but we can create device code association via /api/device/link
       body.name = devices.find(d => d.id === linkDeviceId)?.name || 'Lampa'
     }
     const res = await fetch('/api/device/link', {
@@ -110,13 +263,23 @@ export default function ProfilesPage() {
     })
     setLinkLoading(false)
     if (res.ok) {
+      const data = await res.json().catch(() => ({}))
       setLinkCode('')
       setLinkSuccess('Устройство успешно привязано!')
+      if (data.token) setLinkedToken(data.token)
       fetchDevices()
     } else {
       const d = await res.json().catch(() => ({}))
       setLinkError(d.error || 'Ошибка привязки')
     }
+  }
+
+  function copyLinkedToken() {
+    if (!linkedToken) return
+    navigator.clipboard.writeText(linkedToken).then(() => {
+      setTokenCopied(true)
+      setTimeout(() => setTokenCopied(false), 2000)
+    }).catch(() => {})
   }
 
   async function handleRename(id: number, currentName: string) {
@@ -239,18 +402,85 @@ export default function ProfilesPage() {
     reloadProfiles()
   }
 
+  async function handleSetIcon(profileId: string, icon: string) {
+    setIconPickerFor(null)
+    await fetch(`/api/devices/${openProfilesFor}/profiles/${profileId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ icon }),
+    })
+    reloadProfiles()
+  }
+
+  async function handleGenerateTgCode() {
+    setTgLoading(true)
+    setTgCode(null)
+    const res = await fetch('/api/telegram/generate-link-code', { method: 'POST' })
+    setTgLoading(false)
+    if (res.ok) setTgCode(await res.json())
+    else { const d = await res.json().catch(() => ({})); alert(d.error || 'Ошибка') }
+  }
+
+  async function handleTgUnlink() {
+    if (!confirm('Отвязать Telegram от аккаунта?')) return
+    await fetch('/api/telegram/unlink', { method: 'DELETE' })
+    setTgStatus(null)
+    setTgCode(null)
+    fetchTgStatus()
+  }
+
+  async function handleSaveNotif(e: React.FormEvent) {
+    e.preventDefault()
+    if (!notifSettings) return
+    setNotifSaving(true)
+    setNotifMsg('')
+    const res = await fetch('/api/notification-settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(notifSettings),
+    })
+    setNotifSaving(false)
+    setNotifMsg(res.ok ? 'Сохранено' : 'Ошибка сохранения')
+  }
+
+  async function handleDisable2FA(e: React.FormEvent) {
+    e.preventDefault()
+    setDisable2faMsg('')
+    setDisable2faLoading(true)
+    const res = await fetch('/api/disable-2fa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: disable2faPw, totp_code: disable2faCode }),
+    })
+    setDisable2faLoading(false)
+    if (res.ok) {
+      setDisable2faPw(''); setDisable2faCode('')
+      setDisable2faMsg('2FA отключена')
+      window.location.reload()
+    } else {
+      const d = await res.json().catch(() => ({}))
+      setDisable2faMsg(d.error || 'Ошибка отключения 2FA')
+    }
+  }
+
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault()
     setPwMsg('')
+    if (pwNew !== pwNew2) {
+      setPwMsg('Пароли не совпадают')
+      return
+    }
     setPwLoading(true)
+    const body: Record<string, string> = { current_password: pwCurrent, new_password: pwNew }
+    if (user?.totp_enabled && pwTotp) body.totp_code = pwTotp
     const res = await fetch('/api/change-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
+      body: JSON.stringify(body),
     })
     setPwLoading(false)
     if (res.ok) {
-      setPwCurrent(''); setPwNew('')
+      setPwCurrent(''); setPwNew(''); setPwNew2(''); setPwTotp('')
       setPwMsg('Пароль изменён')
     } else {
       const d = await res.json().catch(() => ({}))
@@ -258,14 +488,57 @@ export default function ProfilesPage() {
     }
   }
 
+  async function handleExport() {
+    setBackupMsg('')
+    setBackupError('')
+    try {
+      const res = await fetch('/api/export')
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `lampa-backup-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      setBackupMsg('Экспорт завершён')
+    } catch {
+      setBackupError('Ошибка экспорта')
+    }
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    if (!confirm('Импорт полностью заменит все устройства, профили и таймкоды. Продолжить?')) return
+    setBackupMsg('')
+    setBackupError('')
+    try {
+      const text = await file.text()
+      const res = await fetch('/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: text,
+      })
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      setBackupMsg('Импорт завершён. Страница обновится.')
+      setTimeout(() => window.location.reload(), 1500)
+    } catch {
+      setBackupError('Ошибка импорта')
+    }
+  }
+
   async function handleDeleteAccount(e: React.FormEvent) {
     e.preventDefault()
     if (!confirm('Удалить аккаунт и все данные? Это необратимо!')) return
     setDelLoading(true)
+    const body: Record<string, string> = { password: delPw }
+    if (user?.totp_enabled && delTotp) body.totp_code = delTotp
     const res = await fetch('/api/account', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: delPw }),
+      body: JSON.stringify(body),
     })
     setDelLoading(false)
     if (res.ok) {
@@ -276,6 +549,148 @@ export default function ProfilesPage() {
     }
   }
 
+  async function handleMyShowsSync(e: React.FormEvent) {
+    e.preventDefault()
+    if (!syncDeviceId) return
+    setSyncLoading(true)
+    setSyncLog([])
+    const device = devices.find(d => d.id === syncDeviceId)
+    if (!device) { setSyncLoading(false); return }
+
+    const form = new FormData()
+    form.append('device_id', String(syncDeviceId))
+    form.append('profile_id', syncProfileId)
+    form.append('login', syncLogin)
+    form.append('password', syncPassword)
+
+    try {
+      const res = await fetch('/myshows/sync', { method: 'POST', body: form })
+      if (!res.ok || !res.body) {
+        const d = await res.json().catch(() => ({}))
+        setSyncLog([{ type: 'error', message: d.error || 'Ошибка запроса' }])
+        setSyncLoading(false)
+        return
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue
+          const json = line.slice(5).trim()
+          if (!json) continue
+          try {
+            const entry: SyncLogEntry = JSON.parse(json)
+            setSyncLog(prev => [...prev, entry])
+            setTimeout(() => {
+              if (syncLogRef.current) {
+                syncLogRef.current.scrollTop = syncLogRef.current.scrollHeight
+              }
+            }, 0)
+          } catch { /* skip malformed */ }
+        }
+      }
+    } catch (err) {
+      setSyncLog(prev => [...prev, { type: 'error', message: String(err) }])
+    }
+    setSyncLoading(false)
+  }
+
+  async function handleLampacImport(e: React.FormEvent) {
+    e.preventDefault()
+    setImportError('')
+    setImportMsg('')
+    if (!importDeviceId) return
+    const device = devices.find(d => d.id === importDeviceId)
+    if (!device) return
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(importJson)
+    } catch {
+      setImportError('Неверный JSON')
+      return
+    }
+
+    setImportLoading(true)
+    const params = new URLSearchParams({ token: device.token })
+    if (importProfileId) params.set('profile_id', importProfileId)
+
+    const res = await fetch(`/timecode/import/lampac?${params}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(parsed),
+    })
+    setImportLoading(false)
+    if (res.ok) {
+      const d = await res.json().catch(() => ({}))
+      setImportMsg(`Импортировано: ${d.imported ?? 0}`)
+      setImportJson('')
+    } else {
+      const d = await res.json().catch(() => ({}))
+      setImportError(d.error || 'Ошибка импорта')
+    }
+  }
+
+  async function handleLampaImport(e: React.FormEvent) {
+    e.preventDefault()
+    setLampaError('')
+    setLampaMsg('')
+    if (!lampaDeviceId) return
+    const device = devices.find(d => d.id === lampaDeviceId)
+    if (!device) return
+
+    let raw: Record<string, Record<string, unknown>>
+    try {
+      raw = JSON.parse(lampaJson)
+    } catch {
+      setLampaError('Неверный JSON')
+      return
+    }
+
+    // Convert Lampa file_view format: values may be numbers/objects — stringify them
+    const converted: Record<string, Record<string, string>> = {}
+    for (const [cardId, items] of Object.entries(raw)) {
+      if (typeof items !== 'object' || items === null) continue
+      converted[cardId] = {}
+      for (const [key, value] of Object.entries(items)) {
+        converted[cardId][key] = typeof value === 'string' ? value : JSON.stringify(value)
+      }
+    }
+
+    setLampaLoading(true)
+    const params = new URLSearchParams({ token: device.token })
+    if (lampaProfileId) params.set('profile_id', lampaProfileId)
+
+    const res = await fetch(`/timecode/import/lampac?${params}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(converted),
+    })
+    setLampaLoading(false)
+    if (res.ok) {
+      const d = await res.json().catch(() => ({}))
+      setLampaMsg(`Импортировано: ${d.imported ?? 0}`)
+      setLampaJson('')
+    } else {
+      const d = await res.json().catch(() => ({}))
+      setLampaError(d.error || 'Ошибка импорта')
+    }
+  }
+
+  function formatSyncEntry(entry: SyncLogEntry): string {
+    if (entry.type === 'stage') {
+      return `[${entry.stage}] ${entry.current}/${entry.total}`
+    }
+    return entry.message ?? ''
+  }
+
+  const isPremium = user?.role === 'premium' || user?.role === 'super'
   const roleLabel: Record<string, string> = { simple: 'Базовый', premium: 'Премиум', super: 'Супер' }
   const maxDevices = user?.role === 'super' ? null : user?.role === 'premium' ? 8 : 3
 
@@ -338,7 +753,27 @@ export default function ProfilesPage() {
                         <div key={p.profile_id} className={styles.profileCard}>
                           <div className={styles.profileCardTop}>
                             <div className={styles.profileCardLeft}>
-                              <strong className={styles.profileName}>{p.name}</strong>
+                              <div className={styles.profileNameRow}>
+                                <div className={styles.profileIconWrap}>
+                                  <button
+                                    className={styles.profileIconBtn}
+                                    title="Изменить иконку"
+                                    onClick={() => setIconPickerFor(iconPickerFor === p.profile_id ? null : p.profile_id)}
+                                  >
+                                    {p.icon
+                                      ? <img src={profileIconSrc(p.icon)} alt="" />
+                                      : <img src={profileIconSrc('id1')} alt="" />}
+                                  </button>
+                                  {iconPickerFor === p.profile_id && (
+                                    <IconPicker
+                                      current={p.icon || 'id1'}
+                                      onSelect={icon => handleSetIcon(p.profile_id, icon)}
+                                      onClose={() => setIconPickerFor(null)}
+                                    />
+                                  )}
+                                </div>
+                                <strong className={styles.profileName}>{p.name}</strong>
+                              </div>
                               <div className={styles.profileMeta}>
                                 <code className={styles.profileId}>ID: {p.profile_id}</code>
                                 <span>· таймкодов: {p.timecodes_count}</span>
@@ -365,7 +800,7 @@ export default function ProfilesPage() {
                       ))}
                       {profileError && <p className={styles.errorText}>{profileError}</p>}
                       {(profilesLimit === 0 || profiles.length < profilesLimit) && (
-                        <form className={styles.inlineForm} onSubmit={handleCreateProfile}>
+                        <form className={`${styles.formCol} ${styles.newProfileForm}`} onSubmit={handleCreateProfile}>
                           <input
                             className={styles.input}
                             placeholder="Название профиля"
@@ -374,13 +809,13 @@ export default function ProfilesPage() {
                             required
                           />
                           <input
-                            className={`${styles.input} ${styles.inputMono}`}
-                            placeholder="ID (авто если пусто)"
+                            className={styles.input}
+                            placeholder="ID профиля (авто если пусто)"
                             value={newProfileId}
                             onChange={e => setNewProfileId(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32))}
                             maxLength={32}
                           />
-                          <button className={styles.btnPrimary} type="submit">Добавить</button>
+                          <button className={styles.btnPrimary} type="submit">Добавить профиль</button>
                         </form>
                       )}
                     </div>
@@ -391,7 +826,7 @@ export default function ProfilesPage() {
           )}
 
           {(maxDevices === null || devices.length < maxDevices) ? (
-            <form className={styles.inlineForm} onSubmit={handleCreate}>
+            <form className={styles.formCol} onSubmit={handleCreate}>
               <input
                 className={styles.input}
                 placeholder="Название нового устройства"
@@ -408,73 +843,481 @@ export default function ProfilesPage() {
           )}
         </section>
 
-        {/* ── Link by code ── */}
-        <details className={styles.details}>
-          <summary className={styles.summary}>Привязать устройство по коду</summary>
-          <div className={styles.detailsBody}>
-            <p className={styles.hint}>В настройках плагина нажмите «Привязать устройство» — на экране появится 6-значный код.</p>
-            {linkError && <p className={styles.errorText}>{linkError}</p>}
-            {linkSuccess && <p className={styles.successText}>{linkSuccess}</p>}
-            <form className={styles.linkForm} onSubmit={handleLink}>
-              <div className={styles.formGrid}>
-                <input
-                  className={styles.input}
-                  placeholder="Код (6 цифр)"
-                  value={linkCode}
-                  onChange={e => setLinkCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  pattern="[0-9]{6}" inputMode="numeric" maxLength={6} required
-                />
-                <select
-                  className={styles.select}
-                  value={linkDeviceId}
-                  onChange={e => setLinkDeviceId(e.target.value === 'new' ? 'new' : Number(e.target.value))}
-                >
-                  {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  {(maxDevices === null || devices.length < (maxDevices ?? 99)) && (
-                    <option value="new">+ Новое устройство</option>
+        {/* ── 2-column grid of details sections ── */}
+        <div className={styles.detailsGrid}>
+
+          {/* ── Link by code ── */}
+          <details className={styles.details}>
+            <summary className={styles.summary}>Привязать устройство по коду</summary>
+            <div className={styles.detailsBody}>
+              <p className={styles.hint}>В настройках плагина нажмите «Привязать устройство» — на экране появится 6-значный код.</p>
+              {linkError && <p className={styles.errorText}>{linkError}</p>}
+              {linkSuccess && <p className={styles.successText}>{linkSuccess}</p>}
+              <form className={styles.linkForm} onSubmit={handleLink}>
+                <div className={styles.formGrid}>
+                  <input
+                    className={styles.input}
+                    placeholder="Код (6 цифр)"
+                    value={linkCode}
+                    onChange={e => setLinkCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    pattern="[0-9]{6}" inputMode="numeric" maxLength={6} required
+                  />
+                  <select
+                    className={styles.select}
+                    value={linkDeviceId}
+                    onChange={e => setLinkDeviceId(e.target.value === 'new' ? 'new' : Number(e.target.value))}
+                  >
+                    {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    {(maxDevices === null || devices.length < (maxDevices ?? 99)) && (
+                      <option value="new">+ Новое устройство</option>
+                    )}
+                  </select>
+                </div>
+                {linkDeviceId === 'new' && (
+                  <input
+                    className={styles.input}
+                    placeholder="Название нового устройства"
+                    value={linkNewName}
+                    onChange={e => setLinkNewName(e.target.value)}
+                    maxLength={100}
+                  />
+                )}
+                <button className={styles.btnPrimary} type="submit" disabled={linkLoading || linkCode.length < 6}>
+                  {linkLoading ? 'Привязка…' : 'Привязать'}
+                </button>
+              </form>
+            </div>
+          </details>
+
+          {/* ── MyShows sync ── */}
+          <details className={styles.details}>
+            <summary className={styles.summary}>Синхронизация MyShows</summary>
+            <div className={styles.detailsBody}>
+              {!isPremium ? (
+                <div className={styles.premiumGate}>
+                  <p className={styles.hint}>Синхронизация с MyShows доступна для подписчиков Premium.</p>
+                  <span className={styles.premiumBadge}>Premium</span>
+                </div>
+              ) : (
+                <form className={styles.formCol} onSubmit={handleMyShowsSync}>
+                  <div className={styles.formGrid}>
+                    <label className={styles.fieldLabel}>
+                      Устройство
+                      <select
+                        className={styles.select}
+                        value={syncDeviceId}
+                        onChange={e => handleSyncDeviceChange(Number(e.target.value))}
+                        required
+                      >
+                        <option value="">— выберите —</option>
+                        {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      Профиль Lampa
+                      <select
+                        className={styles.select}
+                        value={syncProfileId}
+                        onChange={e => setSyncProfileId(e.target.value)}
+                      >
+                        {syncDeviceProfiles.length === 0 && <option value="">Основной</option>}
+                        {syncDeviceProfiles.map(p => (
+                          <option key={p.profile_id} value={p.profile_id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className={styles.formRow}>
+                    <input
+                      className={styles.input}
+                      placeholder="Логин MyShows"
+                      value={syncLogin}
+                      onChange={e => setSyncLogin(e.target.value)}
+                      autoComplete="username"
+                      required
+                    />
+                    <input
+                      className={styles.input}
+                      type="password"
+                      placeholder="Пароль MyShows"
+                      value={syncPassword}
+                      onChange={e => setSyncPassword(e.target.value)}
+                      autoComplete="current-password"
+                      required
+                    />
+                  </div>
+                  <button className={styles.btnPrimary} type="submit" disabled={syncLoading || !syncDeviceId}>
+                    {syncLoading ? 'Синхронизация…' : 'Синхронизировать'}
+                  </button>
+                  {syncLog.length > 0 && (
+                    <div className={styles.syncLog} ref={syncLogRef}>
+                      {syncLog.map((entry, i) => (
+                        <div key={i} className={entry.type === 'error' ? styles.syncLogError : styles.syncLogLine}>
+                          {formatSyncEntry(entry)}
+                        </div>
+                      ))}
+                    </div>
                   )}
-                </select>
-              </div>
-              {linkDeviceId === 'new' && (
-                <input
-                  className={styles.input}
-                  placeholder="Название нового устройства"
-                  value={linkNewName}
-                  onChange={e => setLinkNewName(e.target.value)}
-                  maxLength={100}
-                />
+                </form>
               )}
-              <button className={styles.btnPrimary} type="submit" disabled={linkLoading || linkCode.length < 6}>
-                {linkLoading ? 'Привязка…' : 'Привязать'}
-              </button>
-            </form>
-          </div>
-        </details>
+            </div>
+          </details>
 
-        {/* ── Change password ── */}
-        <details className={styles.details}>
-          <summary className={styles.summary}>Настройки аккаунта</summary>
-          <div className={styles.detailsBody}>
-            <h4 className={styles.subTitle}>Сменить пароль</h4>
-            {pwMsg && <p className={pwMsg === 'Пароль изменён' ? styles.successText : styles.errorText}>{pwMsg}</p>}
-            <form className={styles.formCol} onSubmit={handleChangePassword}>
-              <input className={styles.input} type="password" placeholder="Текущий пароль" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} required />
-              <input className={styles.input} type="password" placeholder="Новый пароль (мин. 6 символов)" value={pwNew} onChange={e => setPwNew(e.target.value)} minLength={6} required />
-              <button className={styles.btnPrimary} type="submit" disabled={pwLoading}>{pwLoading ? 'Сохранение…' : 'Сменить пароль'}</button>
-            </form>
+          {/* ── Telegram ── */}
+          <details className={styles.details}>
+            <summary className={styles.summary}>Telegram</summary>
+            <div className={styles.detailsBody}>
+              {tgStatus?.linked ? (
+                <div>
+                  <p className={styles.hint}>
+                    Аккаунт привязан{tgStatus.username ? ` к @${tgStatus.username}` : ''}.
+                  </p>
+                  <button className={`${styles.btnSm} ${styles.danger}`} onClick={handleTgUnlink} style={{ marginTop: 8 }}>
+                    Отвязать Telegram
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p className={styles.hint}>Telegram не привязан. Привяжите, чтобы получать уведомления и сбрасывать пароль через бота.</p>
+                  {tgCode ? (
+                    <div style={{ marginTop: 8 }}>
+                      <p>Отправьте боту команду или перейдите по ссылке:</p>
+                      <a href={tgCode.link} target="_blank" rel="noreferrer" className={styles.btnPrimary} style={{ display: 'inline-block', marginTop: 6 }}>
+                        Открыть @{tgCode.link.split('t.me/')[1]?.split('?')[0]}
+                      </a>
+                      <p className={styles.hint} style={{ marginTop: 6 }}>
+                        Код действителен {tgCode.ttl_min} минут
+                      </p>
+                    </div>
+                  ) : (
+                    <button className={styles.btnPrimary} onClick={handleGenerateTgCode} disabled={tgLoading} style={{ marginTop: 8 }}>
+                      {tgLoading ? 'Генерация…' : 'Привязать Telegram'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </details>
 
-            <hr className={styles.hr} />
+          {/* ── LampaC import ── */}
+          <details className={styles.details}>
+            <summary className={styles.summary}>Импорт таймкодов из LampaC</summary>
+            <div className={styles.detailsBody}>
+              <p className={styles.hint}>Вставьте JSON-экспорт таймкодов из LampaC.</p>
+              {importError && <p className={styles.errorText}>{importError}</p>}
+              {importMsg && <p className={styles.successText}>{importMsg}</p>}
+              <form className={styles.formCol} onSubmit={handleLampacImport}>
+                <div className={styles.formGrid}>
+                  <label className={styles.fieldLabel}>
+                    Устройство
+                    <select
+                      className={styles.select}
+                      value={importDeviceId}
+                      onChange={e => handleImportDeviceChange(Number(e.target.value))}
+                      required
+                    >
+                      <option value="">— выберите —</option>
+                      {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Профиль Lampa
+                    <select
+                      className={styles.select}
+                      value={importProfileId}
+                      onChange={e => setImportProfileId(e.target.value)}
+                    >
+                      {importDeviceProfiles.length === 0 && <option value="">Основной</option>}
+                      {importDeviceProfiles.map(p => (
+                        <option key={p.profile_id} value={p.profile_id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <textarea
+                  className={styles.jsonTextarea}
+                  placeholder={'{"card_id":{"item":"data"}}'}
+                  value={importJson}
+                  onChange={e => { setImportJson(e.target.value); setImportError('') }}
+                  rows={5}
+                  required
+                />
+                <button className={styles.btnPrimary} type="submit" disabled={importLoading || !importDeviceId}>
+                  {importLoading ? 'Импорт…' : 'Импортировать'}
+                </button>
+              </form>
+            </div>
+          </details>
 
-            <h4 className={styles.subTitle} style={{ color: 'var(--danger, #e05252)' }}>Удалить аккаунт</h4>
-            <p className={styles.hint}>Все устройства и таймкоды будут удалены безвозвратно.</p>
-            <form className={styles.formCol} onSubmit={handleDeleteAccount}>
-              <input className={styles.input} type="password" placeholder="Введите пароль для подтверждения" value={delPw} onChange={e => setDelPw(e.target.value)} required />
-              <button className={`${styles.btnPrimary} ${styles.danger}`} type="submit" disabled={delLoading}>{delLoading ? 'Удаление…' : 'Удалить аккаунт'}</button>
-            </form>
-          </div>
-        </details>
+          {/* ── Lampa import ── */}
+          <details className={styles.details}>
+            <summary className={styles.summary}>Импорт таймкодов из Lampa</summary>
+            <div className={styles.detailsBody}>
+              <p className={styles.hint}>
+                В консоли браузера на странице Lampa выполните:{' '}
+                <code
+                  className={styles.codeSnippet}
+                  title="Нажмите, чтобы скопировать"
+                  onClick={() => navigator.clipboard.writeText("copy(localStorage.getItem('file_view'))").catch(() => {})}
+                >
+                  copy(localStorage.getItem('file_view'))
+                </code>
+                {' '}— затем вставьте JSON ниже.
+              </p>
+              {lampaError && <p className={styles.errorText}>{lampaError}</p>}
+              {lampaMsg && <p className={styles.successText}>{lampaMsg}</p>}
+              <form className={styles.formCol} onSubmit={handleLampaImport}>
+                <div className={styles.formGrid}>
+                  <label className={styles.fieldLabel}>
+                    Устройство
+                    <select
+                      className={styles.select}
+                      value={lampaDeviceId}
+                      onChange={e => {
+                        const id = Number(e.target.value)
+                        setLampaDeviceId(id)
+                        setLampaProfileId('')
+                        fetchProfilesForDevice(id).then(setLampaDeviceProfiles)
+                      }}
+                      required
+                    >
+                      <option value="">— выберите —</option>
+                      {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Профиль Lampa
+                    <select
+                      className={styles.select}
+                      value={lampaProfileId}
+                      onChange={e => setLampaProfileId(e.target.value)}
+                    >
+                      {lampaDeviceProfiles.length === 0 && <option value="">Основной</option>}
+                      {lampaDeviceProfiles.map(p => (
+                        <option key={p.profile_id} value={p.profile_id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <textarea
+                  className={styles.jsonTextarea}
+                  placeholder={'{"571234":{"percent":95,"time":3600}}'}
+                  value={lampaJson}
+                  onChange={e => { setLampaJson(e.target.value); setLampaError('') }}
+                  rows={5}
+                  required
+                />
+                <button className={styles.btnPrimary} type="submit" disabled={lampaLoading || !lampaDeviceId}>
+                  {lampaLoading ? 'Импорт…' : 'Импортировать'}
+                </button>
+              </form>
+            </div>
+          </details>
+
+          {/* ── Notifications (visible only when TG linked) ── */}
+          <details className={styles.details} style={{ visibility: tgStatus?.linked && notifSettings ? 'visible' : 'hidden' }}>
+            <summary className={styles.summary}>Уведомления</summary>
+            <div className={styles.detailsBody}>
+              <p className={styles.hint}>Уведомления об истечении подписки и неактивности отправляются в Telegram.</p>
+              {notifMsg && <p className={notifMsg === 'Сохранено' ? styles.successText : styles.errorText}>{notifMsg}</p>}
+              {notifSettings && (
+                <form className={styles.formCol} onSubmit={handleSaveNotif}>
+                  <label className={styles.checkLabel}>
+                    <input
+                      type="checkbox"
+                      checked={notifSettings.enabled}
+                      onChange={e => setNotifSettings(s => s ? { ...s, enabled: e.target.checked } : s)}
+                    />
+                    Включить уведомления
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Часовой пояс
+                    <select
+                      className={styles.select}
+                      value={notifSettings.timezone}
+                      onChange={e => setNotifSettings(s => s ? { ...s, timezone: e.target.value } : s)}
+                    >
+                      {['Europe/Moscow', 'Europe/Kaliningrad', 'Asia/Yekaterinburg', 'Asia/Omsk',
+                        'Asia/Krasnoyarsk', 'Asia/Irkutsk', 'Asia/Yakutsk', 'Asia/Vladivostok',
+                        'Asia/Magadan', 'Asia/Kamchatka', 'Europe/Kiev', 'Europe/Minsk',
+                        'Asia/Almaty', 'Asia/Tashkent', 'Europe/London', 'Europe/Berlin'].map(tz => (
+                        <option key={tz} value={tz}>{tz}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className={styles.formRow}>
+                    <label style={{ flex: 1 }}>
+                      С (час)
+                      <input
+                        className={styles.input}
+                        type="number" min={0} max={23}
+                        value={notifSettings.notify_start}
+                        onChange={e => setNotifSettings(s => s ? { ...s, notify_start: Number(e.target.value) } : s)}
+                      />
+                    </label>
+                    <label style={{ flex: 1 }}>
+                      До (час)
+                      <input
+                        className={styles.input}
+                        type="number" min={0} max={23}
+                        value={notifSettings.notify_end}
+                        onChange={e => setNotifSettings(s => s ? { ...s, notify_end: Number(e.target.value) } : s)}
+                      />
+                    </label>
+                  </div>
+                  <button className={styles.btnPrimary} type="submit" disabled={notifSaving}>
+                    {notifSaving ? 'Сохранение…' : 'Сохранить'}
+                  </button>
+                </form>
+              )}
+            </div>
+          </details>
+
+          {/* ── Account settings ── */}
+          <details className={styles.details}>
+            <summary className={styles.summary}>Настройки аккаунта</summary>
+            <div className={styles.detailsBody}>
+
+              <h4 className={styles.subTitle}>Двухфакторная аутентификация (2FA)</h4>
+              {user?.totp_enabled ? (
+                <>
+                  <p className={styles.hint}>
+                    2FA включена. Резервных кодов осталось: <strong>{user.backup_codes_count}</strong>
+                  </p>
+                  {disable2faMsg && (
+                    <p className={disable2faMsg === '2FA отключена' ? styles.successText : styles.errorText}>
+                      {disable2faMsg}
+                    </p>
+                  )}
+                  <form className={styles.formCol} onSubmit={handleDisable2FA}>
+                    <div className={styles.formRow}>
+                      <input
+                        className={styles.input}
+                        type="password"
+                        placeholder="Текущий пароль"
+                        value={disable2faPw}
+                        onChange={e => setDisable2faPw(e.target.value)}
+                        required
+                      />
+                      <input
+                        className={`${styles.input} ${styles.inputMono}`}
+                        type="text"
+                        placeholder="Код из приложения"
+                        value={disable2faCode}
+                        onChange={e => setDisable2faCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        inputMode="numeric"
+                        maxLength={6}
+                        required
+                      />
+                    </div>
+                    <button className={`${styles.btnSm} ${styles.warning}`} type="submit" disabled={disable2faLoading}>
+                      {disable2faLoading ? 'Отключение…' : 'Отключить 2FA'}
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <p className={styles.hint}>
+                    Защитите аккаунт кодом из приложения-аутентификатора (Google Authenticator, Aegis и др.).
+                  </p>
+                  <a href="/setup-2fa" className={styles.btnPrimary}>Включить 2FA</a>
+                </>
+              )}
+
+              <hr className={styles.hr} />
+
+              <h4 className={styles.subTitle}>Сменить пароль</h4>
+              {pwMsg && <p className={pwMsg === 'Пароль изменён' ? styles.successText : styles.errorText}>{pwMsg}</p>}
+              <form className={styles.formCol} onSubmit={handleChangePassword}>
+                <input className={styles.input} type="password" placeholder="Текущий пароль" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} required />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <input className={styles.input} type="password" placeholder="Новый пароль" value={pwNew} onChange={e => setPwNew(e.target.value)} minLength={6} required />
+                  {pwNew.length > 0 && pwNew.length < 6 && (
+                    <span className={styles.errorText}>минимум 6 символов</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <input className={styles.input} type="password" placeholder="Повторите новый пароль" value={pwNew2} onChange={e => setPwNew2(e.target.value)} required />
+                  {pwNew2.length > 0 && (
+                    <span className={pwNew === pwNew2 ? styles.successText : styles.errorText}>
+                      {pwNew === pwNew2 ? 'Пароли совпадают' : 'Пароли не совпадают'}
+                    </span>
+                  )}
+                </div>
+                {user?.totp_enabled && (
+                  <input
+                    className={`${styles.input} ${styles.inputMono}`}
+                    type="text"
+                    placeholder="Код 2FA"
+                    value={pwTotp}
+                    onChange={e => setPwTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric"
+                    maxLength={6}
+                  />
+                )}
+                <button className={styles.btnPrimary} type="submit" disabled={pwLoading}>{pwLoading ? 'Сохранение…' : 'Сменить пароль'}</button>
+              </form>
+
+              <hr className={styles.hr} />
+
+              <h4 className={styles.subTitle} style={{ color: 'var(--danger, #e05252)' }}>Удалить аккаунт</h4>
+              <p className={styles.hint}>Все устройства и таймкоды будут удалены безвозвратно.</p>
+              <form className={styles.formCol} onSubmit={handleDeleteAccount}>
+                <div className={styles.formRow}>
+                  <input className={styles.input} type="password" placeholder="Введите пароль для подтверждения" value={delPw} onChange={e => setDelPw(e.target.value)} required />
+                  {user?.totp_enabled && (
+                    <input
+                      className={`${styles.input} ${styles.inputMono}`}
+                      type="text"
+                      placeholder="Код 2FA"
+                      value={delTotp}
+                      onChange={e => setDelTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      inputMode="numeric"
+                      maxLength={6}
+                    />
+                  )}
+                </div>
+                <button className={`${styles.btnPrimary} ${styles.danger}`} type="submit" disabled={delLoading}>{delLoading ? 'Удаление…' : 'Удалить аккаунт'}</button>
+              </form>
+            </div>
+          </details>
+
+          {/* ── Backup ── */}
+          <details className={styles.details}>
+            <summary className={styles.summary}>Резервная копия</summary>
+            <div className={styles.detailsBody}>
+              <p className={styles.hint}>Экспортирует все устройства, профили, таймкоды и настройки плагинов. Импорт полностью заменяет текущие данные.</p>
+              <div className={styles.backupActions}>
+                <button className={styles.btnPrimary} onClick={handleExport}>Экспортировать</button>
+                <label className={styles.btnSm} style={{ cursor: 'pointer' }}>
+                  Импортировать
+                  <input type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportFile} />
+                </label>
+              </div>
+              {backupMsg && <p className={styles.successText}>{backupMsg}</p>}
+              {backupError && <p className={styles.errorText}>{backupError}</p>}
+            </div>
+          </details>
+
+        </div>
 
       </div>
+
+      {linkedToken && (
+        <div className={styles.modalOverlay} onClick={() => setLinkedToken(null)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+            <h3 className={styles.modalTitle}>Устройство привязано</h3>
+            <p className={styles.modalHint}>Сохраните токен — он нужен для авторизации в плагине. В любой момент его можно посмотреть в разделе устройств.</p>
+            <div className={styles.modalToken}>{linkedToken}</div>
+            <div className={styles.modalActions}>
+              <button className={styles.btnPrimary} onClick={copyLinkedToken}>
+                {tokenCopied ? '✓ Скопировано' : 'Копировать токен'}
+              </button>
+              <button className={`${styles.btnSm}`} onClick={() => setLinkedToken(null)}>Закрыть</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }

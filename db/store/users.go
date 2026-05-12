@@ -96,6 +96,71 @@ func DeleteUser(ctx context.Context, id int64) error {
 	return err
 }
 
+type RoleCount struct {
+	Role  string
+	Count int
+}
+
+func QueryUserRoleCounts(ctx context.Context) ([]RoleCount, error) {
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT role, COUNT(*) FROM users GROUP BY role`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []RoleCount
+	for rows.Next() {
+		var rc RoleCount
+		if rows.Scan(&rc.Role, &rc.Count) == nil {
+			result = append(result, rc)
+		}
+	}
+	return result, nil
+}
+
+// ─── Notification settings ────────────────────────────────────────────────────
+
+type NotificationSettings struct {
+	Enabled      bool   `json:"enabled"`
+	Timezone     string `json:"timezone"`
+	NotifyStart  int    `json:"notify_start"`
+	NotifyEnd    int    `json:"notify_end"`
+}
+
+func GetNotificationSettings(ctx context.Context, userID int64) NotificationSettings {
+	var s NotificationSettings
+	postgres.Pool.QueryRow(ctx, //nolint:errcheck
+		`SELECT notifications_enabled, COALESCE(timezone,'Europe/Moscow'), notify_start, notify_end
+		 FROM users WHERE id=$1`, userID,
+	).Scan(&s.Enabled, &s.Timezone, &s.NotifyStart, &s.NotifyEnd)
+	return s
+}
+
+func SaveNotificationSettings(ctx context.Context, userID int64, s NotificationSettings) error {
+	_, err := postgres.Pool.Exec(ctx,
+		`UPDATE users SET notifications_enabled=$2, timezone=$3, notify_start=$4, notify_end=$5 WHERE id=$1`,
+		userID, s.Enabled, s.Timezone, s.NotifyStart, s.NotifyEnd,
+	)
+	return err
+}
+
+// CleanupUserOverlimit deletes devices beyond MaxDevices for the role (keeps oldest).
+// Returns count of deleted devices (cascade removes associated profiles and timecodes).
+func CleanupUserOverlimit(ctx context.Context, userID int64, role string) int {
+	lim := LimitsFor(role)
+	if lim.MaxDevices == 0 {
+		return 0
+	}
+	tag, err := postgres.Pool.Exec(ctx, `
+		DELETE FROM devices WHERE user_id = $1 AND id NOT IN (
+			SELECT id FROM devices WHERE user_id = $1 ORDER BY created_at ASC LIMIT $2
+		)`, userID, lim.MaxDevices)
+	if err != nil {
+		return 0
+	}
+	return int(tag.RowsAffected())
+}
+
 // EnsureSuperuser creates the superuser if no users exist yet.
 func EnsureSuperuser(ctx context.Context, username, passwordHash string) error {
 	_, err := postgres.Pool.Exec(ctx, `

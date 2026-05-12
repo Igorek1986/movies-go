@@ -85,3 +85,103 @@
     }
   }
 }
+
+.subtitle {
+  margin: 0;
+  text-align: center;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.qrWrap {
+  display: flex;
+  justify-content: center;
+
+  img {
+    width: 200px;
+    height: 200px;
+    border: 4px solid #fff;
+    border-radius: $radius-sm;
+  }
+}
+
+.secretBlock {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+
+  summary {
+    cursor: pointer;
+    font-size: $font-size-sm;
+    color: $color-text-muted;
+    user-select: none;
+  }
+}
+
+.secretBox {
+  font-family: 'Courier New', monospace;
+  font-size: $font-size-sm;
+  letter-spacing: 0.1em;
+  word-break: break-all;
+  background: rgba($color-border, 0.5);
+  padding: $spacing-sm;
+  border-radius: $radius-sm;
+  color: $color-text;
+}
+
+.codeInput {
+  @include input-base;
+  font-size: 1.4rem;
+  height: 56px;
+  text-align: center;
+  letter-spacing: 0.2em;
+}
+
+.success {
+  margin: 0;
+  padding: $spacing-sm $spacing-md;
+  background: rgba($color-success, 0.12);
+  border: 1px solid rgba($color-success, 0.4);
+  border-radius: $radius-sm;
+  color: $color-success;
+  font-size: $font-size-sm;
+}
+
+.backupTitle {
+  margin: 0;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $color-text-muted;
+}
+
+.backupGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-xs;
+}
+
+.backupCode {
+  font-family: 'Courier New', monospace;
+  font-size: $font-size-sm;
+  background: rgba($color-border, 0.5);
+  padding: $spacing-xs $spacing-sm;
+  border-radius: $radius-sm;
+  text-align: center;
+  color: $color-text;
+}
+
+.btnSecondary {
+  height: 38px;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover {
+    border-color: $color-primary;
+    color: $color-primary;
+  }
+}

@@ -2,30 +2,15 @@ package api
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"lampa-api/config"
 	"lampa-api/db/store"
 	"lampa-api/internal/auth"
-	"lampa-api/internal/render"
 	"net/http"
 
 	"github.com/pquerna/otp/totp"
 	qrcode "github.com/skip2/go-qrcode"
 )
-
-type setup2faData struct {
-	QRDataURL string
-	Secret    string
-	Error     string
-}
-
-type verify2faData struct {
-	Token string
-	Error string
-}
-
-type backupCodesData struct {
-	Codes []string
-}
 
 func buildQR(otpauthURL string) string {
 	png, err := qrcode.Encode(otpauthURL, qrcode.Medium, 200)
@@ -42,16 +27,16 @@ func siteNameFromConfig() string {
 	return "NUMParser"
 }
 
-// GET /setup-2fa
-func handleSetup2FAPage(w http.ResponseWriter, r *http.Request) {
+// ─── JSON API (React) ─────────────────────────────────────────────────────────
+
+// GET /api/setup-2fa
+func handleAPISetup2FA(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	// If user already has a pending (not-yet-enabled) secret, reuse it.
-	// Otherwise generate a new one.
 	var secret string
 	fresh := store.GetUserByID(r.Context(), u.ID)
 	if fresh != nil && fresh.TotpSecret != nil && !fresh.TotpEnabled {
@@ -62,7 +47,7 @@ func handleSetup2FAPage(w http.ResponseWriter, r *http.Request) {
 			AccountName: u.Username,
 		})
 		if err != nil {
-			http.Error(w, "error generating 2FA key", http.StatusInternalServerError)
+			Error(w, http.StatusInternalServerError, "error generating 2FA key")
 			return
 		}
 		secret = key.Secret()
@@ -75,111 +60,85 @@ func handleSetup2FAPage(w http.ResponseWriter, r *http.Request) {
 		Secret:      []byte(secret),
 	})
 	if err != nil {
-		http.Error(w, "error generating QR", http.StatusInternalServerError)
+		Error(w, http.StatusInternalServerError, "error generating QR")
 		return
 	}
 
-	render.Page(w, r, "setup_2fa", u, setup2faData{
-		QRDataURL: buildQR(key.URL()),
-		Secret:    secret,
-		Error:     r.URL.Query().Get("error"),
+	JSON(w, http.StatusOK, map[string]string{
+		"qr_data_url": string(buildQR(key.URL())),
+		"secret":      secret,
 	})
 }
 
-// POST /setup-2fa — confirm TOTP code, enable 2FA, show backup codes
-func handleSetup2FAConfirm(w http.ResponseWriter, r *http.Request) {
+// POST /api/setup-2fa  body: {"code":"123456"}
+func handleAPISetup2FAConfirm(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/setup-2fa", http.StatusFound)
+	var req struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid json")
 		return
 	}
 
-	code := r.FormValue("code")
 	fresh := store.GetUserByID(r.Context(), u.ID)
 	if fresh == nil || fresh.TotpSecret == nil {
-		http.Redirect(w, r, "/setup-2fa", http.StatusFound)
+		Error(w, http.StatusBadRequest, "no pending 2fa setup")
 		return
 	}
 
-	if !totp.Validate(code, *fresh.TotpSecret) {
-		http.Redirect(w, r, "/setup-2fa?error=invalid_code", http.StatusFound)
+	if !totp.Validate(req.Code, *fresh.TotpSecret) {
+		Error(w, http.StatusUnauthorized, "invalid code")
 		return
 	}
 
 	plainCodes, hashesJSON := store.GenerateBackupCodes()
 	store.EnableTotp(r.Context(), u.ID, hashesJSON)
 
-	render.Page(w, r, "backup_codes", u, backupCodesData{Codes: plainCodes})
-}
-
-// POST /disable-2fa
-func handleDisable2FA(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/profiles", http.StatusFound)
-		return
-	}
-	if !auth.CheckPassword(u.PasswordHash, r.FormValue("password")) {
-		http.Redirect(w, r, "/profiles?error=wrong_password", http.StatusFound)
-		return
-	}
-	store.DisableTotp(r.Context(), u.ID)
-	http.Redirect(w, r, "/profiles?success=2fa_disabled", http.StatusFound)
-}
-
-// GET /verify-2fa?t=TOKEN
-func handleVerify2FAPage(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("t")
-	if token == "" {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
-	}
-	errMsg := r.URL.Query().Get("error")
-	if errMsg == "invalid_code" {
-		errMsg = "Неверный код. Попробуйте ещё раз."
-	}
-	render.Page(w, r, "verify_2fa", nil, verify2faData{
-		Token: token,
-		Error: errMsg,
+	JSON(w, http.StatusOK, map[string]any{
+		"ok":           true,
+		"backup_codes": plainCodes,
 	})
 }
 
-// POST /verify-2fa
-func handleVerify2FASubmit(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
+// POST /api/verify-2fa  body: {"token":"...","code":"123456"}
+func handleAPIVerify2FA(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token string `json:"token"`
+		Code  string `json:"code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	pendingToken := r.FormValue("token")
-	code := r.FormValue("code")
+	if req.Token == "" || req.Code == "" {
+		Error(w, http.StatusBadRequest, "token and code required")
+		return
+	}
 
 	ctx := r.Context()
-	userID := store.ConsumeTotpPendingToken(ctx, pendingToken)
+	userID := store.ConsumeTotpPendingToken(ctx, req.Token)
 	if userID == 0 {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		Error(w, http.StatusUnauthorized, "invalid or expired token")
 		return
 	}
 
 	u := store.GetUserByID(ctx, userID)
 	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		Error(w, http.StatusUnauthorized, "user not found")
 		return
 	}
 
 	valid := false
 	if u.TotpSecret != nil {
-		valid = totp.Validate(code, *u.TotpSecret)
+		valid = totp.Validate(req.Code, *u.TotpSecret)
 	}
 	if !valid {
-		valid = store.UseBackupCode(ctx, userID, code)
+		valid = store.UseBackupCode(ctx, userID, req.Code)
 	}
 
 	if !valid {
@@ -189,18 +148,47 @@ func handleVerify2FASubmit(w http.ResponseWriter, r *http.Request) {
 		}
 		newToken, err := store.CreateTotpPendingToken(ctx, userID, ttl)
 		if err != nil {
-			http.Redirect(w, r, "/login", http.StatusFound)
+			Error(w, http.StatusInternalServerError, "server error")
 			return
 		}
-		http.Redirect(w, r, "/verify-2fa?t="+newToken+"&error=invalid_code", http.StatusFound)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+			"error":     "invalid code",
+			"new_token": newToken,
+		})
 		return
 	}
 
 	sess, err := auth.CreateSession(ctx, userID, r.RemoteAddr, r.Header.Get("User-Agent"))
 	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		Error(w, http.StatusInternalServerError, "session error")
 		return
 	}
 	auth.SetSessionCookie(w, sess.Key, sess.ExpiresAt)
-	http.Redirect(w, r, "/", http.StatusFound)
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
+
+// POST /api/disable-2fa — JSON endpoint for React
+func handleAPIDisable2FA(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	var req struct {
+		Password string `json:"password"`
+		TotpCode string `json:"totp_code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if !auth.CheckPassword(u.PasswordHash, req.Password) {
+		Error(w, http.StatusUnauthorized, "wrong password")
+		return
+	}
+	if u.TotpSecret != nil && !totp.Validate(req.TotpCode, *u.TotpSecret) {
+		Error(w, http.StatusUnauthorized, "invalid totp code")
+		return
+	}
+	store.DisableTotp(r.Context(), u.ID)
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+

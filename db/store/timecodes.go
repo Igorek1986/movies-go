@@ -7,6 +7,7 @@ import (
 	"lampa-api/db/models"
 	"lampa-api/db/postgres"
 	"log"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -15,10 +16,10 @@ import (
 // ─── Role limits ──────────────────────────────────────────────────────────────
 
 type RoleLimits struct {
-	MaxDevices    int // 0 = unlimited
-	MaxProfiles   int
-	MaxTimecodes  int
-	MaxFavorite   int // per category
+	MaxDevices   int // 0 = unlimited
+	MaxProfiles  int
+	MaxTimecodes int
+	MaxFavorite  int // per category
 }
 
 // LimitsFor returns limits for the given role, reading from DB settings (with 30s cache).
@@ -70,7 +71,7 @@ func UpsertTimecodes(ctx context.Context, deviceID int64, profileID string, rows
 	today := time.Now().Format("2006-01-02")
 	saved := 0
 	for _, r := range rows {
-		pct := parsePercent(r.Data)
+		pct := ParsePercent(r.Data)
 		var countedAt *string
 		if pct >= 90 {
 			countedAt = &today
@@ -107,11 +108,16 @@ func UpsertTimecodes(ctx context.Context, deviceID int64, profileID string, rows
 
 // TrimToLimit deletes oldest timecodes exceeding the role limit.
 func TrimToLimit(ctx context.Context, deviceID int64, profileID string, role string) {
+	TrimToLimitCount(ctx, deviceID, profileID, role)
+}
+
+// TrimToLimitCount deletes oldest timecodes exceeding the role limit and returns the count deleted.
+func TrimToLimitCount(ctx context.Context, deviceID int64, profileID string, role string) int {
 	limit := LimitsFor(role).MaxTimecodes
 	if limit == 0 {
-		return
+		return 0
 	}
-	postgres.Pool.Exec(ctx, //nolint:errcheck
+	tag, _ := postgres.Pool.Exec(ctx,
 		`DELETE FROM timecodes
 		 WHERE id IN (
 			SELECT id FROM timecodes
@@ -121,6 +127,7 @@ func TrimToLimit(ctx context.Context, deviceID int64, profileID string, role str
 		 )`,
 		deviceID, profileID, limit,
 	)
+	return int(tag.RowsAffected())
 }
 
 // DeleteTimecode deletes a single timecode.
@@ -134,10 +141,10 @@ func DeleteTimecode(ctx context.Context, deviceID int64, profileID, cardID, item
 
 // CardProgress holds aggregated watch progress for one card.
 type CardProgress struct {
-	MaxPercent    float64 `json:"max_percent"`
-	WatchedItems  int     `json:"watched_items"`
-	TotalItems    int     `json:"total_items"`
-	IsComplete    bool    `json:"is_complete"`
+	MaxPercent   float64 `json:"max_percent"`
+	WatchedItems int     `json:"watched_items"`
+	TotalItems   int     `json:"total_items"`
+	IsComplete   bool    `json:"is_complete"`
 }
 
 // GetCardProgress returns aggregated watch progress for device+profile+card.
@@ -158,7 +165,7 @@ func GetCardProgress(ctx context.Context, deviceID int64, profileID, cardID stri
 		if rows.Scan(&data) != nil {
 			continue
 		}
-		pct := parsePercent(data)
+		pct := ParsePercent(data)
 		p.TotalItems++
 		if pct > p.MaxPercent {
 			p.MaxPercent = pct
@@ -244,6 +251,15 @@ func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, ite
 			duration, _ = m["duration"].(float64)
 		}
 	}
+	if duration == 0 {
+		var runtimeMin int
+		postgres.Pool.QueryRow(ctx, //nolint:errcheck
+			`SELECT COALESCE(runtime, 0) FROM media_cards WHERE card_id = $1`, cardID,
+		).Scan(&runtimeMin)
+		if runtimeMin > 0 {
+			duration = float64(runtimeMin) * 60
+		}
+	}
 
 	timeSec := 0.0
 	if duration > 0 {
@@ -270,6 +286,27 @@ func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, ite
 		    counted_at = COALESCE(timecodes.counted_at, EXCLUDED.counted_at),
 		    view_count = timecodes.view_count + CASE WHEN EXCLUDED.counted_at IS NOT NULL AND timecodes.counted_at IS NULL THEN 1 ELSE 0 END`,
 		deviceID, profileID, cardID, item, string(newData), countedAt,
+	)
+	return err
+}
+
+// SetCardTimecodeWatched upserts a timecode with percent=100 and a specific watched date.
+// Use this for MyShows sync to preserve the original watched date ordering.
+func SetCardTimecodeWatched(ctx context.Context, deviceID int64, profileID, cardID, item, watchedDate string) error {
+	date := watchedDate
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	}
+	data, _ := json.Marshal(map[string]any{"time": 0, "duration": 0, "percent": 100})
+	_, err := postgres.Pool.Exec(ctx, `
+		INSERT INTO timecodes (device_id, lampa_profile_id, card_id, item, data, counted_at, view_count)
+		VALUES ($1, $2, $3, $4, $5, $6, 1)
+		ON CONFLICT ON CONSTRAINT uq_timecode_unique DO UPDATE
+		SET data       = EXCLUDED.data,
+		    updated_at = $6::date,
+		    counted_at = $6::date,
+		    view_count = GREATEST(timecodes.view_count, 1)`,
+		deviceID, profileID, cardID, item, string(data), date,
 	)
 	return err
 }
@@ -349,6 +386,9 @@ type HistoryEntry struct {
 	LastWatched   string  `json:"last_watched"`
 	MaxPercent    float64 `json:"max_percent"`
 	Progress      float64 `json:"progress"`
+	WatchedItems  int     `json:"watched_items"`
+	TotalItems    int     `json:"total_items"`
+	TotalEpisodes int     `json:"total_episodes"`
 	IsComplete    bool    `json:"is_complete"`
 }
 
@@ -358,6 +398,7 @@ type HistoryFilter struct {
 	UserID     int64  // used when DeviceID == 0
 	MediaType  string // "", "movie", "tv"
 	InProgress bool   // only items with percent < 90
+	Search     string // substring match on title / original_title
 	Sort       string // "watched"(default),"release","progress_asc","progress_desc"
 	Page       int
 	PerPage    int
@@ -382,8 +423,16 @@ func GetHistoryFiltered(ctx context.Context, f HistoryFilter) ([]HistoryEntry, H
 
 	const baseSelect = `
 		SELECT t.card_id,
-		       MAX(t.updated_at)                              AS last_watched,
-		       MAX((t.data::jsonb->>'percent')::float)        AS max_pct,
+		       MAX(t.updated_at)                                                                                                    AS last_watched,
+		       MAX((t.data::jsonb->>'percent')::float)                                                                              AS max_pct,
+		       COUNT(*)                                                                                                             AS total_items,
+		       COUNT(*) FILTER (WHERE (t.data::jsonb->>'percent')::float >= 90 OR (t.data::jsonb->>'special')::boolean IS TRUE)     AS watched_items,
+		       COALESCE(
+		         (SELECT COUNT(*)::int FROM episodes e2
+		          WHERE e2.tmdb_show_id = (SELECT mc2.tmdb_id FROM media_cards mc2 WHERE mc2.card_id = t.card_id)
+		            AND NOT e2.is_special
+		          	AND (e2.air_date IS NULL OR e2.air_date <= CURRENT_DATE)),
+		         MAX(mc.number_of_episodes), 0)                                                                                     AS total_episodes,
 		       COALESCE(MAX(mc.tmdb_id), 0),
 		       COALESCE(MAX(mc.media_type), ''),
 		       COALESCE(MAX(mc.title), ''),
@@ -437,15 +486,26 @@ func GetHistoryFiltered(ctx context.Context, f HistoryFilter) ([]HistoryEntry, H
 		var lastWatched time.Time
 		var releaseDate, firstAirDate *string
 		if err := rows.Scan(
-			&e.CardID, &lastWatched, &e.MaxPercent,
+			&e.CardID, &lastWatched, &e.MaxPercent, &e.TotalItems, &e.WatchedItems, &e.TotalEpisodes,
 			&e.TmdbID, &e.MediaType, &e.Title, &e.OriginalTitle,
 			&e.PosterPath, &releaseDate, &firstAirDate,
 		); err != nil {
 			continue
 		}
 		e.LastWatched = lastWatched.Format(time.RFC3339)
-		e.Progress = e.MaxPercent
-		e.IsComplete = e.MaxPercent >= 90
+		if e.MediaType == "tv" {
+			denom := e.TotalEpisodes
+			if denom == 0 {
+				denom = e.TotalItems // fallback: episodes with any timecode
+			}
+			if denom > 0 {
+				e.Progress = float64(e.WatchedItems) * 100 / float64(denom)
+				e.IsComplete = e.WatchedItems >= denom
+			}
+		} else {
+			e.Progress = e.MaxPercent
+			e.IsComplete = e.MaxPercent >= 90
+		}
 		if releaseDate != nil && len(*releaseDate) >= 4 {
 			e.ReleaseDate = *releaseDate
 			e.Year = (*releaseDate)[:4]
@@ -471,13 +531,19 @@ func GetHistoryFiltered(ctx context.Context, f HistoryFilter) ([]HistoryEntry, H
 		}
 	}
 
-	// Apply media_type / in_progress filters
+	// Apply media_type / in_progress / search filters
+	searchLow := strings.ToLower(f.Search)
 	filtered := all[:0:len(all)]
 	for _, e := range all {
 		if f.MediaType != "" && e.MediaType != f.MediaType {
 			continue
 		}
 		if f.InProgress && e.IsComplete {
+			continue
+		}
+		if searchLow != "" &&
+			!strings.Contains(strings.ToLower(e.Title), searchLow) &&
+			!strings.Contains(strings.ToLower(e.OriginalTitle), searchLow) {
 			continue
 		}
 		filtered = append(filtered, e)
@@ -704,9 +770,46 @@ func UpsertProfileName(ctx context.Context, deviceID int64, profileID, name stri
 	)
 }
 
+// MaybeUpdateRuntimeFromPlayer updates runtime metadata when the player reports a duration
+// that is unknown (0) or differs by more than 5% from the stored value.
+// For movies: updates runtime (minutes). For TV: updates episode_run_time (minutes).
+func MaybeUpdateRuntimeFromPlayer(cardID, mediaType string, durationSec float64) {
+	if durationSec < 60 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var storedMin int
+	var col string
+	if mediaType == "movie" {
+		col = "runtime"
+	} else {
+		col = "episode_run_time"
+	}
+	if err := postgres.Pool.QueryRow(ctx,
+		`SELECT COALESCE(`+col+`, 0) FROM media_cards WHERE card_id = $1`, cardID,
+	).Scan(&storedMin); err != nil {
+		return
+	}
+
+	storedSec := float64(storedMin) * 60
+	if storedMin > 0 {
+		if math.Abs(durationSec-storedSec)/storedSec <= 0.05 {
+			return
+		}
+	}
+
+	newMin := int(math.Round(durationSec / 60))
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`UPDATE media_cards SET `+col+` = $1, updated_at = now() WHERE card_id = $2`,
+		newMin, cardID,
+	)
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-func parsePercent(dataJSON string) float64 {
+func ParsePercent(dataJSON string) float64 {
 	var m map[string]any
 	if err := json.Unmarshal([]byte(dataJSON), &m); err != nil {
 		return 0
@@ -719,4 +822,3 @@ func parsePercent(dataJSON string) float64 {
 	}
 	return 0
 }
-

@@ -14,6 +14,7 @@ docker exec "$DB_CONTAINER" pg_dump -U "$DB_USER" "$DB_NAME" \
   -t media_cards \
   -t torrents \
   -t episodes \
+  -t app_settings \
   | gzip > "$OUT"
 
 echo "Done: $(du -h "$OUT" | cut -f1)"

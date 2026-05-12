@@ -5,6 +5,8 @@ interface User {
   username: string
   role: string
   is_admin: boolean
+  totp_enabled: boolean
+  backup_codes_count: number
 }
 
 interface AuthState {

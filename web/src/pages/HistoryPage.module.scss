@@ -28,6 +28,7 @@
   border: 1px solid $color-border;
   border-radius: $radius-sm;
   overflow: hidden;
+  width: fit-content;
 }
 
 .deviceTab {
@@ -80,12 +81,22 @@
   font-weight: 600;
 }
 
-.searchForm { flex-shrink: 0; }
+.searchForm {
+  flex-shrink: 0;
+
+  @media (max-width: $bp-sm) {
+    width: 100%;
+  }
+}
 
 .searchWrap {
   position: relative;
   display: flex;
   align-items: center;
+
+  @media (max-width: $bp-sm) {
+    width: 100%;
+  }
 }
 
 .searchIcon {
@@ -103,7 +114,7 @@
   width: 200px;
   border-radius: $radius-sm;
 
-  @media (max-width: $bp-sm) { width: 140px; }
+  @media (max-width: $bp-sm) { width: 100%; }
 }
 
 // ── Controls bar (filter tabs + sort) ─────────────────────────────────────────
@@ -122,6 +133,23 @@
   border: 1px solid $color-border;
   border-radius: $radius-sm;
   overflow: hidden;
+
+  @media (max-width: $bp-sm) {
+    display: none;
+  }
+}
+
+.filterSelect {
+  @include input-base;
+  height: 36px;
+  font-size: $font-size-sm;
+  padding: 0 $spacing-md;
+  cursor: pointer;
+  display: none;
+
+  @media (max-width: $bp-sm) {
+    display: block;
+  }
 }
 
 .filterTab {
@@ -162,7 +190,7 @@
   gap: $spacing-md;
 
   @media (max-width: $bp-sm) {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: $spacing-sm;
   }
 }
@@ -172,10 +200,9 @@
   padding: 0;
   overflow: hidden;
   position: relative;
-  text-decoration: none;
   display: block;
-  transition: transform $transition-fast, border-color $transition-fast;
   cursor: pointer;
+  transition: transform $transition-fast, border-color $transition-fast;
 
   &:hover {
     transform: translateY(-2px);
@@ -261,34 +288,58 @@
   font-size: $font-size-sm;
 }
 
-// ── Pagination ────────────────────────────────────────────────────────────────
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: $spacing-sm;
-  padding-top: $spacing-sm;
-}
-
-.pageBtn {
-  height: 36px;
-  padding: 0 $spacing-md;
-  border: 1px solid $color-border;
-  border-radius: $radius-sm;
-  background: transparent;
+.loadingMore {
+  text-align: center;
   color: $color-text-muted;
   font-size: $font-size-sm;
-  cursor: pointer;
-  transition: border-color $transition-fast, color $transition-fast;
+  padding: $spacing-md 0;
+}
 
-  &:hover:not(:disabled) { border-color: $color-primary; color: $color-primary; }
-  &:disabled { opacity: 0.4; cursor: default; }
+.sentinel {
+  height: 1px;
+}
 
-  &.current {
-    border-color: $color-primary;
-    color: $color-primary;
-    background: rgba($color-primary, 0.1);
-    cursor: default;
-  }
+// ── Floating search bar ───────────────────────────────────────────────────────
+
+.floatingBar {
+  position: fixed;
+  top: 52px;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: $color-bg-card;
+  border-bottom: 1px solid $color-border;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  animation: floatIn 150ms ease;
+}
+
+@keyframes floatIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+.floatingBarInner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: $spacing-xs $spacing-lg;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+
+  @media (max-width: $bp-md) { padding: $spacing-xs $spacing-md; }
+  @media (max-width: $bp-sm) { padding: $spacing-xs $spacing-sm; }
+}
+
+.floatingIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+  color: $color-text-muted;
+}
+
+.floatingInput {
+  @include input-base;
+  height: 34px;
+  flex: 1;
+  font-size: $font-size-sm;
+  border-radius: $radius-sm;
 }

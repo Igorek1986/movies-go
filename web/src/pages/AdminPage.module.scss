@@ -27,6 +27,8 @@
   color: $color-text;
 }
 
+// ── Desktop table ─────────────────────────────────────────────────────────────
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -38,26 +40,80 @@
     color: $color-text-muted;
     border-bottom: 1px solid $color-border;
     font-weight: 500;
+    white-space: nowrap;
   }
 
   td {
     padding: $spacing-sm $spacing-md;
     color: $color-text;
     border-bottom: 1px solid rgba($color-border, 0.5);
+    vertical-align: middle;
   }
 
-  tr:last-child td {
-    border-bottom: none;
-  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba($color-border, 0.2); }
 
-  tr:hover td {
-    background: rgba($color-border, 0.2);
-  }
+  @media (max-width: $bp-sm) { display: none; }
 }
+
+// ── Mobile cards ──────────────────────────────────────────────────────────────
+
+.cards {
+  display: none;
+  flex-direction: column;
+  gap: $spacing-sm;
+
+  @media (max-width: $bp-sm) { display: flex; }
+}
+
+.userCard {
+  background: $color-bg-input;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  padding: $spacing-md;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.cardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-sm;
+}
+
+.cardName {
+  font-size: $font-size-base;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.cardMeta {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cardDevices {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+  padding-top: $spacing-xs;
+}
+
+// ── Shared: role badge & select ───────────────────────────────────────────────
 
 .roleBadge {
   display: inline-block;
-  padding: 2px $spacing-sm;
+  padding: 3px $spacing-sm;
   border-radius: $radius-full;
   font-size: $font-size-xs;
   font-weight: 600;
@@ -67,10 +123,23 @@
   &.super   { background: rgba($color-primary, 0.15);    color: $color-primary; }
 }
 
-.actions {
-  display: flex;
-  gap: $spacing-xs;
+.roleSelect {
+  height: 28px;
+  padding: 0 $spacing-sm;
+  border-radius: $radius-sm;
+  font-size: $font-size-xs;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid $color-border;
+  background: $color-bg-input;
+  color: $color-text;
+  transition: border-color $transition-fast;
+
+  &:hover { border-color: $color-primary; }
+  &:focus { outline: none; border-color: $color-primary; }
 }
+
+// ── Shared buttons ────────────────────────────────────────────────────────────
 
 .btnSm {
   height: 28px;
@@ -81,10 +150,155 @@
   color: $color-text-muted;
   font-size: $font-size-xs;
   cursor: pointer;
+  white-space: nowrap;
   transition: border-color $transition-fast, color $transition-fast;
 
   &:hover { border-color: $color-primary; color: $color-primary; }
   &.danger:hover { border-color: $color-danger; color: $color-danger; }
+  &.warning:hover { border-color: $color-warning; color: $color-warning; }
+}
+
+// ── Row states ────────────────────────────────────────────────────────────────
+
+.rowBlocked td {
+  opacity: 0.6;
+}
+
+.userCardBlocked {
+  opacity: 0.7;
+  border-color: rgba($color-danger, 0.3);
+}
+
+.blockedBadge {
+  font-size: $font-size-xs;
+}
+
+// ── Table actions (desktop) ───────────────────────────────────────────────────
+
+.tableActions {
+  display: flex;
+  gap: $spacing-xs;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+// ── Global actions ────────────────────────────────────────────────────────────
+
+.actionsGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+}
+
+.actionBtn {
+  height: 32px;
+  padding: 0 $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover:not(:disabled) { border-color: $color-primary; color: $color-primary; }
+  &:disabled { opacity: 0.4; cursor: default; }
+
+  &.danger {
+    border-color: $color-danger;
+    color: $color-danger;
+    &:hover:not(:disabled) { border-color: $color-danger; color: $color-danger; background: rgba($color-danger, 0.08); }
+  }
+}
+
+.fixRtProgress {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  margin-top: $spacing-sm;
+}
+
+.fixRtLabel {
+  display: flex;
+  justify-content: space-between;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.fixRtBar {
+  height: 6px;
+  background: $color-border;
+  border-radius: $radius-full;
+  overflow: hidden;
+}
+
+.fixRtBarFill {
+  height: 100%;
+  background: $color-primary;
+  border-radius: $radius-full;
+  transition: width 0.5s ease;
+}
+
+.parserResetRow {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+  margin-top: $spacing-xs;
+}
+
+.parserLabel {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.dateInput {
+  @include input-base;
+  height: 32px;
+  font-size: $font-size-sm;
+  padding: 0 $spacing-sm;
+  width: 150px;
+}
+
+// ── Toasts ────────────────────────────────────────────────────────────────────
+
+.toasts {
+  position: fixed;
+  bottom: $spacing-xl;
+  right: $spacing-lg;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  pointer-events: none;
+}
+
+.toast {
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: toastIn 0.2s ease;
+}
+
+.toastOk {
+  background: rgba($color-success, 0.15);
+  border: 1px solid rgba($color-success, 0.4);
+  color: $color-success;
+}
+
+.toastErr {
+  background: rgba($color-danger, 0.15);
+  border: 1px solid rgba($color-danger, 0.4);
+  color: $color-danger;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .empty {
@@ -92,6 +306,8 @@
   font-size: $font-size-sm;
   padding: $spacing-md 0;
 }
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
 
 .stats {
   display: grid;
@@ -110,6 +326,8 @@
   font-weight: 700;
   color: $color-primary;
   margin: 0;
+
+  &.statWarn { color: $color-danger; }
 }
 
 .statLabel {

@@ -7,8 +7,12 @@ import (
 	"lampa-api/db"
 	"lampa-api/db/postgres"
 	"lampa-api/db/store"
+	"strings"
+
 	"lampa-api/internal/api"
 	"lampa-api/internal/auth"
+	"lampa-api/internal/bot"
+	"lampa-api/internal/tasks"
 	"lampa-api/movies/tmdb"
 	"lampa-api/parser"
 	"lampa-api/version"
@@ -66,6 +70,26 @@ func main() {
 
 	getDbInfo()
 
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
+
+	// Telegram бот и фоновые задачи
+	if mode == "all" {
+		if err := bot.Start(appCtx); err != nil {
+			log.Printf("Telegram bot error: %v", err)
+		} else if !cfg.TelegramUsePolling && cfg.BaseURL != "" && cfg.TelegramBotToken != "" {
+			webhookURL := strings.TrimRight(cfg.BaseURL, "/") + "/bot/webhook"
+			if err := bot.SetWebhook(webhookURL); err != nil {
+				log.Printf("Telegram webhook register error: %v", err)
+			} else {
+				log.Printf("Telegram webhook registered: %s", webhookURL)
+			}
+		}
+		tasks.Start(appCtx)
+	}
+
+	api.InitCategorySettings()
+
 	// HTTP сервер
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", httpPort),
@@ -96,9 +120,10 @@ func main() {
 	<-stop
 
 	log.Println("Shutting down...")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	srv.Shutdown(ctx) //nolint:errcheck
+	appCancel()
+	shutCtx, shutCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutCancel()
+	srv.Shutdown(shutCtx) //nolint:errcheck
 	log.Println("Done")
 }
 

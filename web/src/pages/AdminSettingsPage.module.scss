@@ -1,0 +1,225 @@
+@use '@/styles/variables' as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xl;
+  max-width: 720px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: $spacing-md;
+}
+
+.title {
+  margin: 0;
+  font-size: $font-size-xl;
+  font-weight: 700;
+  color: $color-text;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.backLink {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  text-decoration: none;
+  padding: $spacing-xs $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  transition: color $transition-fast, border-color $transition-fast;
+  &:hover { color: $color-primary; border-color: $color-primary; }
+}
+
+.alert {
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+}
+
+.alertSuccess {
+  background: rgba($color-success, 0.12);
+  border: 1px solid rgba($color-success, 0.4);
+  color: $color-success;
+}
+
+.alertError {
+  background: rgba($color-danger, 0.12);
+  border: 1px solid rgba($color-danger, 0.4);
+  color: $color-danger;
+}
+
+.alertClose {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: $font-size-lg;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.group {
+  @include card;
+  padding: 0;
+  overflow: hidden;
+}
+
+.groupSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $spacing-md $spacing-lg;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  &::-webkit-details-marker { display: none; }
+}
+
+.groupName {
+  font-size: $font-size-base;
+  font-weight: 600;
+  color: $color-text;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.restartBadge {
+  font-size: $font-size-xs;
+  font-weight: 500;
+  color: $color-warning;
+  opacity: 0.8;
+}
+
+.groupArrow {
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  transition: transform $transition-fast;
+}
+
+details[open] .groupArrow {
+  transform: rotate(90deg);
+}
+
+.groupBody {
+  padding: 0 $spacing-lg $spacing-lg;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-xs $spacing-md;
+  align-items: center;
+  border-top: 1px solid $color-border;
+  padding-top: $spacing-md;
+
+  @media (max-width: $bp-sm) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rowLabel {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin: 0;
+}
+
+.rowInput {
+  @include input-base;
+  height: 34px;
+  font-size: $font-size-sm;
+  padding: 0 $spacing-sm;
+}
+
+.rowTextarea {
+  @include input-base;
+  grid-column: 1 / -1;
+  font-size: $font-size-xs;
+  font-family: monospace;
+  padding: $spacing-sm;
+  resize: vertical;
+  min-height: 160px;
+}
+
+.rowLabelFull {
+  grid-column: 1 / -1;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin: 0;
+  margin-top: $spacing-xs;
+}
+
+.checkboxRow {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  cursor: pointer;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.checkboxInput {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: $color-primary;
+  flex-shrink: 0;
+}
+
+.footer {
+  display: flex;
+  gap: $spacing-sm;
+  justify-content: flex-end;
+}
+
+.btnReset {
+  padding: $spacing-xs $spacing-lg;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: color $transition-fast, border-color $transition-fast;
+  &:hover { color: $color-primary; border-color: $color-primary; }
+}
+
+.btnRestart {
+  padding: $spacing-xs $spacing-lg;
+  border: 1px solid $color-warning;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-warning;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background $transition-fast, color $transition-fast;
+  &:hover { background: rgba($color-warning, 0.15); }
+  &:disabled { opacity: 0.6; cursor: default; }
+}
+
+.btnSave {
+  padding: $spacing-xs $spacing-lg;
+  border: none;
+  border-radius: $radius-sm;
+  background: $color-primary;
+  color: #fff;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background $transition-fast;
+  &:hover { background: $color-primary-hover; }
+  &:disabled { opacity: 0.6; cursor: default; }
+}

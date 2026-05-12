@@ -12,6 +12,39 @@ import (
 	"time"
 )
 
+// normalizeSearch strips punctuation that varies across sources so that
+// "Ван-Пис", "Ван Пис", "Ван'Пис" all match each other.
+// Both the query and the stored column are normalized the same way.
+// normalizeSearch strips punctuation so "Ван-Пис", "Ван Пис", "Ван'Пис" all match.
+func normalizeSearch(q string) string {
+	const punct = `-''.,:;!?()[]\x27` // ASCII + common punct
+	var b strings.Builder
+	prev := ' '
+	for _, r := range strings.ToLower(q) {
+		if strings.ContainsRune(punct, r) {
+			r = ' '
+		}
+		if r == ' ' && prev == ' ' {
+			continue
+		}
+		b.WriteRune(r)
+		prev = r
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// searchSQL returns a WHERE snippet and the normalized ILIKE arg for full-text search.
+// Uses REGEXP_REPLACE on stored columns to normalize punctuation at query time.
+func searchSQL(q string, n int) (snippet string, arg string) {
+	norm := normalizeSearch(q)
+	col := `REGEXP_REPLACE(LOWER(%s), '[-''.,;:!?()\[\]]', ' ', 'g')`
+	title := fmt.Sprintf(col, "m.title")
+	orig := fmt.Sprintf(col, "m.original_title")
+	snippet = fmt.Sprintf("(%s ILIKE $%d OR %s ILIKE $%d)", title, n, orig, n)
+	arg = "%" + norm + "%"
+	return
+}
+
 // ─── Torrent cache ────────────────────────────────────────────────────────────
 
 // TorrentStatus checks if a hash has been processed before.
@@ -135,8 +168,8 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			 myshows_id, kinopoisk_id,
 			 rutor_category, best_video_quality, latest_torrent_date,
 			 last_ep_season, last_ep_number, episode_run_time,
-			 tmdb_updated_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,now(),now())
+			 tmdb_updated_at, updated_at, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,now(),now(),now())
 		ON CONFLICT (tmdb_id, media_type) DO UPDATE SET
 			title              = EXCLUDED.title,
 			original_title     = EXCLUDED.original_title,
@@ -150,7 +183,7 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			vote_count         = EXCLUDED.vote_count,
 			original_language  = EXCLUDED.original_language,
 			adult              = EXCLUDED.adult,
-			runtime            = EXCLUDED.runtime,
+			runtime            = CASE WHEN EXCLUDED.runtime > 0 THEN EXCLUDED.runtime ELSE media_cards.runtime END,
 			status             = EXCLUDED.status,
 			imdb_id            = COALESCE(EXCLUDED.imdb_id, media_cards.imdb_id),
 			genres             = EXCLUDED.genres,
@@ -161,7 +194,13 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			kinopoisk_id       = COALESCE(EXCLUDED.kinopoisk_id, media_cards.kinopoisk_id),
 			rutor_category     = COALESCE(EXCLUDED.rutor_category, media_cards.rutor_category),
 			best_video_quality = GREATEST(media_cards.best_video_quality, EXCLUDED.best_video_quality),
-			latest_torrent_date = GREATEST(media_cards.latest_torrent_date, EXCLUDED.latest_torrent_date),
+			latest_torrent_date = CASE
+				WHEN media_cards.media_type = 'tv'
+					THEN GREATEST(media_cards.latest_torrent_date, EXCLUDED.latest_torrent_date)
+				WHEN EXCLUDED.best_video_quality > media_cards.best_video_quality
+					THEN GREATEST(media_cards.latest_torrent_date, EXCLUDED.latest_torrent_date)
+				ELSE media_cards.latest_torrent_date
+			END,
 			last_ep_season     = COALESCE(EXCLUDED.last_ep_season, media_cards.last_ep_season),
 			last_ep_number     = COALESCE(EXCLUDED.last_ep_number, media_cards.last_ep_number),
 			episode_run_time   = COALESCE(EXCLUDED.episode_run_time, media_cards.episode_run_time),
@@ -196,6 +235,11 @@ func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
 		episodeRunTime = &e.EpisodeRunTime[0]
 	}
 
+	var runtimeArg *int
+	if e.Runtime > 0 {
+		runtimeArg = &e.Runtime
+	}
+
 	_, err := postgres.Pool.Exec(ctx, `
 		UPDATE media_cards SET
 			title              = $1,
@@ -213,14 +257,16 @@ func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
 			last_ep_season     = COALESCE($13, last_ep_season),
 			last_ep_number     = COALESCE($14, last_ep_number),
 			episode_run_time   = COALESCE($15, episode_run_time),
+			runtime            = COALESCE($16, runtime),
 			tmdb_updated_at    = now(),
 			updated_at         = now()
-		WHERE card_id = $16`,
+		WHERE card_id = $17`,
 		e.Title, e.OriginalTitle, e.Overview, e.PosterPath, e.BackdropPath,
 		e.VoteAverage, e.VoteCount, e.Status,
 		genresJSON,
 		nilIntFromInt(e.NumberOfSeasons), nilIntFromInt(e.NumberOfEpisodes), seasonsJSON,
 		lastEpSeason, lastEpNumber, episodeRunTime,
+		runtimeArg,
 		cardID,
 	)
 	if err != nil {
@@ -274,7 +320,6 @@ type CategoryFilter struct {
 	MinVideoQuality int
 	MaxVideoQuality int
 	MinVoteCount    int
-	OrderByNew      bool   // sort by latest_torrent_date DESC
 	OrderByRating   bool
 	Child           bool
 	Year            int    // exact release year filter
@@ -320,11 +365,6 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 				"LEFT(COALESCE(m.release_date::text, m.first_air_date::text, ''), 4) >= $%d", n))
 			args = append(args, cutoffStr)
 			n++
-			if f.MinVideoQuality < 200 {
-				where = append(where, fmt.Sprintf("m.best_video_quality >= $%d", n))
-				args = append(args, 200)
-				n++
-			}
 		}
 		if f.OldOnly {
 			where = append(where, fmt.Sprintf(
@@ -385,8 +425,9 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		where = append(where, "m.rutor_category IN ("+strings.Join(placeholders, ",")+")")
 	}
 	if f.Search != "" {
-		where = append(where, fmt.Sprintf("(m.title ILIKE $%d OR m.original_title ILIKE $%d)", n, n))
-		args = append(args, "%"+f.Search+"%")
+		snip, arg := searchSQL(f.Search, n)
+		where = append(where, snip)
+		args = append(args, arg)
 		n++
 	}
 	if f.HideWatched && f.DeviceID > 0 {
@@ -406,12 +447,12 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		whereClause = "WHERE " + strings.Join(where, " AND ")
 	}
 
-	orderBy := "m.latest_torrent_date DESC NULLS LAST"
+	orderBy := "m.latest_torrent_date DESC NULLS LAST, m.created_at DESC"
 	if f.OrderByRating {
-		orderBy = "m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST"
+		orderBy = "m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST, m.created_at DESC"
 	} else if f.OldOnly || f.Year > 0 {
 		// Archive / year categories: sort by release/air date descending
-		orderBy = "COALESCE(m.release_date, m.first_air_date) DESC NULLS LAST"
+		orderBy = "COALESCE(m.release_date, m.first_air_date) DESC NULLS LAST, m.created_at DESC"
 	}
 
 	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM media_cards m %s`, whereClause)
@@ -474,10 +515,11 @@ func SearchMedia(query string, limit int) []MediaRow {
 			m.number_of_seasons, m.seasons, m.last_ep_season, m.last_ep_number, m.updated_at,
 			m.best_video_quality, m.latest_torrent_date
 		FROM media_cards m
-		WHERE m.title ILIKE $1 OR m.original_title ILIKE $1
+		WHERE REGEXP_REPLACE(LOWER(m.title), '[-''.,;:!?()\[\]]', ' ', 'g') ILIKE $1
+		   OR REGEXP_REPLACE(LOWER(m.original_title), '[-''.,;:!?()\[\]]', ' ', 'g') ILIKE $1
 		ORDER BY m.vote_count DESC
 		LIMIT $2`,
-		"%"+query+"%", limit,
+		"%"+normalizeSearch(query)+"%", limit,
 	)
 	if err != nil {
 		log.Printf("store: search %q: %v", query, err)

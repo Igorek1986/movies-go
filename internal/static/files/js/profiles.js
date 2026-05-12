@@ -31,13 +31,14 @@ async function _loadLampaProfiles(deviceId, selectEl) {
   try {
     const res  = await fetch(`/api/profile-ids?device_id=${deviceId}`);
     const data = await res.json();
-    if (data.основной_available !== false) {
+    const profiles = data.profiles || [];
+    if (profiles.length === 0) {
       const opt = document.createElement('option');
       opt.value = '';
       opt.textContent = 'Основной (без профиля)';
       selectEl.appendChild(opt);
     }
-    (data.profiles || []).forEach(p => {
+    profiles.forEach(p => {
       if (!p.profile_id) return;
       const opt   = document.createElement('option');
       opt.value   = p.profile_id;
@@ -235,8 +236,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const progress   = document.getElementById('syncProgress');
       const status     = document.getElementById('syncStatus');
 
+      const spinner = document.getElementById('syncSpinner');
       btn.disabled = true;
       progress.hidden = false;
+      if (spinner) spinner.hidden = false;
       status.textContent = 'Начинаю синхронизацию…';
 
       const body = new FormData();
@@ -304,6 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 break;
               case 'done': {
+                if (spinner) spinner.hidden = true;
                 const notFound = evt.not_found || [];
                 const trimmed  = evt.trimmed  || 0;
                 let html = evt.message;
@@ -313,14 +317,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (notFound.length) {
                   const list = notFound.map(s => `<li>${s}</li>`).join('');
-                  html += `<br><b>Не найдено в TMDB (${notFound.length}):</b><ul style="margin:.4em 0 0 1em;text-align:left">${list}</ul>`;
+                  html += `<br><b>Не найдено (${notFound.length}):</b><ul style="margin:.4em 0 0 1em;text-align:left">${list}</ul>`;
                 }
-                if (!trimmed && !notFound.length) html += ' Обновление…';
+                const needsManualClose = notFound.length > 0 || trimmed > 0;
+                if (needsManualClose) {
+                  html += `<br><button onclick="location.reload()" style="margin-top:.6em">Закрыть</button>`;
+                } else {
+                  html += ' Обновление…';
+                }
                 status.innerHTML = html;
-                setTimeout(() => location.reload(), trimmed ? 10000 : notFound.length ? 6000 : 1500);
+                if (!needsManualClose) {
+                  setTimeout(() => location.reload(), 1500);
+                }
                 break;
               }
               case 'error':
+                if (spinner) spinner.hidden = true;
                 status.textContent = '❌ ' + evt.message;
                 break;
             }

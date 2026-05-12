@@ -31,12 +31,19 @@ done
 
 # ── 3. Restore dump if media_cards is empty ───────────────────────────────────
 if [ -f dump.sql.gz ]; then
+  # Apply schema first so media_cards table exists before we count rows.
+  docker compose exec -T db psql -U "$DB_USER" "$DB_NAME" -q < db/postgres/schema.sql 2>/dev/null || true
+
   COUNT=$(docker compose exec -T db psql -U "$DB_USER" "$DB_NAME" -t \
-    -c "SELECT COUNT(*) FROM media_cards;" 2>/dev/null | tr -d ' \n' || echo "0")
+    -c "SELECT COUNT(*) FROM media_cards;" 2>/dev/null | tr -d ' \n')
+  COUNT="${COUNT:-0}"
 
   if [ "$COUNT" = "0" ]; then
     echo "Restoring dump.sql.gz ($(du -h dump.sql.gz | cut -f1))..."
-    zcat dump.sql.gz | docker compose exec -T db psql -U "$DB_USER" "$DB_NAME" -q
+    # Strip \restrict/\unrestrict lines added by newer pg_dump versions —
+    # they break psql when running non-interactively via docker exec.
+    gunzip -c dump.sql.gz | grep -v '^\\\(restrict\|unrestrict\)' \
+      | docker compose exec -T db psql -U "$DB_USER" "$DB_NAME" -q
     echo "Restore complete."
   else
     echo "media_cards already has $COUNT rows — skipping restore."

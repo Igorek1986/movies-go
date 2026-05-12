@@ -56,7 +56,7 @@ func handleMediaCard(w http.ResponseWriter, r *http.Request) {
 		&ageRating, &certRU, &genresJSON, &bestQuality,
 		&latestTorrent, &rutorCat, &imdbID,
 	); err != nil {
-		Error(w, http.StatusNotFound, "not found")
+		handleMediaCardFromTMDB(w, cardID)
 		return
 	}
 
@@ -122,6 +122,98 @@ func handleMediaCard(w http.ResponseWriter, r *http.Request) {
 			}
 			return ""
 		}(),
+	})
+}
+
+// handleMediaCardFromTMDB — fallback when card_id is not in the local DB.
+// card_id format: "{tmdb_id}_{media_type}", e.g. "1150420_movie".
+func handleMediaCardFromTMDB(w http.ResponseWriter, cardID string) {
+	parts := strings.SplitN(cardID, "_", 2)
+	if len(parts) != 2 {
+		Error(w, http.StatusNotFound, "not found")
+		return
+	}
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		Error(w, http.StatusNotFound, "not found")
+		return
+	}
+	mediaType := parts[1]
+	isMovie := mediaType == "movie"
+
+	ent := tmdb.GetVideoDetails(isMovie, id)
+	if ent == nil {
+		Error(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	title := ent.Title
+	if title == "" {
+		title = ent.Name
+	}
+	origTitle := ent.OriginalTitle
+	if origTitle == "" {
+		origTitle = ent.OriginalName
+	}
+	releaseDate := ent.ReleaseDate
+	if releaseDate == "" {
+		releaseDate = ent.FirstAirDate
+	}
+	year := ""
+	if len(releaseDate) >= 4 {
+		year = releaseDate[:4]
+	}
+
+	type genreOut struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	genres := make([]genreOut, 0, len(ent.Genres))
+	for _, g := range ent.Genres {
+		genres = append(genres, genreOut{ID: g.ID, Name: g.Name})
+	}
+
+	epRunTime := 0
+	if len(ent.EpisodeRunTime) > 0 {
+		epRunTime = ent.EpisodeRunTime[0]
+	}
+
+	movieItem := ""
+	if isMovie && origTitle != "" {
+		movieItem = lampaHash(origTitle)
+	}
+
+	JSON(w, http.StatusOK, map[string]any{
+		"card_id":            cardID,
+		"tmdb_id":            id,
+		"media_type":         mediaType,
+		"title":              title,
+		"original_title":     origTitle,
+		"overview":           ent.Overview,
+		"poster_path":        ent.PosterPath,
+		"backdrop_path":      ent.BackdropPath,
+		"release_date":       ent.ReleaseDate,
+		"first_air_date":     ent.FirstAirDate,
+		"last_air_date":      ent.LastAirDate,
+		"year":               year,
+		"vote_average":       ent.VoteAverage,
+		"vote_count":         ent.VoteCount,
+		"runtime":            ent.Runtime,
+		"episode_run_time":   epRunTime,
+		"original_language":  ent.OriginalLanguage,
+		"adult":              ent.Adult,
+		"status":             ent.Status,
+		"number_of_seasons":  ent.NumberOfSeasons,
+		"number_of_episodes": ent.NumberOfEpisodes,
+		"seasons":            nil,
+		"age_rating":         0,
+		"certification_ru":   "",
+		"genres":             genres,
+		"best_video_quality": 0,
+		"torrent_date":       "",
+		"rutor_category":     "",
+		"imdb_id":            ent.ImdbID,
+		"movie_item":         movieItem,
 	})
 }
 

@@ -154,7 +154,30 @@ func GetContinues(ctx context.Context, deviceID int64, profileID, mediaFilter st
 	return result, total
 }
 
-// GetPopular returns globally popular cards weighted by view_count.
+// RecordPlayEvent records one unique play per (card, ident, day). ON CONFLICT DO NOTHING.
+func RecordPlayEvent(ctx context.Context, cardID, ident string) {
+	if cardID == "" || ident == "" {
+		return
+	}
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`INSERT INTO media_play_events (card_id, ident, date)
+		 VALUES ($1, $2, CURRENT_DATE)
+		 ON CONFLICT DO NOTHING`,
+		cardID, ident,
+	)
+}
+
+// HasPopularData reports whether any play events exist within the given day window.
+func HasPopularData(ctx context.Context, days int) bool {
+	var count int
+	postgres.Pool.QueryRow(ctx, //nolint:errcheck
+		`SELECT COUNT(*) FROM media_play_events WHERE date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')`,
+		days,
+	).Scan(&count)
+	return count > 0
+}
+
+// GetPopular returns globally popular cards by unique plays from media_play_events.
 func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaRow, int) {
 	if page < 1 {
 		page = 1
@@ -167,19 +190,18 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 	var args []any
 	args = append(args, 30) // popular_period_days
 	if search != "" {
-		searchWhere = " AND (m.title ILIKE $2 OR m.original_title ILIKE $2)"
-		args = append(args, "%"+search+"%")
+		snip, arg := searchSQL(search, 2)
+		searchWhere = " AND " + snip
+		args = append(args, arg)
 	}
 
 	baseSQL := fmt.Sprintf(`
-		SELECT t.card_id, SUM(t.view_count) AS weight
-		FROM timecodes t
-		JOIN media_cards m ON m.card_id = t.card_id
-		WHERE t.view_count > 0
-		  AND t.counted_at >= (CURRENT_DATE - ($1::int * INTERVAL '1 day'))
+		SELECT e.card_id, COUNT(*) AS weight
+		FROM media_play_events e
+		JOIN media_cards m ON m.card_id = e.card_id
+		WHERE e.date >= (CURRENT_DATE - ($1::int * INTERVAL '1 day'))
 		  %s
-		GROUP BY t.card_id
-		HAVING SUM(t.view_count) > 0
+		GROUP BY e.card_id
 		ORDER BY weight DESC`, searchWhere)
 
 	var total int

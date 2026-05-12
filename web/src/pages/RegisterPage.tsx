@@ -57,7 +57,7 @@ export default function RegisterPage() {
           />
         </label>
 
-        <label className={styles.field}>
+        <div className={styles.field}>
           <span>Пароль</span>
           <input
             className={styles.input}
@@ -66,11 +66,15 @@ export default function RegisterPage() {
             value={password}
             onChange={e => setPassword(e.target.value)}
             disabled={loading}
+            minLength={6}
             required
           />
-        </label>
+          {password.length > 0 && password.length < 6 && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-danger, #e05252)' }}>минимум 6 символов</span>
+          )}
+        </div>
 
-        <label className={styles.field}>
+        <div className={styles.field}>
           <span>Повторите пароль</span>
           <input
             className={styles.input}
@@ -81,7 +85,12 @@ export default function RegisterPage() {
             disabled={loading}
             required
           />
-        </label>
+          {password2.length > 0 && (
+            <span style={{ fontSize: '0.75rem', color: password === password2 ? 'var(--color-success, #4caf50)' : 'var(--color-danger, #e05252)' }}>
+              {password === password2 ? 'Пароли совпадают' : 'Пароли не совпадают'}
+            </span>
+          )}
+        </div>
 
         <button className={styles.btn} type="submit" disabled={loading}>
           {loading ? 'Регистрация…' : 'Создать аккаунт'}

@@ -1,20 +1,32 @@
 @use '@/styles/variables' as *;
 
+$nav-height: 52px;
+
 .layout {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   background: $color-bg;
+  padding-top: $nav-height;
 }
+
+// ── Nav bar ───────────────────────────────────────────────────────────────────
 
 .nav {
   @include flex-between;
   padding: $spacing-sm $spacing-lg;
   background: $color-bg-card;
   border-bottom: 1px solid $color-border;
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 100;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  gap: $spacing-sm;
+
+  @media (max-width: $bp-md) {
+    padding: $spacing-sm $spacing-md;
+  }
 }
 
 .brand {
@@ -23,20 +35,28 @@
   color: $color-primary;
   text-decoration: none;
   letter-spacing: -0.5px;
+  flex-shrink: 0;
 }
 
+// Desktop links — hidden on mobile
 .navLinks {
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
+  gap: $spacing-xs;
+
+  @media (max-width: $bp-md) {
+    display: none;
+  }
 }
 
 .navLink {
-  padding: $spacing-xs $spacing-md;
+  padding: $spacing-xs $spacing-sm;
   border-radius: $radius-sm;
   color: $color-text-muted;
   text-decoration: none;
   font-size: $font-size-sm;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: color $transition-fast, background $transition-fast;
 
   &:hover {
@@ -54,16 +74,18 @@
   font-size: $font-size-sm;
   color: $color-text-muted;
   padding: $spacing-xs $spacing-sm;
+  white-space: nowrap;
 }
 
 .btnLogout {
-  padding: $spacing-xs $spacing-md;
+  padding: $spacing-xs $spacing-sm;
   border: 1px solid $color-border;
   border-radius: $radius-sm;
   background: transparent;
   color: $color-text-muted;
   font-size: $font-size-sm;
   cursor: pointer;
+  white-space: nowrap;
   transition: color $transition-fast, border-color $transition-fast;
 
   &:hover {
@@ -72,14 +94,133 @@
   }
 }
 
+// ── Burger button — visible on mobile only ────────────────────────────────────
+
+.burger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+  border: none;
+  border-radius: $radius-sm;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+
+  span {
+    display: block;
+    height: 2px;
+    background: $color-text-muted;
+    border-radius: 2px;
+    transition: transform $transition-normal, opacity $transition-normal, background $transition-fast;
+    transform-origin: center;
+  }
+
+  &:hover span { background: $color-text; }
+
+  // Animate to X when open
+  &.burgerOpen span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  &.burgerOpen span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+  &.burgerOpen span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+  @media (max-width: $bp-md) {
+    display: flex;
+  }
+}
+
+// ── Mobile overlay ────────────────────────────────────────────────────────────
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 150;
+  backdrop-filter: blur(2px);
+}
+
+// ── Mobile drawer (slides from top-right / full width) ───────────────────────
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(280px, 85vw);
+  background: $color-bg-card;
+  border-left: 1px solid $color-border;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  padding: $spacing-xl $spacing-lg $spacing-lg;
+  gap: $spacing-md;
+  transform: translateX(100%);
+  transition: transform $transition-normal;
+  overflow-y: auto;
+
+  &.drawerOpen {
+    transform: translateX(0);
+  }
+}
+
+.drawerUser {
+  font-size: $font-size-base;
+  font-weight: 600;
+  color: $color-text;
+  padding-bottom: $spacing-md;
+  border-bottom: 1px solid $color-border;
+}
+
+.drawerLinks {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  flex: 1;
+
+  // override navLink for vertical layout
+  .navLink {
+    display: block;
+    padding: $spacing-sm $spacing-md;
+    font-size: $font-size-base;
+    border-radius: $radius-sm;
+  }
+}
+
+.drawerLogout {
+  width: 100%;
+  padding: $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  text-align: center;
+  transition: color $transition-fast, border-color $transition-fast;
+
+  &:hover {
+    color: $color-danger;
+    border-color: $color-danger;
+  }
+}
+
+// ── Main content ──────────────────────────────────────────────────────────────
+
 .main {
   flex: 1;
   padding: $spacing-xl $spacing-lg;
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
 
   @media (max-width: $bp-md) {
     padding: $spacing-lg $spacing-md;
+  }
+
+  @media (max-width: $bp-sm) {
+    padding: $spacing-md $spacing-sm;
   }
 }

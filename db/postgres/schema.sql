@@ -202,9 +202,18 @@ CREATE TABLE IF NOT EXISTS media_cards (
     status               VARCHAR(100),
     imdb_id              VARCHAR(20),
     certification_ru     VARCHAR(10),
+    certification_us     VARCHAR(10),
     kinopoisk_id         BIGINT,
     myshows_id           INT,
+    myshows_show_id      INT,
+    myshows_status       VARCHAR(100),
+    myshows_total_episodes INT,
+    myshows_network      VARCHAR(200),
+    myshows_next_air_date VARCHAR(20),
+    myshows_updated_at   TIMESTAMPTZ,
     genres               JSONB,
+    production_countries JSONB,
+    keywords             JSONB,
     number_of_seasons    INT,
     number_of_episodes   INT,
     seasons              JSONB,
@@ -213,6 +222,7 @@ CREATE TABLE IF NOT EXISTS media_cards (
     next_ep_air_date     VARCHAR(20),
     episodes_synced_at   TIMESTAMPTZ,
     age_rating           INT,
+    year                 INT,
     rutor_category       VARCHAR(50),
     best_video_quality   INT          NOT NULL DEFAULT 0,
     latest_torrent_date  TIMESTAMPTZ,
@@ -310,3 +320,29 @@ CREATE TABLE IF NOT EXISTS stats_category_requests (
     requests INT          NOT NULL DEFAULT 1,
     CONSTRAINT uq_category_ip_date UNIQUE (category, ip, date)
 );
+
+-- ─── Play events (popularity tracking) ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS media_play_events (
+    card_id VARCHAR(100) NOT NULL REFERENCES media_cards(card_id) ON DELETE CASCADE,
+    ident   VARCHAR(100) NOT NULL,
+    date    DATE         NOT NULL DEFAULT CURRENT_DATE,
+    PRIMARY KEY (card_id, ident, date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_play_events_date ON media_play_events (date);
+
+-- ─── Migrations: add columns to existing tables ───────────────────────────────
+-- These are safe to run on any existing DB (IF NOT EXISTS is idempotent).
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS certification_us       VARCHAR(10);
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_show_id        INT;
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_status         VARCHAR(100);
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_total_episodes INT;
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_network        VARCHAR(200);
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_next_air_date  VARCHAR(20);
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_updated_at     TIMESTAMPTZ;
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS production_countries   JSONB;
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS keywords               JSONB;
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS year                   INT;
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS created_at             TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE timecodes   ADD COLUMN IF NOT EXISTS created_at             TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE UNIQUE INDEX IF NOT EXISTS uq_devices_user_name ON devices (user_id, lower(name));

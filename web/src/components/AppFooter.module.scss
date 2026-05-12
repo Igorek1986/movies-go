@@ -1,0 +1,42 @@
+@use '@/styles/variables' as *;
+
+.footer {
+  text-align: center;
+  padding: $spacing-xl $spacing-lg;
+  border-top: 1px solid $color-border;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $spacing-xs;
+}
+
+.tmdbLogo {
+  height: 16px;
+  opacity: 0.6;
+  display: block;
+}
+
+.attribution {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+.links {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+.link {
+  color: $color-text-muted;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+
+  &:hover {
+    color: $color-primary;
+  }
+}
+
+.sep {
+  margin: 0 6px;
+  opacity: 0.5;
+}

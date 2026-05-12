@@ -14,7 +14,46 @@
   padding: $spacing-2xl 0;
   font-size: $font-size-sm;
 
-  button { margin-top: $spacing-md; }
+  button { margin-bottom: $spacing-md; }
+}
+
+// ── Floating back button (fixed, вне потока) ──────────────────────────────────
+
+.floatBack {
+  position: fixed;
+  bottom: $spacing-xl;
+  left: $spacing-lg;
+  z-index: 50;
+  // On wide viewports align with the content container left edge
+  @media (min-width: 1200px) {
+    left: calc((100vw - 1200px) / 2 + #{$spacing-lg});
+  }
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  padding: $spacing-xs $spacing-md;
+  text-decoration: none;
+  background: rgba($color-bg-card, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid $color-border;
+  border-radius: $radius-full;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+
+  &:hover {
+    border-color: $color-primary;
+    color: $color-primary;
+    background: rgba($color-bg-card, 1);
+  }
+
+  @media (max-width: $bp-sm) {
+    bottom: $spacing-md;
+    left: $spacing-sm;
+  }
 }
 
 // ── Backdrop ─────────────────────────────────────────────────────────────────
@@ -23,18 +62,20 @@
   position: relative;
   width: calc(100% + $spacing-2xl * 2);
   margin: -$spacing-2xl (-$spacing-2xl) 0;
-  height: 320px;
   overflow: hidden;
 
   img {
     width: 100%;
-    height: 100%;
+    aspect-ratio: 16/6;
     object-fit: cover;
+    object-position: center 20%;
     display: block;
+
+    @media (max-width: $bp-md) { aspect-ratio: 16/7; }
+    @media (max-width: $bp-sm) { aspect-ratio: 16/9; }
   }
 
   @media (max-width: $bp-sm) {
-    height: 200px;
     margin: -$spacing-lg (-$spacing-lg) 0;
     width: calc(100% + $spacing-lg * 2);
   }
@@ -43,7 +84,7 @@
 .backdropOverlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, transparent 30%, $color-bg 100%);
+  background: linear-gradient(to bottom, rgba($color-bg, 0.1) 0%, transparent 20%, $color-bg 90%);
 }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
@@ -57,9 +98,13 @@
   z-index: 1;
 
   @media (max-width: $bp-md) {
-    flex-direction: column;
-    margin-top: -60px;
     gap: $spacing-lg;
+    margin-top: -80px;
+  }
+
+  @media (max-width: $bp-sm) {
+    gap: $spacing-md;
+    margin-top: -50px;
   }
 }
 
@@ -68,6 +113,7 @@
   width: 200px;
 
   @media (max-width: $bp-md) { width: 140px; }
+  @media (max-width: $bp-sm) { width: 90px; }
 }
 
 .poster {
@@ -98,18 +144,8 @@
   padding-top: $spacing-md;
 }
 
-.backBtn {
-  align-self: flex-start;
-  padding: $spacing-xs $spacing-md;
-  border: 1px solid $color-border;
-  border-radius: $radius-sm;
-  background: transparent;
-  color: $color-text-muted;
-  font-size: $font-size-sm;
-  cursor: pointer;
-  transition: border-color $transition-fast, color $transition-fast;
-
-  &:hover { border-color: $color-primary; color: $color-primary; }
+.heroNoBg {
+  margin-top: $spacing-lg !important;
 }
 
 .title {
@@ -172,6 +208,73 @@
   color: $color-primary;
 }
 
+// ── Device / profile switcher ─────────────────────────────────────────────────
+
+.deviceSwitcher {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.deviceTabGroup {
+  display: flex;
+  gap: 0;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.deviceTab {
+  padding: $spacing-xs $spacing-md;
+  border: none;
+  border-right: 1px solid $color-border;
+  background: $color-bg-card;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background $transition-fast, color $transition-fast;
+
+  &:last-child { border-right: none; }
+  &:hover { background: rgba($color-primary, 0.08); color: $color-text; }
+}
+
+.deviceTabActive {
+  background: $color-primary;
+  color: #fff;
+  &:hover { background: $color-primary-hover; }
+}
+
+.profileTabGroup {
+  display: flex;
+  gap: $spacing-xs;
+  flex-wrap: wrap;
+  padding-left: 2px;
+}
+
+.profileTab {
+  padding: 2px $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-full;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background $transition-fast, color $transition-fast, border-color $transition-fast;
+
+  &:hover { border-color: $color-primary; color: $color-primary; }
+}
+
+.profileTabActive {
+  background: rgba($color-primary, 0.15);
+  border-color: $color-primary;
+  color: $color-primary;
+  font-weight: 600;
+}
+
 // ── Movie progress ────────────────────────────────────────────────────────────
 
 .progressWrap {
@@ -210,13 +313,50 @@
   &:hover { color: #e05252; }
 }
 
+// ── Progress bars (movie hero + TV overall) ───────────────────────────────────
+
+.tvBar {
+  width: 100%;
+  height: 6px;
+  background: $color-bg-input;
+  border-radius: $radius-full;
+  overflow: hidden;
+}
+
+.tvBarFill {
+  height: 100%;
+  background: $color-primary;
+  border-radius: $radius-full;
+  transition: width 0.2s ease;
+}
+
+// Clickable variant for movie hero — same structure but with pointer
+.movieBar {
+  width: 100%;
+  height: 8px;
+  background: $color-bg-input;
+  border-radius: $radius-full;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  &:hover { opacity: 0.85; }
+}
+
+.movieBarFill {
+  height: 100%;
+  background: $color-primary;
+  border-radius: $radius-full;
+  transition: width 0.15s ease;
+  pointer-events: none;
+}
+
 // ── Interactive bar ───────────────────────────────────────────────────────────
 
 .iBar {
   flex: 1;
-  min-width: 0;
-  width: 100%;
+  min-width: 60px;
   height: 8px;
+  min-height: 8px;
   background: $color-bg-input;
   border-radius: $radius-full;
   overflow: hidden;
@@ -253,6 +393,25 @@
 .statusLabel {
   color: $color-text;
   font-weight: 600;
+}
+
+.refreshTmdbBtn {
+  align-self: flex-start;
+  margin-top: $spacing-md;
+  padding: $spacing-xs $spacing-md;
+  font-size: $font-size-sm;
+  background: transparent;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  color: $color-text-muted;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+
+  &:hover:not(:disabled) {
+    color: $color-text;
+    border-color: $color-text;
+  }
+  &:disabled { opacity: 0.5; cursor: default; }
 }
 
 // ── Sections ──────────────────────────────────────────────────────────────────
@@ -419,11 +578,22 @@
 
 .epRow {
   display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: $spacing-xs $spacing-md $spacing-sm;
+  border-top: 1px solid $color-border;
+}
+
+.epTop {
+  display: flex;
   align-items: center;
   gap: $spacing-sm;
-  padding: $spacing-xs $spacing-md;
-  border-top: 1px solid $color-border;
-  min-height: 36px;
+}
+
+.epBottom {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
 }
 
 .epCode {
@@ -432,7 +602,6 @@
   color: $color-text;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
-  min-width: 52px;
   white-space: nowrap;
 }
 
@@ -469,7 +638,10 @@
   font-size: $font-size-xs;
   color: $color-text-muted;
   font-weight: 400;
-  margin-left: $spacing-xs;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .epTimeSpecial {
@@ -538,6 +710,38 @@
   font-weight: 700;
   color: $color-text;
   text-align: center;
+}
+
+.tpNote {
+  margin: 0;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  text-align: center;
+}
+
+.pctRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: $spacing-sm;
+}
+
+.pctInput {
+  width: 72px;
+  height: 42px;
+  background: $color-bg;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  color: $color-text;
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-align: center;
+  &:focus { outline: none; border-color: $color-primary; }
+}
+
+.pctSign {
+  font-size: 1.25rem;
+  color: $color-text-muted;
 }
 
 // row that holds drum columns + separators

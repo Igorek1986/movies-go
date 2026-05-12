@@ -51,5 +51,14 @@ func handlePatchPluginSettings(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	go func() {
+		msg, _ := json.Marshal(map[string]any{
+			"plugin":           plugin,
+			"key":              body.Key,
+			"value":            body.Value,
+			"lampa_profile_id": profileID,
+		})
+		SettingsHub.Broadcast(d.UserID, d.ID, msg)
+	}()
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

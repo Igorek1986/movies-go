@@ -45,16 +45,28 @@ func handleSaveTimecode(w http.ResponseWriter, r *http.Request) {
 	profileID := r.URL.Query().Get("profile_id")
 	profileName := r.URL.Query().Get("profile_name")
 
+	// Extract player-reported duration before storing.
+	var playerDur struct{ Duration float64 `json:"duration"` }
+	json.Unmarshal([]byte(body.Data), &playerDur) //nolint:errcheck
+
 	store.UpsertTimecodes(r.Context(), d.ID, profileID, []store.TimecodeRow{
 		{CardID: body.CardID, Item: body.Item, Data: body.Data},
 	})
 	store.TrimToLimit(r.Context(), d.ID, profileID, deviceUserRole(r, d))
 	store.UpsertProfileName(r.Context(), d.ID, profileID, profileName)
 
+	// Update runtime/episode_run_time from player-reported duration when reliable.
+	if m := cardIDRe.FindStringSubmatch(body.CardID); m != nil && playerDur.Duration > 60 {
+		go store.MaybeUpdateRuntimeFromPlayer(body.CardID, m[2], playerDur.Duration)
+	}
+
 	// Фоновое обновление метаданных карточки из TMDB, не чаще раза в сутки.
 	if m := cardIDRe.FindStringSubmatch(body.CardID); m != nil {
 		go refreshCardFromTMDB(body.CardID)
 	}
+
+	// Broadcast to other devices of the same user.
+	go broadcastTimecode(d.UserID, d.ID, profileID, body.CardID, body.Item, body.Data)
 
 	JSON(w, http.StatusOK, map[string]bool{"success": true})
 }
@@ -294,6 +306,7 @@ func handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "update error")
 		return
 	}
+	go broadcastProfileUpdated(d.UserID, d.ID, profileID, req.Name, req.Icon)
 	JSON(w, http.StatusOK, map[string]any{"ok": true, "profile_id": profileID})
 }
 
@@ -341,11 +354,50 @@ func handlePutFavorite(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if err := store.SaveFavorite(r.Context(), d.ID, r.URL.Query().Get("profile_id"), body.Favorite); err != nil {
+	profileID := r.URL.Query().Get("profile_id")
+	if err := store.SaveFavorite(r.Context(), d.ID, profileID, body.Favorite); err != nil {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	go broadcastFavorite(d.UserID, d.ID, profileID, body.Favorite)
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// ─── WS broadcast helpers ─────────────────────────────────────────────────────
+
+func broadcastTimecode(userID, deviceID int64, profileID, cardID, item, data string) {
+	msg, _ := json.Marshal(map[string]any{
+		"type":       "timecode",
+		"profile_id": profileID,
+		"card_id":    cardID,
+		"item":       item,
+		"data":       json.RawMessage(data),
+	})
+	TimecodeHub.Broadcast(userID, deviceID, msg)
+}
+
+func broadcastFavorite(userID, deviceID int64, profileID string, favorite any) {
+	msg, _ := json.Marshal(map[string]any{
+		"type":       "favorite",
+		"profile_id": profileID,
+		"favorite":   favorite,
+	})
+	TimecodeHub.Broadcast(userID, deviceID, msg)
+}
+
+func broadcastProfileUpdated(userID, deviceID int64, profileID string, name *string, icon *string) {
+	payload := map[string]any{
+		"type":       "profile_updated",
+		"profile_id": profileID,
+	}
+	if name != nil {
+		payload["name"] = *name
+	}
+	if icon != nil {
+		payload["icon"] = *icon
+	}
+	msg, _ := json.Marshal(payload)
+	TimecodeHub.Broadcast(userID, deviceID, msg)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

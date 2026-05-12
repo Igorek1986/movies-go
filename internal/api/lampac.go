@@ -1,16 +1,76 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"lampa-api/db/models"
 	"lampa-api/db/store"
+	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 )
+
+var popularSourceURL = strings.TrimRight(os.Getenv("POPULAR_SOURCE_URL"), "/")
+
+func proxyToPopularSource(w http.ResponseWriter, r *http.Request) {
+	target := popularSourceURL + "/np_popular"
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
+	if err != nil {
+		Error(w, http.StatusBadGateway, "popular source unavailable")
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		Error(w, http.StatusBadGateway, "popular source unavailable")
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body) //nolint:errcheck
+}
+
+func forwardPlayEvent(cardID, uid string, pct int) {
+	if popularSourceURL == "" {
+		return
+	}
+	url := fmt.Sprintf("%s/api/view?card_id=%s&uid=%s&percent=%d",
+		popularSourceURL,
+		cardID, uid, pct,
+	)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, nil)
+	if err != nil {
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err == nil {
+		resp.Body.Close()
+	}
+}
+
+func realIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		return strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
+	}
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
 
 // ─── Category route map ───────────────────────────────────────────────────────
 
@@ -19,14 +79,14 @@ import (
 var categoryRoutes = map[string]store.CategoryFilter{
 	// Movies — старые (year < currentYear-1), сортировка по release_date
 	"movies": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "notru", OldOnly: true},
-	// Новые фильмы — только 2025–2026, 1080p+, сортировка по дате торрента
-	"movies_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "notru", NewOnly: true, OrderByNew: true},
+	// Новые фильмы — только последние YearDelta лет, MinVideoQuality+, сортировка по дате торрента
+	"movies_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "notru", NewOnly: true, MinVideoQuality: 200},
 	// Русские
 	"movies_ru":     {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "ru", OldOnly: true},
-	"movies_ru_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "ru", NewOnly: true, OrderByNew: true},
+	"movies_ru_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, Language: "ru", NewOnly: true, MinVideoQuality: 200},
 	// 4K — yearDelta=4 в NUMParser: новые = 2023–2026, старые = до 2023
 	"movies_4k":     {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVideoQuality: 300, OldOnly: true, YearDelta: 4},
-	"movies_4k_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVideoQuality: 300, NewOnly: true, YearDelta: 4, OrderByNew: true},
+	"movies_4k_new": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVideoQuality: 300, NewOnly: true, YearDelta: 4},
 	// Легенды — рейтинговые
 	"legends_id": {MediaTypes: []string{"movie"}, Categories: []string{models.CatMovie}, MinVoteCount: 1000, OrderByRating: true},
 	// TV — no OldOnly because there is no separate tv_shows_new category
@@ -45,6 +105,10 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 	category := strings.TrimPrefix(r.URL.Path, "/")
 	category = strings.SplitN(category, "/", 2)[0]
 	category = strings.TrimPrefix(category, "lampac_")
+
+	ip := realIP(r)
+	go store.TrackAPIUser(ip)
+	go store.TrackCategoryRequest(category, ip)
 
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))
@@ -66,7 +130,11 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 
 	// ── np_popular ────────────────────────────────────────────────────────────
 	if category == "np_popular" {
-		handlePopular(w, r, page, perPage, searchQ)
+		if popularSourceURL != "" {
+			proxyToPopularSource(w, r)
+		} else {
+			handlePopular(w, r, page, perPage, searchQ)
+		}
 		return
 	}
 
@@ -180,6 +248,23 @@ func handleContinues(w http.ResponseWriter, r *http.Request, category, profileID
 		"total_pages":   totalPages,
 		"total_results": total,
 	})
+}
+
+// ─── POST /api/view ───────────────────────────────────────────────────────────
+// Records a play event for popularity tracking.
+// With token: ident = profile_id or device_id (server-verified).
+// Without token: ident = uid query param (client-provided, deduplicated per day).
+
+func handleView(w http.ResponseWriter, r *http.Request) {
+	cardID := r.URL.Query().Get("card_id")
+	uid := r.URL.Query().Get("uid")
+	pct, _ := strconv.Atoi(r.URL.Query().Get("percent"))
+
+	if cardID != "" && uid != "" && pct >= 30 {
+		store.RecordPlayEvent(r.Context(), cardID, uid)
+		go forwardPlayEvent(cardID, uid, pct)
+	}
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // ─── Popular ──────────────────────────────────────────────────────────────────
@@ -350,5 +435,37 @@ func emptyPage(page int) map[string]any {
 	return map[string]any{
 		"page": page, "results": []any{},
 		"total_pages": 1, "total_results": 0,
+	}
+}
+
+// InitCategorySettings reads configurable category filter values from app_settings
+// and applies them to categoryRoutes. Called once at startup — requires restart to take effect.
+func InitCategorySettings() {
+	ctx := context.Background()
+
+	set := func(key string, delta int) {
+		f := categoryRoutes[key]
+		f.YearDelta = delta
+		categoryRoutes[key] = f
+	}
+	setQ := func(key string, q int) {
+		f := categoryRoutes[key]
+		f.MinVideoQuality = q
+		categoryRoutes[key] = f
+	}
+
+	if d := store.GetSettingInt(ctx, "movies_new_year_delta"); d > 0 {
+		set("movies_new", d)
+		set("movies_ru_new", d)
+		set("movies", d)
+		set("movies_ru", d)
+	}
+	if d := store.GetSettingInt(ctx, "movies_4k_year_delta"); d > 0 {
+		set("movies_4k_new", d)
+		set("movies_4k", d)
+	}
+	if q := store.GetSettingInt(ctx, "movies_new_min_quality"); q > 0 {
+		setQ("movies_new", q)
+		setQ("movies_ru_new", q)
 	}
 }

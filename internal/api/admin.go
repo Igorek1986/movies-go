@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"lampa-api/db/postgres"
 	"lampa-api/db/store"
-	"lampa-api/internal/render"
+	tasks "lampa-api/internal/tasks"
+	"lampa-api/movies/tmdb"
 	"math"
 	"net/http"
-	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -17,22 +18,94 @@ import (
 
 func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	var users, devices, cards, timecodes int
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&users)             //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&devices)         //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards`).Scan(&cards)       //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes`).Scan(&timecodes)     //nolint:errcheck
-	JSON(w, http.StatusOK, map[string]int{
-		"users":       users,
-		"devices":     devices,
-		"media_cards": cards,
-		"timecodes":   timecodes,
+	var users, usersToday, devices, devicesToday, cards, cardsToday, timecodes, timecodesToday int
+	var noRuntimeMovies, noRuntimeTV int
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&users)                                                    //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE created_at::date = CURRENT_DATE`).Scan(&usersToday)         //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&devices)                                                //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices WHERE created_at::date = CURRENT_DATE`).Scan(&devicesToday)     //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards`).Scan(&cards)                                              //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE created_at::date = CURRENT_DATE`).Scan(&cardsToday)   //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes`).Scan(&timecodes)                                            //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes WHERE created_at::date = CURRENT_DATE`).Scan(&timecodesToday) //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='movie' AND (runtime IS NULL OR runtime=0)`).Scan(&noRuntimeMovies)                        //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='tv' AND (episode_run_time IS NULL OR episode_run_time=0)`).Scan(&noRuntimeTV) //nolint:errcheck
+
+	type newUser struct {
+		Username  string `json:"username"`
+		CreatedAt string `json:"created_at"`
+	}
+	var newUsersToday []newUser
+	if rows, err := postgres.Pool.Query(ctx,
+		`SELECT username, created_at FROM users WHERE created_at::date = CURRENT_DATE ORDER BY created_at DESC`,
+	); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var u newUser
+			var t time.Time
+			if rows.Scan(&u.Username, &t) == nil {
+				u.CreatedAt = t.Format("15:04:05")
+				newUsersToday = append(newUsersToday, u)
+			}
+		}
+	}
+	if newUsersToday == nil {
+		newUsersToday = []newUser{}
+	}
+
+	apiToday, apiIPsToday, apiReqsToday := store.GetAPIUserStats(true)
+	apiTotal, _, _ := store.GetAPIUserStats(false)
+	catsToday := store.GetCategoryStats(true)
+	catsTotal := store.GetCategoryStats(false)
+	myshowsToday := store.GetMyShowsStats(true)
+	myshowsTotal := store.GetMyShowsStats(false)
+
+	if apiToday == nil {
+		apiToday = []store.StatRow{}
+	}
+	if apiTotal == nil {
+		apiTotal = []store.StatRow{}
+	}
+	if catsToday == nil {
+		catsToday = []store.StatRow{}
+	}
+	if catsTotal == nil {
+		catsTotal = []store.StatRow{}
+	}
+	if myshowsToday == nil {
+		myshowsToday = []store.StatRow{}
+	}
+	if myshowsTotal == nil {
+		myshowsTotal = []store.StatRow{}
+	}
+
+	JSON(w, http.StatusOK, map[string]any{
+		"users":             users,
+		"users_today":       usersToday,
+		"devices":           devices,
+		"devices_today":     devicesToday,
+		"media_cards":          cards,
+		"media_cards_today":    cardsToday,
+		"no_runtime_movies":    noRuntimeMovies,
+		"no_runtime_tv":        noRuntimeTV,
+		"timecodes":         timecodes,
+		"timecodes_today":   timecodesToday,
+		"new_users_today":   newUsersToday,
+		"api_ips_today":     apiIPsToday,
+		"api_reqs_today":    apiReqsToday,
+		"api_today":         apiToday,
+		"api_total":         apiTotal,
+		"cats_today":        catsToday,
+		"cats_total":        catsTotal,
+		"myshows_today":     myshowsToday,
+		"myshows_total":     myshowsTotal,
 	})
 }
 
 func handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	rows, err := postgres.Pool.Query(r.Context(), `
 		SELECT u.id, u.username, u.role, u.is_admin, u.created_at,
+		       u.blocked_at, u.block_reason, u.premium_until,
 		       COUNT(d.id) AS device_count
 		FROM users u
 		LEFT JOIN devices d ON d.user_id = u.id
@@ -45,19 +118,32 @@ func handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type userView struct {
-		ID          int64  `json:"id"`
-		Username    string `json:"username"`
-		Role        string `json:"role"`
-		IsAdmin     bool   `json:"is_admin"`
-		CreatedAt   string `json:"created_at"`
-		DeviceCount int    `json:"device_count"`
+		ID           int64   `json:"id"`
+		Username     string  `json:"username"`
+		Role         string  `json:"role"`
+		IsAdmin      bool    `json:"is_admin"`
+		CreatedAt    string  `json:"created_at"`
+		BlockedAt    *string `json:"blocked_at"`
+		BlockReason  *string `json:"block_reason"`
+		PremiumUntil *string `json:"premium_until"`
+		DeviceCount  int     `json:"device_count"`
 	}
 	var result []userView
 	for rows.Next() {
 		var u userView
 		var createdAt time.Time
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.IsAdmin, &createdAt, &u.DeviceCount); err == nil {
+		var blockedAt, premiumUntil *time.Time
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.IsAdmin, &createdAt,
+			&blockedAt, &u.BlockReason, &premiumUntil, &u.DeviceCount); err == nil {
 			u.CreatedAt = createdAt.Format("2006-01-02T15:04:05Z")
+			if blockedAt != nil {
+				s := blockedAt.Format("2006-01-02T15:04:05Z")
+				u.BlockedAt = &s
+			}
+			if premiumUntil != nil {
+				s := premiumUntil.Format("2006-01-02")
+				u.PremiumUntil = &s
+			}
 			result = append(result, u)
 		}
 	}
@@ -68,6 +154,30 @@ func handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 // ─── Web history (session auth) ───────────────────────────────────────────────
+
+// handleWebHistoryAll returns all history entries as a flat JSON array.
+// Used by the legacy history.js template page which does client-side filtering.
+func handleWebHistoryAll(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	if u == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	q := r.URL.Query()
+	deviceID, _ := strconv.ParseInt(q.Get("device_id"), 10, 64)
+
+	entries, _, _ := store.GetHistoryFiltered(r.Context(), store.HistoryFilter{
+		UserID:    u.ID,
+		DeviceID:  deviceID,
+		ProfileID: q.Get("profile_id"),
+		Page:      1,
+		PerPage:   10000,
+	})
+	if entries == nil {
+		entries = []store.HistoryEntry{}
+	}
+	JSON(w, http.StatusOK, entries)
+}
 
 func handleWebHistory(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
@@ -92,6 +202,7 @@ func handleWebHistory(w http.ResponseWriter, r *http.Request) {
 		ProfileID:  q.Get("profile_id"),
 		MediaType:  q.Get("media_type"),
 		InProgress: q.Get("in_progress") == "1",
+		Search:     q.Get("search"),
 		Sort:       q.Get("sort"),
 		Page:       page,
 		PerPage:    perPage,
@@ -406,7 +517,19 @@ func handleAdminSetRole(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "invalid role")
 		return
 	}
-	if err := store.SetUserRole(r.Context(), id, req.Role); err != nil {
+	if req.Role == "premium" {
+		days := store.GetSettingInt(r.Context(), "premium_duration_days")
+		if days <= 0 {
+			days = 30
+		}
+		_, err = postgres.Pool.Exec(r.Context(),
+			`UPDATE users SET role = $1, premium_until = now() + ($2 || ' days')::interval WHERE id = $3`,
+			req.Role, strconv.Itoa(days), id)
+	} else {
+		_, err = postgres.Pool.Exec(r.Context(),
+			`UPDATE users SET role = $1, premium_until = NULL WHERE id = $2`, req.Role, id)
+	}
+	if err != nil {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
@@ -426,231 +549,85 @@ func handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// ─── Admin HTML page ──────────────────────────────────────────────────────────
+// ─── JSON API admin user actions ──────────────────────────────────────────────
 
-type adminUserRow struct {
-	ID           int64
-	Username     string
-	Role         string
-	IsAdmin      bool
-	Blocked      bool
-	BlockedSince string
-	BlockReason  string
-	CreatedAt    string
-	DeviceCount  int
-	DeviceLimit  string
-	PremiumUntil string
-}
-
-type adminDashData struct {
-	Users      []adminUserRow
-	Roles      []string
-	Success    string
-	Error      string
-	ParserDate string // current rutor_last_parsed_at in YYYY-MM-DD for date input
-}
-
-func requireAdminPage(w http.ResponseWriter, r *http.Request) bool {
-	u := userFromCtx(r)
-	if u == nil || !u.IsAdmin {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return false
-	}
-	return true
-}
-
-func adminRedirect(w http.ResponseWriter, r *http.Request, key, msg string) {
-	v := url.Values{key: {msg}}
-	http.Redirect(w, r, "/admin?"+v.Encode(), http.StatusFound)
-}
-
-// GET /admin
-func handleAdminPage(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
-		return
-	}
-	u := userFromCtx(r)
-	success := r.URL.Query().Get("success")
-	errMsg := r.URL.Query().Get("error")
-
-	rows, err := postgres.Pool.Query(r.Context(), `
-		SELECT u.id, u.username, u.role, u.is_admin,
-		       u.blocked_at, u.block_reason, u.created_at, u.premium_until,
-		       COUNT(d.id) AS device_count
-		FROM users u
-		LEFT JOIN devices d ON d.user_id = u.id
-		GROUP BY u.id
-		ORDER BY u.id`)
-	if err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var users []adminUserRow
-	for rows.Next() {
-		var row adminUserRow
-		var blockedAt, premiumUntil *time.Time
-		var blockReason *string
-		var createdAt time.Time
-		if err := rows.Scan(&row.ID, &row.Username, &row.Role, &row.IsAdmin,
-			&blockedAt, &blockReason, &createdAt, &premiumUntil, &row.DeviceCount); err != nil {
-			continue
-		}
-		row.CreatedAt = createdAt.Format("02.01.2006")
-		if blockedAt != nil {
-			row.Blocked = true
-			row.BlockedSince = blockedAt.Format("02.01.2006")
-		}
-		if blockReason != nil {
-			row.BlockReason = *blockReason
-		}
-		if premiumUntil != nil {
-			row.PremiumUntil = premiumUntil.Format("02.01.2006")
-		}
-		lim := store.LimitsFor(row.Role)
-		if lim.MaxDevices == 0 {
-			row.DeviceLimit = "∞"
-		} else {
-			row.DeviceLimit = strconv.Itoa(lim.MaxDevices)
-		}
-		users = append(users, row)
-	}
-	if users == nil {
-		users = []adminUserRow{}
-	}
-
-	parserDate := ""
-	if t := store.LastParsedAt(); !t.IsZero() {
-		parserDate = t.Format("2006-01-02")
-	}
-
-	render.Page(w, r, "admin_dashboard", u, adminDashData{
-		Users:      users,
-		Roles:      []string{"simple", "premium", "super"},
-		Success:    success,
-		Error:      errMsg,
-		ParserDate: parserDate,
-	})
-}
-
-// POST /admin/user/{id}/role
-func handleAdminUserSetRole(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
-		return
-	}
+func handleAPIAdminToggleAdmin(w http.ResponseWriter, r *http.Request) {
+	me := userFromCtx(r)
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		adminRedirect(w, r, "error", "invalid id")
-		return
-	}
-	r.ParseForm() //nolint:errcheck
-	role := r.FormValue("role")
-	switch role {
-	case "simple", "premium", "super":
-	default:
-		adminRedirect(w, r, "error", "invalid role")
-		return
-	}
-	store.SetUserRole(r.Context(), id, role) //nolint:errcheck
-	adminRedirect(w, r, "success", "Роль изменена")
-}
-
-// POST /admin/user/{id}/toggle-admin
-func handleAdminUserToggleAdmin(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
-		return
-	}
-	u := userFromCtx(r)
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil || id == u.ID {
-		adminRedirect(w, r, "error", "недопустимая операция")
+	if err != nil || (me != nil && id == me.ID) {
+		Error(w, http.StatusBadRequest, "недопустимая операция")
 		return
 	}
 	postgres.Pool.Exec(r.Context(), `UPDATE users SET is_admin = NOT is_admin WHERE id = $1`, id) //nolint:errcheck
-	adminRedirect(w, r, "success", "Изменено")
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// POST /admin/user/{id}/block
-func handleAdminUserBlock(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
+func handleAPIAdminBlock(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	r.ParseForm() //nolint:errcheck
-	reason := r.FormValue("reason")
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
 	now := time.Now()
-	if reason != "" {
+	if body.Reason != "" {
 		postgres.Pool.Exec(r.Context(), //nolint:errcheck
-			`UPDATE users SET blocked_at = $1, block_reason = $2 WHERE id = $3 AND is_admin = false`, now, reason, id)
+			`UPDATE users SET blocked_at = $1, block_reason = $2 WHERE id = $3 AND is_admin = false`, now, body.Reason, id)
 	} else {
 		postgres.Pool.Exec(r.Context(), //nolint:errcheck
-			`UPDATE users SET blocked_at = $1 WHERE id = $2 AND is_admin = false`, now, id)
+			`UPDATE users SET blocked_at = $1, block_reason = NULL WHERE id = $2 AND is_admin = false`, now, id)
 	}
-	adminRedirect(w, r, "success", "Пользователь заблокирован")
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// POST /admin/user/{id}/unblock
-func handleAdminUserUnblock(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
+func handleAPIAdminUnblock(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	postgres.Pool.Exec(r.Context(), //nolint:errcheck
 		`UPDATE users SET blocked_at = NULL, block_reason = NULL WHERE id = $1`, id)
-	adminRedirect(w, r, "success", "Пользователь разблокирован")
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// POST /admin/user/{id}/delete
-func handleAdminUserDelete(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
+func handleAPIAdminResetSync(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	u := userFromCtx(r)
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if id == u.ID {
-		adminRedirect(w, r, "error", "нельзя удалить себя")
-		return
-	}
-	store.DeleteUser(r.Context(), id) //nolint:errcheck
-	adminRedirect(w, r, "success", "Пользователь удалён")
+	ResetUserSyncCounter(id)
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// POST /admin/user/{id}/reset-sync — сброс счётчика MyShows синхронизаций
-func handleAdminUserResetSync(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
+func handleAPIAdminCleanupLimits(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	postgres.Pool.Exec(r.Context(), //nolint:errcheck
-		`UPDATE users SET myshows_synced_today = 0 WHERE id = $1`, id)
-	adminRedirect(w, r, "success", "Счётчик MyShows сброшен")
+	var role string
+	postgres.Pool.QueryRow(r.Context(), `SELECT role FROM users WHERE id = $1`, id).Scan(&role) //nolint:errcheck
+	deleted := store.CleanupUserOverlimit(r.Context(), id, role)
+	JSON(w, http.StatusOK, map[string]any{"status": "ok", "deleted_devices": deleted})
 }
 
-// POST /admin/user/{id}/cleanup-limits — сброс счётчиков импорта
-func handleAdminUserCleanupLimits(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
-		return
-	}
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	postgres.Pool.Exec(r.Context(), //nolint:errcheck
-		`UPDATE users SET imported_today = 0 WHERE id = $1`, id)
-	adminRedirect(w, r, "success", "Счётчики лимитов сброшены")
+// ─── JSON API global admin actions ────────────────────────────────────────────
+
+func handleAPIAdminRunExpiryCheck(w http.ResponseWriter, r *http.Request) {
+	go func() {
+		postgres.Pool.Exec(r.Context(), //nolint:errcheck
+			`UPDATE users SET role = 'simple', premium_until = NULL
+			 WHERE role = 'premium' AND premium_until IS NOT NULL AND premium_until < now()`)
+	}()
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// POST /admin/run-expiry-check
-func handleAdminRunExpiryCheck(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
-		return
-	}
-	adminRedirect(w, r, "success", "Проверка Premium запущена")
-}
-
-// POST /admin/extend-all-premium
-func handleAdminExtendAllPremium(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
-		return
-	}
+func handleAPIAdminExtendAllPremium(w http.ResponseWriter, r *http.Request) {
 	days := store.GetSettingInt(r.Context(), "premium_extend_all_days")
 	if days <= 0 {
 		days = 3
@@ -658,61 +635,70 @@ func handleAdminExtendAllPremium(w http.ResponseWriter, r *http.Request) {
 	postgres.Pool.Exec(r.Context(), //nolint:errcheck
 		`UPDATE users SET premium_until = COALESCE(premium_until, now()) + ($1 || ' days')::interval
 		 WHERE role = 'premium'`, strconv.Itoa(days))
-	adminRedirect(w, r, "success", "Premium продлён для всех пользователей")
+	JSON(w, http.StatusOK, map[string]any{"status": "ok", "days": days})
 }
 
-// POST /admin/episodes-refresh
-func handleAdminEpisodesRefresh(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
-		return
-	}
-	adminRedirect(w, r, "success", "Обновление эпизодов запущено")
+func handleAPIAdminEpisodesRefresh(w http.ResponseWriter, r *http.Request) {
+	go tasks.RunRefreshOngoingEpisodes(tasks.AppCtx())
+	JSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "Обновление эпизодов запущено"})
 }
 
-// POST /admin/episodes-find-ids
-func handleAdminEpisodesFindIDs(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
+func handleAPIAdminFixRuntime(w http.ResponseWriter, r *http.Request) {
+	if tasks.GetFixRuntimeStatus().Running {
+		JSON(w, http.StatusOK, map[string]any{"status": "already_running"})
 		return
 	}
-	adminRedirect(w, r, "success", "Поиск MyShows ID запущен")
+	go tasks.RunFixZeroRuntime(tasks.AppCtx())
+	JSON(w, http.StatusOK, map[string]any{"status": "started"})
 }
 
-// POST /admin/parser-reset-date
-func handleAdminParserResetDate(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
+func handleAPIAdminFixRuntimeStop(w http.ResponseWriter, r *http.Request) {
+	tasks.StopFixZeroRuntime()
+	JSON(w, http.StatusOK, map[string]any{"status": "stopped"})
+}
+
+func handleAPIAdminFixRuntimeStatus(w http.ResponseWriter, r *http.Request) {
+	JSON(w, http.StatusOK, tasks.GetFixRuntimeStatus())
+}
+
+func handleAPIAdminRefreshCard(w http.ResponseWriter, r *http.Request) {
+	cardID := chi.URLParam(r, "card_id")
+	m := cardIDRe.FindStringSubmatch(cardID)
+	if m == nil {
+		Error(w, http.StatusBadRequest, "invalid card_id")
 		return
 	}
-	dateStr := r.FormValue("date")
-	t, err := time.Parse("2006-01-02", dateStr)
+	tmdbID, _ := strconv.ParseInt(m[1], 10, 64)
+	isMovie := m[2] == "movie"
+
+	ctx := r.Context()
+	ent := tmdb.GetVideoDetails(isMovie, tmdbID)
+	if ent == nil {
+		Error(w, http.StatusNotFound, "TMDB не вернул данные")
+		return
+	}
+	store.RefreshCardTMDB(ctx, cardID, ent)
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func handleAPIAdminParserReset(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Date string `json:"date"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	t, err := time.Parse("2006-01-02", body.Date)
 	if err != nil || t.IsZero() {
-		adminRedirect(w, r, "error", "Неверная дата")
+		Error(w, http.StatusBadRequest, "неверная дата")
 		return
 	}
 	store.SetLastParsedAtTime(t)
-	adminRedirect(w, r, "success", "Дата парсера сброшена на "+t.Format("02.01.2006"))
+	JSON(w, http.StatusOK, map[string]string{"status": "ok", "date": t.Format("2006-01-02")})
 }
 
-// ─── Admin settings page ──────────────────────────────────────────────────────
-
-type settingRow struct {
-	Key      string
-	Label    string
-	Value    string
-	Textarea bool
-	Checkbox bool
-	ShowsKey string // for checkboxes: related input key to show/hide
-}
-
-type settingGroupRendered struct {
-	Name string
-	Rows []settingRow
-}
-
-type adminSettingsData struct {
-	Groups  []settingGroupRendered
-	Success string
-	Error   string
-}
+// ─── Admin settings ───────────────────────────────────────────────────────────
 
 // textareaKeys and checkboxKeys mirror FastAPI TEXTAREA_KEYS / CHECKBOX_KEYS.
 var textareaSettingKeys = map[string]bool{
@@ -722,64 +708,6 @@ var textareaSettingKeys = map[string]bool{
 var checkboxSettingKeys = map[string]string{
 	"yandex_metrika_enabled":   "yandex_metrika_id",
 	"google_analytics_enabled": "google_analytics_id",
-}
-
-// settingLabels mirrors FastAPI LABELS.
-var settingLabels = map[string]string{
-	"simple_device_limit":   "Simple — устройств",
-	"simple_profile_limit":  "Simple — профилей",
-	"simple_timecode_limit": "Simple — таймкодов на профиль",
-	"simple_favorite_limit": "Simple — закладок на категорию",
-	"simple_import_daily":   "Simple — импортов в сутки",
-	"premium_device_limit":    "Premium — устройств",
-	"premium_profile_limit":   "Premium — профилей",
-	"premium_timecode_limit":  "Premium — таймкодов на профиль",
-	"premium_favorite_limit":  "Premium — закладок на категорию",
-	"premium_import_daily":    "Premium — импортов в сутки",
-	"premium_myshows_daily":   "Premium — MyShows синков в сутки",
-	"premium_duration_days":   "Premium — длительность (дней)",
-	"super_device_limit":   "Super — устройств (0=∞)",
-	"super_profile_limit":  "Super — профилей (0=∞)",
-	"super_timecode_limit": "Super — таймкодов на профиль (0=∞)",
-	"super_favorite_limit": "Super — закладок на категорию (0=∞)",
-	"super_import_daily":   "Super — импортов в сутки (0=∞)",
-	"super_myshows_daily":  "Super — MyShows синков в сутки (0=∞)",
-	"episodes_future_threshold": "Порог будущих серий (меньше — обновляем)",
-	"episodes_refresh_batch":    "Размер пачки при обновлении",
-	"episodes_refresh_delay":    "Пауза между пачками (сек)",
-	"inactive_delete_days":     "Автоудаление неактивных аккаунтов (дней, 0 = выкл)",
-	"inactive_warn_days":       "Предупреждение об удалении аккаунта (дней до удаления)",
-	"timecode_grace_days":      "Грейс-период таймкодов (дней)",
-	"premium_warn_days":        "Предупреждение об истечении Premium (дней)",
-	"premium_extend_all_days":  "Продлить всем Premium (дней)",
-	"watched_threshold":        "Порог «просмотрено» (%)",
-	"popular_period_days":      "Популярное — период (дней)",
-	"daily_task_hour":          "Час запуска ежедневной задачи (0–23)",
-	"default_timezone":         "Таймзона по умолчанию",
-	"session_ttl_days":          "Срок сессии (дней)",
-	"session_renew_days":        "Продление сессии (дней до истечения)",
-	"device_token_ttl_days":     "Срок токена устройства (дней)",
-	"device_code_ttl_minutes":   "TTL кода устройства (мин)",
-	"telegram_link_ttl_minutes": "TTL кода Telegram (мин)",
-	"reset_code_ttl_minutes":    "TTL кода сброса пароля (мин)",
-	"pending_2fa_ttl_sec":       "Ожидание 2FA (сек)",
-	"rate_login_max":          "Rate: login — попыток",
-	"rate_login_window_sec":   "Rate: login — окно (сек)",
-	"rate_register_max":       "Rate: register — попыток",
-	"rate_register_window_sec": "Rate: register — окно (сек)",
-	"rate_forgot_max":         "Rate: forgot — попыток",
-	"rate_forgot_window_sec":  "Rate: forgot — окно (сек)",
-	"rate_2fa_max":            "Rate: 2FA — попыток",
-	"rate_2fa_window_sec":     "Rate: 2FA — окно (сек)",
-	"sync_cooldown_sec":       "MyShows cooldown (сек)",
-	"yandex_metrika_enabled":   "Яндекс.Метрика — включена",
-	"yandex_metrika_id":        "Яндекс.Метрика ID",
-	"google_analytics_enabled": "Google Analytics — включена",
-	"google_analytics_id":      "Google Analytics ID",
-	"site_name":              "Название сервиса",
-	"contact_email":          "Контактный email",
-	"privacy_policy_content": "Текст Политики обработки персональных данных (HTML)",
-	"consent_content":        "Текст Согласия на обработку персональных данных (HTML)",
 }
 
 // settingsGroupDefs mirrors FastAPI GROUPS.
@@ -829,72 +757,39 @@ var settingsGroupDefs = []struct {
 		"rate_2fa_max", "rate_2fa_window_sec",
 		"sync_cooldown_sec",
 	}},
+	{"Категории парсера (требует перезапуска)", []string{
+		"movies_new_year_delta", "movies_new_min_quality", "movies_4k_year_delta",
+	}},
 }
 
-func buildSettingsGroups(all map[string]string) []settingGroupRendered {
-	groups := make([]settingGroupRendered, 0, len(settingsGroupDefs))
-	for _, gd := range settingsGroupDefs {
-		g := settingGroupRendered{Name: gd.Name}
-		for _, key := range gd.Keys {
-			label := settingLabels[key]
-			if label == "" {
-				label = key
-			}
-			val := all[key]
-			row := settingRow{
-				Key:      key,
-				Label:    label,
-				Value:    val,
-				Textarea: textareaSettingKeys[key],
-				Checkbox: checkboxSettingKeys[key] != "",
-				ShowsKey: checkboxSettingKeys[key],
-			}
-			g.Rows = append(g.Rows, row)
-		}
-		groups = append(groups, g)
-	}
-	return groups
-}
-
-// GET /admin/settings
-func handleAdminSettings(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
-		return
-	}
-	u := userFromCtx(r)
+// GET /api/admin/settings
+func handleAPIAdminSettingsGet(w http.ResponseWriter, r *http.Request) {
 	all := store.GetAllSettings(r.Context())
-	render.Page(w, r, "admin_settings", u, adminSettingsData{
-		Groups:  buildSettingsGroups(all),
-		Success: r.URL.Query().Get("success"),
-		Error:   r.URL.Query().Get("error"),
-	})
+	JSON(w, http.StatusOK, all)
 }
 
-// POST /admin/settings
-func handleAdminSettingsSave(w http.ResponseWriter, r *http.Request) {
-	if !requireAdminPage(w, r) {
+// POST /api/admin/settings
+func handleAPIAdminSettingsSave(w http.ResponseWriter, r *http.Request) {
+	var body map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		v := url.Values{"error": {"Ошибка запроса"}}
-		http.Redirect(w, r, "/admin/settings?"+v.Encode(), http.StatusFound)
-		return
-	}
-	// Collect all known keys from all groups
 	for _, gd := range settingsGroupDefs {
 		for _, key := range gd.Keys {
-			if checkboxSettingKeys[key] != "" {
-				// Checkbox: present = "1", absent = "0"
-				if r.FormValue(key) == "1" {
-					store.SetSetting(r.Context(), key, "1")
-				} else {
-					store.SetSetting(r.Context(), key, "0")
-				}
+			val, ok := body[key]
+			if !ok {
 				continue
 			}
-			val := r.FormValue(key)
+			if checkboxSettingKeys[key] != "" {
+				v := "0"
+				if val == "1" || val == "true" {
+					v = "1"
+				}
+				store.SetSetting(r.Context(), key, v)
+				continue
+			}
 			if textareaSettingKeys[key] {
-				// Textarea: always save (allow empty)
 				store.SetSetting(r.Context(), key, val)
 			} else if val != "" {
 				store.SetSetting(r.Context(), key, val)
@@ -902,6 +797,14 @@ func handleAdminSettingsSave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	store.InvalidateLimitsCache()
-	v := url.Values{"success": {"Настройки сохранены"}}
-	http.Redirect(w, r, "/admin/settings?"+v.Encode(), http.StatusFound)
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// POST /api/admin/restart
+func handleAPIAdminRestart(w http.ResponseWriter, r *http.Request) {
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		os.Exit(0)
+	}()
 }

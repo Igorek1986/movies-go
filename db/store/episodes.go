@@ -84,6 +84,41 @@ func GetEpisodes(ctx context.Context, tmdbShowID int64) []EpisodeRow {
 	return result
 }
 
+// GetStaleOngoingCards returns TV media cards that have timecodes on a device
+// and need episode sync (episodes_synced_at is NULL or before today UTC).
+func GetStaleOngoingCards(ctx context.Context, deviceID int64) []*MediaCardEpInfo {
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT DISTINCT mc.card_id, mc.tmdb_id, COALESCE(mc.original_title,''),
+		       COALESCE(mc.title,''), mc.imdb_id, mc.myshows_id,
+		       mc.episodes_synced_at, mc.next_ep_air_date, mc.episode_run_time, mc.status,
+		       COALESCE(LEFT(COALESCE(mc.first_air_date::text, mc.release_date::text,''),4),'')
+		FROM timecodes t
+		JOIN media_cards mc ON mc.card_id = t.card_id
+		WHERE t.device_id = $1
+		  AND mc.media_type = 'tv'
+		  AND mc.myshows_id IS NOT NULL
+		  AND (mc.episodes_synced_at IS NULL
+		       OR mc.episodes_synced_at < CURRENT_DATE)
+		LIMIT 50`, deviceID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var result []*MediaCardEpInfo
+	for rows.Next() {
+		mc := &MediaCardEpInfo{}
+		if err := rows.Scan(
+			&mc.CardID, &mc.TmdbID, &mc.OriginalTitle, &mc.Title, &mc.ImdbID,
+			&mc.MyshowsID, &mc.EpisodesSyncedAt, &mc.NextEpAirDate, &mc.EpisodeRunTime,
+			&mc.Status, &mc.Year,
+		); err == nil {
+			result = append(result, mc)
+		}
+	}
+	return result
+}
+
 // UpsertEpisodes replaces all episodes for a show with a fresh set from MyShows.
 func UpsertEpisodes(ctx context.Context, tmdbShowID int64, eps []EpisodeRow) error {
 	tx, err := postgres.Pool.Begin(ctx)

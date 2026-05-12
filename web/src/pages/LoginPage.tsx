@@ -1,13 +1,15 @@
 import { useState, FormEvent } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import styles from './AuthPage.module.scss'
 
 export default function LoginPage() {
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const success = searchParams.get('success')
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -19,10 +21,14 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       })
+      const data = await res.json().catch(() => ({}))
       if (res.ok) {
-        nav('/', { replace: true })
+        if (data.requires_2fa) {
+          nav(`/verify-2fa?t=${data.pending_token}`, { replace: true })
+        } else {
+          nav('/', { replace: true })
+        }
       } else {
-        const data = await res.json().catch(() => ({}))
         setError(data.error || 'Ошибка входа')
       }
     } catch {
@@ -37,6 +43,9 @@ export default function LoginPage() {
       <form className={styles.card} onSubmit={submit} noValidate>
         <h1 className={styles.title}>Вход</h1>
 
+        {success === 'password_reset' && (
+          <p className={styles.success}>Пароль успешно изменён. Войдите с новым паролем.</p>
+        )}
         {error && <p className={styles.error}>{error}</p>}
 
         <label className={styles.field}>
@@ -71,6 +80,9 @@ export default function LoginPage() {
 
         <p className={styles.hint}>
           Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
+        </p>
+        <p className={styles.hint}>
+          <Link to="/forgot-password">Забыли пароль?</Link>
         </p>
       </form>
     </div>

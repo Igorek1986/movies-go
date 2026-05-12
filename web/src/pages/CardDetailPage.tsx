@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef, useLayoutEffect, useCallback, useMemo } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, Link, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl, tmdbUrl } from '@/utils/poster'
+import { useAuth } from '@/hooks/useAuth'
 import styles from './CardDetailPage.module.scss'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -25,11 +26,13 @@ interface Genre   { id: number; name: string }
 interface Season  { season_number: number; name: string; episode_count: number; air_date: string }
 interface CastMember { id: number; name: string; character: string; profile_path: string | null }
 interface SimilarItem { card_id: string; tmdb_id: number; media_type: string; title: string; poster_path: string; year: string }
+interface Device { id: number; name: string; token: string }
+interface Profile { device_id: number; profile_id: string; name: string }
 interface CardTimecode { item: string; percent: number; time: number; duration_sec: number | null; profile_id: string; special: boolean }
 interface TimePickerCtx { initialSec: number; maxSec: number; item: string; profileId: string }
 interface EpisodeData {
   season: number; episode: number; title: string | null
-  hash: string; watched: boolean; special: boolean; user_special: boolean
+  hash: string; watched: boolean; special: boolean; user_special: boolean; catalog_special: boolean
   percent: number; duration_sec: number | null; future: boolean; air_date: string | null
 }
 
@@ -50,11 +53,17 @@ function episodeItem(season: number, ep: number, origTitle: string): string {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function loadActiveDevice(): { id: number; name: string; token: string } | null {
-  for (const key of ['catalog_device', 'history_device']) {
-    try { const v = localStorage.getItem(key); if (v) return JSON.parse(v) } catch {}
-  }
-  return null
+function loadActiveDevice(): Device | null {
+  try { const v = localStorage.getItem('active_device'); return v ? JSON.parse(v) : null } catch { return null }
+}
+function loadActiveProfile(): Profile | null {
+  try { const v = localStorage.getItem('active_profile'); return v ? JSON.parse(v) : null } catch { return null }
+}
+function saveActiveDevice(d: Device | null) {
+  try { d ? localStorage.setItem('active_device', JSON.stringify(d)) : localStorage.removeItem('active_device') } catch {}
+}
+function saveActiveProfile(p: Profile | null) {
+  try { p ? localStorage.setItem('active_profile', JSON.stringify(p)) : localStorage.removeItem('active_profile') } catch {}
 }
 
 function fmtTime(sec: number): string {
@@ -141,6 +150,34 @@ function TimePicker({ ctx, onConfirm, onCancel }: {
   onConfirm: (ctx: TimePickerCtx, sec: number) => void
   onCancel: () => void
 }) {
+  // ── Percent-only mode when duration is unknown ────────────────────────────
+  const [pct, setPct] = useState(ctx.initialSec)  // initialSec is percent (0-100) in this mode
+
+  if (ctx.maxSec === 0) {
+    return (
+      <div className={styles.tpOverlay} onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
+        <div className={styles.tpDialog}>
+          <p className={styles.tpTitle}>Установить прогресс</p>
+          <p className={styles.tpNote}>Длительность неизвестна</p>
+          <div className={styles.pctRow}>
+            <input
+              type="number" min={0} max={100}
+              value={pct}
+              onChange={e => setPct(Math.min(100, Math.max(0, Math.round(+e.target.value))))}
+              className={styles.pctInput}
+            />
+            <span className={styles.pctSign}>%</span>
+          </div>
+          <div className={styles.tpBtns}>
+            <button className={styles.tpOk} onClick={() => onConfirm(ctx, pct)}>OK</button>
+            <button className={styles.tpCancel} onClick={onCancel}>Отмена</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Time drum picker ──────────────────────────────────────────────────────
   const showH  = ctx.maxSec >= 3600
   const capH   = showH ? Math.floor(ctx.maxSec / 3600) : 0
 
@@ -269,8 +306,14 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
   // ── Watched counts ───────────────────────────────────────────────────────────
   function watchedAndTotal(sn: number): [number, number] {
     if (useAPI) {
-      const eps = seasonGroupsFromAPI!.find(([n]) => n === sn)?.[1] ?? []
-      const watched = eps.filter(e => e.watched || e.special).length
+      const allEps = seasonGroupsFromAPI!.find(([n]) => n === sn)?.[1] ?? []
+      const eps = allEps.filter(ep => !ep.catalog_special) // exclude catalog specials from count
+      if (eps.length === 0) return [0, allEps.length === 0 ? 0 : -1] // all specials → show ?
+      const watched = eps.filter(ep => {
+        if (ep.user_special) return true
+        const tc = tcMap[ep.hash]
+        return tc != null && (tc.percent >= 90 || tc.special)
+      }).length
       return [watched, eps.length]
     }
     const season = seasonsFromCard.find(s => s.season_number === sn)
@@ -292,7 +335,7 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
       e.stopPropagation()
       if (useAPI) {
         const items = (seasonGroupsFromAPI!.find(([n]) => n === sn)?.[1] ?? [])
-          .filter(ep => !ep.future)
+          .filter(ep => !ep.future && !ep.catalog_special)
           .map(ep => ({ item: ep.hash, profileId: tcMap[ep.hash]?.profile_id ?? defaultProfileId }))
         onMarkAllWatched(items)
       } else {
@@ -334,33 +377,40 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
       const durSec = ep.duration_sec ?? tc?.duration_sec ?? epDurSec
       const timeSec = tc?.time ?? 0
       const profileId = tc?.profile_id ?? defaultProfileId
-      const isUserSpecial = ep.user_special
-      const isAnySpecial  = ep.special
+      const pct = tc?.percent ?? ep.percent
+      // catalog_special = real special from episodes DB (e.g. season 0 extras)
+      // user_special = user manually marked via ★ button
+      // Show "спец" only for catalog specials; user-watched (via MyShows sync) shows as green bar
+      const isCatalogSpecial = ep.catalog_special
+      const isUserMarked = ep.user_special
+      const isWatched = pct >= 90 || isUserMarked
       return (
-        <div key={ep.episode} className={`${styles.epRow} ${isAnySpecial ? styles.epRowSpecial : ''} ${ep.future ? styles.epRowFuture : ''}`}>
-          <span className={styles.epCode}>
-            {epCode(sn, ep.episode)}
+        <div key={ep.episode} className={`${styles.epRow} ${isCatalogSpecial ? styles.epRowSpecial : ''} ${ep.future ? styles.epRowFuture : ''}`}>
+          <div className={styles.epTop}>
+            <span className={styles.epCode}>{epCode(sn, ep.episode)}</span>
             {ep.title && <span className={styles.epTitle}>{ep.title}</span>}
-          </span>
-          <InteractiveBar
-            percent={isAnySpecial ? 100 : ep.percent}
-            onClick={clickPct => {
-              if (isAnySpecial) return
-              const initSec = durSec > 0 ? Math.round(durSec * clickPct / 100) : 0
-              onPickTime({ initialSec: initSec, maxSec: durSec, item: ep.hash, profileId })
-            }}
-          />
-          <span className={`${styles.epTime} ${isAnySpecial ? styles.epTimeSpecial : ''}`}>
-            {isAnySpecial ? 'спец' : ep.percent > 0 ? fmtTime(timeSec) : '—'}
-            /{durSec > 0 && !isAnySpecial ? fmtTime(durSec) : '—'}
-          </span>
-          {isUserSpecial ? (
-            <button className={styles.epUnspecial} onClick={() => onUnmarkSpecial(ep.hash, profileId)} title="Убрать отметку спецэпизода">↩</button>
-          ) : isAnySpecial ? (
-            <span className={styles.epSpecialBadge} title="Спецэпизод (MyShows)">★</span>
-          ) : (
-            <button className={styles.epSpecial} onClick={() => onMarkSpecial(ep.hash, profileId)} title="Отметить как спецэпизод (пропустить)">★</button>
-          )}
+          </div>
+          <div className={styles.epBottom}>
+            <InteractiveBar
+              percent={isWatched ? 100 : pct}
+              onClick={clickPct => {
+                if (isCatalogSpecial) return
+                const initSec = durSec > 0 ? Math.round(durSec * clickPct / 100) : 0
+                onPickTime({ initialSec: initSec, maxSec: durSec, item: ep.hash, profileId })
+              }}
+            />
+            <span className={`${styles.epTime} ${isCatalogSpecial ? styles.epTimeSpecial : ''}`}>
+              {isCatalogSpecial ? 'спец' : isWatched ? '✓' : pct > 0 ? fmtTime(timeSec) : '—'}
+              /{durSec > 0 && !isCatalogSpecial ? fmtTime(durSec) : '—'}
+            </span>
+            {isUserMarked ? (
+              <button className={styles.epUnspecial} onClick={() => onUnmarkSpecial(ep.hash, profileId)} title="Убрать отметку просмотра">↩</button>
+            ) : isCatalogSpecial ? (
+              <span className={styles.epSpecialBadge} title="Спецэпизод">★</span>
+            ) : (
+              <button className={styles.epSpecial} onClick={() => onMarkSpecial(ep.hash, profileId)} title="Отметить как просмотренный">★</button>
+            )}
+          </div>
         </div>
       )
     })
@@ -379,23 +429,27 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
       const profileId = tc?.profile_id ?? defaultProfileId
       return (
         <div key={ep} className={`${styles.epRow} ${isSpecial ? styles.epRowSpecial : ''}`}>
-          <span className={styles.epCode}>{epCode(sn, ep)}</span>
-          <InteractiveBar
-            percent={isSpecial ? 100 : pct}
-            onClick={clickPct => {
-              if (isSpecial) return
-              const initSec = durSec > 0 ? Math.round(durSec * clickPct / 100) : 0
-              onPickTime({ initialSec: initSec, maxSec: durSec, item, profileId })
-            }}
-          />
-          <span className={`${styles.epTime} ${isSpecial ? styles.epTimeSpecial : ''}`}>
-            {isSpecial ? 'спец' : pct > 0 ? fmtTime(timeSec) : '—'}/{durSec > 0 && !isSpecial ? fmtTime(durSec) : '—'}
-          </span>
-          {isSpecial ? (
-            <button className={styles.epUnspecial} onClick={() => onUnmarkSpecial(item, profileId)} title="Убрать отметку спецэпизода">↩</button>
-          ) : (
-            <button className={styles.epSpecial} onClick={() => onMarkSpecial(item, profileId)} title="Отметить как спецэпизод (пропустить)">★</button>
-          )}
+          <div className={styles.epTop}>
+            <span className={styles.epCode}>{epCode(sn, ep)}</span>
+          </div>
+          <div className={styles.epBottom}>
+            <InteractiveBar
+              percent={isSpecial ? 100 : pct}
+              onClick={clickPct => {
+                if (isSpecial) return
+                const initSec = durSec > 0 ? Math.round(durSec * clickPct / 100) : 0
+                onPickTime({ initialSec: initSec, maxSec: durSec, item, profileId })
+              }}
+            />
+            <span className={`${styles.epTime} ${isSpecial ? styles.epTimeSpecial : ''}`}>
+              {isSpecial ? 'спец' : pct > 0 ? fmtTime(timeSec) : '—'}/{durSec > 0 && !isSpecial ? fmtTime(durSec) : '—'}
+            </span>
+            {isSpecial ? (
+              <button className={styles.epUnspecial} onClick={() => onUnmarkSpecial(item, profileId)} title="Убрать отметку спецэпизода">↩</button>
+            ) : (
+              <button className={styles.epSpecial} onClick={() => onMarkSpecial(item, profileId)} title="Отметить как спецэпизод (пропустить)">★</button>
+            )}
+          </div>
         </div>
       )
     })
@@ -424,8 +478,14 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
 
 export default function CardDetailPage() {
   const { cardId } = useParams<{ cardId: string }>()
-  const navigate   = useNavigate()
-  const dev        = useMemo(() => loadActiveDevice(), [])
+  const location   = useLocation()
+  const backUrl    = (location.state as { backUrl?: string } | null)?.backUrl ?? `/catalog#${cardId}`
+  const { user }   = useAuth()
+
+  const [devices,       setDevices]      = useState<Device[]>([])
+  const [profiles,      setProfiles]     = useState<Profile[]>([])
+  const [activeDevice,  setActiveDevice] = useState<Device | null>(() => loadActiveDevice())
+  const [activeProfile, setActiveProfile]= useState<Profile | null>(() => loadActiveProfile())
 
   const [card,         setCard]        = useState<CardDetail | null>(null)
   const [cast,         setCast]        = useState<CastMember[]>([])
@@ -434,14 +494,25 @@ export default function CardDetailPage() {
   const [timecodes,    setTimecodes]   = useState<CardTimecode[]>([])
   const [tpCtx,        setTpCtx]      = useState<TimePickerCtx | null>(null)
   const [apiEpisodes,  setApiEpisodes] = useState<EpisodeData[] | null>(null)
+  const [refreshing,   setRefreshing]  = useState(false)
+  const [refreshed,    setRefreshed]   = useState(false)
+
+  const activeProfileId = activeProfile?.profile_id ?? ''
+
+  // Filter timecodes to the active profile
+  const profileTimecodes = useMemo(() => {
+    if (!activeProfileId) return timecodes
+    return timecodes.filter(tc => tc.profile_id === activeProfileId)
+  }, [timecodes, activeProfileId])
 
   const tcMap = useMemo(() => {
     const m: Record<string, CardTimecode> = {}
-    for (const tc of timecodes) m[tc.item] = tc
+    for (const tc of profileTimecodes) m[tc.item] = tc
     return m
-  }, [timecodes])
+  }, [profileTimecodes])
 
-  const defaultProfileId = timecodes[0]?.profile_id ?? ''
+  const defaultProfileId = activeProfileId || timecodes[0]?.profile_id || ''
+  const visibleProfiles = profiles.filter(p => p.device_id === activeDevice?.id)
 
   const loadTimecodes = useCallback((cid: string, devId: number) => {
     fetch(`/api/web/card-timecodes?device_id=${devId}&card_id=${encodeURIComponent(cid)}`)
@@ -449,6 +520,42 @@ export default function CardDetailPage() {
       .then((rows: CardTimecode[]) => setTimecodes(rows ?? []))
       .catch(() => {})
   }, [])
+
+  // Load devices and profiles; restore saved selection
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch('/api/devices')
+        if (!res.ok) return
+        const devList: Device[] = await res.json()
+        setDevices(devList)
+        if (!devList.length) return
+
+        const allProfiles: Profile[] = []
+        await Promise.all(devList.map(async d => {
+          try {
+            const pRes = await fetch(`/api/devices/${d.id}/profiles`)
+            if (!pRes.ok) return
+            const pd: { profiles: { profile_id: string; name: string }[] } = await pRes.json()
+            for (const p of pd.profiles) allProfiles.push({ device_id: d.id, profile_id: p.profile_id, name: p.name })
+          } catch {}
+        }))
+        setProfiles(allProfiles)
+
+        // Restore saved device (validate it still exists)
+        const savedDev = loadActiveDevice()
+        const chosenDev = devList.find(d => d.id === savedDev?.id) ?? devList[0]
+        setActiveDevice(chosenDev)
+
+        // Restore saved profile for this device
+        const savedProf = loadActiveProfile()
+        const devProfiles = allProfiles.filter(p => p.device_id === chosenDev.id)
+        const chosenProf = devProfiles.find(p => p.profile_id === savedProf?.profile_id) ?? devProfiles[0] ?? null
+        setActiveProfile(chosenProf)
+      } catch {}
+    }
+    load()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!cardId) return
@@ -468,77 +575,133 @@ export default function CardDetailPage() {
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.items) setSimilar(d.items) })
       .catch(() => {})
+  }, [cardId])
 
-    if (dev) loadTimecodes(cardId, dev.id)
-  }, [cardId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Reload timecodes when active device changes
+  useEffect(() => {
+    if (!cardId || !activeDevice) return
+    loadTimecodes(cardId, activeDevice.id)
+  }, [cardId, activeDevice?.id, loadTimecodes])
 
-  // Load episodes from MyShows/TMDB API once the card is known to be a TV show
+  // Load episodes; if source is not myshows — trigger sync and retry up to 3 times
   useEffect(() => {
     if (!card || card.media_type !== 'tv' || !cardId) return
-    const qs = new URLSearchParams({ card_id: cardId, include_specials: '1' })
+    const cid = cardId
+    const dev = activeDevice
+    let cancelled = false
+    const qs = new URLSearchParams({ card_id: cid, include_specials: '1' })
     if (dev) qs.set('device_id', String(dev.id))
     if (defaultProfileId) qs.set('profile_id', defaultProfileId)
-    fetch(`/api/episodes?${qs}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.episodes?.length) setApiEpisodes(d.episodes) })
-      .catch(() => {})
+
+    let retries = 0
+    async function load() {
+      if (cancelled) return
+      try {
+        const r = await fetch(`/api/episodes?${qs}`)
+        if (!r.ok || cancelled) return
+        const d = await r.json()
+        if (d?.episodes?.length) setApiEpisodes(d.episodes)
+        if (d?.source !== 'myshows' && retries < 3) {
+          if (retries === 0 && dev && dev.token) {
+            fetch(`/api/refresh-card-episodes?card_id=${encodeURIComponent(cid)}&token=${encodeURIComponent(dev.token)}`)
+              .catch(() => {})
+          }
+          retries++
+          setTimeout(load, 4000)
+        }
+      } catch {}
+    }
+    load()
+    return () => { cancelled = true }
   }, [card?.card_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  function selectDevice(d: Device) {
+    setActiveDevice(d)
+    saveActiveDevice(d)
+    const devProfiles = profiles.filter(p => p.device_id === d.id)
+    const first = devProfiles[0] ?? null
+    setActiveProfile(first)
+    saveActiveProfile(first)
+  }
+
+  function selectProfile(p: Profile) {
+    setActiveProfile(p)
+    saveActiveProfile(p)
+  }
+
   async function saveTimecodeForItem(ctx: TimePickerCtx, sec: number) {
-    if (!dev || !cardId) return
-    const percent = ctx.maxSec > 0 ? Math.min(100, sec / ctx.maxSec * 100) : 0
+    if (!activeDevice || !cardId) return
+    const percent = ctx.maxSec > 0 ? Math.min(100, sec / ctx.maxSec * 100) : sec
     await fetch('/api/web/set-timecode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: dev.id, card_id: cardId, item: ctx.item, percent, profile_id: ctx.profileId }),
+      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item: ctx.item, percent, profile_id: ctx.profileId }),
     })
-    loadTimecodes(cardId, dev.id)
+    loadTimecodes(cardId, activeDevice.id)
   }
 
   async function markAllWatched(items: Array<{ item: string; profileId: string }>) {
-    if (!dev || !cardId) return
+    if (!activeDevice || !cardId) return
     await Promise.all(items.map(({ item, profileId }) =>
       fetch('/api/web/set-timecode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: dev.id, card_id: cardId, item, percent: 100, profile_id: profileId }),
+        body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item, percent: 100, profile_id: profileId }),
       })
     ))
-    loadTimecodes(cardId, dev.id)
+    loadTimecodes(cardId, activeDevice.id)
   }
 
   async function markSpecial(item: string, profileId: string) {
-    if (!dev || !cardId) return
+    if (!activeDevice || !cardId) return
     await fetch('/api/web/mark-special', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: dev.id, card_id: cardId, item, profile_id: profileId }),
+      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item, profile_id: profileId }),
     })
-    loadTimecodes(cardId, dev.id)
+    loadTimecodes(cardId, activeDevice.id)
   }
 
   async function unmarkSpecial(item: string, profileId: string) {
-    if (!dev || !cardId) return
+    if (!activeDevice || !cardId) return
     await fetch('/api/web/unmark-special', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: dev.id, card_id: cardId, item, profile_id: profileId }),
+      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item, profile_id: profileId }),
     })
-    loadTimecodes(cardId, dev.id)
+    loadTimecodes(cardId, activeDevice.id)
   }
 
   async function deleteAllTimecodes() {
-    if (!dev || !cardId || !confirm('Удалить историю просмотра?')) return
-    const qs = new URLSearchParams({ device_id: String(dev.id), card_id: cardId })
+    if (!activeDevice || !cardId || !confirm('Удалить историю просмотра?')) return
+    const qs = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId })
     await fetch(`/api/web/card-timecodes?${qs}`, { method: 'DELETE' })
     setTimecodes([])
   }
 
+  async function refreshFromTMDB() {
+    if (!cardId || refreshing) return
+    setRefreshing(true); setRefreshed(false)
+    try {
+      const r = await fetch(`/api/admin/refresh-card/${cardId}`, { method: 'POST' })
+      if (r.ok) {
+        const updated = await fetch(`/api/media-card/${cardId}`).then(r => r.ok ? r.json() : null)
+        if (updated) setCard(updated)
+        setRefreshed(true)
+        setTimeout(() => setRefreshed(false), 3000)
+      }
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   function onMovieBarClick(clickPct: number, card: CardDetail) {
+    if (!activeDevice) return
     const item = bestTc?.item ?? card.movie_item
     if (!item) return
     const dur = bestTc?.duration_sec ?? (card.runtime ? card.runtime * 60 : 0)
-    const initSec = dur > 0 ? Math.round(dur * clickPct / 100) : 0
+    // When dur=0 (unknown), pass clickPct directly as initialSec (treated as percent in picker)
+    const initSec = dur > 0 ? Math.round(dur * clickPct / 100) : Math.round(clickPct)
     setTpCtx({ initialSec: initSec, maxSec: dur, item, profileId: bestTc?.profile_id ?? defaultProfileId })
   }
 
@@ -546,9 +709,9 @@ export default function CardDetailPage() {
 
   if (!card) return (
     <Layout>
+      <Link to={backUrl} className={styles.floatBack}>← Назад</Link>
       <div className={styles.notFound}>
         <p>Карточка не найдена</p>
-        <button className={styles.backBtn} onClick={() => navigate(-1)}>← Назад</button>
       </div>
     </Layout>
   )
@@ -567,17 +730,32 @@ export default function CardDetailPage() {
   if (card.original_language && card.original_language !== 'ru') tags.push(card.original_language.toUpperCase())
   if (card.best_video_quality) tags.push(qualityLabel(card.best_video_quality))
 
-  const bestTc = timecodes.reduce<CardTimecode | null>(
+  const bestTc = profileTimecodes.reduce<CardTimecode | null>(
     (b, tc) => (!b || tc.percent > b.percent) ? tc : b, null,
   )
   const moviePct = bestTc?.percent ?? 0
   const movieDur = bestTc?.duration_sec ?? (card.runtime ? card.runtime * 60 : 0)
-  const showMovieProgress = !isTV && (!!card.movie_item || !!bestTc)
+  const showMovieProgress = !isTV
+
+  // Overall TV progress denominator: prefer episodes table (non-special, aired), fall back to card.seasons
+  const tvTotalEps = isTV ? (() => {
+    if (apiEpisodes && apiEpisodes.length > 0) {
+      const n = apiEpisodes.filter(ep => !ep.future && !ep.catalog_special).length
+      if (n > 0) return n
+    }
+    return (card.seasons ?? []).filter(s => s.season_number > 0).reduce((s, ss) => s + ss.episode_count, 0)
+  })() : 0
+  const tvWatchedEps = isTV
+    ? profileTimecodes.filter(tc => tc.percent >= 90 || tc.special).length
+    : 0
+  const tvProgress = tvTotalEps > 0 ? Math.min(100, tvWatchedEps * 100 / tvTotalEps) : 0
 
   const epDurSec = (card.episode_run_time || 0) * 60
 
   return (
     <Layout>
+      <Link to={backUrl} className={styles.floatBack}>← Назад</Link>
+
       <div className={styles.page}>
 
         {/* ── Backdrop ── */}
@@ -589,7 +767,7 @@ export default function CardDetailPage() {
         )}
 
         {/* ── Hero ── */}
-        <div className={styles.hero}>
+        <div className={`${styles.hero}${!backdropSrc ? ' ' + styles.heroNoBg : ''}`}>
           <div className={styles.posterWrap}>
             {posterImgUrl
               ? <img className={styles.poster} src={posterImgUrl} alt={card.title} />
@@ -598,7 +776,6 @@ export default function CardDetailPage() {
           </div>
 
           <div className={styles.heroInfo}>
-            <button className={styles.backBtn} onClick={() => navigate(-1)}>← Назад</button>
             <h1 className={styles.title}>{card.title}</h1>
             {card.original_title && card.original_title !== card.title && (
               <p className={styles.origTitle}>{card.original_title}</p>
@@ -616,8 +793,40 @@ export default function CardDetailPage() {
               </div>
             )}
 
+            {/* ── Device / profile switcher ── */}
+            {(devices.length > 1 || visibleProfiles.length > 0) && (
+              <div className={styles.deviceSwitcher}>
+                {devices.length > 1 && (
+                  <div className={styles.deviceTabGroup}>
+                    {devices.map(d => (
+                      <button
+                        key={d.id}
+                        className={`${styles.deviceTab} ${activeDevice?.id === d.id ? styles.deviceTabActive : ''}`}
+                        onClick={() => selectDevice(d)}
+                      >
+                        {d.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {visibleProfiles.length > 0 && (
+                  <div className={styles.profileTabGroup}>
+                    {visibleProfiles.map(p => (
+                      <button
+                        key={p.profile_id}
+                        className={`${styles.profileTab} ${activeProfile?.profile_id === p.profile_id ? styles.profileTabActive : ''}`}
+                        onClick={() => selectProfile(p)}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── Movie progress ── */}
-            {showMovieProgress && dev && (
+            {showMovieProgress && (
               <div className={styles.progressWrap}>
                 <div className={styles.progressTop}>
                   <span className={`${styles.progressLabel} ${moviePct >= 90 ? styles.progressComplete : ''}`}>
@@ -630,7 +839,31 @@ export default function CardDetailPage() {
                     <button className={styles.deleteBtn} onClick={deleteAllTimecodes}>✕</button>
                   )}
                 </div>
-                <InteractiveBar percent={moviePct} onClick={pct => onMovieBarClick(pct, card)} />
+                <div
+                  className={styles.movieBar}
+                  onClick={e => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    onMovieBarClick(Math.min(100, Math.max(0, (e.clientX - r.left) / r.width * 100)), card)
+                  }}
+                >
+                  <div className={styles.movieBarFill} style={{ width: `${Math.min(moviePct, 100)}%` }} />
+                </div>
+              </div>
+            )}
+
+            {/* ── TV overall progress ── */}
+            {isTV && tvWatchedEps > 0 && (
+              <div className={styles.progressWrap}>
+                <div className={styles.progressTop}>
+                  <span className={`${styles.progressLabel} ${tvProgress >= 100 ? styles.progressComplete : ''}`}>
+                    {tvTotalEps > 0
+                      ? `${tvWatchedEps} / ${tvTotalEps} серий`
+                      : `${tvWatchedEps} серий просмотрено`}
+                  </span>
+                </div>
+                <div className={styles.tvBar}>
+                  <div className={styles.tvBarFill} style={{ width: `${tvProgress}%` }} />
+                </div>
               </div>
             )}
 
@@ -646,6 +879,16 @@ export default function CardDetailPage() {
                 <span className={styles.statusLabel}>{isTV ? 'Первый выход:' : 'Дата выхода:'}</span> {displayDate}
               </p>
             )}
+
+            {user?.is_admin && (
+              <button
+                className={styles.refreshTmdbBtn}
+                onClick={refreshFromTMDB}
+                disabled={refreshing}
+              >
+                {refreshing ? 'Обновление…' : refreshed ? '✓ Обновлено' : '↻ Обновить из TMDB'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -657,11 +900,9 @@ export default function CardDetailPage() {
               {cast.map(c => {
                 const photo = c.profile_path ? tmdbUrl(c.profile_path, 'w185') : null
                 return (
-                  <a
+                  <Link
                     key={c.id}
-                    href={`https://www.themoviedb.org/person/${c.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    to={`/actor/${c.id}`}
                     className={styles.castCard}
                   >
                     {photo
@@ -670,7 +911,7 @@ export default function CardDetailPage() {
                     }
                     <p className={styles.castName}>{c.name}</p>
                     <p className={styles.castChar}>{c.character}</p>
-                  </a>
+                  </Link>
                 )
               })}
             </div>

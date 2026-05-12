@@ -1,14 +1,12 @@
 package api
 
-// Handlers for server-side HTML pages (Go html/template, replaces FastAPI Jinja2 pages).
-
 import (
+	"encoding/json"
 	"fmt"
 	"lampa-api/config"
-	"lampa-api/db/postgres"
 	"lampa-api/db/store"
 	"lampa-api/internal/auth"
-	"lampa-api/internal/render"
+	botpkg "lampa-api/internal/bot"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,64 +14,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 )
-
-// ─── Login ────────────────────────────────────────────────────────────────────
-
-// GET /login
-func handleLoginPage(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if u != nil {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-	render.Page(w, r, "login", nil, nil)
-}
-
-// POST /login  (form submission)
-func handleLoginForm(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		render.Page(w, r, "login", nil, map[string]string{"Error": "Ошибка запроса"})
-		return
-	}
-	username := r.FormValue("username")
-	password := r.FormValue("password")
-
-	u := store.GetUserByUsername(r.Context(), username)
-	if u == nil || !auth.CheckPassword(u.PasswordHash, password) {
-		render.Page(w, r, "login", nil, map[string]string{"Error": "Неверное имя пользователя или пароль"})
-		return
-	}
-	if u.BlockedAt != nil {
-		msg := "Аккаунт заблокирован"
-		if u.BlockReason != nil {
-			msg = *u.BlockReason
-		}
-		render.Page(w, r, "login", nil, map[string]string{"Error": msg})
-		return
-	}
-
-	if u.TotpEnabled {
-		ttl := store.GetSettingInt(r.Context(), "pending_2fa_ttl_sec")
-		if ttl <= 0 {
-			ttl = 600
-		}
-		pendingToken, err := store.CreateTotpPendingToken(r.Context(), u.ID, ttl)
-		if err != nil {
-			render.Page(w, r, "login", nil, map[string]string{"Error": "Ошибка сервера"})
-			return
-		}
-		http.Redirect(w, r, "/verify-2fa?t="+pendingToken, http.StatusFound)
-		return
-	}
-
-	sess, err := auth.CreateSession(r.Context(), u.ID, r.RemoteAddr, r.Header.Get("User-Agent"))
-	if err != nil {
-		render.Page(w, r, "login", nil, map[string]string{"Error": "Ошибка сервера"})
-		return
-	}
-	auth.SetSessionCookie(w, sess.Key, sess.ExpiresAt)
-	http.Redirect(w, r, "/", http.StatusFound)
-}
 
 // GET /logout
 func handleLogoutPage(w http.ResponseWriter, r *http.Request) {
@@ -85,86 +25,42 @@ func handleLogoutPage(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
-// ─── Register ─────────────────────────────────────────────────────────────────
+// ─── Sessions (JSON API) ──────────────────────────────────────────────────────
 
-// GET /register
-func handleRegisterPage(w http.ResponseWriter, r *http.Request) {
-	if u := userFromCtx(r); u != nil {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-	render.Page(w, r, "register", nil, nil)
-}
-
-// POST /register
-func handleRegisterForm(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		render.Page(w, r, "register", nil, map[string]string{"Error": "Ошибка запроса"})
-		return
-	}
-	// Honeypot check
-	if r.FormValue("website") != "" {
-		http.Redirect(w, r, "/register-success", http.StatusFound)
-		return
-	}
-
-	username := r.FormValue("username")
-	password := r.FormValue("password")
-	confirm := r.FormValue("password_confirm")
-
-	if password != confirm {
-		render.Page(w, r, "register", nil, map[string]string{"Error": "Пароли не совпадают"})
-		return
-	}
-
-	hash, err := auth.HashPassword(password)
-	if err != nil {
-		render.Page(w, r, "register", nil, map[string]string{"Error": "Ошибка сервера"})
-		return
-	}
-	u, err := store.CreateUser(r.Context(), username, hash, "simple")
-	if err != nil {
-		render.Page(w, r, "register", nil, map[string]string{"Error": err.Error()})
-		return
-	}
-
-	sess, err := auth.CreateSession(r.Context(), u.ID, r.RemoteAddr, r.Header.Get("User-Agent"))
-	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
-	}
-	auth.SetSessionCookie(w, sess.Key, sess.ExpiresAt)
-	http.Redirect(w, r, "/register-success", http.StatusFound)
-}
-
-// GET /register-success
-func handleRegisterSuccess(w http.ResponseWriter, r *http.Request) {
-	render.Page(w, r, "register_success", userFromCtx(r), nil)
-}
-
-// ─── Sessions ─────────────────────────────────────────────────────────────────
-
-type sessionsData struct {
-	Sessions []auth.SessionInfo
-}
-
-// GET /sessions
-func handleSessionsPage(w http.ResponseWriter, r *http.Request) {
+// GET /api/sessions
+func handleAPISessions(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	key := auth.SessionFromRequest(r)
 	sessions := auth.ListSessions(r.Context(), u.ID, key)
-	render.Page(w, r, "sessions", u, sessionsData{Sessions: sessions})
+	type sessionOut struct {
+		ID        int64  `json:"id"`
+		Browser   string `json:"browser"`
+		IP        string `json:"ip"`
+		CreatedAt string `json:"created_at"`
+		IsCurrent bool   `json:"is_current"`
+	}
+	out := make([]sessionOut, len(sessions))
+	for i, s := range sessions {
+		out[i] = sessionOut{
+			ID:        s.ID,
+			Browser:   s.Browser,
+			IP:        s.IP,
+			CreatedAt: s.CreatedAt.Format("02.01.2006"),
+			IsCurrent: s.IsCurrent,
+		}
+	}
+	JSON(w, http.StatusOK, map[string]any{"sessions": out})
 }
 
-// POST /sessions/{id}/revoke
-func handleSessionRevoke(w http.ResponseWriter, r *http.Request) {
+// DELETE /api/sessions/{id}
+func handleAPISessionRevoke(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -172,158 +68,90 @@ func handleSessionRevoke(w http.ResponseWriter, r *http.Request) {
 	currentKey := auth.SessionFromRequest(r)
 	if revokedKey != "" && revokedKey == currentKey {
 		auth.ClearSessionCookie(w)
-		http.Redirect(w, r, "/login", http.StatusFound)
+		JSON(w, http.StatusOK, map[string]any{"ok": true, "logged_out": true})
 		return
 	}
-	http.Redirect(w, r, "/sessions", http.StatusFound)
+	JSON(w, http.StatusOK, map[string]any{"ok": true, "logged_out": false})
 }
 
-// POST /sessions/revoke-all
-func handleSessionRevokeAll(w http.ResponseWriter, r *http.Request) {
+// DELETE /api/sessions
+func handleAPISessionRevokeAll(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	auth.DeleteAllUserSessions(r.Context(), u.ID)
 	auth.ClearSessionCookie(w)
-	http.Redirect(w, r, "/login", http.StatusFound)
+	JSON(w, http.StatusOK, map[string]any{"ok": true, "logged_out": true})
 }
 
-// ─── Profile account actions (form-based) ────────────────────────────────────
+// ─── Forgot / Reset password — JSON API ──────────────────────────────────────
 
-// POST /profile/reset-password — change password via form
-func handleFormChangePassword(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
+// POST /api/forgot-password  body: {"username":"..."}
+func handleAPIForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Username == "" {
+		Error(w, http.StatusBadRequest, "username required")
+		return
+	}
+
+	u := store.GetUserByUsername(r.Context(), req.Username)
 	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		JSON(w, http.StatusOK, map[string]any{"ok": true, "bot_name": botName()})
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/profiles", http.StatusFound)
+	tgLink := store.GetTelegramLinkByUserID(r.Context(), u.ID)
+	if tgLink == nil {
+		Error(w, http.StatusUnprocessableEntity, "no_telegram")
 		return
 	}
-	current := r.FormValue("current_password")
-	newPwd := r.FormValue("new_password")
-	if !auth.CheckPassword(u.PasswordHash, current) {
-		http.Redirect(w, r, "/profiles?error=wrong_password", http.StatusFound)
-		return
-	}
-	if len(newPwd) < 6 {
-		http.Redirect(w, r, "/profiles?error=password_short", http.StatusFound)
-		return
-	}
-	hash, err := auth.HashPassword(newPwd)
+	ttl := store.GetSettingInt(r.Context(), "reset_code_ttl_minutes")
+	code, err := store.CreatePasswordResetToken(r.Context(), u.ID, ttl)
 	if err != nil {
-		http.Redirect(w, r, "/profiles", http.StatusFound)
+		Error(w, http.StatusInternalServerError, "server error")
 		return
 	}
-	if err := store.UpdatePassword(r.Context(), u.ID, hash); err != nil {
-		http.Redirect(w, r, "/profiles", http.StatusFound)
-		return
-	}
-	http.Redirect(w, r, "/profiles?success=password_changed", http.StatusFound)
+	botpkg.SendResetCode(tgLink.TelegramID, req.Username, code)
+	JSON(w, http.StatusOK, map[string]any{"ok": true, "bot_name": botName()})
 }
 
-// POST /profile/delete — delete account via form
-func handleFormDeleteAccount(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
+// POST /api/reset-password  body: {"token":"...","new_password":"..."}
+func handleAPIResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/profiles", http.StatusFound)
+	if req.Token == "" || len(req.NewPassword) < 6 {
+		Error(w, http.StatusBadRequest, "token and new_password (min 6 chars) required")
 		return
 	}
-	if !auth.CheckPassword(u.PasswordHash, r.FormValue("password")) {
-		http.Redirect(w, r, "/profiles?error=wrong_password", http.StatusFound)
+	userID, err := store.ConsumePasswordResetToken(r.Context(), req.Token)
+	if err != nil || userID == 0 {
+		Error(w, http.StatusUnauthorized, "invalid or expired code")
 		return
 	}
-	if u.IsAdmin {
-		http.Redirect(w, r, "/profiles", http.StatusFound)
-		return
-	}
-	if err := store.DeleteUser(r.Context(), u.ID); err != nil {
-		http.Redirect(w, r, "/profiles", http.StatusFound)
-		return
-	}
-	key := auth.SessionFromRequest(r)
-	if key != "" {
-		auth.DeleteSession(r.Context(), key)
-	}
-	auth.ClearSessionCookie(w)
-	http.Redirect(w, r, "/login", http.StatusFound)
-}
-
-// ─── Actor page ───────────────────────────────────────────────────────────────
-
-type actorPageData struct {
-	PersonID  int64
-	ImageBase string
-}
-
-// GET /actor/{person_id}
-func handleActorPage(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
-	}
-	personID, err := strconv.ParseInt(chi.URLParam(r, "person_id"), 10, 64)
+	hash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
-		http.Error(w, "invalid person id", http.StatusBadRequest)
+		Error(w, http.StatusInternalServerError, "server error")
 		return
 	}
-	render.Page(w, r, "actor", u, actorPageData{PersonID: personID, ImageBase: imageBase()})
-}
-
-// ─── Forgot / Reset password ──────────────────────────────────────────────────
-
-type forgotData struct {
-	Step     bool
-	BotName  string
-	Error    string
-	Success  string
-	Username string
-}
-
-// GET /forgot-password
-func handleForgotPasswordPage(w http.ResponseWriter, r *http.Request) {
-	render.Page(w, r, "forgot_password", nil, forgotData{BotName: botName()})
-}
-
-// POST /forgot-password
-func handleForgotPasswordForm(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		render.Page(w, r, "forgot_password", nil, forgotData{BotName: botName(), Error: "Ошибка запроса"})
+	if err := store.UpdatePassword(r.Context(), userID, hash); err != nil {
+		Error(w, http.StatusInternalServerError, "server error")
 		return
 	}
-	username := r.FormValue("username")
-	u := store.GetUserByUsername(r.Context(), username)
-	if u == nil {
-		// Don't reveal if user exists — just show step 2 anyway
-		render.Page(w, r, "forgot_password", nil, forgotData{Step: true, BotName: botName(), Username: username})
-		return
-	}
-	// TODO: send Telegram code
-	render.Page(w, r, "forgot_password", nil, forgotData{Step: true, BotName: botName(), Username: username})
-}
-
-// GET /reset-password?token=
-func handleResetPasswordPage(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	render.Page(w, r, "reset_password", nil, map[string]string{"Token": token})
-}
-
-// POST /reset-password
-func handleResetPasswordForm(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		render.Page(w, r, "reset_password", nil, map[string]string{"Error": "Ошибка запроса"})
-		return
-	}
-	// TODO: validate token/code and change password
-	render.Page(w, r, "reset_password", nil, map[string]string{"Error": "Функция ещё не реализована"})
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func botName() string {
@@ -334,115 +162,7 @@ func botName() string {
 	return name
 }
 
-func imageBase() string {
-	if config.Get().ProxyURL != "" {
-		return "/imgproxy"
-	}
-	return "https://image.tmdb.org"
-}
-
-// ─── Card detail ─────────────────────────────────────────────────────────────
-
-type cardDetailData struct {
-	CardID    string
-	ImageBase string
-}
-
-// GET /card/{card_id}
-func handleCardDetailPage(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
-	}
-	cardID := chi.URLParam(r, "card_id")
-	render.Page(w, r, "card_detail", u, cardDetailData{CardID: cardID, ImageBase: imageBase()})
-}
-
-// ─── History ──────────────────────────────────────────────────────────────────
-
-type historyData struct {
-	Devices   []store.DeviceWithStats
-	ImageBase string
-}
-
-// GET /history
-func handleHistoryPage(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
-	}
-	devices := store.GetDevicesWithStats(r.Context(), u.ID)
-	render.Page(w, r, "history", u, historyData{Devices: devices, ImageBase: imageBase()})
-}
-
-// ─── Catalog / Index ──────────────────────────────────────────────────────────
-
-type catalogData struct {
-	Devices   []store.DeviceWithStats
-	ImageBase string
-}
-
-type indexData struct {
-	SimpleDeviceLimit  int
-	SimpleTCLimit      int
-	PremiumDeviceLimit int
-	PremiumTCLimit     int
-	BotName            string
-	InactiveWarnDays   int
-	InactiveDeleteDays int
-	PluginURL          string
-}
-
-// GET /
-func handleIndexPage(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if u != nil {
-		// Logged-in user → catalog
-		devices := store.GetDevicesWithStats(r.Context(), u.ID)
-		render.Page(w, r, "catalog", u, catalogData{Devices: devices, ImageBase: imageBase()})
-		return
-	}
-	// Guest → landing page
-	simple := store.LimitsFor("simple")
-	premium := store.LimitsFor("premium")
-	cfg := config.Get()
-	render.Page(w, r, "index", nil, indexData{
-		SimpleDeviceLimit:  simple.MaxDevices,
-		SimpleTCLimit:      simple.MaxTimecodes,
-		PremiumDeviceLimit: premium.MaxDevices,
-		PremiumTCLimit:     premium.MaxTimecodes,
-		BotName:            cfg.TelegramBotName,
-		PluginURL:          cfg.PluginURL,
-		InactiveWarnDays:   store.GetSettingInt(r.Context(), "inactive_warn_days"),
-		InactiveDeleteDays: store.GetSettingInt(r.Context(), "inactive_delete_days"),
-	})
-}
-
-type catalogCategoryData struct {
-	Category     string
-	CategoryName string
-	Devices      []store.DeviceWithStats
-	ImageBase    string
-}
-
-// GET /catalog/{category}
-func handleCatalogCategoryPage(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
-	}
-	category := chi.URLParam(r, "category")
-	devices := store.GetDevicesWithStats(r.Context(), u.ID)
-	render.Page(w, r, "catalog_category", u, catalogCategoryData{
-		Category:     category,
-		CategoryName: categoryDisplayName(category),
-		Devices:      devices,
-		ImageBase:    imageBase(),
-	})
-}
+// ─── Categories / Profile IDs ─────────────────────────────────────────────────
 
 var categoryTitles = map[string]string{
 	"movies_ru_new":  "Новые русские фильмы",
@@ -457,7 +177,7 @@ var categoryTitles = map[string]string{
 	"cartoon_movies": "Мультфильмы",
 	"cartoon_series": "Мультсериалы",
 	"anime":          "Аниме",
-	"np_popular":     "Популярно в NP",
+	"np_popular": "Популярное",
 }
 
 func categoryDisplayName(id string) string {
@@ -470,23 +190,24 @@ func categoryDisplayName(id string) string {
 	return id
 }
 
-// GET /api/categories — used by catalog.js
+// GET /api/categories
 func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 	type cat struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
 	order := []string{
-		"np_popular",
 		"movies_ru_new", "movies_new", "tv_shows", "tv_shows_ru",
 		"movies_4k_new", "legends_id", "movies_4k", "movies", "movies_ru",
 		"cartoon_movies", "cartoon_series", "anime",
 	}
-	result := make([]cat, 0, len(order)+15)
+	result := make([]cat, 0, len(order)+16)
+	if popularSourceURL != "" || store.HasPopularData(r.Context(), 30) {
+		result = append(result, cat{ID: "np_popular", Name: "Популярное"})
+	}
 	for _, id := range order {
 		result = append(result, cat{ID: id, Name: categoryDisplayName(id)})
 	}
-	// Year categories: current year down to 1980
 	currentYear := time.Now().Year()
 	for y := currentYear; y >= 1980; y-- {
 		id := fmt.Sprintf("movies_id_%d", y)
@@ -495,7 +216,7 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, result)
 }
 
-// GET /api/profile-ids?device_id= — used by history.js / profiles.js
+// GET /api/profile-ids?device_id=
 func handleAPIProfileIDs(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	empty := map[string]any{"profiles": []any{}, "limit": 0}
@@ -508,7 +229,6 @@ func handleAPIProfileIDs(w http.ResponseWriter, r *http.Request) {
 		JSON(w, http.StatusOK, empty)
 		return
 	}
-	// Verify ownership
 	if !userOwnsDevice(r, u.ID, deviceID) {
 		JSON(w, http.StatusOK, empty)
 		return
@@ -523,173 +243,122 @@ func handleAPIProfileIDs(w http.ResponseWriter, r *http.Request) {
 
 // ─── Consent / Privacy (static legal pages) ──────────────────────────────────
 
-type staticPageData struct {
-	SiteName     string
-	ContactEmail string
-}
-
-// GET /consent
-func handleConsentPage(w http.ResponseWriter, r *http.Request) {
+// GET /api/public/page?name=consent|privacy
+func handlePublicPage(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
 	cfg := config.Get()
-	render.Page(w, r, "consent", userFromCtx(r), staticPageData{
-		SiteName:     cfg.SiteName,
-		ContactEmail: cfg.ContactEmail,
-	})
-}
+	siteName := cfg.SiteName
+	if s, ok := store.GetSetting(r.Context(), "site_name"); ok && s != "" {
+		siteName = s
+	}
+	contactEmail := cfg.ContactEmail
+	if e, ok := store.GetSetting(r.Context(), "contact_email"); ok && e != "" {
+		contactEmail = e
+	}
 
-// GET /privacy
-func handlePrivacyPage(w http.ResponseWriter, r *http.Request) {
-	cfg := config.Get()
-	render.Page(w, r, "privacy", userFromCtx(r), staticPageData{
-		SiteName:     cfg.SiteName,
-		ContactEmail: cfg.ContactEmail,
-	})
-}
-
-// ─── Stats dashboard ──────────────────────────────────────────────────────────
-
-const statsCookieName = "np_stats"
-
-func statsAuthorized(r *http.Request) bool {
-	c, err := r.Cookie(statsCookieName)
-	return err == nil && c.Value == "1"
-}
-
-type statsLoginData struct {
-	Error string
-}
-
-// GET /stats
-func handleStatsLoginPage(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if statsAuthorized(r) || (u != nil && u.IsAdmin) {
-		http.Redirect(w, r, "/stats/dashboard", http.StatusFound)
+	var title, settingKey, defaultHTML string
+	switch name {
+	case "consent":
+		title = "Согласие на обработку персональных данных"
+		settingKey = "consent_content"
+		defaultHTML = consentDefaultHTML(siteName, contactEmail)
+	case "privacy":
+		title = "Политика обработки персональных данных"
+		settingKey = "privacy_policy_content"
+		defaultHTML = privacyDefaultHTML(siteName, contactEmail)
+	default:
+		Error(w, http.StatusNotFound, "unknown page")
 		return
 	}
-	render.Page(w, r, "stats_login", u, statsLoginData{})
-}
 
-// POST /stats
-func handleStatsLoginForm(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if err := r.ParseForm(); err != nil {
-		render.Page(w, r, "stats_login", u, statsLoginData{Error: "Ошибка запроса"})
-		return
-	}
-	cfg := config.Get()
-	if cfg.AdminPassword == "" || r.FormValue("password") != cfg.AdminPassword {
-		render.Page(w, r, "stats_login", u, statsLoginData{Error: "Неверный пароль"})
-		return
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     statsCookieName,
-		Value:    "1",
-		Path:     "/",
-		MaxAge:   86400 * 7,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-	http.Redirect(w, r, "/stats/dashboard", http.StatusFound)
-}
-
-type simpleUserRow struct {
-	Username  string
-	Role      string
-	CreatedAt string
-}
-
-type statsDashData struct {
-	Now            string
-	UsersToday     int
-	UsersTotal     int
-	DevicesTotal   int
-	CardsTotal     int
-	TimecodesTotal int
-	NewUsersToday  []simpleUserRow
-	AllUsers       []simpleUserRow
-}
-
-// GET /stats/dashboard
-func handleStatsDashboard(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if !statsAuthorized(r) && (u == nil || !u.IsAdmin) {
-		http.Redirect(w, r, "/stats", http.StatusFound)
-		return
-	}
-	ctx := r.Context()
-	var d statsDashData
-	d.Now = time.Now().Format("15:04:05")
-
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE created_at::date = CURRENT_DATE`).Scan(&d.UsersToday)   //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&d.UsersTotal)                                          //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&d.DevicesTotal)                                      //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards`).Scan(&d.CardsTotal)                                    //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes`).Scan(&d.TimecodesTotal)                                  //nolint:errcheck
-
-	if rows, err := postgres.Pool.Query(ctx,
-		`SELECT username, created_at FROM users WHERE created_at::date = CURRENT_DATE ORDER BY created_at DESC`); err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var username string
-			var createdAt time.Time
-			if rows.Scan(&username, &createdAt) == nil {
-				d.NewUsersToday = append(d.NewUsersToday, simpleUserRow{Username: username, CreatedAt: createdAt.Format("15:04:05")})
-			}
-		}
+	html := defaultHTML
+	if custom, ok := store.GetSetting(r.Context(), settingKey); ok && custom != "" {
+		html = custom
 	}
 
-	if rows, err := postgres.Pool.Query(ctx,
-		`SELECT username, role, created_at FROM users ORDER BY created_at DESC LIMIT 200`); err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var row simpleUserRow
-			var createdAt time.Time
-			if rows.Scan(&row.Username, &row.Role, &createdAt) == nil {
-				row.CreatedAt = createdAt.Format("02.01.2006")
-				d.AllUsers = append(d.AllUsers, row)
-			}
-		}
+	JSON(w, http.StatusOK, map[string]string{"title": title, "html": html})
+}
+
+func consentDefaultHTML(site, email string) string {
+	contact := ""
+	if email != "" {
+		contact = `<p><strong>Контактные данные оператора:</strong> <a href="mailto:` + email + `">` + email + `</a></p>`
 	}
-
-	render.Page(w, r, "stats_dashboard", u, d)
+	return `<h2>Согласие на обработку персональных данных</h2>
+<p>Настоящим я, пользователь сервиса <strong>` + site + `</strong>, свободно, своей волей и в своём интересе даю согласие на обработку следующих персональных данных:</p>
+<ul><li>Telegram ID и username в мессенджере Telegram</li></ul>
+<p><strong>Цели обработки:</strong></p>
+<ul>
+  <li>Восстановление доступа к аккаунту через Telegram</li>
+  <li>Отправка уведомлений о входе в аккаунт и истечении подписки</li>
+</ul>
+<p>Согласие предоставляется путём установки отметки (чекбокса) на странице привязки Telegram-аккаунта и действует до его отзыва.</p>
+<p>Я вправе в любой момент отозвать согласие, отвязав Telegram-аккаунт в разделе «Настройки аккаунта». После отзыва согласия данные будут удалены.</p>
+` + contact
 }
 
-// ─── Telegram miniapp ──────────────────────────────────────────────────────────
-
-type tgMiniappData struct {
-	User       interface{}
-	DeviceCode string
-	Success    bool
-	Error      string
+func privacyDefaultHTML(site, email string) string {
+	contact := ""
+	if email != "" {
+		contact = `<h4>7. Контактные данные</h4><p>По вопросам обработки персональных данных: <a href="mailto:` + email + `">` + email + `</a></p>`
+	}
+	return `<h2>Политика обработки персональных данных</h2>
+<p>Настоящая Политика определяет порядок обработки персональных данных пользователей сервиса <strong>` + site + `</strong>.</p>
+<h4>1. Какие данные мы обрабатываем</h4>
+<ul>
+  <li>Имя пользователя (логин)</li>
+  <li>Telegram ID и username — при добровольной привязке аккаунта Telegram</li>
+  <li>IP-адрес и User-Agent браузера — для защиты аккаунта и ведения сессий</li>
+</ul>
+<h4>2. Цели обработки</h4>
+<ul>
+  <li>Аутентификация и управление сессиями</li>
+  <li>Восстановление пароля через Telegram</li>
+  <li>Отправка уведомлений о входе в аккаунт и истечении подписки</li>
+</ul>
+<h4>3. Хранение данных</h4>
+<p>Данные хранятся на сервере оператора. Telegram ID и username хранятся только при наличии явно данного согласия и удаляются при отвязке Telegram-аккаунта.</p>
+<h4>4. Передача третьим лицам</h4>
+<p>Данные не передаются третьим лицам, за исключением технически необходимого взаимодействия с платформой Telegram (при привязке аккаунта).</p>
+<h4>5. Права субъекта данных</h4>
+<p>Вы вправе в любой момент отвязать Telegram-аккаунт и удалить свою учётную запись в разделе «Настройки аккаунта».</p>
+<h4 id="cookie-policy">6. Использование cookie-файлов</h4>
+<p>Сайт использует cookie-файлы для обеспечения работы сессий авторизации и хранения пользовательских предпочтений. Cookie не передаются третьим лицам.</p>
+` + contact
 }
 
-// GET /tg-miniapp
-func handleTgMiniappPage(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	code := r.URL.Query().Get("code")
-	render.Page(w, r, "tg_miniapp", u, tgMiniappData{User: u, DeviceCode: code})
-}
+// ─── Notification settings ────────────────────────────────────────────────────
 
-// POST /tg-miniapp
-func handleTgMiniappSubmit(w http.ResponseWriter, r *http.Request) {
+// GET /api/notification-settings
+func handleGetNotificationSettings(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		render.Page(w, r, "tg_miniapp", u, tgMiniappData{User: u, Error: "Ошибка запроса"})
+	s := store.GetNotificationSettings(r.Context(), u.ID)
+	JSON(w, http.StatusOK, s)
+}
+
+// PATCH /api/notification-settings
+func handlePatchNotificationSettings(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	if u == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	code := r.FormValue("code")
-	if code == "" {
-		render.Page(w, r, "tg_miniapp", u, tgMiniappData{User: u, Error: "Код не указан"})
+	var body store.NotificationSettings
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	lim := store.LimitsFor(u.Role).MaxDevices
-	if _, err := store.LinkDeviceCode(r.Context(), code, u.ID, "Lampa (Telegram)", lim); err != nil {
-		render.Page(w, r, "tg_miniapp", u, tgMiniappData{User: u, DeviceCode: code, Error: "Неверный или устаревший код"})
+	if body.NotifyStart < 0 || body.NotifyStart > 23 || body.NotifyEnd < 0 || body.NotifyEnd > 23 {
+		Error(w, http.StatusBadRequest, "notify_start and notify_end must be 0-23")
 		return
 	}
-	render.Page(w, r, "tg_miniapp", u, tgMiniappData{User: u, Success: true})
+	if err := store.SaveNotificationSettings(r.Context(), u.ID, body); err != nil {
+		Error(w, http.StatusInternalServerError, "failed to save")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }

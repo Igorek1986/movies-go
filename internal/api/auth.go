@@ -11,6 +11,17 @@ import (
 	"strings"
 )
 
+func countBackupCodes(codes *string) int {
+	if codes == nil || *codes == "" {
+		return 0
+	}
+	var hashes []string
+	if json.Unmarshal([]byte(*codes), &hashes) != nil {
+		return 0
+	}
+	return len(hashes)
+}
+
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 type ctxKeyUser struct{}
@@ -78,13 +89,14 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]any{
-		"id":            u.ID,
-		"username":      u.Username,
-		"role":          u.Role,
-		"is_admin":      u.IsAdmin,
-		"totp_enabled":  u.TotpEnabled,
-		"premium_until": u.PremiumUntil,
-		"blocked_at":    u.BlockedAt,
+		"id":                 u.ID,
+		"username":           u.Username,
+		"role":               u.Role,
+		"is_admin":           u.IsAdmin,
+		"totp_enabled":       u.TotpEnabled,
+		"backup_codes_count": countBackupCodes(u.BackupCodes),
+		"premium_until":      u.PremiumUntil,
+		"blocked_at":         u.BlockedAt,
 	})
 }
 
@@ -97,6 +109,7 @@ func handleAppConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"image_proxy_url": imgProxy,
+		"bot_name":        cfg.TelegramBotName,
 	})
 }
 
@@ -128,6 +141,23 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 			msg = *u.BlockReason
 		}
 		Error(w, http.StatusForbidden, msg)
+		return
+	}
+
+	if u.TotpEnabled {
+		ttl := store.GetSettingInt(r.Context(), "pending_2fa_ttl_sec")
+		if ttl <= 0 {
+			ttl = 600
+		}
+		pendingToken, err := store.CreateTotpPendingToken(r.Context(), u.ID, ttl)
+		if err != nil {
+			Error(w, http.StatusInternalServerError, "session error")
+			return
+		}
+		JSON(w, http.StatusOK, map[string]any{
+			"requires_2fa":  true,
+			"pending_token": pendingToken,
+		})
 		return
 	}
 

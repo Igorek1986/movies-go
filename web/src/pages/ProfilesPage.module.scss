@@ -113,6 +113,8 @@
 }
 
 .btnSm {
+  display: inline-flex;
+  align-items: center;
   height: 30px;
   padding: 0 $spacing-sm;
   border: 1px solid $color-border;
@@ -122,13 +124,38 @@
   font-size: $font-size-xs;
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color $transition-fast, color $transition-fast;
+  text-decoration: none;
+  transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
 
-  &:hover { border-color: $color-primary; color: $color-primary; }
+  &:hover {
+    border-color: $color-primary;
+    color: #fff;
+    background: rgba($color-primary, 0.25);
+  }
 
-  &.warning:hover { border-color: $color-warning; color: $color-warning; }
-  &.danger:hover  { border-color: $color-danger;  color: $color-danger;  }
-  &.active { border-color: $color-primary; color: $color-primary; background: rgba($color-primary, 0.1); }
+  &.warning {
+    color: $color-warning;
+    border-color: rgba($color-warning, 0.5);
+    &:hover {
+      border-color: $color-warning;
+      color: #fff;
+      background: rgba($color-warning, 0.25);
+    }
+  }
+
+  &.danger {
+    &:hover {
+      border-color: $color-danger;
+      color: #fff;
+      background: rgba($color-danger, 0.25);
+    }
+  }
+
+  &.active {
+    border-color: $color-primary;
+    color: $color-primary;
+    background: rgba($color-primary, 0.1);
+  }
 }
 
 .btnIcon {
@@ -148,7 +175,8 @@
 
 .profilesPanel {
   border-top: 1px solid $color-border;
-  padding-top: $spacing-md;
+  margin-top: $spacing-md;
+  padding-top: $spacing-lg;
   display: flex;
   flex-direction: column;
   gap: $spacing-sm;
@@ -171,6 +199,76 @@
   display: flex;
   flex-direction: column;
   gap: $spacing-xs;
+}
+
+.profileNameRow {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.profileIconWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.profileIconBtn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba($color-border, 0.6);
+  border-radius: $radius-sm;
+  background: rgba($color-border, 0.25);
+  padding: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color $transition-fast, background $transition-fast;
+
+  img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+  &:hover {
+    border-color: $color-primary;
+    background: rgba($color-primary, 0.1);
+  }
+}
+
+.iconPicker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  background: $color-bg-card;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  padding: $spacing-xs;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 3px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.iconPickerBtn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color $transition-fast, background $transition-fast;
+
+  img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+  &:hover { background: rgba($color-primary, 0.12); border-color: $color-primary; }
+}
+
+.iconPickerBtnActive {
+  border-color: $color-primary;
+  background: rgba($color-primary, 0.18);
 }
 
 .profileCardTop {
@@ -224,6 +322,12 @@
   padding-top: $spacing-xs;
 }
 
+.newProfileForm {
+  border-top: 1px dashed rgba($color-border, 0.8);
+  padding-top: $spacing-md;
+  margin-top: $spacing-xs;
+}
+
 // ── Forms ─────────────────────────────────────────────────────────────────────
 
 .inlineForm {
@@ -245,7 +349,17 @@
   display: flex;
   flex-direction: column;
   gap: $spacing-sm;
-  max-width: 400px;
+  width: 100%;
+}
+
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  flex: 1;
+  min-width: 140px;
 }
 
 .linkForm {
@@ -265,8 +379,8 @@
 .inputMono {
   font-family: 'Courier New', monospace;
   font-size: $font-size-xs;
-  flex: 0 1 160px;
-  min-width: 0;
+  flex: 1;
+  min-width: 120px;
   color: $color-text-muted;
 }
 
@@ -279,7 +393,32 @@
   cursor: pointer;
 }
 
+.codeSnippet {
+  font-family: 'Courier New', monospace;
+  font-size: $font-size-xs;
+  background: rgba($color-border, 0.6);
+  padding: 2px 6px;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  color: $color-primary;
+  white-space: nowrap;
+
+  &:hover { background: rgba($color-primary, 0.15); }
+}
+
+.jsonTextarea {
+  @include input-base;
+  font-family: 'Courier New', monospace;
+  font-size: $font-size-xs;
+  resize: vertical;
+  min-height: 100px;
+  line-height: 1.5;
+}
+
 .btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 38px;
   padding: 0 $spacing-lg;
   border: none;
@@ -290,6 +429,7 @@
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  text-decoration: none;
   transition: background $transition-fast;
 
   &:hover:not(:disabled) { background: $color-primary-hover; }
@@ -297,7 +437,8 @@
 
   &.danger {
     background: $color-danger;
-    &:hover:not(:disabled) { background: #c44; }
+    color: #fff;
+    &:hover:not(:disabled) { background: darken(#e05252, 10%); }
   }
 }
 
@@ -305,6 +446,19 @@
   font-size: $font-size-sm;
   color: $color-text-muted;
   font-style: italic;
+}
+
+// ── Details grid ──────────────────────────────────────────────────────────────
+
+.detailsGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: $spacing-lg;
+  align-items: start;
+
+  @include bp-up($bp-md) {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 // ── Details / accordion ───────────────────────────────────────────────────────
@@ -370,4 +524,145 @@
   margin: 0;
   font-size: $font-size-sm;
   color: $color-success;
+}
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  font-size: $font-size-sm;
+  cursor: pointer;
+
+  input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
+}
+
+.formRow {
+  display: flex;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+
+  label {
+    flex: 1;
+    min-width: 150px;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-xs;
+    font-size: $font-size-sm;
+  }
+
+  > input {
+    flex: 1;
+    min-width: 150px;
+  }
+}
+
+// ── MyShows sync log ──────────────────────────────────────────────────────────
+
+.syncLog {
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  background: $color-bg-input;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  padding: $spacing-sm;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.syncLogLine {
+  color: $color-text-muted;
+  line-height: 1.4;
+}
+
+.syncLogError {
+  color: $color-danger;
+  line-height: 1.4;
+}
+
+// ── Premium gate ──────────────────────────────────────────────────────────────
+
+.premiumGate {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  align-items: flex-start;
+}
+
+.premiumBadge {
+  display: inline-block;
+  padding: 3px $spacing-md;
+  border-radius: $radius-full;
+  font-size: $font-size-xs;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #f6c05c, #e0943a);
+  color: #1a1a1a;
+}
+
+// ── Token modal ───────────────────────────────────────────────────────────────
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: $spacing-md;
+}
+
+.modal {
+  @include card;
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.modalHint {
+  margin: 0;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  line-height: 1.5;
+}
+
+.modalToken {
+  font-family: 'Courier New', monospace;
+  font-size: $font-size-sm;
+  word-break: break-all;
+  background: rgba($color-border, 0.5);
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-sm;
+  color: $color-text;
+  border: 1px solid $color-border;
+}
+
+.modalActions {
+  display: flex;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.backupActions {
+  display: flex;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+  margin-top: $spacing-sm;
 }

@@ -1,0 +1,99 @@
+@use '@/styles/variables' as *;
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+}
+
+.header {
+  @include flex-between;
+  flex-wrap: wrap;
+  gap: $spacing-md;
+  align-items: flex-start;
+}
+
+.title {
+  margin: 0 0 $spacing-xs;
+  font-size: $font-size-lg;
+  font-weight: 600;
+}
+
+.hint {
+  margin: 0;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.muted {
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  padding: $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: $color-bg-input;
+
+  &.current {
+    border-color: $color-primary;
+  }
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  min-width: 0;
+}
+
+.browser {
+  font-weight: 500;
+  font-size: $font-size-base;
+}
+
+.meta {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.btnSm {
+  height: 30px;
+  padding: 0 $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &.secondary:hover {
+    border-color: $color-text;
+    color: $color-text;
+  }
+
+  &.danger {
+    border-color: rgba($color-danger, 0.4);
+    color: $color-danger;
+
+    &:hover {
+      border-color: $color-danger;
+    }
+  }
+}

@@ -6,6 +6,7 @@ import (
 	"lampa-api/internal/auth"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -137,6 +138,10 @@ func handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	dev, err := store.CreateDevice(r.Context(), u.ID, req.Name)
 	if err != nil {
+		if strings.Contains(err.Error(), "uq_devices_user_name") {
+			Error(w, http.StatusConflict, "device with this name already exists")
+			return
+		}
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
@@ -208,6 +213,10 @@ func handleRenameDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := store.RenameDevice(r.Context(), id, u.ID, req.Name); err != nil {
+		if strings.Contains(err.Error(), "uq_devices_user_name") {
+			Error(w, http.StatusConflict, "device with this name already exists")
+			return
+		}
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}

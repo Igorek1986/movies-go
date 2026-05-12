@@ -1,0 +1,209 @@
+@use '@/styles/variables' as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xl;
+}
+
+.pageHeader {
+  @include flex-between;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+}
+
+.pageTitle {
+  margin: 0;
+  font-size: $font-size-xl;
+  font-weight: 700;
+  color: $color-text;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+}
+
+.updateTime {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+.refreshBtn {
+  height: 32px;
+  padding: 0 $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover {
+    border-color: $color-primary;
+    color: $color-primary;
+  }
+}
+
+// ── Counters ──────────────────────────────────────────────────────────────────
+
+.countersGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: $spacing-md;
+}
+
+.counterCard {
+  @include card;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  padding: $spacing-lg;
+}
+
+.counterValue {
+  font-size: 2rem;
+  font-weight: 700;
+  color: $color-primary;
+  line-height: 1;
+}
+
+.counterLabel {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+// ── Section ───────────────────────────────────────────────────────────────────
+
+.section {
+  @include card;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.sectionHeader {
+  @include flex-between;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $color-text;
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+
+.tabs {
+  display: flex;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  overflow: hidden;
+}
+
+.tab {
+  padding: $spacing-xs $spacing-md;
+  border: none;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: background $transition-fast, color $transition-fast;
+
+  & + & {
+    border-left: 1px solid $color-border;
+  }
+
+  &:hover {
+    background: rgba($color-primary, 0.08);
+    color: $color-primary;
+  }
+}
+
+.tabActive {
+  background: rgba($color-primary, 0.15);
+  color: $color-primary;
+  font-weight: 600;
+}
+
+// ── Table ─────────────────────────────────────────────────────────────────────
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $font-size-sm;
+
+  th {
+    text-align: left;
+    padding: $spacing-xs $spacing-sm;
+    color: $color-text-muted;
+    font-size: $font-size-xs;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid $color-border;
+  }
+
+  td {
+    padding: $spacing-sm;
+    border-bottom: 1px solid rgba($color-border, 0.4);
+    color: $color-text;
+    vertical-align: middle;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:hover td {
+    background: rgba($color-border, 0.15);
+  }
+}
+
+.muted {
+  color: $color-text-muted;
+}
+
+.empty {
+  text-align: center;
+  color: $color-text-muted;
+  padding: $spacing-xl 0 !important;
+  font-style: italic;
+}
+
+.adminBadge {
+  display: inline-block;
+  margin-left: $spacing-xs;
+  padding: 1px 6px;
+  border-radius: $radius-full;
+  font-size: $font-size-xs;
+  font-weight: 600;
+  background: rgba($color-primary, 0.15);
+  color: $color-primary;
+}
+
+.emptyText {
+  color: $color-text-muted;
+  font-style: italic;
+  font-size: $font-size-sm;
+  margin: 0;
+  padding: $spacing-md 0;
+}
+
+.emptyCell {
+  text-align: center;
+  color: $color-text-muted;
+  padding: $spacing-xl 0 !important;
+  font-style: italic;
+}
+
+.loading {
+  text-align: center;
+  color: $color-text-muted;
+  padding: $spacing-2xl 0;
+}

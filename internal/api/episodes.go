@@ -9,17 +9,12 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 )
 
 // GET /api/episodes?card_id=&device_id=&profile_id=&include_specials=0
 func handleEpisodes(w http.ResponseWriter, r *http.Request) {
-	u := userFromCtx(r)
-	if u == nil {
-		Error(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
 	q := r.URL.Query()
 	cardID := q.Get("card_id")
 	deviceID, _ := strconv.ParseInt(q.Get("device_id"), 10, 64)
@@ -31,13 +26,22 @@ func handleEpisodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify device belongs to this user (optional — if no device_id just skip timecodes)
+	// Verify device ownership to protect timecodes; skip if no session/device
 	if deviceID != 0 {
-		var ownerID int64
-		if err := postgres.Pool.QueryRow(r.Context(),
-			`SELECT user_id FROM devices WHERE id=$1`, deviceID,
-		).Scan(&ownerID); err != nil || ownerID != u.ID {
-			deviceID = 0 // silently ignore bad device
+		u := userFromCtx(r)
+		if u != nil {
+			var ownerID int64
+			if err := postgres.Pool.QueryRow(r.Context(),
+				`SELECT user_id FROM devices WHERE id=$1`, deviceID,
+			).Scan(&ownerID); err != nil || ownerID != u.ID {
+				deviceID = 0
+			}
+		} else {
+			// No session — load timecodes by device token if present
+			d := deviceFromRequest(r)
+			if d == nil || d.ID != deviceID {
+				deviceID = 0
+			}
 		}
 	}
 
@@ -63,6 +67,67 @@ func handleEpisodes(w http.ResponseWriter, r *http.Request) {
 
 	// Fallback: TMDB seasons JSON
 	JSON(w, http.StatusOK, buildFromTMDB(ctx, mc, timecodeData, includeSpecials))
+}
+
+// ─── check-ongoing rate limiter ───────────────────────────────────────────────
+
+var (
+	ongoingMu   sync.Mutex
+	ongoingLast = map[int64]int{} // deviceID → YearDay last triggered
+)
+
+func ongoingAllowed(deviceID int64) bool {
+	today := time.Now().YearDay()
+	ongoingMu.Lock()
+	defer ongoingMu.Unlock()
+	if ongoingLast[deviceID] == today {
+		return false
+	}
+	ongoingLast[deviceID] = today
+	return true
+}
+
+// GET /api/check-ongoing?token= (device-token auth, fire-and-forget)
+// Triggers a background episode sync for all stale TV cards the device has timecodes on.
+func handleCheckOngoing(w http.ResponseWriter, r *http.Request) {
+	d := deviceFromRequest(r)
+	if d == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+
+	if !ongoingAllowed(d.ID) {
+		return
+	}
+
+	deviceID := d.ID
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+
+		cards := store.GetStaleOngoingCards(ctx, deviceID)
+		for i, mc := range cards {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			if err := myshows.SyncEpisodes(ctx, mc); err != nil {
+				log.Printf("check-ongoing: sync %s: %v", mc.CardID, err)
+			}
+
+			if (i+1)%10 == 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(2 * time.Second):
+				}
+			}
+		}
+	}()
 }
 
 // GET /api/refresh-card-episodes?card_id= (device-token auth, fire-and-forget)
@@ -163,16 +228,17 @@ func loadCardTimecodes(ctx context.Context, deviceID int64, profileID, cardID st
 }
 
 type episodeOut struct {
-	Season      int16   `json:"season"`
-	Episode     int16   `json:"episode"`
-	Title       *string `json:"title,omitempty"`
-	Hash        string  `json:"hash"`
-	Watched     bool    `json:"watched"`
-	Special     bool    `json:"special"`
-	UserSpecial bool    `json:"user_special"` // user-marked (not MyShows is_special)
-	Percent     float64 `json:"percent"`
-	DurationSec *int    `json:"duration_sec,omitempty"`
-	AirDate     *string `json:"air_date,omitempty"`
+	Season          int16   `json:"season"`
+	Episode         int16   `json:"episode"`
+	Title           *string `json:"title,omitempty"`
+	Hash            string  `json:"hash"`
+	Watched         bool    `json:"watched"`
+	Special         bool    `json:"special"`
+	UserSpecial     bool    `json:"user_special"`      // user-marked (not MyShows is_special)
+	CatalogSpecial  bool    `json:"catalog_special"`   // is_special from episodes table (real catalog special)
+	Percent         float64 `json:"percent"`
+	DurationSec     *int    `json:"duration_sec,omitempty"`
+	AirDate         *string `json:"air_date,omitempty"`
 }
 
 func buildFromTable(mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[string]timecodeInfo, includeSpecials bool) map[string]any {
@@ -202,16 +268,17 @@ func buildFromTable(mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[st
 			airStr = &s
 		}
 		out = append(out, episodeOut{
-			Season:      ep.Season,
-			Episode:     ep.Episode,
-			Title:       ep.Title,
-			Hash:        ep.Hash,
-			Watched:     td.percent >= 90 || td.special,
-			Special:     ep.IsSpecial || td.special,
-			UserSpecial: td.special,
-			Percent:     td.percent,
-			DurationSec: durSec,
-			AirDate:     airStr,
+			Season:         ep.Season,
+			Episode:        ep.Episode,
+			Title:          ep.Title,
+			Hash:           ep.Hash,
+			Watched:        td.percent >= 90 || td.special,
+			Special:        ep.IsSpecial || td.special,
+			UserSpecial:    td.special,
+			CatalogSpecial: ep.IsSpecial,
+			Percent:        td.percent,
+			DurationSec:    durSec,
+			AirDate:        airStr,
 		})
 	}
 	if out == nil {

@@ -70,6 +70,10 @@ var SettingDefaults = map[string]string{
 	"yandex_metrika_id":        "",
 	"google_analytics_enabled": "0",
 	"google_analytics_id":      "",
+	// Category parser settings (applied at startup, require restart)
+	"movies_new_year_delta":  "2",
+	"movies_4k_year_delta":   "4",
+	"movies_new_min_quality": "200",
 	// Legal
 	"site_name":              "NUMParser",
 	"contact_email":          "",

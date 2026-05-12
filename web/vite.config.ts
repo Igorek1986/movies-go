@@ -34,6 +34,8 @@ export default defineConfig({
       '/telegram': 'http://localhost:8080',
       '/sessions': 'http://localhost:8080',
       '/tg-app': 'http://localhost:8080',
+      '/static': 'http://localhost:8080',
+      '/bot': 'http://localhost:8080',
     },
   },
 })

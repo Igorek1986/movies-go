@@ -1,6 +1,0 @@
-{{define "_admin_links"}}
-{{if and .User .User.IsAdmin}}
-<li><a href="/stats/dashboard" role="button" class="outline btn-sm {{if hasPrefix .Path "/stats"}}secondary{{end}}">📊 Статистика</a></li>
-<li><a href="/admin" role="button" class="outline btn-sm {{if hasPrefix .Path "/admin"}}secondary{{end}}">⚙ Админ</a></li>
-{{end}}
-{{end}}

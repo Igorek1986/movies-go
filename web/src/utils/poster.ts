@@ -28,7 +28,8 @@ export function tmdbUrl(path: string | null | undefined, size = 'w300'): string 
 }
 
 // Alias with default size — use for poster thumbnails.
-export function posterUrl(path: string | null | undefined): string | null {
-  return tmdbUrl(path, 'w300')
+// w342 covers catalog cards (~185px) at 2x retina and mobile 2-column layout (~300px).
+export function posterUrl(path: string | null | undefined, size = 'w342'): string | null {
+  return tmdbUrl(path, size)
 }
 

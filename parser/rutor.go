@@ -157,6 +157,7 @@ func (self *RutorParser) Parse() {
 	}
 
 	store.SetLastParsedAt()
+	log.Println("parser: scan complete")
 }
 
 // читаем категории и заносим в таски что парсить

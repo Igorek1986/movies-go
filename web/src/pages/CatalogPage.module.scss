@@ -6,29 +6,29 @@
   gap: $spacing-lg;
 }
 
-// ── Selector bar (devices + profiles + search) ────────────────────────────────
+// ── Toolbar ───────────────────────────────────────────────────────────────────
 
-.selectorBar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: $spacing-md;
-  flex-wrap: wrap;
-}
-
-.selectorRow {
+.toolbar {
   display: flex;
   flex-direction: column;
   gap: $spacing-xs;
 }
 
-// Device tabs — solid style
+.toolbarTop {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+  justify-content: space-between;
+}
+
 .deviceTabs {
   display: flex;
   gap: 0;
   border: 1px solid $color-border;
   border-radius: $radius-sm;
   overflow: hidden;
+  width: fit-content;
 }
 
 .deviceTab {
@@ -40,8 +40,8 @@
   font-size: $font-size-sm;
   font-weight: 500;
   cursor: pointer;
-  transition: background $transition-fast, color $transition-fast;
   white-space: nowrap;
+  transition: background $transition-fast, color $transition-fast;
 
   &:last-child { border-right: none; }
   &:hover { background: rgba($color-primary, 0.08); color: $color-text; }
@@ -53,7 +53,6 @@
   &:hover { background: $color-primary-hover; }
 }
 
-// Profile tabs — pill style, indented under device tabs
 .profileTabs {
   display: flex;
   gap: $spacing-xs;
@@ -61,7 +60,7 @@
   padding-left: 2px;
 }
 
-.profileTab {
+.tab {
   padding: 2px $spacing-md;
   border: 1px solid $color-border;
   border-radius: $radius-full;
@@ -69,8 +68,8 @@
   color: $color-text-muted;
   font-size: $font-size-xs;
   cursor: pointer;
-  transition: background $transition-fast, color $transition-fast, border-color $transition-fast;
   white-space: nowrap;
+  transition: background $transition-fast, color $transition-fast, border-color $transition-fast;
 
   &:hover {
     border-color: $color-primary;
@@ -78,144 +77,208 @@
   }
 }
 
-.profileTabActive {
+.tabActive {
   background: rgba($color-primary, 0.15);
   border-color: $color-primary;
   color: $color-primary;
   font-weight: 600;
 }
 
-// Right side: hide-watched + search
-.profileBarRight {
-  display: flex;
-  align-items: center;
-  gap: $spacing-sm;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
-
-.hideWatchedBtn {
-  height: 36px;
-  padding: 0 $spacing-md;
-  border: 1px solid $color-border;
-  border-radius: $radius-sm;
-  background: transparent;
-  color: $color-text-muted;
-  font-size: $font-size-sm;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
-
-  &:hover { border-color: $color-primary; color: $color-primary; }
-}
-
-.hideWatchedActive {
-  border-color: $color-primary;
-  color: $color-primary;
-  background: rgba($color-primary, 0.1);
-}
-
-.searchForm { flex-shrink: 0; }
-
 .searchWrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.searchIcon {
-  position: absolute;
-  left: $spacing-sm;
-  font-size: 14px;
-  pointer-events: none;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .searchInput {
   @include input-base;
   height: 36px;
-  padding-left: 30px;
+  width: 220px;
   font-size: $font-size-sm;
-  width: 200px;
   border-radius: $radius-sm;
 
-  @media (max-width: $bp-sm) { width: 140px; }
-}
-
-// ── Category tabs ─────────────────────────────────────────────────────────────
-
-.categoryTabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $spacing-xs;
-}
-
-.categoryTab {
-  padding: $spacing-xs $spacing-md;
-  border: 1px solid $color-border;
-  border-radius: $radius-full;
-  background: transparent;
-  color: $color-text-muted;
-  font-size: $font-size-sm;
-  cursor: pointer;
-  transition: background $transition-fast, color $transition-fast, border-color $transition-fast;
-  white-space: nowrap;
-
-  &:hover {
-    border-color: $color-primary;
-    color: $color-primary;
+  @media (max-width: $bp-sm) {
+    width: 150px;
   }
 }
 
-.categoryTabActive {
-  background: rgba($color-primary, 0.15);
-  border-color: $color-primary;
-  color: $color-primary;
-  font-weight: 600;
+// ── Rows (main view) ──────────────────────────────────────────────────────────
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xl;
 }
 
-// ── Meta ──────────────────────────────────────────────────────────────────────
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
 
-.meta {
-  font-size: $font-size-sm;
+  &[data-dragging] {
+    opacity: 0.5;
+  }
+}
+
+.rowHeader {
+  @include flex-between;
+  padding-bottom: $spacing-xs;
+}
+
+.rowHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.dragHandle {
   color: $color-text-muted;
+  cursor: grab;
+  font-size: $font-size-lg;
+  line-height: 1;
+  user-select: none;
+
+  &:active {
+    cursor: grabbing;
+  }
 }
 
-.searchTag {
+.rowTitle {
+  margin: 0;
+  font-size: $font-size-base;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.rowMore {
+  border: none;
+  background: transparent;
   color: $color-primary;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  cursor: pointer;
+  padding: $spacing-xs $spacing-sm;
+  border-radius: $radius-sm;
+  transition: background $transition-fast;
+
+  &:hover {
+    background: rgba($color-primary, 0.1);
+  }
 }
 
-// ── Grid ─────────────────────────────────────────────────────────────────────
+.rowScroll {
+  overflow-x: auto;
+  padding-bottom: $spacing-xs;
+  // Reserve height = poster (185px × 3/2) + card body (~54px) to avoid layout shift while loading
+  min-height: calc(185px * 3 / 2 + 54px);
+
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  @media (max-width: $bp-sm) {
+    min-height: calc(155px * 3 / 2 + 54px);
+  }
+}
+
+.rowInner {
+  display: flex;
+  gap: $spacing-sm;
+  width: max-content;
+  align-items: stretch;
+}
+
+.rowCard {
+  width: 185px;
+  flex-shrink: 0;
+
+  @media (max-width: $bp-sm) {
+    width: 155px;
+  }
+}
+
+.rowLoading {
+  padding: $spacing-md;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  white-space: nowrap;
+}
+
+.rowExpandBtn {
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  border: 1px dashed $color-border;
+  border-radius: $radius-md;
+  background: transparent;
+  color: $color-primary;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background $transition-fast, border-color $transition-fast;
+
+  &:hover {
+    background: rgba($color-primary, 0.07);
+    border-color: $color-primary;
+  }
+}
+
+// ── Grid ──────────────────────────────────────────────────────────────────────
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
   gap: $spacing-md;
 
+  & > * {
+    min-width: 0;
+  }
+
   @media (max-width: $bp-sm) {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: $spacing-sm;
   }
 }
+
+// ── Card ──────────────────────────────────────────────────────────────────────
 
 .card {
   @include card;
   padding: 0;
   overflow: hidden;
   position: relative;
-  text-decoration: none;
-  display: block;
-  transition: transform $transition-fast, border-color $transition-fast;
   cursor: pointer;
+  border-radius: $radius-md;
+  outline: none;
+  touch-action: manipulation;
+  transition: transform $transition-fast, border-color $transition-fast;
 
-  &:hover {
-    transform: translateY(-3px);
-    border-color: rgba($color-primary, 0.5);
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 3px solid transparent;
+    pointer-events: none;
+    z-index: 2;
+    transition: border-color $transition-fast;
+  }
+
+  @media (hover: hover) {
+    &:hover {
+      transform: translateY(-3px);
+      border-color: rgba($color-primary, 0.5);
+    }
+  }
+
+  &:focus::after {
+    border-color: $color-primary;
   }
 }
 
 .poster {
   width: 100%;
-  aspect-ratio: 2/3;
+  aspect-ratio: 2 / 3;
   object-fit: cover;
   display: block;
   background: $color-bg-input;
@@ -223,11 +286,13 @@
 
 .posterPlaceholder {
   width: 100%;
-  aspect-ratio: 2/3;
+  aspect-ratio: 2 / 3;
   background: $color-bg-input;
   @include flex-center;
   color: $color-text-muted;
   font-size: $font-size-xs;
+  padding: $spacing-sm;
+  text-align: center;
 }
 
 .typeBadge {
@@ -273,6 +338,114 @@
   color: $color-warning;
 }
 
+// ── Category view ─────────────────────────────────────────────────────────────
+
+.categoryView {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+}
+
+.categoryHeader {
+  @include flex-between;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+  padding-bottom: $spacing-md;
+}
+
+// ── Floating search bar ───────────────────────────────────────────────────────
+
+.floatingBar {
+  position: fixed;
+  top: 52px;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: $color-bg-card;
+  border-bottom: 1px solid $color-border;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  animation: floatIn 150ms ease;
+}
+
+@keyframes floatIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+.floatingBarInner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: $spacing-xs $spacing-lg;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+
+  @media (max-width: $bp-md) { padding: $spacing-xs $spacing-md; }
+  @media (max-width: $bp-sm) { padding: $spacing-xs $spacing-sm; }
+}
+
+.floatingIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+  color: $color-text-muted;
+}
+
+.floatingInput {
+  @include input-base;
+  height: 34px;
+  flex: 1;
+  font-size: $font-size-sm;
+  border-radius: $radius-sm;
+}
+
+.categoryTitle {
+  margin: 0;
+  font-size: $font-size-xl;
+  font-weight: 700;
+  color: $color-text;
+  flex: 1;
+}
+
+.backBtn {
+  position: fixed;
+  bottom: $spacing-xl;
+  left: $spacing-lg;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  padding: $spacing-xs $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-full;
+  background: rgba($color-bg-card, 0.92);
+  backdrop-filter: blur(8px);
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
+
+  &:hover {
+    border-color: $color-primary;
+    color: $color-primary;
+    background: rgba($color-bg-card, 1);
+  }
+
+  @media (min-width: 1200px) {
+    left: calc((100vw - 1200px) / 2 + #{$spacing-lg});
+  }
+}
+
+// ── States ────────────────────────────────────────────────────────────────────
+
+.loading {
+  text-align: center;
+  color: $color-text-muted;
+  padding: $spacing-2xl 0;
+  font-size: $font-size-sm;
+}
+
 .empty {
   text-align: center;
   color: $color-text-muted;
@@ -280,34 +453,7 @@
   font-size: $font-size-sm;
 }
 
-// ── Pagination ────────────────────────────────────────────────────────────────
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: $spacing-sm;
-  padding-top: $spacing-sm;
-}
-
-.pageBtn {
-  height: 36px;
-  padding: 0 $spacing-md;
-  border: 1px solid $color-border;
-  border-radius: $radius-sm;
-  background: transparent;
-  color: $color-text-muted;
-  font-size: $font-size-sm;
-  cursor: pointer;
-  transition: border-color $transition-fast, color $transition-fast;
-
-  &:hover:not(:disabled) { border-color: $color-primary; color: $color-primary; }
-  &:disabled { opacity: 0.4; cursor: default; }
-
-  &.current {
-    border-color: $color-primary;
-    color: $color-primary;
-    background: rgba($color-primary, 0.1);
-    cursor: default;
-  }
+.sentinel {
+  height: 1px;
+  margin-top: $spacing-lg;
 }

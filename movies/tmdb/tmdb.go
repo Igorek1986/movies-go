@@ -103,14 +103,65 @@ func GetVideoDetails(isMovie bool, id int64) *models.Entity {
 	return ent
 }
 
+// FetchRuntime fetches runtime (movies) or episode_run_time[0] (TV) directly from TMDB,
+// bypassing the local DB cache. Returns 0 if unavailable.
+// If the default (English) response has runtime=0 and the content has a non-English
+// original language, retries with that language (e.g. "ru", "fr", "de").
+func FetchRuntime(isMovie bool, tmdbID int64) int {
+	if TMDBAuthKey == "" {
+		return 0
+	}
+	endpoint := "tv/" + strconv.FormatInt(tmdbID, 10)
+	if isMovie {
+		endpoint = "movie/" + strconv.FormatInt(tmdbID, 10)
+	}
+
+	runtime := func(ent *models.Entity) int {
+		if isMovie {
+			return ent.Runtime
+		}
+		if len(ent.EpisodeRunTime) > 0 {
+			return ent.EpisodeRunTime[0]
+		}
+		return 0
+	}
+
+	var ent *models.Entity
+	if err := readPageTmdb(endpoint, map[string]string{}, &ent); err != nil || ent == nil {
+		return 0
+	}
+	if v := runtime(ent); v > 0 {
+		return v
+	}
+
+	// Fallback: retry with original_language if non-English.
+	if ent.OriginalLanguage != "" && ent.OriginalLanguage != "en" {
+		var loc *models.Entity
+		if err := readPageTmdb(endpoint, map[string]string{"language": ent.OriginalLanguage}, &loc); err == nil && loc != nil {
+			return runtime(loc)
+		}
+	}
+	return 0
+}
+
 func Search(isMovie bool, query string) []*models.Entity {
+	return SearchWithYear(isMovie, query, 0)
+}
+
+func SearchWithYear(isMovie bool, query string, year int) []*models.Entity {
 	var st = "movie"
 	if !isMovie {
 		st = "tv"
 	}
 
-	params := map[string]string{}
-	params["query"] = query
+	params := map[string]string{"query": query}
+	if year > 0 {
+		key := "first_air_date_year"
+		if isMovie {
+			key = "year"
+		}
+		params[key] = strconv.Itoa(year)
+	}
 
 	return listVideoPages("search/"+st, params)
 }
