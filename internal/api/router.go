@@ -25,7 +25,7 @@ func NewRouter(mode string) http.Handler {
 	r.Get("/health", handleHealth)
 	r.Get("/imgproxy/*", handleImgProxy)
 
-	// Lampa content API
+	// Content API
 	r.Get("/api/search", handleSearch)
 	r.Get("/search", handleSearch)
 

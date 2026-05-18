@@ -383,7 +383,7 @@ func toMediaItem(row store.MediaRow) map[string]any {
 		"last_episode_to_air": lastEp,
 		"release_quality":     qualityText(row.VideoQuality),
 		"create_date":         createDate,
-		"source":              "Lampa",
+		"source":              "Movies API",
 	}
 }
 

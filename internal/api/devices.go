@@ -24,7 +24,7 @@ func deviceLimit(role string) int {
 }
 
 // GET /device/code
-// Lampa calls this to get a pairing code, then shows it to the user.
+// Client calls this to get a pairing code, then shows it to the user.
 func handleDeviceGetCode(w http.ResponseWriter, r *http.Request) {
 	code, err := store.CreateDeviceCode(r.Context())
 	if err != nil {
@@ -35,7 +35,7 @@ func handleDeviceGetCode(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /device/status?code=XXXXXX
-// Lampa polls this until status == "linked", then stores the token.
+// Client polls this until status == "linked", then stores the token.
 func handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	if code == "" {
@@ -55,7 +55,7 @@ func handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /device/link
-// Web UI calls this after user logs in and enters the code from Lampa.
+// Web UI calls this after user logs in and enters the pairing code.
 func handleDeviceLink(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
@@ -223,7 +223,7 @@ func handleRenameDevice(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// ─── Token-based Lampa auth helper ───────────────────────────────────────────
+// ─── Token-based auth helper ─────────────────────────────────────────────────
 
 // deviceFromRequest reads ?token= or Authorization: Bearer <token> header.
 func deviceFromRequest(r *http.Request) *deviceCtx {

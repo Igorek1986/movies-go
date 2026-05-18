@@ -1,6 +1,6 @@
 package api
 
-// Web (session-auth) wrappers for Lampa profiles — used by the web UI.
+// Web (session-auth) wrappers for profiles — used by the web UI.
 
 import (
 	"encoding/json"
@@ -134,7 +134,7 @@ func userOwnsDevice(r *http.Request, userID, deviceID int64) bool {
 	return d != nil && d.UserID == userID
 }
 
-// POST /api/profile-name — rename a Lampa profile (used by history.js)
+// POST /api/profile-name — rename a profile (used by history.js)
 func handleProfileName(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	var req struct {
