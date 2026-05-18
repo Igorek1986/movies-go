@@ -252,9 +252,9 @@ export default function ProfilesPage() {
     setLinkLoading(true)
     const body: Record<string, string> = { code: linkCode }
     if (linkDeviceId === 'new') {
-      body.name = linkNewName || 'Lampa'
+      body.name = linkNewName || 'Устройство'
     } else {
-      body.name = devices.find(d => d.id === linkDeviceId)?.name || 'Lampa'
+      body.name = devices.find(d => d.id === linkDeviceId)?.name || 'Устройство'
     }
     const res = await fetch('/api/device/link', {
       method: 'POST',
@@ -747,7 +747,7 @@ export default function ProfilesPage() {
 
                   {openProfilesFor === d.id && (
                     <div className={styles.profilesPanel}>
-                      <h4 className={styles.profilesTitle}>Профили Lampa</h4>
+                      <h4 className={styles.profilesTitle}>Профили</h4>
                       {profiles.length === 0 && <p className={styles.empty}>Нет профилей</p>}
                       {profiles.map(p => (
                         <div key={p.profile_id} className={styles.profileCard}>
@@ -914,7 +914,7 @@ export default function ProfilesPage() {
                       </select>
                     </label>
                     <label className={styles.fieldLabel}>
-                      Профиль Lampa
+                      Профиль
                       <select
                         className={styles.select}
                         value={syncProfileId}
@@ -1021,7 +1021,7 @@ export default function ProfilesPage() {
                     </select>
                   </label>
                   <label className={styles.fieldLabel}>
-                    Профиль Lampa
+                    Профиль
                     <select
                       className={styles.select}
                       value={importProfileId}
@@ -1086,7 +1086,7 @@ export default function ProfilesPage() {
                     </select>
                   </label>
                   <label className={styles.fieldLabel}>
-                    Профиль Lampa
+                    Профиль
                     <select
                       className={styles.select}
                       value={lampaProfileId}

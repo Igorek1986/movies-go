@@ -63,7 +63,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className={styles.layout}>
       <nav className={styles.nav}>
-        <a className={styles.brand} href="/">Lampa</a>
+        <a className={styles.brand} href="/">Movies API</a>
 
         {/* Desktop */}
         <div className={styles.navLinks}>

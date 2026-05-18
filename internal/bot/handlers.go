@@ -375,7 +375,7 @@ func welcomeText() string {
 	cfg := config.Get()
 	name := cfg.SiteName
 	if name == "" {
-		name = "Lampa"
+		name = "Movies API"
 	}
 	return fmt.Sprintf(
 		"👋 Привет! Это бот <b>%s</b>.\n\n"+

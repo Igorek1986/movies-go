@@ -76,7 +76,7 @@ func handleDeviceLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Name == "" {
-		req.Name = "Lampa"
+		req.Name = "Устройство"
 	}
 
 	maxDev := deviceLimit(u.Role)
