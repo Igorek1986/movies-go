@@ -52,6 +52,17 @@ func SetWebhook(webhookURL string) error {
 	return err
 }
 
+// SetMenuButton sets the bot's default menu button to a Mini App web_app button.
+func SetMenuButton(appURL string) error {
+	if instance == nil {
+		return nil
+	}
+	menuButton := fmt.Sprintf(`{"type":"web_app","text":"📱 Управление","web_app":{"url":%q}}`, appURL)
+	v := map[string]string{"menu_button": menuButton}
+	_, err := instance.MakeRequest("setChatMenuButton", v)
+	return err
+}
+
 // HandleWebhookUpdate processes a single update received via webhook.
 func HandleWebhookUpdate(update tgbotapi.Update) {
 	if instance == nil {
@@ -141,6 +152,7 @@ func sendWithKeyboard(chatID int64, text string, kb tgbotapi.ReplyKeyboardMarkup
 	msg.ReplyMarkup = kb
 	instance.Send(msg) //nolint:errcheck
 }
+
 
 func mainKeyboard(isAdmin bool) tgbotapi.ReplyKeyboardMarkup {
 	cfg := config.Get()

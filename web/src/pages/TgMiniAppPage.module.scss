@@ -214,6 +214,39 @@
   align-items: flex-end;
 }
 
+.actionsGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+
+  .btn { flex: 1 1 auto; }
+}
+
+.parserReset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.userCard {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+
+  &:last-child { border-bottom: none; padding-bottom: 0; }
+  &:first-child { padding-top: 0; }
+}
+
+.userCardHeader {
+  margin-bottom: 6px;
+}
+
+.userCardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 // ── Messages ─────────────────────────────────────────────────────────────────
 
 .unreadDot {

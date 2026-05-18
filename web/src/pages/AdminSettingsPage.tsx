@@ -59,6 +59,7 @@ const LABELS: Record<string, string> = {
   rate_2fa_max:            'Rate: 2FA — попыток',
   rate_2fa_window_sec:     'Rate: 2FA — окно (сек)',
   sync_cooldown_sec:       'MyShows cooldown (сек)',
+  parser_overlap_days:     'Парсер — перекрытие дат (дней)',
   movies_new_year_delta:   'Новые фильмы — за сколько лет (YearDelta)',
   movies_4k_year_delta:    'Новые 4K фильмы — за сколько лет (YearDelta)',
   movies_new_min_quality:  'Новые фильмы — мин. качество (0=любое, 100=720p+, 200=1080p+, 300=4K+)',
@@ -92,7 +93,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   { name: 'Общие настройки', keys: [
     'inactive_delete_days', 'inactive_warn_days', 'timecode_grace_days',
     'premium_warn_days', 'premium_extend_all_days', 'watched_threshold',
-    'popular_period_days', 'daily_task_hour',
+    'popular_period_days', 'daily_task_hour', 'parser_overlap_days',
     'session_ttl_days', 'session_renew_days', 'device_token_ttl_days',
     'device_code_ttl_minutes', 'telegram_link_ttl_minutes',
     'reset_code_ttl_minutes', 'pending_2fa_ttl_sec',

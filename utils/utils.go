@@ -2,8 +2,6 @@ package utils
 
 import (
 	"github.com/agnivade/levenshtein"
-	"runtime"
-	"runtime/debug"
 )
 
 func Abs(x int) int {
@@ -42,9 +40,4 @@ func SimilarStr(a, b string) bool {
 	}
 	dist := levenshtein.ComputeDistance(a, b)
 	return dist <= minLen/5+1
-}
-
-func FreeOSMemGC() {
-	runtime.GC()
-	debug.FreeOSMemory()
 }

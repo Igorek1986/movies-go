@@ -2,7 +2,6 @@ package api
 
 import (
 	"io/fs"
-	"lampa-api/internal/static"
 	"lampa-api/internal/web"
 	"net/http"
 	"os"
@@ -137,9 +136,6 @@ func NewRouter(mode string) http.Handler {
 	}
 
 	// ── Только в режиме all ──────────────────────────────────────────────────
-	staticFS, _ := fs.Sub(static.FS, "files")
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
-
 	r.Get("/api/plugin-settings", handleGetPluginSettings)
 	r.Patch("/api/plugin-settings", handlePatchPluginSettings)
 

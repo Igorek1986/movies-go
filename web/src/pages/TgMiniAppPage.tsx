@@ -32,7 +32,7 @@ interface Device { id: number; name: string; timecodes_count: number; created_at
 interface Profile { lampa_profile_id: string; name: string }
 interface DeviceDetail { id: number; name: string; token: string; profile_limit: number | null; profiles: Profile[] }
 interface MeResp { username: string; role: string; role_label: string; device_count: number; device_limit: number | null; devices: Device[] }
-interface UserRow { id: number; username: string; role: string; created_at: string; blocked_at?: string; device_count: number; tg_username?: string }
+interface UserRow { id: number; username: string; role: string; created_at: string; blocked_at?: string; device_count: number; tg_username?: string; premium_until?: string }
 interface MsgRow { id: number; direction: 'in' | 'out'; text: string; created_at: string }
 interface Conversation { user_telegram_id: number; user_username: string; messages: MsgRow[]; has_unread: boolean }
 interface Stats { total_users: number; total_devices: number; total_timecodes: number; tg_linked: number; new_users_today: number; tcs_today: number; unread_support: number; role_counts: Record<string, number> }
@@ -180,6 +180,46 @@ function MeTab({ auth }: { auth: AuthResp }) {
 
 // ── Users tab ─────────────────────────────────────────────────────────────────
 
+function UsersActionsBlock() {
+  const [parserDate, setParserDate] = useState('')
+
+  async function run(path: string, label: string) {
+    try {
+      const d = await api('POST', path)
+      if (d.message) alert(label + ': ' + d.message)
+      else if (d.days) alert(label + ': +' + d.days + ' дней')
+      else alert(label + ': готово')
+    } catch (e) { alert('Ошибка: ' + e) }
+  }
+
+  async function resetParser() {
+    if (!parserDate) return
+    const [y, m, day] = parserDate.split('-')
+    const formatted = `${day}.${m}.${y}`
+    try { await api('POST', '/admin/reset-parser', { date: formatted }); alert('Дата парсера сброшена: ' + formatted) }
+    catch (e) { alert('Ошибка: ' + e) }
+  }
+
+  return (
+    <div className={s.section}>
+      <h2 className={s.h2}>Действия</h2>
+      <div className={s.card}>
+        <div className={s.actionsGrid}>
+          <button className={`${s.btn} ${s.btnSecondary}`} onClick={() => run('/admin/check-premium', 'Проверить Premium')}>Проверить Premium</button>
+          <button className={`${s.btn} ${s.btnSecondary}`} onClick={() => run('/admin/extend-premium', 'Продлить всем')}>Продлить всем</button>
+          <button className={`${s.btn} ${s.btnSecondary}`} onClick={() => run('/admin/refresh-episodes', 'Обновить эпизоды')}>Обновить эпизоды</button>
+          <button className={`${s.btn} ${s.btnSecondary}`} onClick={() => run('/admin/fix-runtime', 'Обновить runtime')}>Обновить runtime</button>
+        </div>
+        <div className={s.parserReset}>
+          <span className={s.muted}>Сброс парсера:</span>
+          <input type="date" className={s.input} value={parserDate} onChange={e => setParserDate(e.target.value)} style={{ flex: 1 }} />
+          <button className={`${s.btn} ${s.btnSecondary}`} onClick={resetParser} disabled={!parserDate}>Применить</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function UsersTab() {
   const [users, setUsers] = useState<UserRow[]>([])
   const [q, setQ] = useState('')
@@ -199,8 +239,8 @@ function UsersTab() {
   }
 
   async function setRole(id: number, role: string) {
-    try { await api('POST', '/users/' + id + '/role', { role }) }
-    catch (e) { alert('Ошибка: ' + e); load(q) }
+    try { await api('POST', '/users/' + id + '/role', { role }); load(q) }
+    catch (e) { alert('Ошибка: ' + e) }
   }
 
   async function blockUser(id: number) {
@@ -214,7 +254,29 @@ function UsersTab() {
     catch (e) { alert('Ошибка: ' + e) }
   }
 
+  async function resetMyShows(id: number) {
+    try { await api('POST', '/users/' + id + '/reset-myshows'); alert('Кулдаун MyShows сброшен') }
+    catch (e) { alert('Ошибка: ' + e) }
+  }
+
+  async function cleanupLimits(id: number, username: string) {
+    if (!confirm('Удалить устройства/таймкоды сверх лимита для ' + username + '?')) return
+    try {
+      const d = await api('POST', '/users/' + id + '/cleanup-limits')
+      alert('Удалено устройств: ' + d.deleted)
+      load(q)
+    } catch (e) { alert('Ошибка: ' + e) }
+  }
+
+  async function deleteUser(id: number, username: string) {
+    if (!confirm('Удалить пользователя ' + username + '? Это необратимо.')) return
+    try { await api('POST', '/users/' + id + '/delete'); load(q) }
+    catch (e) { alert('Ошибка: ' + e) }
+  }
+
   return (
+    <>
+      <UsersActionsBlock />
     <div className={s.section}>
       <h2 className={s.h2}>Пользователи ({users.length})</h2>
       <input className={s.input} placeholder="Поиск по имени…" value={q} onChange={e => handleSearch(e.target.value)} style={{ marginBottom: 12 }} />
@@ -222,28 +284,36 @@ function UsersTab() {
         {users.length ? users.map(u => {
           const roleClass = u.role === 'premium' ? s.badgePremium : u.role === 'super' ? s.badgeSuper : s.badgeSimple
           return (
-            <div key={u.id} className={s.row}>
-              <div>
+            <div key={u.id} className={s.userCard}>
+              <div className={s.userCardHeader}>
                 <div>
                   <strong>{u.username}</strong>
                   <span className={`${s.badge} ${roleClass}`} style={{ marginLeft: 4 }}>{u.role}</span>
                   {u.blocked_at && <span className={`${s.badge} ${s.badgeBlocked}`} style={{ marginLeft: 4 }}>blocked</span>}
                 </div>
-                <div className={s.muted}>{u.tg_username ? '@' + u.tg_username + ' · ' : ''}{u.device_count} уст · {u.created_at}</div>
+                <div className={s.muted}>
+                  {u.tg_username ? '@' + u.tg_username + ' · ' : ''}{u.device_count} уст · {u.created_at}
+                  {u.premium_until && <span> · до {u.premium_until}</span>}
+                </div>
               </div>
-              <div className={s.colRight}>
+              <div className={s.userCardActions}>
                 <select className={s.selectSm} value={u.role} onChange={e => setRole(u.id, e.target.value)}>
                   {['simple', 'premium', 'super'].map(r => <option key={r}>{r}</option>)}
                 </select>
                 {u.blocked_at
                   ? <button className={`${s.btn} ${s.btnSm} ${s.btnSecondary}`} onClick={() => unblockUser(u.id)}>Разблокировать</button>
                   : <button className={`${s.btn} ${s.btnSm} ${s.btnDanger}`} onClick={() => blockUser(u.id)}>Заблокировать</button>}
+                <button className={`${s.btn} ${s.btnSm} ${s.btnSecondary}`} onClick={() => setRole(u.id, 'super')}>Адм.</button>
+                <button className={`${s.btn} ${s.btnSm} ${s.btnSecondary}`} onClick={() => resetMyShows(u.id)}>MyShows</button>
+                <button className={`${s.btn} ${s.btnSm} ${s.btnSecondary}`} onClick={() => cleanupLimits(u.id, u.username)}>Лимиты</button>
+                <button className={`${s.btn} ${s.btnSm} ${s.btnDanger}`} onClick={() => deleteUser(u.id, u.username)}>Удалить</button>
               </div>
             </div>
           )
         }) : <p className={s.muted}>Нет результатов</p>}
       </div>
     </div>
+    </>
   )
 }
 

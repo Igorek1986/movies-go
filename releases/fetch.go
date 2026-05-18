@@ -32,18 +32,14 @@ func fetchPage(link string) (string, error) {
 		err  error
 	)
 	for i := 0; i < 10; i++ {
-		if strings.Contains(link, "rutor.lib") {
-			body, err = client.GetNic(link, "", "")
+		_, bodyS, errs := client.Get(link).End()
+		body = bodyS
+		if len(errs) > 0 {
+			err = errs[0]
 		} else {
-			_, bodyS, errs := client.Get(link).End()
-			body = bodyS
-			if len(errs) > 0 {
-				err = errs[0]
-			} else {
-				err = nil
-			}
+			err = nil
 		}
-		if err == nil || err == client.Err404 {
+		if err == nil {
 			break
 		}
 		log.Println("Error fetching page, attempt:", i+1, link, err)

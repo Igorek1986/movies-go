@@ -1,20 +1,22 @@
 package parser
 
 import (
-	"lampa-api/config"
-	"lampa-api/db/models"
-	"lampa-api/db/store"
-	"lampa-api/releases"
-	"lampa-api/tasker"
-	"lampa-api/utils"
 	"bytes"
-	"github.com/PuerkitoBio/goquery"
+	"context"
 	"log"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
+	"lampa-api/config"
+	"lampa-api/db/models"
+	"lampa-api/db/store"
+	"lampa-api/releases"
+	"lampa-api/tasker"
+	"lampa-api/utils"
 )
 
 func loadRutorHost() string {
@@ -71,8 +73,12 @@ func (self *RutorParser) Parse() {
 	fullScan := lastParsed.IsZero()
 	var cutoff time.Time
 	if !fullScan {
-		cutoff = lastParsed.Add(-48 * time.Hour)
-		log.Printf("parser: incremental scan, cutoff date: %s", cutoff.Format("2006-01-02"))
+		overlapDays := store.GetSettingInt(context.Background(), "parser_overlap_days")
+		if overlapDays <= 0 {
+			overlapDays = 2
+		}
+		cutoff = lastParsed.Add(-time.Duration(overlapDays) * 24 * time.Hour)
+		log.Printf("parser: incremental scan, cutoff date: %s (overlap %d days)", cutoff.Format("2006-01-02"), overlapDays)
 	} else {
 		log.Println("parser: first run — full scan of all pages")
 	}

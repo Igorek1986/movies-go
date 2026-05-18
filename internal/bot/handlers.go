@@ -176,7 +176,7 @@ func handleStart(ctx context.Context, chatID int64, arg string, from *tgbotapi.U
 			send(chatID, "❌ Ошибка привязки аккаунта.")
 			return
 		}
-		sendWithKeyboard(chatID, "✅ Telegram успешно привязан к вашему аккаунту!", mainKeyboard(IsAdmin(chatID)))
+		sendWithKeyboard(chatID, "✅ Telegram успешно привязан к вашему аккаунту!\n\nНажмите кнопку <b>«📱 Управление»</b> рядом с полем ввода.", mainKeyboard(IsAdmin(chatID)))
 		return
 	}
 

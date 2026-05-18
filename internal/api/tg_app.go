@@ -21,6 +21,7 @@ import (
 	"lampa-api/db/postgres"
 	"lampa-api/db/store"
 	botpkg "lampa-api/internal/bot"
+	"lampa-api/internal/tasks"
 )
 
 // ─── initData validation ──────────────────────────────────────────────────────
@@ -157,6 +158,14 @@ func registerTgAppRoutes(r chi.Router) {
 				r.Post("/users/{id}/role", handleTgAppSetRole)
 				r.Post("/users/{id}/block", handleTgAppBlockUser)
 				r.Post("/users/{id}/unblock", handleTgAppUnblockUser)
+				r.Post("/users/{id}/reset-myshows", handleTgAppResetMyShows)
+				r.Post("/users/{id}/cleanup-limits", handleTgAppCleanupLimits)
+				r.Post("/users/{id}/delete", handleTgAppDeleteUser)
+				r.Post("/admin/check-premium", handleTgAppCheckPremium)
+				r.Post("/admin/extend-premium", handleTgAppExtendPremium)
+				r.Post("/admin/refresh-episodes", handleTgAppRefreshEpisodes)
+				r.Post("/admin/fix-runtime", handleTgAppFixRuntime)
+				r.Post("/admin/reset-parser", handleTgAppResetParser)
 				r.Get("/messages", handleTgAppMessages)
 				r.Post("/messages/{tg_id}/reply", handleTgAppReply)
 				r.Post("/messages/{tg_id}/read", handleTgAppMarkRead)
@@ -505,7 +514,7 @@ func handleTgAppUsers(w http.ResponseWriter, r *http.Request) {
 	rows, err := postgres.Pool.Query(ctx,
 		`SELECT u.id, u.username, u.role, u.created_at, u.blocked_at, u.block_reason,
 		        (SELECT COUNT(*) FROM devices WHERE user_id=u.id),
-		        tu.telegram_id, tu.username
+		        tu.telegram_id, tu.username, u.premium_until
 		 FROM users u
 		 LEFT JOIN telegram_users tu ON tu.user_id=u.id
 		 WHERE u.username ILIKE $1
@@ -517,15 +526,16 @@ func handleTgAppUsers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type userRow struct {
-		ID          int64   `json:"id"`
-		Username    string  `json:"username"`
-		Role        string  `json:"role"`
-		CreatedAt   string  `json:"created_at"`
-		BlockedAt   *string `json:"blocked_at,omitempty"`
-		BlockReason *string `json:"block_reason,omitempty"`
-		DeviceCount int     `json:"device_count"`
-		TgID        *int64  `json:"tg_id,omitempty"`
-		TgUsername  *string `json:"tg_username,omitempty"`
+		ID           int64   `json:"id"`
+		Username     string  `json:"username"`
+		Role         string  `json:"role"`
+		CreatedAt    string  `json:"created_at"`
+		BlockedAt    *string `json:"blocked_at,omitempty"`
+		BlockReason  *string `json:"block_reason,omitempty"`
+		DeviceCount  int     `json:"device_count"`
+		TgID         *int64  `json:"tg_id,omitempty"`
+		TgUsername   *string `json:"tg_username,omitempty"`
+		PremiumUntil *string `json:"premium_until,omitempty"`
 	}
 
 	var users []userRow
@@ -533,13 +543,18 @@ func handleTgAppUsers(w http.ResponseWriter, r *http.Request) {
 		var u userRow
 		var createdAt time.Time
 		var blockedAt *time.Time
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &createdAt, &blockedAt, &u.BlockReason, &u.DeviceCount, &u.TgID, &u.TgUsername); err != nil {
+		var premiumUntil *time.Time
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &createdAt, &blockedAt, &u.BlockReason, &u.DeviceCount, &u.TgID, &u.TgUsername, &premiumUntil); err != nil {
 			continue
 		}
 		u.CreatedAt = createdAt.Format("02.01.2006")
 		if blockedAt != nil {
 			s := blockedAt.Format("02.01.2006")
 			u.BlockedAt = &s
+		}
+		if premiumUntil != nil {
+			s := premiumUntil.Format("02.01.2006")
+			u.PremiumUntil = &s
 		}
 		users = append(users, u)
 	}
@@ -557,7 +572,17 @@ func handleTgAppSetRole(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "invalid role")
 		return
 	}
-	if err := store.SetUserRole(r.Context(), id, body.Role); err != nil {
+	var roleErr error
+	if body.Role == "premium" {
+		_, roleErr = postgres.Pool.Exec(r.Context(),
+			`UPDATE users SET role='premium', premium_until=COALESCE(premium_until, now()) + interval '30 days' WHERE id=$1`, id)
+	} else {
+		roleErr = store.SetUserRole(r.Context(), id, body.Role)
+		if roleErr == nil {
+			postgres.Pool.Exec(r.Context(), `UPDATE users SET premium_until=NULL WHERE id=$1`, id) //nolint:errcheck
+		}
+	}
+	if roleErr != nil {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
@@ -587,6 +612,75 @@ func handleTgAppBlockUser(w http.ResponseWriter, r *http.Request) {
 func handleTgAppUnblockUser(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	postgres.Pool.Exec(r.Context(), `UPDATE users SET blocked_at=NULL, block_reason=NULL WHERE id=$1`, id) //nolint:errcheck
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// ─── Admin: global actions ────────────────────────────────────────────────────
+
+func handleTgAppCheckPremium(w http.ResponseWriter, r *http.Request) {
+	postgres.Pool.Exec(r.Context(), //nolint:errcheck
+		`UPDATE users SET role='simple', premium_until=NULL
+		 WHERE role='premium' AND premium_until IS NOT NULL AND premium_until < now()`)
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func handleTgAppExtendPremium(w http.ResponseWriter, r *http.Request) {
+	days := store.GetSettingInt(r.Context(), "premium_extend_all_days")
+	if days <= 0 {
+		days = 3
+	}
+	postgres.Pool.Exec(r.Context(), //nolint:errcheck
+		`UPDATE users SET premium_until=COALESCE(premium_until, now()) + ($1 || ' days')::interval
+		 WHERE role='premium'`, strconv.Itoa(days))
+	JSON(w, http.StatusOK, map[string]any{"ok": true, "days": days})
+}
+
+func handleTgAppRefreshEpisodes(w http.ResponseWriter, r *http.Request) {
+	go tasks.RunRefreshOngoingEpisodes(tasks.AppCtx())
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func handleTgAppFixRuntime(w http.ResponseWriter, r *http.Request) {
+	if tasks.GetFixRuntimeStatus().Running {
+		JSON(w, http.StatusOK, map[string]any{"ok": false, "message": "already running"})
+		return
+	}
+	go tasks.RunFixZeroRuntime(tasks.AppCtx())
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func handleTgAppResetParser(w http.ResponseWriter, r *http.Request) {
+	var body struct{ Date string `json:"date"` }
+	json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
+	t, err := time.ParseInLocation("02.01.2006", body.Date, time.UTC)
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid date, expected DD.MM.YYYY")
+		return
+	}
+	store.SetLastParsedAtTime(t)
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func handleTgAppResetMyShows(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	ResetUserSyncCounter(id)
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func handleTgAppCleanupLimits(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	var role string
+	postgres.Pool.QueryRow(r.Context(), `SELECT role FROM users WHERE id=$1`, id).Scan(&role) //nolint:errcheck
+	deleted := store.CleanupUserOverlimit(r.Context(), id, role)
+	JSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": deleted})
+}
+
+func handleTgAppDeleteUser(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err := store.DeleteUser(r.Context(), id); err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -701,6 +795,7 @@ func buildTgSettingsGroups(all map[string]string) []map[string]any {
 		{"Лимиты simple", []string{"simple_device_limit", "simple_profile_limit", "simple_timecode_limit", "simple_favorite_limit", "simple_import_daily"}},
 		{"Лимиты premium", []string{"premium_device_limit", "premium_profile_limit", "premium_timecode_limit", "premium_favorite_limit", "premium_import_daily", "premium_myshows_daily", "premium_duration_days"}},
 		{"Подписка", []string{"premium_warn_days", "timecode_grace_days", "inactive_delete_days", "inactive_warn_days"}},
+		{"Парсер", []string{"parser_overlap_days"}},
 		{"Бот / Telegram", []string{"telegram_link_ttl_minutes", "reset_code_ttl_minutes", "daily_task_hour", "default_timezone"}},
 		{"Сессии / Устройства", []string{"session_ttl_days", "device_token_ttl_days", "device_code_ttl_minutes"}},
 	}

@@ -17,13 +17,10 @@ import (
 	"lampa-api/parser"
 	"lampa-api/version"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -33,8 +30,7 @@ import (
 )
 
 type args struct {
-	Proxy    string `arg:"--proxy" help:"proxy for rutor, http://user:password@ip:port"`
-	UseProxy bool   `arg:"--useproxy" help:"enable auto proxy"`
+	Proxy string `arg:"--proxy" help:"proxy for rutor, http://user:password@ip:port"`
 }
 
 var params args
@@ -59,14 +55,16 @@ func main() {
 	fmt.Printf("lm_%s, %s, CPU: %d, mode: %s\n", version.Version, runtime.Version(), runtime.NumCPU(), mode)
 
 	setupProxy(cfg)
-	dnsResolve()
-
 	db.Init()
 	if mode == "all" {
 		ensureSuperuser(cfg)
 	}
-	loadProxy()
 	tmdb.Init()
+	if config.ProxyHost != "" {
+		log.Printf("Rutor: using SOCKS5 proxy %s", proxyHostSafe())
+	} else {
+		log.Println("Rutor proxy: none (direct connection)")
+	}
 
 	getDbInfo()
 
@@ -77,12 +75,20 @@ func main() {
 	if mode == "all" {
 		if err := bot.Start(appCtx); err != nil {
 			log.Printf("Telegram bot error: %v", err)
-		} else if !cfg.TelegramUsePolling && cfg.BaseURL != "" && cfg.TelegramBotToken != "" {
-			webhookURL := strings.TrimRight(cfg.BaseURL, "/") + "/bot/webhook"
-			if err := bot.SetWebhook(webhookURL); err != nil {
-				log.Printf("Telegram webhook register error: %v", err)
+		} else if cfg.BaseURL != "" && cfg.TelegramBotToken != "" {
+			baseURL := strings.TrimRight(cfg.BaseURL, "/")
+			if !cfg.TelegramUsePolling {
+				webhookURL := baseURL + "/bot/webhook"
+				if err := bot.SetWebhook(webhookURL); err != nil {
+					log.Printf("Telegram webhook register error: %v", err)
+				} else {
+					log.Printf("Telegram webhook registered: %s", webhookURL)
+				}
+			}
+			if err := bot.SetMenuButton(baseURL + "/tg-app"); err != nil {
+				log.Printf("Telegram menu button error: %v", err)
 			} else {
-				log.Printf("Telegram webhook registered: %s", webhookURL)
+				log.Printf("Telegram menu button set: %s/tg-app", baseURL)
 			}
 		}
 		tasks.Start(appCtx)
@@ -146,60 +152,33 @@ func ensureSuperuser(cfg *config.ConfigParser) {
 }
 
 func setupProxy(cfg *config.ConfigParser) {
+	raw := cfg.Proxy
 	if params.Proxy != "" {
-		if _, err := url.Parse(params.Proxy); err == nil {
-			config.ProxyHost = params.Proxy
-		}
-	} else if cfg.Proxy != "" {
-		if _, err := url.Parse(cfg.Proxy); err == nil {
-			config.ProxyHost = cfg.Proxy
-		}
+		raw = params.Proxy
 	}
-
-	if params.UseProxy || cfg.UseProxy == "true" {
-		config.UseProxy = true
-	}
-}
-
-func dnsResolve() {
-	hosts := []string{"1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"}
-	for _, ip := range hosts {
-		if tryDNS("www.google.com", ip) {
+	if raw != "" {
+		if u, err := url.Parse(raw); err == nil {
+			if cfg.ProxyRutorUser != "" {
+				u.User = url.UserPassword(cfg.ProxyRutorUser, cfg.ProxyRutorPass)
+			}
+			config.ProxyHost = u.String()
 			return
 		}
 	}
 }
 
-func tryDNS(host, serverDNS string) bool {
-	addrs, _ := net.LookupHost(host)
-	if len(addrs) > 0 {
-		return true
+func proxyHostSafe() string {
+	u, err := url.Parse(config.ProxyHost)
+	if err != nil {
+		return config.ProxyHost
 	}
-	net.DefaultResolver = &net.Resolver{
-		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, "udp", serverDNS+":53")
-		},
-	}
-	addrs, _ = net.LookupHost(host)
-	return len(addrs) > 0
+	u.User = nil
+	return u.String()
 }
 
 func scanReleases() {
-	loadProxy()
 	parser.NewRutor().Parse()
 	getDbInfo()
-}
-
-func loadProxy() {
-	if config.UseProxy {
-		log.Println("Load proxy list...")
-		dir := filepath.Dir(os.Args[0])
-		out, err := exec.Command("/bin/sh", filepath.Join(dir, "proxy.sh")).CombinedOutput()
-		if err != nil {
-			log.Println("Error loading proxy:", err)
-		}
-		log.Println(string(out))
-	}
 }
 
 func calcTime() *time.Time {

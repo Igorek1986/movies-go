@@ -12,23 +12,20 @@ import (
 func get(link string) (string, error) {
 	var body string
 	var err error
-	// strip control characters from link
 	link = strings.TrimSpace(link)
 	link = strings.ReplaceAll(link, "\t", "%20")
 	for i := 0; i < 10; i++ {
 		if strings.Contains(link, "\t") {
 			link = strings.Replace(link, "\t", "", -1)
 		}
-		if strings.Contains(link, "rutor.lib") {
-			body, err = client.GetNic(link, "", "")
+		_, bodyS, errs := client.Get(link).End()
+		body = bodyS
+		if len(errs) > 0 {
+			err = errs[0]
 		} else {
-			_, bodyS, errs := client.Get(link).End()
-			body = bodyS
-			if len(errs) > 0 {
-				err = errs[0]
-			}
+			err = nil
 		}
-		if err == nil || err == client.Err404 {
+		if err == nil {
 			break
 		}
 		log.Println("Error get page,tryes:", i+1, link, err)
@@ -60,7 +57,7 @@ func getBuf(link, referer, cookie string) ([]byte, error) {
 }
 
 func node2Text(node *html.Node) string {
-	return strings.TrimSpace(strings.Replace((&goquery.Selection{Nodes: []*html.Node{node}}).Text(), "\u00A0", " ", -1))
+	return strings.TrimSpace(strings.Replace((&goquery.Selection{Nodes: []*html.Node{node}}).Text(), " ", " ", -1))
 }
 
 func replaceBadName(name string) string {
@@ -72,7 +69,6 @@ func replaceBadName(name string) string {
 }
 
 func getHash(magnet string) string {
-	//magnet:?xt=urn:btih:1debb44e9e9ac785aaa4c26507534e1357672a22&dn=rutor.info&tr=udp://opentor.net:6969&tr=http://retracker.local/announce
 	pos := strings.Index(magnet, "btih:")
 	if pos == -1 {
 		return ""

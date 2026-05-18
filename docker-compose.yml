@@ -8,8 +8,6 @@ services:
       POSTGRES_DB: ${DB_NAME:-lampa}
     volumes:
       - pg_data:/var/lib/postgresql/data
-    ports:
-      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-lampa} -d ${DB_NAME:-lampa}"]
       interval: 5s

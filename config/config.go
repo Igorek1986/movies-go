@@ -3,16 +3,16 @@ package config
 import "github.com/ilyakaznacheev/cleanenv"
 
 var ProxyHost = ""
-var UseProxy = false
 
 type ConfigParser struct {
 	// БД
 	DatabaseURL string `env:"DATABASE_URL"`
 
 	// Парсер
-	Host      string `env:"HOST_RUTOR"     env-default:"http://rutor.info"`
-	UseProxy  string `env:"USEPROXY_RUTOR" env-default:"false"`
-	Proxy     string `env:"PROXY_RUTOR"`
+	Host      string `env:"HOST_RUTOR"      env-default:"http://rutor.info"`
+	Proxy          string `env:"PROXY_RUTOR"`
+	ProxyRutorUser string `env:"PROXY_RUTOR_USER"`
+	ProxyRutorPass string `env:"PROXY_RUTOR_PASS"`
 	TmdbToken string `env:"TMDB_TOKEN"`
 	ProxyURL  string `env:"PROXY_URL"`
 	ProxyUser string `env:"PROXY_USER"`
