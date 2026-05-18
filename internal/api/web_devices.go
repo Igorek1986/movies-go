@@ -11,7 +11,7 @@ import (
 // ─── /api/lampa-profile/* (used by profiles.js plugin) ───────────────────────
 
 // PATCH /api/lampa-profile
-func handleLampaProfilePatch(w http.ResponseWriter, r *http.Request) {
+func handleProfilePatch(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
 		Error(w, http.StatusUnauthorized, "unauthorized")
@@ -40,7 +40,7 @@ func handleLampaProfilePatch(w http.ResponseWriter, r *http.Request) {
 }
 
 // DELETE /api/lampa-profile?device_id=&profile_id=
-func handleLampaProfileDelete(w http.ResponseWriter, r *http.Request) {
+func handleProfileDelete(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
 		Error(w, http.StatusUnauthorized, "unauthorized")
@@ -65,7 +65,7 @@ func handleLampaProfileDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/lampa-profile/clear?device_id=&profile_id=
-func handleLampaProfileClear(w http.ResponseWriter, r *http.Request) {
+func handleProfileClear(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
 		Error(w, http.StatusUnauthorized, "unauthorized")
@@ -90,7 +90,7 @@ func handleLampaProfileClear(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /api/lampa-profile/quota?device_id=
-func handleLampaProfileQuota(w http.ResponseWriter, r *http.Request) {
+func handleProfileQuota(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
 		Error(w, http.StatusUnauthorized, "unauthorized")
@@ -111,7 +111,7 @@ func handleLampaProfileQuota(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/lampa-profile/create
-func handleLampaProfileCreate(w http.ResponseWriter, r *http.Request) {
+func handleProfileCreate(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
 		Error(w, http.StatusUnauthorized, "unauthorized")
@@ -154,7 +154,7 @@ func handleLampaProfileCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]any{
-		"ok": true, "profile_id": lp.LampaProfileID, "name": lp.Name,
+		"ok": true, "profile_id": lp.ProfileID, "name": lp.Name,
 	})
 }
 

@@ -19,10 +19,10 @@ type DeviceCode struct {
 	CreatedAt time.Time  `db:"created_at"`
 }
 
-type LampaProfile struct {
+type Profile struct {
 	ID             int64  `db:"id"`
 	DeviceID       int64  `db:"device_id"`
-	LampaProfileID string `db:"lampa_profile_id"`
+	ProfileID string `db:"lampa_profile_id"`
 	Name           string `db:"name"`
 	Icon           string `db:"icon"`
 	Favorite       string `db:"favorite"` // JSON

@@ -643,10 +643,10 @@ func CountProfiles(ctx context.Context, deviceID int64) int {
 	return n
 }
 
-func CreateProfile(ctx context.Context, deviceID int64, profileID, name, icon string) (*models.LampaProfile, error) {
-	lp := &models.LampaProfile{
+func CreateProfile(ctx context.Context, deviceID int64, profileID, name, icon string) (*models.Profile, error) {
+	lp := &models.Profile{
 		DeviceID:       deviceID,
-		LampaProfileID: profileID,
+		ProfileID: profileID,
 		Name:           name,
 		Icon:           icon,
 		Params:         "{}",

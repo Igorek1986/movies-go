@@ -434,10 +434,10 @@ func EpisodeHash(season, episode int, origTitle string) string {
 	} else {
 		s = fmt.Sprintf("%d%d%s", season, episode, origTitle)
 	}
-	return lampaHash(s)
+	return mediaHash(s)
 }
 
-func lampaHash(s string) string {
+func mediaHash(s string) string {
 	var h uint32
 	for _, c := range s {
 		h = h*31 + uint32(c)

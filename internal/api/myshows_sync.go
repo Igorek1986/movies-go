@@ -398,7 +398,7 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		item := lampaHash(card.OrigTitle)
+		item := mediaHash(card.OrigTitle)
 		if item == "" {
 			item = card.CardID
 		}

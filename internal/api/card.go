@@ -118,7 +118,7 @@ func handleMediaCard(w http.ResponseWriter, r *http.Request) {
 		"imdb_id":           strVal(imdbID),
 		"movie_item":        func() string {
 			if mediaType == "movie" && origTitle != "" {
-				return lampaHash(origTitle)
+				return mediaHash(origTitle)
 			}
 			return ""
 		}(),
@@ -180,7 +180,7 @@ func handleMediaCardFromTMDB(w http.ResponseWriter, cardID string) {
 
 	movieItem := ""
 	if isMovie && origTitle != "" {
-		movieItem = lampaHash(origTitle)
+		movieItem = mediaHash(origTitle)
 	}
 
 	JSON(w, http.StatusOK, map[string]any{
@@ -418,8 +418,8 @@ func fetchAndPersistTVSeasons(ctx context.Context, cardID string, tmdbID int64) 
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// lampaHash mirrors Lampa.Utils.hash() — Java-style hashCode with multiplier 31.
-func lampaHash(s string) string {
+// mediaHash mirrors Lampa.Utils.hash() — Java-style hashCode with multiplier 31.
+func mediaHash(s string) string {
 	var h uint32
 	for _, c := range s {
 		h = h*31 + uint32(c)

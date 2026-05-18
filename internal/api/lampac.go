@@ -205,7 +205,7 @@ func sendCategoryResponse(w http.ResponseWriter, rows []store.MediaRow, total, p
 	}
 	results := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		results = append(results, mediaRowToLampa(row))
+		results = append(results, toMediaItem(row))
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"page":          page,
@@ -277,7 +277,7 @@ func handlePopular(w http.ResponseWriter, r *http.Request, page, perPage int, se
 	}
 	results := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		results = append(results, mediaRowToLampa(row))
+		results = append(results, toMediaItem(row))
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"page":          page,
@@ -305,7 +305,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 	rows := store.SearchMedia(query, limit)
 	results := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		results = append(results, mediaRowToLampa(row))
+		results = append(results, toMediaItem(row))
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"page":          1,
@@ -317,7 +317,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 
 // ─── Response builder ─────────────────────────────────────────────────────────
 
-func mediaRowToLampa(row store.MediaRow) map[string]any {
+func toMediaItem(row store.MediaRow) map[string]any {
 	releaseDate := ""
 	if row.ReleaseDate != nil {
 		releaseDate = *row.ReleaseDate

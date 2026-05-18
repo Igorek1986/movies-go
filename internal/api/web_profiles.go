@@ -69,7 +69,7 @@ func handleWebCreateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]any{
-		"ok": true, "profile_id": lp.LampaProfileID, "name": lp.Name,
+		"ok": true, "profile_id": lp.ProfileID, "name": lp.Name,
 	})
 }
 

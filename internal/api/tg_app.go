@@ -443,7 +443,7 @@ func handleTgAppCreateProfile(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusForbidden, err.Error())
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"ok": true, "profile_id": lp.LampaProfileID, "name": name})
+	JSON(w, http.StatusOK, map[string]any{"ok": true, "profile_id": lp.ProfileID, "name": name})
 }
 
 func handleTgAppDeleteProfile(w http.ResponseWriter, r *http.Request) {
