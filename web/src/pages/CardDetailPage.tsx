@@ -36,9 +36,9 @@ interface EpisodeData {
   percent: number; duration_sec: number | null; future: boolean; air_date: string | null
 }
 
-// ── Lampa hash ────────────────────────────────────────────────────────────────
+// ── Media hash ────────────────────────────────────────────────────────────────
 
-function lampaHash(s: string): string {
+function mediaHash(s: string): string {
   let h = 0
   for (let i = 0; i < s.length; i++) {
     h = (Math.imul(31, h) + s.charCodeAt(i)) | 0
@@ -48,7 +48,7 @@ function lampaHash(s: string): string {
 
 function episodeItem(season: number, ep: number, origTitle: string): string {
   const s = season > 10 ? `${season}:${ep}${origTitle}` : `${season}${ep}${origTitle}`
-  return lampaHash(s)
+  return mediaHash(s)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

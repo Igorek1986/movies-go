@@ -24,7 +24,7 @@ interface Device {
   timecodes_count: number
 }
 
-interface LampaProfile {
+interface Profile {
   profile_id: string
   name: string
   icon: string
@@ -98,7 +98,7 @@ export default function ProfilesPage() {
   const [tokenCopied, setTokenCopied] = useState(false)
   // Profiles per device
   const [openProfilesFor, setOpenProfilesFor] = useState<number | null>(null)
-  const [profiles, setProfiles] = useState<LampaProfile[]>([])
+  const [profiles, setProfiles] = useState<Profile[]>([])
   const [profilesLimit, setProfilesLimit] = useState<number>(0)
   const [newProfileName, setNewProfileName] = useState('')
   const [newProfileId, setNewProfileId] = useState('')
@@ -134,7 +134,7 @@ export default function ProfilesPage() {
   // MyShows sync
   const [syncDeviceId, setSyncDeviceId] = useState<number | ''>('')
   const [syncProfileId, setSyncProfileId] = useState('')
-  const [syncDeviceProfiles, setSyncDeviceProfiles] = useState<LampaProfile[]>([])
+  const [syncDeviceProfiles, setSyncDeviceProfiles] = useState<Profile[]>([])
   const [syncLogin, setSyncLogin] = useState('')
   const [syncPassword, setSyncPassword] = useState('')
   const [syncLoading, setSyncLoading] = useState(false)
@@ -143,19 +143,19 @@ export default function ProfilesPage() {
   // LampaC import
   const [importDeviceId, setImportDeviceId] = useState<number | ''>('')
   const [importProfileId, setImportProfileId] = useState('')
-  const [importDeviceProfiles, setImportDeviceProfiles] = useState<LampaProfile[]>([])
+  const [importDeviceProfiles, setImportDeviceProfiles] = useState<Profile[]>([])
   const [importJson, setImportJson] = useState('')
   const [importLoading, setImportLoading] = useState(false)
   const [importMsg, setImportMsg] = useState('')
   const [importError, setImportError] = useState('')
   // Lampa import (file_view format)
-  const [lampaDeviceId, setLampaDeviceId] = useState<number | ''>('')
-  const [lampaProfileId, setLampaProfileId] = useState('')
-  const [lampaDeviceProfiles, setLampaDeviceProfiles] = useState<LampaProfile[]>([])
-  const [lampaJson, setLampaJson] = useState('')
-  const [lampaLoading, setLampaLoading] = useState(false)
-  const [lampaMsg, setLampaMsg] = useState('')
-  const [lampaError, setLampaError] = useState('')
+  const [fileDeviceId, setFileDeviceId] = useState<number | ''>('')
+  const [fileProfileId, setFileProfileId] = useState('')
+  const [fileDeviceProfiles, setFileDeviceProfiles] = useState<Profile[]>([])
+  const [fileJson, setFileJson] = useState('')
+  const [fileLoading, setFileLoading] = useState(false)
+  const [fileMsg, setFileMsg] = useState('')
+  const [fileError, setFileError] = useState('')
 
   const fetchDevices = useCallback(async () => {
     const res = await fetch('/api/devices')
@@ -167,13 +167,13 @@ export default function ProfilesPage() {
     // load profiles for the first device upfront so selects are populated on initial render
     const profileRes = await fetch(`/api/devices/${firstId}/profiles`)
     const profileData = profileRes.ok ? await profileRes.json() : {}
-    const firstProfiles: LampaProfile[] = profileData.profiles || []
+    const firstProfiles: Profile[] = profileData.profiles || []
     setSyncDeviceId(id => id === '' ? firstId : id)
     setImportDeviceId(id => id === '' ? firstId : id)
-    setLampaDeviceId(id => id === '' ? firstId : id)
+    setFileDeviceId(id => id === '' ? firstId : id)
     setSyncDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
     setImportDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
-    setLampaDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
+    setFileDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchTgStatus = useCallback(async () => {
@@ -192,7 +192,7 @@ export default function ProfilesPage() {
     fetchNotifSettings()
   }, [fetchDevices, fetchTgStatus, fetchNotifSettings])
 
-  async function fetchProfilesForDevice(deviceId: number): Promise<LampaProfile[]> {
+  async function fetchProfilesForDevice(deviceId: number): Promise<Profile[]> {
     const res = await fetch(`/api/devices/${deviceId}/profiles`)
     if (!res.ok) return []
     const data = await res.json()
@@ -364,7 +364,7 @@ export default function ProfilesPage() {
     reloadProfiles()
   }
 
-  async function handleToggleChild(p: LampaProfile) {
+  async function handleToggleChild(p: Profile) {
     await fetch(`/api/devices/${openProfilesFor}/profiles/${p.profile_id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -373,7 +373,7 @@ export default function ProfilesPage() {
     reloadProfiles()
   }
 
-  async function handleEditParams(p: LampaProfile) {
+  async function handleEditParams(p: Profile) {
     const current = JSON.stringify(p.params ?? {}, null, 2)
     const input = window.prompt('Параметры профиля (JSON):', current)
     if (input === null) return
@@ -637,19 +637,19 @@ export default function ProfilesPage() {
     }
   }
 
-  async function handleLampaImport(e: React.FormEvent) {
+  async function handleFileImport(e: React.FormEvent) {
     e.preventDefault()
-    setLampaError('')
-    setLampaMsg('')
-    if (!lampaDeviceId) return
-    const device = devices.find(d => d.id === lampaDeviceId)
+    setFileError('')
+    setFileMsg('')
+    if (!fileDeviceId) return
+    const device = devices.find(d => d.id === fileDeviceId)
     if (!device) return
 
     let raw: Record<string, Record<string, unknown>>
     try {
-      raw = JSON.parse(lampaJson)
+      raw = JSON.parse(fileJson)
     } catch {
-      setLampaError('Неверный JSON')
+      setFileError('Неверный JSON')
       return
     }
 
@@ -663,23 +663,23 @@ export default function ProfilesPage() {
       }
     }
 
-    setLampaLoading(true)
+    setFileLoading(true)
     const params = new URLSearchParams({ token: device.token })
-    if (lampaProfileId) params.set('profile_id', lampaProfileId)
+    if (fileProfileId) params.set('profile_id', fileProfileId)
 
     const res = await fetch(`/timecode/import/lampac?${params}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(converted),
     })
-    setLampaLoading(false)
+    setFileLoading(false)
     if (res.ok) {
       const d = await res.json().catch(() => ({}))
-      setLampaMsg(`Импортировано: ${d.imported ?? 0}`)
-      setLampaJson('')
+      setFileMsg(`Импортировано: ${d.imported ?? 0}`)
+      setFileJson('')
     } else {
       const d = await res.json().catch(() => ({}))
-      setLampaError(d.error || 'Ошибка импорта')
+      setFileError(d.error || 'Ошибка импорта')
     }
   }
 
@@ -1064,20 +1064,20 @@ export default function ProfilesPage() {
                 </code>
                 {' '}— затем вставьте JSON ниже.
               </p>
-              {lampaError && <p className={styles.errorText}>{lampaError}</p>}
-              {lampaMsg && <p className={styles.successText}>{lampaMsg}</p>}
-              <form className={styles.formCol} onSubmit={handleLampaImport}>
+              {fileError && <p className={styles.errorText}>{fileError}</p>}
+              {fileMsg && <p className={styles.successText}>{fileMsg}</p>}
+              <form className={styles.formCol} onSubmit={handleFileImport}>
                 <div className={styles.formGrid}>
                   <label className={styles.fieldLabel}>
                     Устройство
                     <select
                       className={styles.select}
-                      value={lampaDeviceId}
+                      value={fileDeviceId}
                       onChange={e => {
                         const id = Number(e.target.value)
-                        setLampaDeviceId(id)
-                        setLampaProfileId('')
-                        fetchProfilesForDevice(id).then(setLampaDeviceProfiles)
+                        setFileDeviceId(id)
+                        setFileProfileId('')
+                        fetchProfilesForDevice(id).then(setFileDeviceProfiles)
                       }}
                       required
                     >
@@ -1089,11 +1089,11 @@ export default function ProfilesPage() {
                     Профиль
                     <select
                       className={styles.select}
-                      value={lampaProfileId}
-                      onChange={e => setLampaProfileId(e.target.value)}
+                      value={fileProfileId}
+                      onChange={e => setFileProfileId(e.target.value)}
                     >
-                      {lampaDeviceProfiles.length === 0 && <option value="">Основной</option>}
-                      {lampaDeviceProfiles.map(p => (
+                      {fileDeviceProfiles.length === 0 && <option value="">Основной</option>}
+                      {fileDeviceProfiles.map(p => (
                         <option key={p.profile_id} value={p.profile_id}>{p.name}</option>
                       ))}
                     </select>
@@ -1102,13 +1102,13 @@ export default function ProfilesPage() {
                 <textarea
                   className={styles.jsonTextarea}
                   placeholder={'{"571234":{"percent":95,"time":3600}}'}
-                  value={lampaJson}
-                  onChange={e => { setLampaJson(e.target.value); setLampaError('') }}
+                  value={fileJson}
+                  onChange={e => { setFileJson(e.target.value); setFileError('') }}
                   rows={5}
                   required
                 />
-                <button className={styles.btnPrimary} type="submit" disabled={lampaLoading || !lampaDeviceId}>
-                  {lampaLoading ? 'Импорт…' : 'Импортировать'}
+                <button className={styles.btnPrimary} type="submit" disabled={fileLoading || !fileDeviceId}>
+                  {fileLoading ? 'Импорт…' : 'Импортировать'}
                 </button>
               </form>
             </div>
