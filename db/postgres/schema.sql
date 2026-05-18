@@ -138,43 +138,43 @@ CREATE TABLE IF NOT EXISTS device_codes (
 
 CREATE INDEX IF NOT EXISTS idx_device_codes_code ON device_codes (code);
 
--- ─── Lampa profiles ───────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS lampa_profiles (
+-- ─── Profiles ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS profiles (
     id               BIGSERIAL    PRIMARY KEY,
     device_id        BIGINT       NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
-    lampa_profile_id VARCHAR(100) NOT NULL,
+    profile_id VARCHAR(100) NOT NULL,
     name             VARCHAR(100) NOT NULL DEFAULT '',
     icon             VARCHAR(20),
     favorite         TEXT,
     child            BOOLEAN      NOT NULL DEFAULT false,
     params           JSONB        NOT NULL DEFAULT '{}',
-    CONSTRAINT uq_lampa_profile UNIQUE (device_id, lampa_profile_id)
+    CONSTRAINT uq_profile UNIQUE (device_id, profile_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_lampa_profiles_device_id ON lampa_profiles (device_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_device_id ON profiles (device_id);
 
 -- ─── Plugin settings ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS plugin_settings (
     user_id          BIGINT       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    lampa_profile_id VARCHAR(100) NOT NULL DEFAULT '',
+    profile_id VARCHAR(100) NOT NULL DEFAULT '',
     plugin           VARCHAR(100) NOT NULL,
     settings         TEXT         NOT NULL DEFAULT '{}',
     updated_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    PRIMARY KEY (user_id, lampa_profile_id, plugin)
+    PRIMARY KEY (user_id, profile_id, plugin)
 );
 
 -- ─── Timecodes ────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS timecodes (
     id               BIGSERIAL    PRIMARY KEY,
     device_id        BIGINT       NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
-    lampa_profile_id VARCHAR(100) NOT NULL DEFAULT '',
+    profile_id VARCHAR(100) NOT NULL DEFAULT '',
     card_id          VARCHAR(100) NOT NULL,
     item             VARCHAR(100) NOT NULL,
     data             TEXT         NOT NULL,
     counted_at       DATE,
     view_count       INT          NOT NULL DEFAULT 0,
     updated_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    CONSTRAINT uq_timecode_unique UNIQUE (device_id, lampa_profile_id, card_id, item)
+    CONSTRAINT uq_timecode_unique UNIQUE (device_id, profile_id, card_id, item)
 );
 
 CREATE INDEX IF NOT EXISTS idx_timecodes_device_id ON timecodes (device_id);
@@ -263,22 +263,22 @@ CREATE INDEX IF NOT EXISTS idx_myshows_items_tmdb_id ON myshows_items (tmdb_id);
 
 CREATE TABLE IF NOT EXISTS myshows_watching (
     device_id        BIGINT       NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
-    lampa_profile_id VARCHAR(100) NOT NULL DEFAULT '',
+    profile_id VARCHAR(100) NOT NULL DEFAULT '',
     item_id          BIGINT       NOT NULL REFERENCES myshows_items(id) ON DELETE CASCADE,
     unwatched_count  INT,
     next_episode     VARCHAR(20),
     progress_marker  VARCHAR(100),
     updated_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    PRIMARY KEY (device_id, lampa_profile_id, item_id)
+    PRIMARY KEY (device_id, profile_id, item_id)
 );
 
 CREATE TABLE IF NOT EXISTS myshows_user_status (
     device_id        BIGINT       NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
-    lampa_profile_id VARCHAR(100) NOT NULL DEFAULT '',
+    profile_id VARCHAR(100) NOT NULL DEFAULT '',
     item_id          BIGINT       NOT NULL REFERENCES myshows_items(id) ON DELETE CASCADE,
     cache_type       VARCHAR(20)  NOT NULL,
     updated_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    PRIMARY KEY (device_id, lampa_profile_id, item_id)
+    PRIMARY KEY (device_id, profile_id, item_id)
 );
 
 -- ─── Torrents ─────────────────────────────────────────────────────────────────

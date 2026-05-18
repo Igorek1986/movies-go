@@ -146,7 +146,7 @@ func handleProfileCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	lp, err := store.CreateProfile(r.Context(), req.DeviceID, profileID, req.Name, "")
 	if err != nil {
-		if strings.Contains(err.Error(), "uq_lampa_profile") {
+		if strings.Contains(err.Error(), "uq_profile") {
 			Error(w, http.StatusConflict, "profile id already exists")
 		} else {
 			Error(w, http.StatusInternalServerError, "db error")

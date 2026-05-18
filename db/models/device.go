@@ -22,7 +22,7 @@ type DeviceCode struct {
 type Profile struct {
 	ID             int64  `db:"id"`
 	DeviceID       int64  `db:"device_id"`
-	ProfileID string `db:"lampa_profile_id"`
+	ProfileID string `db:"profile_id"`
 	Name           string `db:"name"`
 	Icon           string `db:"icon"`
 	Favorite       string `db:"favorite"` // JSON

@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-// GET /api/plugin-settings?token=&plugin=&lampa_profile_id=
+// GET /api/plugin-settings?token=&plugin=&profile_id=
 func handleGetPluginSettings(w http.ResponseWriter, r *http.Request) {
 	d := deviceFromRequest(r)
 	if d == nil {
@@ -18,12 +18,12 @@ func handleGetPluginSettings(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "plugin required")
 		return
 	}
-	profileID := r.URL.Query().Get("lampa_profile_id")
+	profileID := r.URL.Query().Get("profile_id")
 	data := store.GetPluginSettings(r.Context(), d.UserID, profileID, plugin)
 	JSON(w, http.StatusOK, data)
 }
 
-// PATCH /api/plugin-settings?token=&plugin=&lampa_profile_id=
+// PATCH /api/plugin-settings?token=&plugin=&profile_id=
 // Body: {"key": "...", "value": ...}
 func handlePatchPluginSettings(w http.ResponseWriter, r *http.Request) {
 	d := deviceFromRequest(r)
@@ -36,7 +36,7 @@ func handlePatchPluginSettings(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "plugin required")
 		return
 	}
-	profileID := r.URL.Query().Get("lampa_profile_id")
+	profileID := r.URL.Query().Get("profile_id")
 
 	var body struct {
 		Key   string `json:"key"`
@@ -56,7 +56,7 @@ func handlePatchPluginSettings(w http.ResponseWriter, r *http.Request) {
 			"plugin":           plugin,
 			"key":              body.Key,
 			"value":            body.Value,
-			"lampa_profile_id": profileID,
+			"profile_id": profileID,
 		})
 		SettingsHub.Broadcast(d.UserID, d.ID, msg)
 	}()

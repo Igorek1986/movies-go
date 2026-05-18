@@ -51,7 +51,7 @@ func UpsertWatching(ctx context.Context, deviceID int64, profileID string, items
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	if len(items) == 0 {
-		_, err = tx.Exec(ctx, `DELETE FROM myshows_watching WHERE device_id=$1 AND lampa_profile_id=$2`, deviceID, profileID)
+		_, err = tx.Exec(ctx, `DELETE FROM myshows_watching WHERE device_id=$1 AND profile_id=$2`, deviceID, profileID)
 		if err != nil {
 			return err
 		}
@@ -76,9 +76,9 @@ func UpsertWatching(ctx context.Context, deviceID int64, profileID string, items
 		itemIDs = append(itemIDs, itemID)
 
 		_, err = tx.Exec(ctx, `
-			INSERT INTO myshows_watching (device_id, lampa_profile_id, item_id, unwatched_count, next_episode, progress_marker, updated_at)
+			INSERT INTO myshows_watching (device_id, profile_id, item_id, unwatched_count, next_episode, progress_marker, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, now())
-			ON CONFLICT (device_id, lampa_profile_id, item_id) DO UPDATE SET
+			ON CONFLICT (device_id, profile_id, item_id) DO UPDATE SET
 				unwatched_count = EXCLUDED.unwatched_count,
 				next_episode    = EXCLUDED.next_episode,
 				progress_marker = EXCLUDED.progress_marker,
@@ -91,9 +91,9 @@ func UpsertWatching(ctx context.Context, deviceID int64, profileID string, items
 
 		// Dual-write: watching → watched
 		_, err = tx.Exec(ctx, `
-			INSERT INTO myshows_user_status (device_id, lampa_profile_id, item_id, cache_type, updated_at)
+			INSERT INTO myshows_user_status (device_id, profile_id, item_id, cache_type, updated_at)
 			VALUES ($1, $2, $3, 'watched', now())
-			ON CONFLICT (device_id, lampa_profile_id, item_id) DO UPDATE SET
+			ON CONFLICT (device_id, profile_id, item_id) DO UPDATE SET
 				cache_type = 'watched', updated_at = now()`,
 			deviceID, profileID, itemID,
 		)
@@ -106,7 +106,7 @@ func UpsertWatching(ctx context.Context, deviceID int64, profileID string, items
 	if len(itemIDs) > 0 {
 		_, err = tx.Exec(ctx, `
 			DELETE FROM myshows_watching
-			WHERE device_id=$1 AND lampa_profile_id=$2 AND item_id <> ALL($3)`,
+			WHERE device_id=$1 AND profile_id=$2 AND item_id <> ALL($3)`,
 			deviceID, profileID, itemIDs,
 		)
 		if err != nil {
@@ -130,7 +130,7 @@ func GetWatching(ctx context.Context, deviceID int64, profileID string) ([]Mysho
 		FROM myshows_watching mw
 		JOIN myshows_items mi ON mi.id = mw.item_id
 		LEFT JOIN media_cards mc ON mc.tmdb_id = mi.tmdb_id AND mc.media_type = mi.media_type
-		WHERE mw.device_id=$1 AND mw.lampa_profile_id=$2
+		WHERE mw.device_id=$1 AND mw.profile_id=$2
 		ORDER BY mw.updated_at DESC`, deviceID, profileID)
 	if err != nil {
 		return nil, 0, err
@@ -169,7 +169,7 @@ func UpsertStatus(ctx context.Context, deviceID int64, profileID, cacheType stri
 	if len(items) == 0 {
 		_, err = tx.Exec(ctx, `
 			DELETE FROM myshows_user_status
-			WHERE device_id=$1 AND lampa_profile_id=$2 AND cache_type=$3`,
+			WHERE device_id=$1 AND profile_id=$2 AND cache_type=$3`,
 			deviceID, profileID, cacheType)
 		if err != nil {
 			return err
@@ -194,9 +194,9 @@ func UpsertStatus(ctx context.Context, deviceID int64, profileID, cacheType stri
 		itemIDs = append(itemIDs, itemID)
 
 		_, err = tx.Exec(ctx, `
-			INSERT INTO myshows_user_status (device_id, lampa_profile_id, item_id, cache_type, updated_at)
+			INSERT INTO myshows_user_status (device_id, profile_id, item_id, cache_type, updated_at)
 			VALUES ($1, $2, $3, $4, now())
-			ON CONFLICT (device_id, lampa_profile_id, item_id) DO UPDATE SET
+			ON CONFLICT (device_id, profile_id, item_id) DO UPDATE SET
 				cache_type = EXCLUDED.cache_type, updated_at = now()`,
 			deviceID, profileID, itemID, cacheType,
 		)
@@ -209,7 +209,7 @@ func UpsertStatus(ctx context.Context, deviceID int64, profileID, cacheType stri
 	if len(itemIDs) > 0 {
 		_, err = tx.Exec(ctx, `
 			DELETE FROM myshows_user_status
-			WHERE device_id=$1 AND lampa_profile_id=$2 AND cache_type=$3 AND item_id <> ALL($4)`,
+			WHERE device_id=$1 AND profile_id=$2 AND cache_type=$3 AND item_id <> ALL($4)`,
 			deviceID, profileID, cacheType, itemIDs,
 		)
 		if err != nil {
@@ -245,15 +245,15 @@ func UpsertStatusByMyshowsID(ctx context.Context, deviceID int64, profileID stri
 		}
 
 		if it.CacheType == "remove" {
-			tx.Exec(ctx, `DELETE FROM myshows_watching WHERE device_id=$1 AND lampa_profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID)    //nolint:errcheck
-			tx.Exec(ctx, `DELETE FROM myshows_user_status WHERE device_id=$1 AND lampa_profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID) //nolint:errcheck
+			tx.Exec(ctx, `DELETE FROM myshows_watching WHERE device_id=$1 AND profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID)    //nolint:errcheck
+			tx.Exec(ctx, `DELETE FROM myshows_user_status WHERE device_id=$1 AND profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID) //nolint:errcheck
 			continue
 		}
 
 		_, err = tx.Exec(ctx, `
-			INSERT INTO myshows_user_status (device_id, lampa_profile_id, item_id, cache_type, updated_at)
+			INSERT INTO myshows_user_status (device_id, profile_id, item_id, cache_type, updated_at)
 			VALUES ($1, $2, $3, $4, now())
-			ON CONFLICT (device_id, lampa_profile_id, item_id) DO UPDATE SET
+			ON CONFLICT (device_id, profile_id, item_id) DO UPDATE SET
 				cache_type = EXCLUDED.cache_type, updated_at = now()`,
 			deviceID, profileID, itemID, it.CacheType,
 		)
@@ -262,7 +262,7 @@ func UpsertStatusByMyshowsID(ctx context.Context, deviceID int64, profileID stri
 		}
 
 		if it.CacheType != "watching" {
-			tx.Exec(ctx, `DELETE FROM myshows_watching WHERE device_id=$1 AND lampa_profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID) //nolint:errcheck
+			tx.Exec(ctx, `DELETE FROM myshows_watching WHERE device_id=$1 AND profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID) //nolint:errcheck
 		}
 	}
 
@@ -275,7 +275,7 @@ func GetStatusPage(ctx context.Context, deviceID int64, profileID, cacheType str
 	err := postgres.Pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM myshows_user_status mus
 		JOIN myshows_items mi ON mi.id = mus.item_id
-		WHERE mus.device_id=$1 AND mus.lampa_profile_id=$2 AND mus.cache_type=$3`,
+		WHERE mus.device_id=$1 AND mus.profile_id=$2 AND mus.cache_type=$3`,
 		deviceID, profileID, cacheType,
 	).Scan(&total)
 	if err != nil {
@@ -300,7 +300,7 @@ func GetStatusPage(ctx context.Context, deviceID int64, profileID, cacheType str
 		FROM myshows_user_status mus
 		JOIN myshows_items mi ON mi.id = mus.item_id
 		LEFT JOIN media_cards mc ON mc.tmdb_id = mi.tmdb_id AND mc.media_type = mi.media_type
-		WHERE mus.device_id=$1 AND mus.lampa_profile_id=$2 AND mus.cache_type=$3
+		WHERE mus.device_id=$1 AND mus.profile_id=$2 AND mus.cache_type=$3
 		ORDER BY mus.updated_at DESC
 		LIMIT $4 OFFSET $5`,
 		deviceID, profileID, cacheType, myshowsPageSize, (page-1)*myshowsPageSize,
@@ -352,16 +352,16 @@ func SetSingleStatus(ctx context.Context, deviceID int64, profileID string, it M
 	}
 
 	if it.CacheType == "remove" {
-		tx.Exec(ctx, `DELETE FROM myshows_watching WHERE device_id=$1 AND lampa_profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID)    //nolint:errcheck
-		tx.Exec(ctx, `DELETE FROM myshows_user_status WHERE device_id=$1 AND lampa_profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID) //nolint:errcheck
+		tx.Exec(ctx, `DELETE FROM myshows_watching WHERE device_id=$1 AND profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID)    //nolint:errcheck
+		tx.Exec(ctx, `DELETE FROM myshows_user_status WHERE device_id=$1 AND profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID) //nolint:errcheck
 		return tx.Commit(ctx)
 	}
 
 	if it.CacheType == "watching" {
 		_, err = tx.Exec(ctx, `
-			INSERT INTO myshows_watching (device_id, lampa_profile_id, item_id, unwatched_count, next_episode, progress_marker, updated_at)
+			INSERT INTO myshows_watching (device_id, profile_id, item_id, unwatched_count, next_episode, progress_marker, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, now())
-			ON CONFLICT (device_id, lampa_profile_id, item_id) DO UPDATE SET
+			ON CONFLICT (device_id, profile_id, item_id) DO UPDATE SET
 				unwatched_count = EXCLUDED.unwatched_count,
 				next_episode    = EXCLUDED.next_episode,
 				progress_marker = EXCLUDED.progress_marker,
@@ -372,22 +372,22 @@ func SetSingleStatus(ctx context.Context, deviceID int64, profileID string, it M
 			return err
 		}
 		_, err = tx.Exec(ctx, `
-			INSERT INTO myshows_user_status (device_id, lampa_profile_id, item_id, cache_type, updated_at)
+			INSERT INTO myshows_user_status (device_id, profile_id, item_id, cache_type, updated_at)
 			VALUES ($1, $2, $3, 'watched', now())
-			ON CONFLICT (device_id, lampa_profile_id, item_id) DO UPDATE SET
+			ON CONFLICT (device_id, profile_id, item_id) DO UPDATE SET
 				cache_type = 'watched', updated_at = now()`,
 			deviceID, profileID, itemID,
 		)
 	} else {
 		_, err = tx.Exec(ctx, `
-			INSERT INTO myshows_user_status (device_id, lampa_profile_id, item_id, cache_type, updated_at)
+			INSERT INTO myshows_user_status (device_id, profile_id, item_id, cache_type, updated_at)
 			VALUES ($1, $2, $3, $4, now())
-			ON CONFLICT (device_id, lampa_profile_id, item_id) DO UPDATE SET
+			ON CONFLICT (device_id, profile_id, item_id) DO UPDATE SET
 				cache_type = EXCLUDED.cache_type, updated_at = now()`,
 			deviceID, profileID, itemID, it.CacheType,
 		)
 		if err == nil {
-			tx.Exec(ctx, `DELETE FROM myshows_watching WHERE device_id=$1 AND lampa_profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID) //nolint:errcheck
+			tx.Exec(ctx, `DELETE FROM myshows_watching WHERE device_id=$1 AND profile_id=$2 AND item_id=$3`, deviceID, profileID, itemID) //nolint:errcheck
 		}
 	}
 	if err != nil {
@@ -404,7 +404,7 @@ func GetSingleStatus(ctx context.Context, deviceID int64, profileID string, tmdb
 	postgres.Pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM myshows_watching mw
 		JOIN myshows_items mi ON mi.id = mw.item_id
-		WHERE mw.device_id=$1 AND mw.lampa_profile_id=$2
+		WHERE mw.device_id=$1 AND mw.profile_id=$2
 		  AND mi.tmdb_id=$3 AND mi.media_type=$4`,
 		deviceID, profileID, tmdbID, mediaType,
 	).Scan(&n) //nolint:errcheck
@@ -416,7 +416,7 @@ func GetSingleStatus(ctx context.Context, deviceID int64, profileID string, tmdb
 	postgres.Pool.QueryRow(ctx, `
 		SELECT mus.cache_type FROM myshows_user_status mus
 		JOIN myshows_items mi ON mi.id = mus.item_id
-		WHERE mus.device_id=$1 AND mus.lampa_profile_id=$2
+		WHERE mus.device_id=$1 AND mus.profile_id=$2
 		  AND mi.tmdb_id=$3 AND mi.media_type=$4`,
 		deviceID, profileID, tmdbID, mediaType,
 	).Scan(&cacheType) //nolint:errcheck

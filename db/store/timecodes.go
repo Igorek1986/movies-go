@@ -78,7 +78,7 @@ func UpsertTimecodes(ctx context.Context, deviceID int64, profileID string, rows
 		}
 
 		_, err := postgres.Pool.Exec(ctx, `
-			INSERT INTO timecodes (device_id, lampa_profile_id, card_id, item, data, counted_at, view_count)
+			INSERT INTO timecodes (device_id, profile_id, card_id, item, data, counted_at, view_count)
 			VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $6::date IS NOT NULL THEN 1 ELSE 0 END)
 			ON CONFLICT ON CONSTRAINT uq_timecode_unique DO UPDATE
 			SET data       = EXCLUDED.data,
@@ -121,7 +121,7 @@ func TrimToLimitCount(ctx context.Context, deviceID int64, profileID string, rol
 		`DELETE FROM timecodes
 		 WHERE id IN (
 			SELECT id FROM timecodes
-			WHERE device_id = $1 AND lampa_profile_id = $2
+			WHERE device_id = $1 AND profile_id = $2
 			ORDER BY updated_at DESC
 			OFFSET $3
 		 )`,
@@ -134,7 +134,7 @@ func TrimToLimitCount(ctx context.Context, deviceID int64, profileID string, rol
 func DeleteTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string) {
 	postgres.Pool.Exec(ctx, //nolint:errcheck
 		`DELETE FROM timecodes
-		 WHERE device_id=$1 AND lampa_profile_id=$2 AND card_id=$3 AND item=$4`,
+		 WHERE device_id=$1 AND profile_id=$2 AND card_id=$3 AND item=$4`,
 		deviceID, profileID, cardID, item,
 	)
 }
@@ -151,7 +151,7 @@ type CardProgress struct {
 func GetCardProgress(ctx context.Context, deviceID int64, profileID, cardID string) CardProgress {
 	rows, err := postgres.Pool.Query(ctx,
 		`SELECT data FROM timecodes
-		 WHERE device_id=$1 AND lampa_profile_id=$2 AND card_id=$3`,
+		 WHERE device_id=$1 AND profile_id=$2 AND card_id=$3`,
 		deviceID, profileID, cardID,
 	)
 	if err != nil {
@@ -194,7 +194,7 @@ type CardTimecodeRow struct {
 // GetCardTimecodes returns all timecodes for device+card across all profiles.
 func GetCardTimecodes(ctx context.Context, deviceID int64, cardID string) []CardTimecodeRow {
 	rows, err := postgres.Pool.Query(ctx,
-		`SELECT item, data, lampa_profile_id FROM timecodes
+		`SELECT item, data, profile_id FROM timecodes
 		 WHERE device_id=$1 AND card_id=$2`,
 		deviceID, cardID,
 	)
@@ -240,7 +240,7 @@ func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, ite
 	var existingData string
 	postgres.Pool.QueryRow(ctx, //nolint:errcheck
 		`SELECT data FROM timecodes
-		 WHERE device_id=$1 AND lampa_profile_id=$2 AND card_id=$3 AND item=$4`,
+		 WHERE device_id=$1 AND profile_id=$2 AND card_id=$3 AND item=$4`,
 		deviceID, profileID, cardID, item,
 	).Scan(&existingData)
 
@@ -278,7 +278,7 @@ func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, ite
 	}
 
 	_, err := postgres.Pool.Exec(ctx, `
-		INSERT INTO timecodes (device_id, lampa_profile_id, card_id, item, data, counted_at, view_count)
+		INSERT INTO timecodes (device_id, profile_id, card_id, item, data, counted_at, view_count)
 		VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $6::date IS NOT NULL THEN 1 ELSE 0 END)
 		ON CONFLICT ON CONSTRAINT uq_timecode_unique DO UPDATE
 		SET data       = EXCLUDED.data,
@@ -299,7 +299,7 @@ func SetCardTimecodeWatched(ctx context.Context, deviceID int64, profileID, card
 	}
 	data, _ := json.Marshal(map[string]any{"time": 0, "duration": 0, "percent": 100})
 	_, err := postgres.Pool.Exec(ctx, `
-		INSERT INTO timecodes (device_id, lampa_profile_id, card_id, item, data, counted_at, view_count)
+		INSERT INTO timecodes (device_id, profile_id, card_id, item, data, counted_at, view_count)
 		VALUES ($1, $2, $3, $4, $5, $6, 1)
 		ON CONFLICT ON CONSTRAINT uq_timecode_unique DO UPDATE
 		SET data       = EXCLUDED.data,
@@ -316,7 +316,7 @@ func MarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID,
 	data, _ := json.Marshal(map[string]any{"time": 0, "duration": 0, "percent": 100, "special": true})
 	today := time.Now().Format("2006-01-02")
 	_, err := postgres.Pool.Exec(ctx, `
-		INSERT INTO timecodes (device_id, lampa_profile_id, card_id, item, data, counted_at, view_count)
+		INSERT INTO timecodes (device_id, profile_id, card_id, item, data, counted_at, view_count)
 		VALUES ($1, $2, $3, $4, $5, $6, 1)
 		ON CONFLICT ON CONSTRAINT uq_timecode_unique DO UPDATE
 		SET data = EXCLUDED.data, updated_at = now(),
@@ -330,7 +330,7 @@ func MarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID,
 func UnmarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string) error {
 	data, _ := json.Marshal(map[string]any{"time": 0, "duration": 0, "percent": 0})
 	_, err := postgres.Pool.Exec(ctx, `
-		INSERT INTO timecodes (device_id, lampa_profile_id, card_id, item, data, counted_at, view_count)
+		INSERT INTO timecodes (device_id, profile_id, card_id, item, data, counted_at, view_count)
 		VALUES ($1, $2, $3, $4, $5, NULL, 0)
 		ON CONFLICT ON CONSTRAINT uq_timecode_unique DO UPDATE
 		SET data = EXCLUDED.data, updated_at = now(), counted_at = NULL`,
@@ -351,7 +351,7 @@ func DeleteCardTimecodes(ctx context.Context, deviceID int64, cardID string) {
 func ExportTimecodes(ctx context.Context, deviceID int64, profileID string) map[string]map[string]string {
 	rows, err := postgres.Pool.Query(ctx,
 		`SELECT card_id, item, data FROM timecodes
-		 WHERE device_id=$1 AND lampa_profile_id=$2`,
+		 WHERE device_id=$1 AND profile_id=$2`,
 		deviceID, profileID,
 	)
 	if err != nil {
@@ -454,7 +454,7 @@ func GetHistoryFiltered(ctx context.Context, f HistoryFilter) ([]HistoryEntry, H
 		profileCond := ""
 		args := []any{f.DeviceID}
 		if f.ProfileID != "" {
-			profileCond = " AND t.lampa_profile_id = $2"
+			profileCond = " AND t.profile_id = $2"
 			args = append(args, f.ProfileID)
 		}
 		r, err := postgres.Pool.Query(ctx, baseSelect+`
@@ -589,26 +589,26 @@ type ProfileInfo struct {
 }
 
 func ListProfiles(ctx context.Context, deviceID int64) []ProfileInfo {
-	// UNION: named profiles + "orphan" profiles (have timecodes but no lampa_profiles entry)
+	// UNION: named profiles + "orphan" profiles (have timecodes but no profiles entry)
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT lp.lampa_profile_id, lp.name, COALESCE(lp.icon,''), lp.child, lp.params::text,
+		SELECT lp.profile_id, lp.name, COALESCE(lp.icon,''), lp.child, lp.params::text,
 		       COUNT(t.id) AS tc_count
-		FROM lampa_profiles lp
+		FROM profiles lp
 		LEFT JOIN timecodes t ON t.device_id = lp.device_id
-		                      AND t.lampa_profile_id = lp.lampa_profile_id
+		                      AND t.profile_id = lp.profile_id
 		WHERE lp.device_id = $1
 		GROUP BY lp.id
 
 		UNION ALL
 
-		SELECT t.lampa_profile_id, t.lampa_profile_id, '', false, '{}',
+		SELECT t.profile_id, t.profile_id, '', false, '{}',
 		       COUNT(t.id) AS tc_count
 		FROM timecodes t
 		WHERE t.device_id = $1
-		  AND t.lampa_profile_id NOT IN (
-		      SELECT lampa_profile_id FROM lampa_profiles WHERE device_id = $1
+		  AND t.profile_id NOT IN (
+		      SELECT profile_id FROM profiles WHERE device_id = $1
 		  )
-		GROUP BY t.lampa_profile_id
+		GROUP BY t.profile_id
 
 		ORDER BY name`,
 		deviceID,
@@ -639,7 +639,7 @@ func ListProfiles(ctx context.Context, deviceID int64) []ProfileInfo {
 
 func CountProfiles(ctx context.Context, deviceID int64) int {
 	var n int
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM lampa_profiles WHERE device_id=$1`, deviceID).Scan(&n) //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM profiles WHERE device_id=$1`, deviceID).Scan(&n) //nolint:errcheck
 	return n
 }
 
@@ -652,7 +652,7 @@ func CreateProfile(ctx context.Context, deviceID int64, profileID, name, icon st
 		Params:         "{}",
 	}
 	err := postgres.Pool.QueryRow(ctx, `
-		INSERT INTO lampa_profiles (device_id, lampa_profile_id, name, icon)
+		INSERT INTO profiles (device_id, profile_id, name, icon)
 		VALUES ($1, $2, $3, NULLIF($4,''))
 		RETURNING id`,
 		deviceID, profileID, name, icon,
@@ -662,8 +662,8 @@ func CreateProfile(ctx context.Context, deviceID int64, profileID, name, icon st
 	}
 	// migrate default-profile timecodes
 	postgres.Pool.Exec(ctx, //nolint:errcheck
-		`UPDATE timecodes SET lampa_profile_id=$1
-		 WHERE device_id=$2 AND lampa_profile_id=''`,
+		`UPDATE timecodes SET profile_id=$1
+		 WHERE device_id=$2 AND profile_id=''`,
 		profileID, deviceID,
 	)
 	return lp, nil
@@ -700,7 +700,7 @@ func UpdateProfile(ctx context.Context, deviceID int64, profileID string, name, 
 	}
 	args = append(args, deviceID, profileID)
 	_, err := postgres.Pool.Exec(ctx,
-		fmt.Sprintf("UPDATE lampa_profiles SET %s WHERE device_id=$%d AND lampa_profile_id=$%d",
+		fmt.Sprintf("UPDATE profiles SET %s WHERE device_id=$%d AND profile_id=$%d",
 			strings.Join(sets, ","), n, n+1),
 		args...,
 	)
@@ -709,7 +709,7 @@ func UpdateProfile(ctx context.Context, deviceID int64, profileID string, name, 
 
 func DeleteProfile(ctx context.Context, deviceID int64, profileID string) error {
 	_, err := postgres.Pool.Exec(ctx,
-		`DELETE FROM lampa_profiles WHERE device_id=$1 AND lampa_profile_id=$2`,
+		`DELETE FROM profiles WHERE device_id=$1 AND profile_id=$2`,
 		deviceID, profileID,
 	)
 	return err
@@ -717,7 +717,7 @@ func DeleteProfile(ctx context.Context, deviceID int64, profileID string) error 
 
 func ClearProfileTimecodes(ctx context.Context, deviceID int64, profileID string) error {
 	_, err := postgres.Pool.Exec(ctx,
-		`DELETE FROM timecodes WHERE device_id=$1 AND lampa_profile_id=$2`,
+		`DELETE FROM timecodes WHERE device_id=$1 AND profile_id=$2`,
 		deviceID, profileID,
 	)
 	return err
@@ -728,7 +728,7 @@ func ClearProfileTimecodes(ctx context.Context, deviceID int64, profileID string
 func GetFavorite(ctx context.Context, deviceID int64, profileID string) any {
 	var raw *string
 	err := postgres.Pool.QueryRow(ctx,
-		`SELECT favorite FROM lampa_profiles WHERE device_id=$1 AND lampa_profile_id=$2`,
+		`SELECT favorite FROM profiles WHERE device_id=$1 AND profile_id=$2`,
 		deviceID, profileID,
 	).Scan(&raw)
 	if err != nil || raw == nil {
@@ -747,9 +747,9 @@ func SaveFavorite(ctx context.Context, deviceID int64, profileID string, favorit
 	fav := string(b)
 
 	_, err = postgres.Pool.Exec(ctx, `
-		INSERT INTO lampa_profiles (device_id, lampa_profile_id, name, favorite)
+		INSERT INTO profiles (device_id, profile_id, name, favorite)
 		VALUES ($1, $2, '', $3)
-		ON CONFLICT ON CONSTRAINT uq_lampa_profile
+		ON CONFLICT ON CONSTRAINT uq_profile
 		DO UPDATE SET favorite = EXCLUDED.favorite`,
 		deviceID, profileID, fav,
 	)
@@ -762,9 +762,9 @@ func UpsertProfileName(ctx context.Context, deviceID int64, profileID, name stri
 		return
 	}
 	postgres.Pool.Exec(ctx, //nolint:errcheck
-		`INSERT INTO lampa_profiles (device_id, lampa_profile_id, name)
+		`INSERT INTO profiles (device_id, profile_id, name)
 		 VALUES ($1, $2, $3)
-		 ON CONFLICT ON CONSTRAINT uq_lampa_profile
+		 ON CONFLICT ON CONSTRAINT uq_profile
 		 DO UPDATE SET name = EXCLUDED.name`,
 		deviceID, profileID, name,
 	)

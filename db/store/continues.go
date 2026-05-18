@@ -46,7 +46,7 @@ func GetContinues(ctx context.Context, deviceID int64, profileID, mediaFilter st
 		       MAX(t.updated_at) AS last_watched
 		FROM timecodes t
 		WHERE t.device_id = $1
-		  AND t.lampa_profile_id = $2
+		  AND t.profile_id = $2
 		  AND t.card_id ~ '^[0-9]+_(movie|tv)$'
 		  %s
 		GROUP BY t.card_id

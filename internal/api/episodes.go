@@ -196,7 +196,7 @@ func loadCardTimecodes(ctx context.Context, deviceID int64, profileID, cardID st
 	sql := `SELECT item, data FROM timecodes WHERE device_id=$1 AND card_id=$2`
 	args := []any{deviceID, cardID}
 	if profileID != "" {
-		sql += ` AND lampa_profile_id=$3`
+		sql += ` AND profile_id=$3`
 		args = append(args, profileID)
 	}
 

@@ -3,13 +3,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-lampa}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-lampa}
-      POSTGRES_DB: ${DB_NAME:-lampa}
+      POSTGRES_USER: ${DB_USER:-movies_api}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-movies_api}
+      POSTGRES_DB: ${DB_NAME:-movies_api}
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-lampa} -d ${DB_NAME:-lampa}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-movies_api} -d ${DB_NAME:-movies_api}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -21,7 +21,7 @@ services:
       - path: .env
         required: false
     environment:
-      - DATABASE_URL=postgres://${DB_USER:-lampa}:${DB_PASSWORD:-lampa}@db:5432/${DB_NAME:-lampa}?sslmode=disable
+      - DATABASE_URL=postgres://${DB_USER:-movies_api}:${DB_PASSWORD:-movies_api}@db:5432/${DB_NAME:-movies_api}?sslmode=disable
       - HTTP_PORT=${PORT:-8888}
     ports:
       - "${PORT:-8888}:${PORT:-8888}"

@@ -80,8 +80,8 @@ func ExportUserData(ctx context.Context, userID int64) (*ExportData, error) {
 	for i, devID := range deviceIDs {
 		// Profiles
 		prows, err := postgres.Pool.Query(ctx,
-			`SELECT lampa_profile_id, name, icon, child, params, favorite
-			 FROM lampa_profiles WHERE device_id = $1 ORDER BY id`, devID)
+			`SELECT profile_id, name, icon, child, params, favorite
+			 FROM profiles WHERE device_id = $1 ORDER BY id`, devID)
 		if err == nil {
 			for prows.Next() {
 				var p ExportProfile
@@ -101,7 +101,7 @@ func ExportUserData(ctx context.Context, userID int64) (*ExportData, error) {
 
 		// Timecodes
 		trows, err := postgres.Pool.Query(ctx,
-			`SELECT lampa_profile_id, card_id, item, data, view_count, TO_CHAR(counted_at, 'YYYY-MM-DD')
+			`SELECT profile_id, card_id, item, data, view_count, TO_CHAR(counted_at, 'YYYY-MM-DD')
 			 FROM timecodes WHERE device_id = $1 ORDER BY id`, devID)
 		if err == nil {
 			for trows.Next() {
@@ -117,7 +117,7 @@ func ExportUserData(ctx context.Context, userID int64) (*ExportData, error) {
 
 	// Plugin settings
 	psrows, err := postgres.Pool.Query(ctx,
-		`SELECT lampa_profile_id, plugin, settings FROM plugin_settings WHERE user_id = $1`, userID)
+		`SELECT profile_id, plugin, settings FROM plugin_settings WHERE user_id = $1`, userID)
 	if err == nil {
 		defer psrows.Close()
 		for psrows.Next() {
@@ -167,7 +167,7 @@ func ImportUserData(ctx context.Context, userID int64, data *ExportData) error {
 				params = json.RawMessage("{}")
 			}
 			if _, err := tx.Exec(ctx,
-				`INSERT INTO lampa_profiles (device_id, lampa_profile_id, name, icon, child, params, favorite)
+				`INSERT INTO profiles (device_id, profile_id, name, icon, child, params, favorite)
 				 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 				devID, p.ID, p.Name, p.Icon, p.Child, []byte(params), p.Favorite,
 			); err != nil {
@@ -177,9 +177,9 @@ func ImportUserData(ctx context.Context, userID int64, data *ExportData) error {
 
 		for _, t := range dev.Timecodes {
 			if _, err := tx.Exec(ctx,
-				`INSERT INTO timecodes (device_id, lampa_profile_id, card_id, item, data)
+				`INSERT INTO timecodes (device_id, profile_id, card_id, item, data)
 				 VALUES ($1, $2, $3, $4, $5)
-				 ON CONFLICT (device_id, lampa_profile_id, card_id, item) DO UPDATE SET data = EXCLUDED.data`,
+				 ON CONFLICT (device_id, profile_id, card_id, item) DO UPDATE SET data = EXCLUDED.data`,
 				devID, t.ProfileID, t.CardID, t.Item, t.Data,
 			); err != nil {
 				return err
@@ -189,7 +189,7 @@ func ImportUserData(ctx context.Context, userID int64, data *ExportData) error {
 
 	for _, ps := range data.PluginSettings {
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO plugin_settings (user_id, lampa_profile_id, plugin, settings)
+			`INSERT INTO plugin_settings (user_id, profile_id, plugin, settings)
 			 VALUES ($1, $2, $3, $4)`,
 			userID, ps.ProfileID, ps.Plugin, ps.Settings,
 		); err != nil {

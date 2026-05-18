@@ -434,7 +434,7 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		where = append(where, fmt.Sprintf(`NOT EXISTS (
 			SELECT 1 FROM timecodes tc
 			WHERE tc.device_id = $%d
-			  AND tc.lampa_profile_id = $%d
+			  AND tc.profile_id = $%d
 			  AND tc.card_id = (m.tmdb_id::text || '_' || m.media_type)
 			  AND (tc.data::jsonb->>'percent')::numeric >= $%d
 		)`, n, n+1, n+2))

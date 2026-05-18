@@ -29,7 +29,7 @@ interface AuthResp {
   user: { id: number; first_name: string; username?: string }
 }
 interface Device { id: number; name: string; timecodes_count: number; created_at: string }
-interface Profile { lampa_profile_id: string; name: string }
+interface Profile { profile_id: string; name: string }
 interface DeviceDetail { id: number; name: string; token: string; profile_limit: number | null; profiles: Profile[] }
 interface MeResp { username: string; role: string; role_label: string; device_count: number; device_limit: number | null; devices: Device[] }
 interface UserRow { id: number; username: string; role: string; created_at: string; blocked_at?: string; device_count: number; tg_username?: string; premium_until?: string }
@@ -137,12 +137,12 @@ function MeTab({ auth }: { auth: AuthResp }) {
       <h3 className={s.h3}>Профили ({device.profiles?.length ?? 0} / {device.profile_limit ?? '∞'})</h3>
       <div className={s.card}>
         {device.profiles?.length ? device.profiles.map(p => (
-          <div key={p.lampa_profile_id} className={s.row}>
+          <div key={p.profile_id} className={s.row}>
             <div>
               <div>{p.name}</div>
-              <div className={s.muted}>{p.lampa_profile_id}</div>
+              <div className={s.muted}>{p.profile_id}</div>
             </div>
-            <button className={`${s.btn} ${s.btnSm} ${s.btnDanger}`} onClick={() => deleteProfile(device.id, p.lampa_profile_id)}>Удалить</button>
+            <button className={`${s.btn} ${s.btnSm} ${s.btnDanger}`} onClick={() => deleteProfile(device.id, p.profile_id)}>Удалить</button>
           </div>
         )) : <p className={s.muted}>Нет профилей</p>}
       </div>

@@ -429,7 +429,7 @@ func handleCardViews(w http.ResponseWriter, r *http.Request) {
 		var total int
 		_ = postgres.Pool.QueryRow(r.Context(),
 			`SELECT COALESCE(SUM(view_count),0) FROM timecodes
-			  WHERE device_id=$1 AND lampa_profile_id=$2 AND card_id=$3`,
+			  WHERE device_id=$1 AND profile_id=$2 AND card_id=$3`,
 			deviceID, profileID, cardID,
 		).Scan(&total)
 		if total == 0 {
@@ -444,7 +444,7 @@ func handleCardViews(w http.ResponseWriter, r *http.Request) {
 	var epCount int
 	_ = postgres.Pool.QueryRow(r.Context(),
 		`SELECT COUNT(*) FROM timecodes
-		  WHERE device_id=$1 AND lampa_profile_id=$2 AND card_id=$3 AND counted_at IS NOT NULL`,
+		  WHERE device_id=$1 AND profile_id=$2 AND card_id=$3 AND counted_at IS NOT NULL`,
 		deviceID, profileID, cardID,
 	).Scan(&epCount)
 	if epCount == 0 {

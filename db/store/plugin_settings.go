@@ -10,7 +10,7 @@ func GetPluginSettings(ctx context.Context, userID int64, profileID, plugin stri
 	var raw *string
 	err := postgres.Pool.QueryRow(ctx,
 		`SELECT settings FROM plugin_settings
-		 WHERE user_id=$1 AND lampa_profile_id=$2 AND plugin=$3`,
+		 WHERE user_id=$1 AND profile_id=$2 AND plugin=$3`,
 		userID, profileID, plugin,
 	).Scan(&raw)
 	if err != nil || raw == nil {
@@ -32,9 +32,9 @@ func PatchPluginSetting(ctx context.Context, userID int64, profileID, plugin, ke
 		return err
 	}
 	_, err = postgres.Pool.Exec(ctx, `
-		INSERT INTO plugin_settings (user_id, lampa_profile_id, plugin, settings)
+		INSERT INTO plugin_settings (user_id, profile_id, plugin, settings)
 		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (user_id, lampa_profile_id, plugin)
+		ON CONFLICT (user_id, profile_id, plugin)
 		DO UPDATE SET settings = EXCLUDED.settings, updated_at = now()`,
 		userID, profileID, plugin, string(b),
 	)

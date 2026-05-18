@@ -5,8 +5,8 @@ set -e
 
 OUT="${1:-dump.sql.gz}"
 DB_CONTAINER="${DB_CONTAINER:-movies-api-db-1}"
-DB_USER="${DB_USER:-movies}"
-DB_NAME="${DB_NAME:-movies}"
+DB_USER="${DB_USER:-movies_api}"
+DB_NAME="${DB_NAME:-movies_api}"
 
 echo "Dumping $DB_NAME → $OUT ..."
 docker exec "$DB_CONTAINER" pg_dump -U "$DB_USER" "$DB_NAME" \
