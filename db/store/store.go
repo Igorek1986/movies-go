@@ -198,7 +198,7 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 				WHEN media_cards.media_type = 'tv'
 					THEN GREATEST(media_cards.latest_torrent_date, EXCLUDED.latest_torrent_date)
 				WHEN EXCLUDED.best_video_quality > media_cards.best_video_quality
-					THEN GREATEST(media_cards.latest_torrent_date, EXCLUDED.latest_torrent_date)
+					THEN EXCLUDED.latest_torrent_date
 				ELSE media_cards.latest_torrent_date
 			END,
 			last_ep_season     = COALESCE(EXCLUDED.last_ep_season, media_cards.last_ep_season),
