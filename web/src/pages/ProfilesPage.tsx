@@ -294,7 +294,7 @@ export default function ProfilesPage() {
   }
 
   async function handleRegenToken(id: number, name: string) {
-    if (!confirm(`Старый токен устройства «${name}» перестанет работать в Lampa. Продолжить?`)) return
+    if (!confirm(`Старый токен устройства «${name}» перестанет работать. Продолжить?`)) return
     const res = await fetch(`/api/devices/${id}/regenerate-token`, { method: 'POST' })
     if (res.ok) {
       fetchDevices()

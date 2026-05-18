@@ -6,7 +6,7 @@ export default function RegisterSuccessPage() {
     <div className={styles.page}>
       <form className={styles.card} onSubmit={e => e.preventDefault()} noValidate>
         <h1 className={styles.title}>Аккаунт создан!</h1>
-        <p>Создайте первый профиль, чтобы получить API-ключ для плагина Lampa.</p>
+        <p>Создайте первый профиль, чтобы получить API-ключ для подключения плагина.</p>
         <Link to="/profiles" className={styles.btn}>
           Создать профиль
         </Link>
