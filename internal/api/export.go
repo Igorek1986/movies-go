@@ -22,7 +22,7 @@ func handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := fmt.Sprintf("lampa-backup-%s.json", time.Now().Format("2006-01-02"))
+	filename := fmt.Sprintf("movies-backup-%s.json", time.Now().Format("2006-01-02"))
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	json.NewEncoder(w).Encode(data) //nolint:errcheck
