@@ -19,7 +19,7 @@ func NewRouter(mode string) http.Handler {
 	r.Use(middleware.RealIP)
 	r.Use(corsMiddleware)
 	r.Use(gzipMiddleware)
-	r.Use(serveLampaPlugins)
+	r.Use(servePlugins)
 
 	// ── Общие маршруты (parser + all) ───────────────────────────────────────
 	r.Get("/health", handleHealth)
@@ -192,8 +192,8 @@ func NewRouter(mode string) http.Handler {
 	return r
 }
 
-// serveLampaPlugins отдаёт файлы из ./lampa-plugins/ без рестарта бинарника.
-func serveLampaPlugins(next http.Handler) http.Handler {
+// servePlugins отдаёт файлы из ./plugins/ без рестарта бинарника.
+func servePlugins(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			next.ServeHTTP(w, r)
@@ -206,7 +206,7 @@ func serveLampaPlugins(next http.Handler) http.Handler {
 			return
 		}
 
-		fullPath := filepath.Join("lampa-plugins", rel)
+		fullPath := filepath.Join("plugins", rel)
 		info, err := os.Stat(fullPath)
 		if err != nil || info.IsDir() {
 			next.ServeHTTP(w, r)

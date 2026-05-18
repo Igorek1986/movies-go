@@ -28,4 +28,4 @@ internal/web/dist/
 !/internal/web/dist/index.html
 lampa-api-linux
 dump.sql.gz
-lampa-plugins/
+plugins/

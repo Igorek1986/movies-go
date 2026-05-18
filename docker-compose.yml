@@ -29,7 +29,7 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     volumes:
-      - ./lampa-plugins:/app/lampa-plugins
+      - ./plugins:/app/plugins
     depends_on:
       db:
         condition: service_healthy
