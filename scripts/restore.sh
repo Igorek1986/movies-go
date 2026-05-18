@@ -3,8 +3,8 @@
 # Usage: ./scripts/restore.sh
 set -e
 
-DB_USER="${DB_USER:-lampa}"
-DB_NAME="${DB_NAME:-lampa}"
+DB_USER="${DB_USER:-movies}"
+DB_NAME="${DB_NAME:-movies}"
 
 cd "$(dirname "$0")/.."
 
