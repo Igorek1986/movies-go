@@ -48,7 +48,7 @@ type ConfigParser struct {
 	CacheClearPassword string `env:"CACHE_CLEAR_PASSWORD"`
 	PluginURL          string `env:"PLUGIN_URL"`
 	DonateURL          string `env:"DONATE_URL"`
-	SiteName           string `env:"SITE_NAME" env-default:"lampa-api"`
+	SiteName           string `env:"SITE_NAME" env-default:"movies-api"`
 	ContactEmail       string `env:"CONTACT_EMAIL"`
 
 }

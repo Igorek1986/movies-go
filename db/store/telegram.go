@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"lampa-api/db/postgres"
+	"movies-api/db/postgres"
 	"math/big"
 	"time"
 )

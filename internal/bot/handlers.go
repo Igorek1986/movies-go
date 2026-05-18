@@ -8,8 +8,8 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"lampa-api/config"
-	"lampa-api/db/store"
+	"movies-api/config"
+	"movies-api/db/store"
 )
 
 // ─── FSM state for broadcast ──────────────────────────────────────────────────

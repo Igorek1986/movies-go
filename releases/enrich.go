@@ -2,8 +2,8 @@ package releases
 
 import (
 	"fmt"
-	"lampa-api/db/models"
-	"lampa-api/db/store"
+	"movies-api/db/models"
+	"movies-api/db/store"
 	"log"
 )
 

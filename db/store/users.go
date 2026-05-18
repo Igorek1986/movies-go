@@ -2,8 +2,8 @@ package store
 
 import (
 	"context"
-	"lampa-api/db/models"
-	"lampa-api/db/postgres"
+	"movies-api/db/models"
+	"movies-api/db/postgres"
 	"time"
 )
 

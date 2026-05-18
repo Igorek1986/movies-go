@@ -4,7 +4,7 @@ package api
 
 import (
 	"encoding/json"
-	"lampa-api/db/store"
+	"movies-api/db/store"
 	"net/http"
 	"strconv"
 	"strings"

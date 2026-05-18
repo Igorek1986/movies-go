@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"io"
-	"lampa-api/config"
+	"movies-api/config"
 	"net"
 	"net/http"
 	"net/url"

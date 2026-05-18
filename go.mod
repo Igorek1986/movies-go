@@ -1,4 +1,4 @@
-module lampa-api
+module movies-api
 
 go 1.25.0
 

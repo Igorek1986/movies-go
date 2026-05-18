@@ -1,10 +1,10 @@
 package tmdb
 
 import (
-	"lampa-api/config"
-	"lampa-api/db/models"
-	"lampa-api/db/store"
-	"lampa-api/utils"
+	"movies-api/config"
+	"movies-api/db/models"
+	"movies-api/db/store"
+	"movies-api/utils"
 	"log"
 	"net/http"
 	"sort"

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"lampa-api/config"
+	"movies-api/config"
 )
 
 var (

@@ -3,9 +3,9 @@ package api
 import (
 	"encoding/base64"
 	"encoding/json"
-	"lampa-api/config"
-	"lampa-api/db/store"
-	"lampa-api/internal/auth"
+	"movies-api/config"
+	"movies-api/db/store"
+	"movies-api/internal/auth"
 	"net/http"
 
 	"github.com/pquerna/otp/totp"

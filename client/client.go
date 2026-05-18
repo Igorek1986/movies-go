@@ -1,7 +1,7 @@
 package client
 
 import (
-	"lampa-api/config"
+	"movies-api/config"
 	"net/http"
 	"time"
 

@@ -2,7 +2,7 @@ package api
 
 import (
 	"io/fs"
-	"lampa-api/internal/web"
+	"movies-api/internal/web"
 	"net/http"
 	"os"
 	"path/filepath"

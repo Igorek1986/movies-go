@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"lampa-api/config"
-	"lampa-api/db/models"
-	"lampa-api/db/store"
-	"lampa-api/releases"
-	"lampa-api/tasker"
-	"lampa-api/utils"
+	"movies-api/config"
+	"movies-api/db/models"
+	"movies-api/db/store"
+	"movies-api/releases"
+	"movies-api/tasker"
+	"movies-api/utils"
 )
 
 func loadRutorHost() string {

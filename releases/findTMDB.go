@@ -2,9 +2,9 @@ package releases
 
 import (
 	"bytes"
-	"lampa-api/db/models"
-	"lampa-api/movies/tmdb"
-	"lampa-api/utils"
+	"movies-api/db/models"
+	"movies-api/movies/tmdb"
+	"movies-api/utils"
 	"github.com/PuerkitoBio/goquery"
 	"strconv"
 	"strings"

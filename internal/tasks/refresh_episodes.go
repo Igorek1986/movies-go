@@ -2,9 +2,9 @@ package tasks
 
 import (
 	"context"
-	"lampa-api/db/postgres"
-	"lampa-api/db/store"
-	"lampa-api/internal/myshows"
+	"movies-api/db/postgres"
+	"movies-api/db/store"
+	"movies-api/internal/myshows"
 	"log"
 	"sync"
 	"sync/atomic"

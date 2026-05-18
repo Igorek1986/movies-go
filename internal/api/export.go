@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"lampa-api/db/store"
+	"movies-api/db/store"
 	"net/http"
 	"time"
 )

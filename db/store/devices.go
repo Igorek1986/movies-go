@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"lampa-api/db/models"
-	"lampa-api/db/postgres"
+	"movies-api/db/models"
+	"movies-api/db/postgres"
 	"strings"
 	"time"
 )

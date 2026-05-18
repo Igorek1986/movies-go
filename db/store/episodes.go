@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
-	"lampa-api/db/postgres"
+	"movies-api/db/postgres"
 	"time"
 )
 

@@ -2,8 +2,8 @@ package api
 
 import (
 	"encoding/json"
-	"lampa-api/db/store"
-	"lampa-api/internal/auth"
+	"movies-api/db/store"
+	"movies-api/internal/auth"
 	"net/http"
 	"strconv"
 	"strings"
@@ -249,7 +249,7 @@ type deviceCtx struct {
 	Token  string
 }
 
-// requireToken middleware: for Lampa API endpoints that use device tokens.
+// requireToken middleware: for Movies API endpoints that use device tokens.
 func requireToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d := deviceFromRequest(r)

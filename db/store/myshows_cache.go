@@ -2,7 +2,7 @@ package store
 
 import (
 	"context"
-	"lampa-api/db/postgres"
+	"movies-api/db/postgres"
 )
 
 const myshowsPageSize = 20

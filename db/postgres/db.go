@@ -3,7 +3,7 @@ package postgres
 import (
 	"context"
 	_ "embed"
-	"lampa-api/config"
+	"movies-api/config"
 	"log"
 	"os"
 	"time"

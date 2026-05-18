@@ -1,7 +1,7 @@
 package api
 
 import (
-	"lampa-api/internal/ws"
+	"movies-api/internal/ws"
 	"net/http"
 
 	"github.com/gorilla/websocket"

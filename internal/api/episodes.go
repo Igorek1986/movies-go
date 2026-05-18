@@ -3,9 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"lampa-api/db/postgres"
-	"lampa-api/db/store"
-	"lampa-api/internal/myshows"
+	"movies-api/db/postgres"
+	"movies-api/db/store"
+	"movies-api/internal/myshows"
 	"log"
 	"net/http"
 	"strconv"

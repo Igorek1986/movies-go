@@ -1,9 +1,9 @@
 package releases
 
 import (
-	"lampa-api/client"
-	"lampa-api/config"
-	"lampa-api/db/models"
+	"movies-api/client"
+	"movies-api/config"
+	"movies-api/db/models"
 	"log"
 	"strings"
 	"time"

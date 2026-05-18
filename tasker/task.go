@@ -1,7 +1,7 @@
 package tasker
 
 import (
-	"lampa-api/utils"
+	"movies-api/utils"
 	"log"
 	"math/rand"
 	"sync"

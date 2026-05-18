@@ -3,10 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"lampa-api/config"
-	"lampa-api/db/models"
-	"lampa-api/db/store"
-	"lampa-api/internal/auth"
+	"movies-api/config"
+	"movies-api/db/models"
+	"movies-api/db/store"
+	"movies-api/internal/auth"
 	"net/http"
 	"strings"
 )

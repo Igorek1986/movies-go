@@ -1,7 +1,7 @@
 package parser
 
 import (
-	"lampa-api/client"
+	"movies-api/client"
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/net/html"
 	"log"

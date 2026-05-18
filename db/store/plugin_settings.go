@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"lampa-api/db/postgres"
+	"movies-api/db/postgres"
 )
 
 func GetPluginSettings(ctx context.Context, userID int64, profileID, plugin string) map[string]any {

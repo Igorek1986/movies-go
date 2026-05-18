@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"lampa-api/config"
+	"movies-api/config"
 	"net/http"
 	"strings"
 )

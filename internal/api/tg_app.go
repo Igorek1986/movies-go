@@ -17,11 +17,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"lampa-api/config"
-	"lampa-api/db/postgres"
-	"lampa-api/db/store"
-	botpkg "lampa-api/internal/bot"
-	"lampa-api/internal/tasks"
+	"movies-api/config"
+	"movies-api/db/postgres"
+	"movies-api/db/store"
+	botpkg "movies-api/internal/bot"
+	"movies-api/internal/tasks"
 )
 
 // ─── initData validation ──────────────────────────────────────────────────────

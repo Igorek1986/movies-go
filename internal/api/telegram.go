@@ -5,9 +5,9 @@ import (
 	"net/http"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"lampa-api/config"
-	"lampa-api/db/store"
-	"lampa-api/internal/bot"
+	"movies-api/config"
+	"movies-api/db/store"
+	"movies-api/internal/bot"
 )
 
 // POST /bot/webhook — receives Telegram updates

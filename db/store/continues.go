@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"lampa-api/db/postgres"
+	"movies-api/db/postgres"
 	"strings"
 	"time"
 )

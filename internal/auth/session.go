@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"lampa-api/db/models"
-	"lampa-api/db/postgres"
+	"movies-api/db/models"
+	"movies-api/db/postgres"
 	"net/http"
 	"time"
 )

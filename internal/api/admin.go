@@ -2,10 +2,10 @@ package api
 
 import (
 	"encoding/json"
-	"lampa-api/db/postgres"
-	"lampa-api/db/store"
-	tasks "lampa-api/internal/tasks"
-	"lampa-api/movies/tmdb"
+	"movies-api/db/postgres"
+	"movies-api/db/store"
+	tasks "movies-api/internal/tasks"
+	"movies-api/movies/tmdb"
 	"math"
 	"net/http"
 	"os"

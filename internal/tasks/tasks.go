@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"lampa-api/db/postgres"
-	"lampa-api/db/store"
-	"lampa-api/internal/bot"
+	"movies-api/db/postgres"
+	"movies-api/db/store"
+	"movies-api/internal/bot"
 )
 
 var appCtx context.Context

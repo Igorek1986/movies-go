@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"lampa-api/db/postgres"
+	"movies-api/db/postgres"
 	"strings"
 	"time"
 

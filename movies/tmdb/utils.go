@@ -1,7 +1,7 @@
 package tmdb
 
 import (
-	"lampa-api/db/models"
+	"movies-api/db/models"
 	"strings"
 	"time"
 )

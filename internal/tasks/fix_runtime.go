@@ -2,8 +2,8 @@ package tasks
 
 import (
 	"context"
-	"lampa-api/db/postgres"
-	"lampa-api/movies/tmdb"
+	"movies-api/db/postgres"
+	"movies-api/movies/tmdb"
 	"log"
 	"sync"
 	"sync/atomic"
