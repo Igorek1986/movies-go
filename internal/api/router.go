@@ -31,10 +31,8 @@ func NewRouter(mode string) http.Handler {
 
 	for route := range categoryRoutes {
 		r.Get("/"+route, handleCategory)
-		r.Get("/lampac_"+route, handleCategory) // lampac_ prefix alias
 	}
 	r.Get("/movies_id_{year:[0-9]+}", handleCategory)
-	r.Get("/lampac_movies_id_{year:[0-9]+}", handleCategory)
 	r.Get("/continues", handleCategory)
 	r.Get("/continues_movie", handleCategory)
 	r.Get("/continues_tv", handleCategory)
@@ -93,8 +91,8 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireSession).Post("/profile-name", handleProfileName)
 			r.With(requireSession).Get("/card-views", handleCardViews)
 			r.With(requireSession).Delete("/episode-timecode", handleDeleteEpisodeTimecode)
-			r.With(requireSession).Patch("/lampa-profile", handleProfilePatch)
-			r.With(requireSession).Delete("/lampa-profile", handleProfileDelete)
+			r.With(requireSession).Patch("/profile", handleProfilePatch)
+			r.With(requireSession).Delete("/profile", handleProfileDelete)
 			r.With(requireSession).Post("/lampa-profile/clear", handleProfileClear)
 			r.With(requireSession).Get("/lampa-profile/quota", handleProfileQuota)
 			r.With(requireSession).Post("/lampa-profile/create", handleProfileCreate)

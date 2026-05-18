@@ -8,9 +8,9 @@ import (
 	"strings"
 )
 
-// ─── /api/lampa-profile/* (used by profiles.js plugin) ───────────────────────
+// ─── /api/profile/* (used by profiles.js plugin) ───────────────────────
 
-// PATCH /api/lampa-profile
+// PATCH /api/profile
 func handleProfilePatch(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
@@ -39,7 +39,7 @@ func handleProfilePatch(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// DELETE /api/lampa-profile?device_id=&profile_id=
+// DELETE /api/profile?device_id=&profile_id=
 func handleProfileDelete(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
@@ -64,7 +64,7 @@ func handleProfileDelete(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// POST /api/lampa-profile/clear?device_id=&profile_id=
+// POST /api/profile/clear?device_id=&profile_id=
 func handleProfileClear(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
@@ -89,7 +89,7 @@ func handleProfileClear(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// GET /api/lampa-profile/quota?device_id=
+// GET /api/profile/quota?device_id=
 func handleProfileQuota(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
@@ -110,7 +110,7 @@ func handleProfileQuota(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"count": count, "limit": limitVal})
 }
 
-// POST /api/lampa-profile/create
+// POST /api/profile/create
 func handleProfileCreate(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {

@@ -101,10 +101,8 @@ var categoryRoutes = map[string]store.CategoryFilter{
 
 // handleCategory handles /{category}?page=&token=&profile_id=&search=
 func handleCategory(w http.ResponseWriter, r *http.Request) {
-	// Extract category from path; strip optional "lampac_" prefix for compatibility.
 	category := strings.TrimPrefix(r.URL.Path, "/")
 	category = strings.SplitN(category, "/", 2)[0]
-	category = strings.TrimPrefix(category, "lampac_")
 
 	ip := realIP(r)
 	go store.TrackAPIUser(ip)
