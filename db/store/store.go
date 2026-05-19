@@ -431,13 +431,35 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		n++
 	}
 	if f.HideWatched && f.DeviceID > 0 {
-		where = append(where, fmt.Sprintf(`NOT EXISTS (
-			SELECT 1 FROM timecodes tc
-			WHERE tc.device_id = $%d
-			  AND tc.profile_id = $%d
-			  AND tc.card_id = (m.tmdb_id::text || '_' || m.media_type)
-			  AND (tc.data::jsonb->>'percent')::numeric >= $%d
-		)`, n, n+1, n+2))
+		where = append(where, fmt.Sprintf(`NOT (
+			CASE m.media_type
+			WHEN 'movie' THEN
+				EXISTS (
+					SELECT 1 FROM timecodes tc
+					WHERE tc.device_id = $%d
+					  AND tc.profile_id = $%d
+					  AND tc.card_id = (m.tmdb_id::text || '_' || m.media_type)
+					  AND (tc.data::jsonb->>'percent')::numeric >= $%d
+				)
+			ELSE
+				(
+					SELECT COUNT(*) FILTER (
+						WHERE (tc.data::jsonb->>'percent')::numeric >= $%d
+						   OR (tc.data::jsonb->>'special')::boolean IS TRUE
+					)
+					FROM timecodes tc
+					WHERE tc.device_id = $%d
+					  AND tc.profile_id = $%d
+					  AND tc.card_id = (m.tmdb_id::text || '_' || m.media_type)
+				) >= GREATEST(1, COALESCE(
+					(SELECT COUNT(*)::int FROM episodes e
+					 WHERE e.tmdb_show_id = m.tmdb_id
+					   AND NOT e.is_special
+					   AND e.air_date IS NOT NULL AND e.air_date <= CURRENT_DATE),
+					m.number_of_episodes
+				))
+			END
+		)`, n, n+1, n+2, n+2, n, n+1))
 		args = append(args, f.DeviceID, f.ProfileID, f.WatchedPercent)
 		n += 3
 	}
