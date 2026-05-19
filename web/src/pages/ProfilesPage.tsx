@@ -39,6 +39,7 @@ interface SyncLogEntry {
   stage?: string
   current?: number
   total?: number
+  name?: string
 }
 
 const PROFILE_ICON_EXTS: Record<string, string> = {
@@ -596,7 +597,10 @@ export default function ProfilesPage() {
         }
       }
     } catch (err) {
-      setSyncLog(prev => [...prev, { type: 'error', message: String(err) }])
+      const msg = String(err).includes('Load failed') || String(err).includes('Failed to fetch')
+        ? 'Соединение прервано'
+        : String(err)
+      setSyncLog(prev => [...prev, { type: 'error', message: msg }])
     }
     setSyncLoading(false)
   }
@@ -685,10 +689,16 @@ export default function ProfilesPage() {
 
   function formatSyncEntry(entry: SyncLogEntry): string {
     if (entry.type === 'stage') {
-      return `[${entry.stage}] ${entry.current}/${entry.total}`
+      const label = entry.stage === 'movies' ? 'Фильмы' : 'Сериалы'
+      const name = entry.name ? ` — ${entry.name}` : ''
+      return `${label}: ${entry.current}/${entry.total}${name}`
     }
     return entry.message ?? ''
   }
+
+  const lastStage = syncLog.filter(e => e.type === 'stage').at(-1)
+  const lastStatus = syncLog.filter(e => e.type === 'status').at(-1)
+  const errors = syncLog.filter(e => e.type === 'error')
 
   const isPremium = user?.role === 'premium' || user?.role === 'super'
   const roleLabel: Record<string, string> = { simple: 'Базовый', premium: 'Премиум', super: 'Супер' }
@@ -951,10 +961,14 @@ export default function ProfilesPage() {
                   </button>
                   {syncLog.length > 0 && (
                     <div className={styles.syncLog} ref={syncLogRef}>
-                      {syncLog.map((entry, i) => (
-                        <div key={i} className={entry.type === 'error' ? styles.syncLogError : styles.syncLogLine}>
-                          {formatSyncEntry(entry)}
-                        </div>
+                      {lastStage && (
+                        <div className={styles.syncLogLine}>{formatSyncEntry(lastStage)}</div>
+                      )}
+                      {!lastStage && lastStatus && (
+                        <div className={styles.syncLogLine}>{formatSyncEntry(lastStatus)}</div>
+                      )}
+                      {errors.map((entry, i) => (
+                        <div key={i} className={styles.syncLogError}>{formatSyncEntry(entry)}</div>
                       ))}
                     </div>
                   )}

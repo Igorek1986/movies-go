@@ -388,6 +388,7 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 			"stage":   "movies",
 			"current": i + 1,
 			"total":   moviesTotal,
+			"name":    mv.Title,
 		})
 
 		card := findOrFetchCard(ctx, mv.TmdbID, mv.ImdbID, mv.OrigTitle, mv.Title, "movie", mv.Year)
