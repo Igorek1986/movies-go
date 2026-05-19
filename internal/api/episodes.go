@@ -249,8 +249,7 @@ func buildFromTable(mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[st
 		if ep.Season == 0 && !includeSpecials {
 			continue
 		}
-		future := ep.AirDate != nil && ep.AirDate.After(today)
-		if future {
+		if ep.AirDate == nil || ep.AirDate.After(today) {
 			continue
 		}
 		td := tc[ep.Hash]

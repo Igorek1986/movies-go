@@ -252,7 +252,7 @@ function InteractiveBar({ percent, onClick }: { percent: number; onClick: (pct: 
 
 // ── TV Episode List ───────────────────────────────────────────────────────────
 
-function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, onMarkAllWatched, onMarkSpecial, onUnmarkSpecial, apiEpisodes, numberOfSeasons }: {
+function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, onMarkAllWatched, onMarkSpecial, onUnmarkSpecial, apiEpisodes, timecodesLoaded, numberOfSeasons }: {
   card: CardDetail
   tcMap: Record<string, CardTimecode>
   defaultProfileId: string
@@ -262,6 +262,7 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
   onMarkSpecial: (item: string, profileId: string) => void
   onUnmarkSpecial: (item: string, profileId: string) => void
   apiEpisodes: EpisodeData[] | null
+  timecodesLoaded: boolean
   numberOfSeasons: number
 }) {
   // ── Source: apiEpisodes or card.seasons ──────────────────────────────────────
@@ -290,10 +291,28 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
     return []
   }, [useAPI, seasonGroupsFromAPI, seasonsFromCard, numberOfSeasons])
 
-  const [expanded, setExpanded] = useState<Set<number>>(() => {
-    const first = allSeasonNumbers.find(n => n > 0) ?? allSeasonNumbers[0]
-    return new Set(first != null ? [first] : [])
-  })
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const autoExpandedRef = useRef(false)
+
+  useEffect(() => {
+    if (autoExpandedRef.current) return
+    // Wait until both episode list and timecodes are loaded
+    if (!useAPI || !seasonGroupsFromAPI || !timecodesLoaded) return
+
+    autoExpandedRef.current = true
+    for (const [sn, eps] of seasonGroupsFromAPI) {
+      if (sn === 0) continue
+      const regular = eps.filter(ep => !ep.catalog_special)
+      if (regular.length === 0) continue
+      const hasUnwatched = regular.some(ep => {
+        if (ep.user_special) return false
+        const tc = tcMap[ep.hash]
+        return !tc || (tc.percent < 90 && !tc.special)
+      })
+      if (hasUnwatched) { setExpanded(new Set([sn])); return }
+    }
+    // all regular episodes watched — keep all collapsed
+  }, [useAPI, seasonGroupsFromAPI, tcMap, timecodesLoaded])
 
   function toggle(n: number) {
     setExpanded(prev => { const s = new Set(prev); s.has(n) ? s.delete(n) : s.add(n); return s })
@@ -492,6 +511,7 @@ export default function CardDetailPage() {
   const [similar,      setSimilar]     = useState<SimilarItem[]>([])
   const [loading,      setLoading]     = useState(true)
   const [timecodes,    setTimecodes]   = useState<CardTimecode[]>([])
+  const [timecodesLoaded, setTimecodesLoaded] = useState(false)
   const [tpCtx,        setTpCtx]      = useState<TimePickerCtx | null>(null)
   const [apiEpisodes,  setApiEpisodes] = useState<EpisodeData[] | null>(null)
   const [refreshing,   setRefreshing]  = useState(false)
@@ -517,7 +537,7 @@ export default function CardDetailPage() {
   const loadTimecodes = useCallback((cid: string, devId: number) => {
     fetch(`/api/web/card-timecodes?device_id=${devId}&card_id=${encodeURIComponent(cid)}`)
       .then(r => r.ok ? r.json() : [])
-      .then((rows: CardTimecode[]) => setTimecodes(rows ?? []))
+      .then((rows: CardTimecode[]) => { setTimecodes(rows ?? []); setTimecodesLoaded(true) })
       .catch(() => {})
   }, [])
 
@@ -559,7 +579,7 @@ export default function CardDetailPage() {
 
   useEffect(() => {
     if (!cardId) return
-    setLoading(true); setTimecodes([]); setApiEpisodes(null)
+    setLoading(true); setTimecodes([]); setApiEpisodes(null); setTimecodesLoaded(false)
 
     fetch(`/api/media-card/${cardId}`)
       .then(r => r.ok ? r.json() : null)
@@ -930,6 +950,7 @@ export default function CardDetailPage() {
             onMarkSpecial={markSpecial}
             onUnmarkSpecial={unmarkSpecial}
             apiEpisodes={apiEpisodes}
+            timecodesLoaded={timecodesLoaded}
             numberOfSeasons={card.number_of_seasons}
           />
         )}

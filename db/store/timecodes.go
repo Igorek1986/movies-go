@@ -299,8 +299,8 @@ func SetCardTimecodeWatched(ctx context.Context, deviceID int64, profileID, card
 	}
 	data, _ := json.Marshal(map[string]any{"time": 0, "duration": 0, "percent": 100})
 	_, err := postgres.Pool.Exec(ctx, `
-		INSERT INTO timecodes (device_id, profile_id, card_id, item, data, counted_at, view_count)
-		VALUES ($1, $2, $3, $4, $5, $6, 1)
+		INSERT INTO timecodes (device_id, profile_id, card_id, item, data, counted_at, view_count, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6::date, 1, $6::date)
 		ON CONFLICT ON CONSTRAINT uq_timecode_unique DO UPDATE
 		SET data       = EXCLUDED.data,
 		    updated_at = $6::date,
@@ -431,7 +431,7 @@ func GetHistoryFiltered(ctx context.Context, f HistoryFilter) ([]HistoryEntry, H
 		         (SELECT COUNT(*)::int FROM episodes e2
 		          WHERE e2.tmdb_show_id = (SELECT mc2.tmdb_id FROM media_cards mc2 WHERE mc2.card_id = t.card_id)
 		            AND NOT e2.is_special
-		          	AND (e2.air_date IS NULL OR e2.air_date <= CURRENT_DATE)),
+		          	AND e2.air_date IS NOT NULL AND e2.air_date <= CURRENT_DATE),
 		         MAX(mc.number_of_episodes), 0)                                                                                     AS total_episodes,
 		       COALESCE(MAX(mc.tmdb_id), 0),
 		       COALESCE(MAX(mc.media_type), ''),
@@ -709,7 +709,22 @@ func UpdateProfile(ctx context.Context, deviceID int64, profileID string, name, 
 
 func DeleteProfile(ctx context.Context, deviceID int64, profileID string) error {
 	_, err := postgres.Pool.Exec(ctx,
+		`DELETE FROM timecodes WHERE device_id=$1 AND profile_id=$2`,
+		deviceID, profileID,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = postgres.Pool.Exec(ctx,
 		`DELETE FROM profiles WHERE device_id=$1 AND profile_id=$2`,
+		deviceID, profileID,
+	)
+	return err
+}
+
+func MigrateDefaultTimecodes(ctx context.Context, deviceID int64, profileID string) error {
+	_, err := postgres.Pool.Exec(ctx,
+		`UPDATE timecodes SET profile_id=$2 WHERE device_id=$1 AND profile_id=''`,
 		deviceID, profileID,
 	)
 	return err

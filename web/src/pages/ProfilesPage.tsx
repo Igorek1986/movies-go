@@ -133,25 +133,32 @@ export default function ProfilesPage() {
   const [backupMsg, setBackupMsg] = useState('')
   const [backupError, setBackupError] = useState('')
   // MyShows sync
-  const [syncDeviceId, setSyncDeviceId] = useState<number | ''>('')
+  const [syncDeviceId, setSyncDeviceId] = useState<number | '' | 'new'>('')
+  const [syncNewDeviceName, setSyncNewDeviceName] = useState('')
   const [syncProfileId, setSyncProfileId] = useState('')
+  const [syncNewProfileName, setSyncNewProfileName] = useState('')
   const [syncDeviceProfiles, setSyncDeviceProfiles] = useState<Profile[]>([])
   const [syncLogin, setSyncLogin] = useState('')
   const [syncPassword, setSyncPassword] = useState('')
   const [syncLoading, setSyncLoading] = useState(false)
+  const [syncDone, setSyncDone] = useState(false)
   const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([])
   const syncLogRef = useRef<HTMLDivElement>(null)
   // LampaC import
-  const [importDeviceId, setImportDeviceId] = useState<number | ''>('')
+  const [importDeviceId, setImportDeviceId] = useState<number | '' | 'new'>('')
+  const [importNewDeviceName, setImportNewDeviceName] = useState('')
   const [importProfileId, setImportProfileId] = useState('')
+  const [importNewProfileName, setImportNewProfileName] = useState('')
   const [importDeviceProfiles, setImportDeviceProfiles] = useState<Profile[]>([])
   const [importJson, setImportJson] = useState('')
   const [importLoading, setImportLoading] = useState(false)
   const [importMsg, setImportMsg] = useState('')
   const [importError, setImportError] = useState('')
   // Lampa import (file_view format)
-  const [fileDeviceId, setFileDeviceId] = useState<number | ''>('')
+  const [fileDeviceId, setFileDeviceId] = useState<number | '' | 'new'>('')
+  const [fileNewDeviceName, setFileNewDeviceName] = useState('')
   const [fileProfileId, setFileProfileId] = useState('')
+  const [fileNewProfileName, setFileNewProfileName] = useState('')
   const [fileDeviceProfiles, setFileDeviceProfiles] = useState<Profile[]>([])
   const [fileJson, setFileJson] = useState('')
   const [fileLoading, setFileLoading] = useState(false)
@@ -162,16 +169,21 @@ export default function ProfilesPage() {
     const res = await fetch('/api/devices')
     if (!res.ok) return
     const data: Device[] = await res.json()
+    data.sort((a, b) => a.id - b.id)
     setDevices(data)
-    if (data.length === 0) return
+    if (data.length === 0) {
+      setSyncDeviceId(v => v === '' ? 'new' : v)
+      setImportDeviceId(v => v === '' ? 'new' : v)
+      setFileDeviceId(v => v === '' ? 'new' : v)
+      return
+    }
     const firstId = data[0].id
-    // load profiles for the first device upfront so selects are populated on initial render
     const profileRes = await fetch(`/api/devices/${firstId}/profiles`)
     const profileData = profileRes.ok ? await profileRes.json() : {}
-    const firstProfiles: Profile[] = profileData.profiles || []
-    setSyncDeviceId(id => id === '' ? firstId : id)
-    setImportDeviceId(id => id === '' ? firstId : id)
-    setFileDeviceId(id => id === '' ? firstId : id)
+    const firstProfiles: Profile[] = (profileData.profiles || []).filter((p: Profile) => p.profile_id !== '')
+    setSyncDeviceId(id => (id === '' || id === 'new') ? firstId : id)
+    setImportDeviceId(id => (id === '' || id === 'new') ? firstId : id)
+    setFileDeviceId(id => (id === '' || id === 'new') ? firstId : id)
     setSyncDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
     setImportDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
     setFileDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
@@ -193,25 +205,70 @@ export default function ProfilesPage() {
     fetchNotifSettings()
   }, [fetchDevices, fetchTgStatus, fetchNotifSettings])
 
+  useEffect(() => {
+    if (syncDeviceProfiles.length > 0 && (syncProfileId === '' || syncProfileId === 'new'))
+      setSyncProfileId(syncDeviceProfiles[0].profile_id)
+  }, [syncDeviceProfiles]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (importDeviceProfiles.length > 0 && (importProfileId === '' || importProfileId === 'new'))
+      setImportProfileId(importDeviceProfiles[0].profile_id)
+  }, [importDeviceProfiles]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (fileDeviceProfiles.length > 0 && (fileProfileId === '' || fileProfileId === 'new'))
+      setFileProfileId(fileDeviceProfiles[0].profile_id)
+  }, [fileDeviceProfiles]) // eslint-disable-line react-hooks/exhaustive-deps
+
+
   async function fetchProfilesForDevice(deviceId: number): Promise<Profile[]> {
     const res = await fetch(`/api/devices/${deviceId}/profiles`)
     if (!res.ok) return []
     const data = await res.json()
-    return data.profiles || []
+    return (data.profiles || []).filter((p: Profile) => p.profile_id !== '')
   }
 
   async function handleSyncDeviceChange(id: number) {
     setSyncDeviceId(id)
-    setSyncProfileId('')
     const p = await fetchProfilesForDevice(id)
     setSyncDeviceProfiles(p)
+    setSyncProfileId(p.length > 0 ? p[0].profile_id : '')
   }
 
   async function handleImportDeviceChange(id: number) {
     setImportDeviceId(id)
-    setImportProfileId('')
     const p = await fetchProfilesForDevice(id)
     setImportDeviceProfiles(p)
+    setImportProfileId(p.length > 0 ? p[0].profile_id : '')
+  }
+
+  async function ensureDevice(deviceId: number | '' | 'new', newName: string): Promise<{ id: number; token: string } | null> {
+    if (deviceId === 'new') {
+      const res = await fetch('/api/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim() || 'Устройство' }),
+      })
+      if (!res.ok) return null
+      const d = await res.json()
+      fetchDevices()
+      return { id: d.id, token: d.token }
+    }
+    if (!deviceId) return null
+    const device = devices.find(dev => dev.id === deviceId)
+    return device ? { id: device.id, token: device.token } : null
+  }
+
+  async function ensureProfile(deviceId: number, profileId: string, newName: string): Promise<string> {
+    if (profileId !== 'new') return profileId
+    const res = await fetch(`/api/devices/${deviceId}/profiles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName.trim() || 'Профиль' }),
+    })
+    if (!res.ok) return ''
+    const d = await res.json()
+    return d.profile_id ?? ''
   }
 
   function toggleToken(id: number) {
@@ -312,6 +369,9 @@ export default function ProfilesPage() {
   async function handleDeleteDevice(id: number, name: string) {
     if (!confirm(`Удалить устройство «${name}» и все его таймкоды?`)) return
     await fetch(`/api/devices/${id}`, { method: 'DELETE' })
+    if (syncDeviceId === id) { setSyncDeviceId(''); setSyncDeviceProfiles([]); setSyncProfileId('') }
+    if (importDeviceId === id) { setImportDeviceId(''); setImportDeviceProfiles([]); setImportProfileId('') }
+    if (fileDeviceId === id) { setFileDeviceId(''); setFileDeviceProfiles([]); setFileProfileId('') }
     fetchDevices()
     if (openProfilesFor === id) setOpenProfilesFor(null)
   }
@@ -332,7 +392,14 @@ export default function ProfilesPage() {
   async function reloadProfiles() {
     if (!openProfilesFor) return
     const r = await fetch(`/api/devices/${openProfilesFor}/profiles`)
-    if (r.ok) { const d = await r.json(); setProfiles(d.profiles || []) }
+    if (!r.ok) return
+    const d = await r.json()
+    const updated: Profile[] = d.profiles || []
+    setProfiles(updated)
+    const filtered = updated.filter(p => p.profile_id !== '')
+    if (syncDeviceId === openProfilesFor) setSyncDeviceProfiles(filtered)
+    if (importDeviceId === openProfilesFor) setImportDeviceProfiles(filtered)
+    if (fileDeviceId === openProfilesFor) setFileDeviceProfiles(filtered)
   }
 
   async function handleCreateProfile(e: React.FormEvent) {
@@ -393,14 +460,32 @@ export default function ProfilesPage() {
 
   async function handleClearProfileTimecodes(profileId: string, name: string) {
     if (!confirm(`Удалить все таймкоды профиля «${name}»?`)) return
-    await fetch(`/api/devices/${openProfilesFor}/profiles/${profileId}/timecodes`, { method: 'DELETE' })
+    const url = profileId === ''
+      ? `/api/devices/${openProfilesFor}/default-timecodes`
+      : `/api/devices/${openProfilesFor}/profiles/${profileId}/timecodes`
+    await fetch(url, { method: 'DELETE' })
     reloadProfiles()
+    fetchDevices()
   }
 
   async function handleDeleteProfile(profileId: string, name: string) {
-    if (!confirm(`Удалить профиль «${name}»?`)) return
-    await fetch(`/api/devices/${openProfilesFor}/profiles/${profileId}`, { method: 'DELETE' })
+    if (!confirm(`Удалить профиль «${name}» и все его таймкоды?`)) return
+    const url = profileId === ''
+      ? `/api/devices/${openProfilesFor}/default-timecodes`
+      : `/api/devices/${openProfilesFor}/profiles/${profileId}`
+    await fetch(url, { method: 'DELETE' })
+    if (syncProfileId === profileId) setSyncProfileId('')
+    if (importProfileId === profileId) setImportProfileId('')
+    if (fileProfileId === profileId) setFileProfileId('')
+    if (openProfilesFor !== null) {
+      fetchProfilesForDevice(openProfilesFor).then(refreshed => {
+        if (syncDeviceId === openProfilesFor) setSyncDeviceProfiles(refreshed)
+        if (importDeviceId === openProfilesFor) setImportDeviceProfiles(refreshed)
+        if (fileDeviceId === openProfilesFor) setFileDeviceProfiles(refreshed)
+      })
+    }
     reloadProfiles()
+    fetchDevices()
   }
 
   async function handleSetIcon(profileId: string, icon: string) {
@@ -554,13 +639,15 @@ export default function ProfilesPage() {
     e.preventDefault()
     if (!syncDeviceId) return
     setSyncLoading(true)
+    setSyncDone(false)
     setSyncLog([])
-    const device = devices.find(d => d.id === syncDeviceId)
-    if (!device) { setSyncLoading(false); return }
+    const dev = await ensureDevice(syncDeviceId, syncNewDeviceName)
+    if (!dev) { setSyncLoading(false); return }
+    const profileId = await ensureProfile(dev.id, syncProfileId, syncNewProfileName)
 
     const form = new FormData()
-    form.append('device_id', String(syncDeviceId))
-    form.append('profile_id', syncProfileId)
+    form.append('device_id', String(dev.id))
+    form.append('profile_id', profileId)
     form.append('login', syncLogin)
     form.append('password', syncPassword)
 
@@ -596,6 +683,10 @@ export default function ProfilesPage() {
           } catch { /* skip malformed */ }
         }
       }
+      setSyncDone(true)
+      fetchDevices()
+      reloadProfiles()
+      setTimeout(() => { setSyncDone(false); setSyncLog([]) }, 4000)
     } catch (err) {
       const msg = String(err).includes('Load failed') || String(err).includes('Failed to fetch')
         ? 'Соединение прервано'
@@ -610,8 +701,6 @@ export default function ProfilesPage() {
     setImportError('')
     setImportMsg('')
     if (!importDeviceId) return
-    const device = devices.find(d => d.id === importDeviceId)
-    if (!device) return
 
     let parsed: unknown
     try {
@@ -622,8 +711,11 @@ export default function ProfilesPage() {
     }
 
     setImportLoading(true)
-    const params = new URLSearchParams({ token: device.token })
-    if (importProfileId) params.set('profile_id', importProfileId)
+    const dev = await ensureDevice(importDeviceId, importNewDeviceName)
+    if (!dev) { setImportError('Ошибка создания устройства'); setImportLoading(false); return }
+    const profileId = await ensureProfile(dev.id, importProfileId, importNewProfileName)
+    const params = new URLSearchParams({ token: dev.token })
+    if (profileId) params.set('profile_id', profileId)
 
     const res = await fetch(`/timecode/import/lampac?${params}`, {
       method: 'POST',
@@ -635,6 +727,8 @@ export default function ProfilesPage() {
       const d = await res.json().catch(() => ({}))
       setImportMsg(`Импортировано: ${d.imported ?? 0}`)
       setImportJson('')
+      fetchDevices()
+      reloadProfiles()
     } else {
       const d = await res.json().catch(() => ({}))
       setImportError(d.error || 'Ошибка импорта')
@@ -646,8 +740,6 @@ export default function ProfilesPage() {
     setFileError('')
     setFileMsg('')
     if (!fileDeviceId) return
-    const device = devices.find(d => d.id === fileDeviceId)
-    if (!device) return
 
     let raw: Record<string, Record<string, unknown>>
     try {
@@ -668,8 +760,11 @@ export default function ProfilesPage() {
     }
 
     setFileLoading(true)
-    const params = new URLSearchParams({ token: device.token })
-    if (fileProfileId) params.set('profile_id', fileProfileId)
+    const dev = await ensureDevice(fileDeviceId, fileNewDeviceName)
+    if (!dev) { setFileError('Ошибка создания устройства'); setFileLoading(false); return }
+    const profileId = await ensureProfile(dev.id, fileProfileId, fileNewProfileName)
+    const params = new URLSearchParams({ token: dev.token })
+    if (profileId) params.set('profile_id', profileId)
 
     const res = await fetch(`/timecode/import/lampac?${params}`, {
       method: 'POST',
@@ -681,6 +776,8 @@ export default function ProfilesPage() {
       const d = await res.json().catch(() => ({}))
       setFileMsg(`Импортировано: ${d.imported ?? 0}`)
       setFileJson('')
+      fetchDevices()
+      reloadProfiles()
     } else {
       const d = await res.json().catch(() => ({}))
       setFileError(d.error || 'Ошибка импорта')
@@ -696,8 +793,10 @@ export default function ProfilesPage() {
     return entry.message ?? ''
   }
 
-  const lastStage = syncLog.filter(e => e.type === 'stage').at(-1)
-  const lastStatus = syncLog.filter(e => e.type === 'status').at(-1)
+  const stageEntries = syncLog.filter(e => e.type === 'stage')
+  const lastStage = stageEntries[stageEntries.length - 1]
+  const statusEntries = syncLog.filter(e => e.type === 'status')
+  const lastStatus = statusEntries[statusEntries.length - 1]
   const errors = syncLog.filter(e => e.type === 'error')
 
   const isPremium = user?.role === 'premium' || user?.role === 'super'
@@ -725,7 +824,7 @@ export default function ProfilesPage() {
           ) : (
             <div className={styles.deviceTable}>
               {devices.map(d => (
-                <div key={d.id} className={styles.deviceRow}>
+                <div key={d.id} id={`device-row-${d.id}`} className={styles.deviceRow}>
                   <div className={styles.deviceInfo}>
                     <strong className={styles.deviceName}>{d.name}</strong>
                     <div className={styles.tokenRow}>
@@ -760,7 +859,7 @@ export default function ProfilesPage() {
                       <h4 className={styles.profilesTitle}>Профили</h4>
                       {profiles.length === 0 && <p className={styles.empty}>Нет профилей</p>}
                       {profiles.map(p => (
-                        <div key={p.profile_id} className={styles.profileCard}>
+                        <div key={p.profile_id || '__default__'} className={styles.profileCard}>
                           <div className={styles.profileCardTop}>
                             <div className={styles.profileCardLeft}>
                               <div className={styles.profileNameRow}>
@@ -782,11 +881,11 @@ export default function ProfilesPage() {
                                     />
                                   )}
                                 </div>
-                                <strong className={styles.profileName}>{p.name}</strong>
+                                <strong className={styles.profileName}>{p.profile_id === '' ? 'Основной' : p.name}</strong>
                               </div>
                               <div className={styles.profileMeta}>
-                                <code className={styles.profileId}>ID: {p.profile_id}</code>
-                                <span>· таймкодов: {p.timecodes_count}</span>
+                                {p.profile_id !== '' && <code className={styles.profileId}>ID: {p.profile_id}</code>}
+                                <span>{p.profile_id !== '' ? '· ' : ''}таймкодов: {p.timecodes_count}</span>
                               </div>
                             </div>
                             <div className={styles.profileCardActions}>
@@ -836,7 +935,7 @@ export default function ProfilesPage() {
           )}
 
           {(maxDevices === null || devices.length < maxDevices) ? (
-            <form className={styles.formCol} onSubmit={handleCreate}>
+            <form id="create-device-form" className={styles.formCol} onSubmit={handleCreate}>
               <input
                 className={styles.input}
                 placeholder="Название нового устройства"
@@ -916,11 +1015,16 @@ export default function ProfilesPage() {
                       <select
                         className={styles.select}
                         value={syncDeviceId}
-                        onChange={e => handleSyncDeviceChange(Number(e.target.value))}
+                        onChange={e => {
+                          const v = e.target.value
+                          if (v === 'new') { setSyncDeviceId('new'); setSyncDeviceProfiles([]); setSyncProfileId('') }
+                          else handleSyncDeviceChange(Number(v))
+                        }}
                         required
                       >
-                        <option value="">— выберите —</option>
+                        {syncDeviceId === '' && devices.length > 0 && <option value="">— выберите —</option>}
                         {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        {(maxDevices === null || devices.length < (maxDevices ?? 99)) && <option value="new">＋ Новое устройство</option>}
                       </select>
                     </label>
                     <label className={styles.fieldLabel}>
@@ -929,14 +1033,22 @@ export default function ProfilesPage() {
                         className={styles.select}
                         value={syncProfileId}
                         onChange={e => setSyncProfileId(e.target.value)}
+                        disabled={syncDeviceId === ''}
                       >
-                        {syncDeviceProfiles.length === 0 && <option value="">Основной</option>}
+                        {syncDeviceId !== '' && syncDeviceProfiles.length === 0 && <option value="">Основной</option>}
                         {syncDeviceProfiles.map(p => (
                           <option key={p.profile_id} value={p.profile_id}>{p.name}</option>
                         ))}
+                        {syncDeviceId !== '' && <option value="new">＋ Новый профиль</option>}
                       </select>
                     </label>
                   </div>
+                  {syncDeviceId === 'new' && (
+                    <input className={styles.input} placeholder="Название устройства" value={syncNewDeviceName} onChange={e => setSyncNewDeviceName(e.target.value)} maxLength={100} required />
+                  )}
+                  {syncDeviceId !== '' && syncProfileId === 'new' && (
+                    <input className={styles.input} placeholder="Название профиля" value={syncNewProfileName} onChange={e => setSyncNewProfileName(e.target.value)} maxLength={100} />
+                  )}
                   <div className={styles.formRow}>
                     <input
                       className={styles.input}
@@ -959,7 +1071,7 @@ export default function ProfilesPage() {
                   <button className={styles.btnPrimary} type="submit" disabled={syncLoading || !syncDeviceId}>
                     {syncLoading ? 'Синхронизация…' : 'Синхронизировать'}
                   </button>
-                  {syncLog.length > 0 && (
+                  {(syncLog.length > 0 || syncDone) && (
                     <div className={styles.syncLog} ref={syncLogRef}>
                       {lastStage && (
                         <div className={styles.syncLogLine}>{formatSyncEntry(lastStage)}</div>
@@ -970,6 +1082,9 @@ export default function ProfilesPage() {
                       {errors.map((entry, i) => (
                         <div key={i} className={styles.syncLogError}>{formatSyncEntry(entry)}</div>
                       ))}
+                      {syncDone && errors.length === 0 && (
+                        <div className={styles.syncLogDone}>Синхронизация завершена</div>
+                      )}
                     </div>
                   )}
                 </form>
@@ -1027,11 +1142,16 @@ export default function ProfilesPage() {
                     <select
                       className={styles.select}
                       value={importDeviceId}
-                      onChange={e => handleImportDeviceChange(Number(e.target.value))}
+                      onChange={e => {
+                        const v = e.target.value
+                        if (v === 'new') { setImportDeviceId('new'); setImportDeviceProfiles([]); setImportProfileId('') }
+                        else handleImportDeviceChange(Number(v))
+                      }}
                       required
                     >
-                      <option value="">— выберите —</option>
+                      {importDeviceId === '' && devices.length > 0 && <option value="">— выберите —</option>}
                       {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      {(maxDevices === null || devices.length < (maxDevices ?? 99)) && <option value="new">＋ Новое устройство</option>}
                     </select>
                   </label>
                   <label className={styles.fieldLabel}>
@@ -1040,14 +1160,22 @@ export default function ProfilesPage() {
                       className={styles.select}
                       value={importProfileId}
                       onChange={e => setImportProfileId(e.target.value)}
+                      disabled={importDeviceId === ''}
                     >
-                      {importDeviceProfiles.length === 0 && <option value="">Основной</option>}
+                      {importDeviceId !== '' && importDeviceProfiles.length === 0 && <option value="">Основной</option>}
                       {importDeviceProfiles.map(p => (
                         <option key={p.profile_id} value={p.profile_id}>{p.name}</option>
                       ))}
+                      {importDeviceId !== '' && <option value="new">＋ Новый профиль</option>}
                     </select>
                   </label>
                 </div>
+                {importDeviceId === 'new' && (
+                  <input className={styles.input} placeholder="Название устройства" value={importNewDeviceName} onChange={e => setImportNewDeviceName(e.target.value)} maxLength={100} required />
+                )}
+                {importDeviceId !== '' && importProfileId === 'new' && (
+                  <input className={styles.input} placeholder="Название профиля" value={importNewProfileName} onChange={e => setImportNewProfileName(e.target.value)} maxLength={100} />
+                )}
                 <textarea
                   className={styles.jsonTextarea}
                   placeholder={'{"card_id":{"item":"data"}}'}
@@ -1088,15 +1216,15 @@ export default function ProfilesPage() {
                       className={styles.select}
                       value={fileDeviceId}
                       onChange={e => {
-                        const id = Number(e.target.value)
-                        setFileDeviceId(id)
-                        setFileProfileId('')
-                        fetchProfilesForDevice(id).then(setFileDeviceProfiles)
+                        const v = e.target.value
+                        if (v === 'new') { setFileDeviceId('new'); setFileDeviceProfiles([]); setFileProfileId('') }
+                        else { const id = Number(v); setFileDeviceId(id); fetchProfilesForDevice(id).then(p => { setFileDeviceProfiles(p); setFileProfileId(p.length > 0 ? p[0].profile_id : '') }) }
                       }}
                       required
                     >
-                      <option value="">— выберите —</option>
+                      {fileDeviceId === '' && devices.length > 0 && <option value="">— выберите —</option>}
                       {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      {(maxDevices === null || devices.length < (maxDevices ?? 99)) && <option value="new">＋ Новое устройство</option>}
                     </select>
                   </label>
                   <label className={styles.fieldLabel}>
@@ -1105,14 +1233,22 @@ export default function ProfilesPage() {
                       className={styles.select}
                       value={fileProfileId}
                       onChange={e => setFileProfileId(e.target.value)}
+                      disabled={fileDeviceId === ''}
                     >
-                      {fileDeviceProfiles.length === 0 && <option value="">Основной</option>}
+                      {fileDeviceId !== '' && fileDeviceProfiles.length === 0 && <option value="">Основной</option>}
                       {fileDeviceProfiles.map(p => (
                         <option key={p.profile_id} value={p.profile_id}>{p.name}</option>
                       ))}
+                      {fileDeviceId !== '' && <option value="new">＋ Новый профиль</option>}
                     </select>
                   </label>
                 </div>
+                {fileDeviceId === 'new' && (
+                  <input className={styles.input} placeholder="Название устройства" value={fileNewDeviceName} onChange={e => setFileNewDeviceName(e.target.value)} maxLength={100} required />
+                )}
+                {fileDeviceId !== '' && fileProfileId === 'new' && (
+                  <input className={styles.input} placeholder="Название профиля" value={fileNewProfileName} onChange={e => setFileNewProfileName(e.target.value)} maxLength={100} />
+                )}
                 <textarea
                   className={styles.jsonTextarea}
                   placeholder={'{"571234":{"percent":95,"time":3600}}'}

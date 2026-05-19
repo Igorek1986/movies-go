@@ -231,9 +231,12 @@ CREATE TABLE IF NOT EXISTS media_cards (
     CONSTRAINT uq_media_card_tmdb UNIQUE (tmdb_id, media_type)
 );
 
-CREATE INDEX IF NOT EXISTS idx_media_cards_tmdb_id  ON media_cards (tmdb_id);
-CREATE INDEX IF NOT EXISTS idx_media_cards_category ON media_cards (rutor_category);
-CREATE INDEX IF NOT EXISTS idx_media_cards_language ON media_cards (original_language);
+CREATE INDEX IF NOT EXISTS idx_media_cards_tmdb_id        ON media_cards (tmdb_id);
+CREATE INDEX IF NOT EXISTS idx_media_cards_imdb_id        ON media_cards (imdb_id);
+CREATE INDEX IF NOT EXISTS idx_media_cards_orig_title_low ON media_cards (lower(original_title));
+CREATE INDEX IF NOT EXISTS idx_media_cards_title_low      ON media_cards (lower(title));
+CREATE INDEX IF NOT EXISTS idx_media_cards_category       ON media_cards (rutor_category);
+CREATE INDEX IF NOT EXISTS idx_media_cards_language       ON media_cards (original_language);
 
 -- ─── Episodes ─────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS episodes (

@@ -59,6 +59,7 @@ func handleWebCreateProfile(w http.ResponseWriter, r *http.Request) {
 	if profileID == "" {
 		profileID = randHex(4)
 	}
+	isFirst := store.CountProfiles(r.Context(), deviceID) == 0
 	lp, err := store.CreateProfile(r.Context(), deviceID, profileID, req.Name, req.Icon)
 	if err != nil {
 		if strings.Contains(err.Error(), "uq_profile") {
@@ -67,6 +68,9 @@ func handleWebCreateProfile(w http.ResponseWriter, r *http.Request) {
 			Error(w, http.StatusInternalServerError, "db error")
 		}
 		return
+	}
+	if isFirst {
+		store.MigrateDefaultTimecodes(r.Context(), deviceID, lp.ProfileID) //nolint:errcheck
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"ok": true, "profile_id": lp.ProfileID, "name": lp.Name,
@@ -126,6 +130,40 @@ func handleWebClearProfileTimecodes(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// POST /api/devices/{id}/migrate-default-timecodes
+func handleWebMigrateDefaultTimecodes(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	deviceID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || !userOwnsDevice(r, u.ID, deviceID) {
+		Error(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	var req struct {
+		ProfileID string `json:"profile_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ProfileID == "" {
+		Error(w, http.StatusBadRequest, "profile_id required")
+		return
+	}
+	if err := store.MigrateDefaultTimecodes(r.Context(), deviceID, req.ProfileID); err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// DELETE /api/devices/{id}/default-timecodes
+func handleWebDeleteDefaultTimecodes(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	deviceID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || !userOwnsDevice(r, u.ID, deviceID) {
+		Error(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	store.ClearProfileTimecodes(r.Context(), deviceID, "") //nolint:errcheck
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

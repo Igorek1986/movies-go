@@ -526,6 +526,17 @@
   color: $color-success;
 }
 
+.linkBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: $color-primary;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  &:hover { opacity: 0.8; }
+}
+
 .checkLabel {
   display: flex;
   align-items: center;
@@ -584,6 +595,12 @@
 .syncLogError {
   color: $color-danger;
   line-height: 1.4;
+}
+
+.syncLogDone {
+  color: $color-success;
+  line-height: 1.4;
+  font-weight: 600;
 }
 
 // ── Premium gate ──────────────────────────────────────────────────────────────

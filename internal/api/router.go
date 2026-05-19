@@ -74,6 +74,8 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireSession).Post("/devices/{id}/profiles", handleWebCreateProfile)
 			r.With(requireSession).Delete("/devices/{id}/profiles/{profile_id}", handleWebDeleteProfile)
 			r.With(requireSession).Delete("/devices/{id}/profiles/{profile_id}/timecodes", handleWebClearProfileTimecodes)
+			r.With(requireSession).Post("/devices/{id}/migrate-default-timecodes", handleWebMigrateDefaultTimecodes)
+			r.With(requireSession).Delete("/devices/{id}/default-timecodes", handleWebDeleteDefaultTimecodes)
 			r.With(requireSession).Patch("/devices/{id}/profiles/{profile_id}", handleWebUpdateProfile)
 			r.With(requireSession).Get("/web/history", handleWebHistory)
 			r.With(requireSession).Get("/web/card-timecodes", handleWebCardTimecodes)

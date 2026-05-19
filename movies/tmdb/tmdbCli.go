@@ -56,9 +56,9 @@ func readPageTmdb(path string, params map[string]string, results interface{}) er
 
 	retryCodes := map[int]bool{429: true, 500: true, 502: true, 503: true, 504: true}
 	var lastErr error
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
-			time.Sleep(20 * time.Second)
+			time.Sleep(2 * time.Second)
 		}
 		req, err := http.NewRequest("GET", link, nil)
 		if err != nil {
