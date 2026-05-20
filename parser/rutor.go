@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -86,6 +87,7 @@ func (self *RutorParser) Parse() {
 	pages := self.readCategories()
 
 	var taskers []*tasker.Tasker
+	var processed atomic.Int64
 
 	for cat, pgs := range pages {
 		tsk := tasker.New(1, false)
@@ -112,8 +114,8 @@ func (self *RutorParser) Parse() {
 				}
 
 				type enrichJob struct {
-					d        *models.TorrentDetails
-					isMovie  bool
+					d       *models.TorrentDetails
+					isMovie bool
 				}
 				var toEnrich []enrichJob
 				hitCutoff := false
@@ -127,6 +129,7 @@ func (self *RutorParser) Parse() {
 						hitCutoff = true
 						break
 					}
+					processed.Add(1)
 					// Sports/news/humor (CatTVShow) are never in TMDB — skip enrichment.
 					if d.Categories == models.CatTVShow {
 						store.CacheTorrent(d.Hash, "")
@@ -162,8 +165,12 @@ func (self *RutorParser) Parse() {
 		t.Wait()
 	}
 
-	store.SetLastParsedAt()
-	log.Println("parser: scan complete")
+	if n := processed.Load(); n > 0 {
+		store.SetLastParsedAt()
+		log.Printf("parser: scan complete, processed %d torrents", n)
+	} else {
+		log.Println("parser: scan complete, no torrents processed — last_parsed_at not updated")
+	}
 }
 
 // читаем категории и заносим в таски что парсить
