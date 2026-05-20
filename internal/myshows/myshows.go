@@ -21,6 +21,8 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
 // ─── JSON-RPC client ──────────────────────────────────────────────────────────
 
 func rpc(ctx context.Context, method string, params map[string]any) (json.RawMessage, error) {
@@ -42,7 +44,7 @@ func rpc(ctx context.Context, method string, params map[string]any) (json.RawMes
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

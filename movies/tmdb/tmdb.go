@@ -21,7 +21,7 @@ const (
 var (
 	genres      []*models.Genre
 	TMDBAuthKey string
-	tmdbClient  = &http.Client{Timeout: 120 * time.Second}
+	tmdbClient  = &http.Client{Timeout: 30 * time.Second}
 )
 
 // HTTPClient returns the configured TMDB HTTP client (proxy-aware).
@@ -39,7 +39,7 @@ func Init() {
 
 	if cfg.ProxyURL != "" {
 		if t, err := buildSocks5Transport(cfg.ProxyURL, cfg.ProxyUser, cfg.ProxyPass); err == nil {
-			tmdbClient = &http.Client{Transport: t, Timeout: 120 * time.Second}
+			tmdbClient = &http.Client{Transport: t, Timeout: 30 * time.Second}
 			log.Printf("TMDB: using SOCKS5 proxy %s", cfg.ProxyURL)
 		} else {
 			log.Println("TMDB: proxy setup failed:", err)

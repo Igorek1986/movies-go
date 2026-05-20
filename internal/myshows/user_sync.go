@@ -33,7 +33,7 @@ func rpcAuth(ctx context.Context, token, method string, params map[string]any) (
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("authorization2", "Bearer "+token)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func LoginUser(ctx context.Context, login, password string) (string, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}

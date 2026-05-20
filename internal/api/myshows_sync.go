@@ -395,108 +395,118 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── Movies — parallel card lookup, then sequential SSE + timecodes ───────
+	// ── Movies — parallel card lookup, stream SSE as each completes ─────────
 	var notFound []string
 	moviesTotal := len(movies)
-	movieCards := make([]*cardBasic, moviesTotal)
 
-	sse.status(fmt.Sprintf("Поиск фильмов в базе (%d)…", moviesTotal))
-	{
-		sem := make(chan struct{}, 10)
-		var wg sync.WaitGroup
-		for i, mv := range movies {
-			if ctx.Err() != nil {
-				break
-			}
-			wg.Add(1)
-			sem <- struct{}{}
-			go func(i int, mv myshows.WatchedMovie) {
-				defer wg.Done()
-				defer func() { <-sem }()
-				movieCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-				defer cancel()
-				movieCards[i] = findOrFetchCard(movieCtx, mv.TmdbID, mv.ImdbID, mv.OrigTitle, mv.Title, "movie", mv.Year)
-			}(i, mv)
-		}
-		wg.Wait()
+	type movieStreamResult struct {
+		mv   myshows.WatchedMovie
+		card *cardBasic
 	}
+	movieResultCh := make(chan movieStreamResult, moviesTotal)
 
-	for i, mv := range movies {
+	var movieWg sync.WaitGroup
+	movieSem := make(chan struct{}, 10)
+	for _, mv := range movies {
+		if ctx.Err() != nil {
+			break
+		}
+		movieWg.Add(1)
+		movieSem <- struct{}{}
+		go func(mv myshows.WatchedMovie) {
+			defer movieWg.Done()
+			defer func() { <-movieSem }()
+			movieCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+			defer cancel()
+			card := findOrFetchCard(movieCtx, mv.TmdbID, mv.ImdbID, mv.OrigTitle, mv.Title, "movie", mv.Year)
+			movieResultCh <- movieStreamResult{mv: mv, card: card}
+		}(mv)
+	}
+	go func() {
+		movieWg.Wait()
+		close(movieResultCh)
+	}()
+
+	movieDone := 0
+	for res := range movieResultCh {
+		movieDone++
 		if ctx.Err() != nil {
 			return
 		}
 		sse.send(map[string]any{
 			"type":    "stage",
 			"stage":   "movies",
-			"current": i + 1,
+			"current": movieDone,
 			"total":   moviesTotal,
-			"name":    mv.Title,
+			"name":    res.mv.Title,
 		})
-		card := movieCards[i]
-		if card == nil || card.MediaType != "movie" {
-			if mv.Title != "" {
-				notFound = append(notFound, mv.Title)
+		if res.card == nil || res.card.MediaType != "movie" {
+			if res.mv.Title != "" {
+				notFound = append(notFound, res.mv.Title)
 			}
 			continue
 		}
-		item := mediaHash(card.OrigTitle)
+		item := mediaHash(res.card.OrigTitle)
 		if item == "" {
-			item = card.CardID
+			item = res.card.CardID
 		}
-		store.SetCardTimecodeWatched(ctx, deviceID, profileID, card.CardID, item, mv.WatchedAt) //nolint:errcheck
+		store.SetCardTimecodeWatched(ctx, deviceID, profileID, res.card.CardID, item, res.mv.WatchedAt) //nolint:errcheck
 	}
 
-	// ── Shows — parallel episode fetch + card lookup, then sequential SSE ────
+	// ── Shows — parallel episode fetch + card lookup, stream SSE as each completes ─
 	showsTotal := len(showList)
 
-	type showResult struct {
+	type showStreamResult struct {
+		sl   myshows.ShowListItem
 		sh   *myshows.WatchedShow
 		card *cardBasic
 	}
-	showResults := make([]showResult, showsTotal)
+	showResultCh := make(chan showStreamResult, showsTotal)
 
-	sse.status(fmt.Sprintf("Загрузка эпизодов сериалов (%d)…", showsTotal))
-	{
-		sem := make(chan struct{}, 5)
-		var wg sync.WaitGroup
-		for i, sl := range showList {
-			if ctx.Err() != nil {
-				break
-			}
-			wg.Add(1)
-			sem <- struct{}{}
-			go func(i int, sl myshows.ShowListItem) {
-				defer wg.Done()
-				defer func() { <-sem }()
-				showCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				defer cancel()
-				sh, err := myshows.FetchShowEpisodes(showCtx, token, sl)
-				if err != nil {
-					log.Printf("myshows sync: show %q: %v", sl.Title, err)
-					return
-				}
-				if sh == nil {
-					return
-				}
-				card := findOrFetchCard(ctx, sh.TmdbID, sh.ImdbID, sh.OrigTitle, sh.Title, "tv", sh.Year)
-				showResults[i] = showResult{sh: sh, card: card}
-			}(i, sl)
+	var showWg sync.WaitGroup
+	showSem := make(chan struct{}, 5)
+	for _, sl := range showList {
+		if ctx.Err() != nil {
+			break
 		}
-		wg.Wait()
+		showWg.Add(1)
+		showSem <- struct{}{}
+		go func(sl myshows.ShowListItem) {
+			defer showWg.Done()
+			defer func() { <-showSem }()
+			showCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+			sh, err := myshows.FetchShowEpisodes(showCtx, token, sl)
+			if err != nil {
+				log.Printf("myshows sync: show %q: %v", sl.Title, err)
+				showResultCh <- showStreamResult{sl: sl}
+				return
+			}
+			var card *cardBasic
+			if sh != nil {
+				card = findOrFetchCard(ctx, sh.TmdbID, sh.ImdbID, sh.OrigTitle, sh.Title, "tv", sh.Year)
+			}
+			showResultCh <- showStreamResult{sl: sl, sh: sh, card: card}
+		}(sl)
 	}
+	go func() {
+		showWg.Wait()
+		close(showResultCh)
+	}()
 
-	for i, sl := range showList {
+	showDone := 0
+	for res := range showResultCh {
+		showDone++
 		if ctx.Err() != nil {
 			return
 		}
 		sse.send(map[string]any{
 			"type":    "stage",
 			"stage":   "shows",
-			"current": i + 1,
+			"current": showDone,
 			"total":   showsTotal,
-			"name":    sl.Title,
+			"name":    res.sl.Title,
 		})
-		res := showResults[i]
 		sh := res.sh
 		if sh == nil {
 			continue
