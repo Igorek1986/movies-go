@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"movies-api/db/models"
 	"movies-api/db/store"
+	"movies-api/movies/tmdb"
 	"log"
 )
 
@@ -12,7 +13,9 @@ import (
 func Enrich(label string, isMovie bool, t *models.TorrentDetails) bool {
 	md := FindTMDBID(isMovie, t)
 	if md == nil {
-		md = FindTMDB(isMovie, t)
+		if found := FindTMDB(isMovie, t); found != nil {
+			md = tmdb.GetVideoDetails(isMovie, found.ID)
+		}
 	}
 	if md == nil {
 		store.CacheTorrent(t.Hash, "")
