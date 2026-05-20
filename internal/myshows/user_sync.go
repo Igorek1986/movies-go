@@ -133,6 +133,16 @@ type WatchedShow struct {
 	AllEpisodes []EpisodeInfo // full episode list for populating episodes table
 }
 
+// ShowListItem is a lightweight show entry returned by GetShowList (no episodes).
+type ShowListItem struct {
+	MyshowsID int
+	Title     string
+	OrigTitle string
+	ImdbID    string
+	TmdbID    int64
+	Year      int
+}
+
 // GetWatchedMovies returns all movies the user has marked as watched on MyShows.
 // Uses the profile.WatchedMovies method.
 func GetWatchedMovies(ctx context.Context, token string) ([]WatchedMovie, error) {
@@ -180,7 +190,9 @@ func GetWatchedMovies(ctx context.Context, token string) ([]WatchedMovie, error)
 
 // GetWatchedShows returns TV shows and their watched episodes from the user's MyShows profile.
 // For each show it calls profile.Episodes and shows.GetById to resolve season/episode numbers.
-func GetWatchedShows(ctx context.Context, token string) ([]WatchedShow, error) {
+// GetShowList returns the user's show list from MyShows without fetching episodes.
+// Use FetchShowEpisodes to load episodes for each show separately.
+func GetShowList(ctx context.Context, token string) ([]ShowListItem, error) {
 	res, err := rpcAuth(ctx, token, "profile.Shows", map[string]any{
 		"page":     0,
 		"pageSize": 1000,
@@ -194,7 +206,7 @@ func GetWatchedShows(ctx context.Context, token string) ([]WatchedShow, error) {
 		return nil, err
 	}
 
-	var shows []WatchedShow
+	var shows []ShowListItem
 	for _, item := range raw {
 		var entry struct {
 			Show struct {
@@ -209,24 +221,38 @@ func GetWatchedShows(ctx context.Context, token string) ([]WatchedShow, error) {
 		if err := json.Unmarshal(item, &entry); err != nil || entry.Show.ID == 0 {
 			continue
 		}
-
-		eps, allEps, err := getWatchedEpisodesForShow(ctx, token, entry.Show.ID)
-		if err != nil || len(eps) == 0 {
-			continue
-		}
-
-		shows = append(shows, WatchedShow{
-			Title:       entry.Show.Title,
-			OrigTitle:   entry.Show.TitleOriginal,
-			ImdbID:      formatImdbID(entry.Show.ImdbID),
-			TmdbID:      entry.Show.TmdbID,
-			Year:        entry.Show.Year,
-			MyshowsID:   entry.Show.ID,
-			Episodes:    eps,
-			AllEpisodes: allEps,
+		shows = append(shows, ShowListItem{
+			MyshowsID: entry.Show.ID,
+			Title:     entry.Show.Title,
+			OrigTitle: entry.Show.TitleOriginal,
+			ImdbID:    formatImdbID(entry.Show.ImdbID),
+			TmdbID:    entry.Show.TmdbID,
+			Year:      entry.Show.Year,
 		})
 	}
 	return shows, nil
+}
+
+// FetchShowEpisodes fetches watched and all episodes for a single show.
+// Returns nil WatchedShow if the user has no watched episodes for this show.
+func FetchShowEpisodes(ctx context.Context, token string, s ShowListItem) (*WatchedShow, error) {
+	eps, allEps, err := getWatchedEpisodesForShow(ctx, token, s.MyshowsID)
+	if err != nil {
+		return nil, err
+	}
+	if len(eps) == 0 {
+		return nil, nil
+	}
+	return &WatchedShow{
+		Title:       s.Title,
+		OrigTitle:   s.OrigTitle,
+		ImdbID:      s.ImdbID,
+		TmdbID:      s.TmdbID,
+		Year:        s.Year,
+		MyshowsID:   s.MyshowsID,
+		Episodes:    eps,
+		AllEpisodes: allEps,
+	}, nil
 }
 
 // getWatchedEpisodesForShow fetches watched episode IDs via profile.Episodes,

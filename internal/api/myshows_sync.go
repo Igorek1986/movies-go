@@ -380,7 +380,7 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── Prefetch both lists before starting long SSE stream ──────────────────
+	// ── Prefetch movies and show list (fast — no per-show API calls yet) ─────
 	sse.status("Загрузка фильмов…")
 	movies, err := myshows.GetWatchedMovies(ctx, token)
 	if err != nil {
@@ -388,8 +388,8 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sse.status("Загрузка сериалов…")
-	shows, err := myshows.GetWatchedShows(ctx, token)
+	sse.status("Загрузка списка сериалов…")
+	showList, err := myshows.GetShowList(ctx, token)
 	if err != nil {
 		sse.errMsg("Ошибка получения сериалов: " + err.Error())
 		return
@@ -429,9 +429,9 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 		store.SetCardTimecodeWatched(ctx, deviceID, profileID, card.CardID, item, mv.WatchedAt) //nolint:errcheck
 	}
 
-	// ── Shows ────────────────────────────────────────────────────────────────
-	showsTotal := len(shows)
-	for i, sh := range shows {
+	// ── Shows — fetch episodes per show in loop with SSE progress ────────────
+	showsTotal := len(showList)
+	for i, sl := range showList {
 		select {
 		case <-ctx.Done():
 			return
@@ -443,8 +443,13 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 			"stage":   "shows",
 			"current": i + 1,
 			"total":   showsTotal,
-			"name":    sh.Title,
+			"name":    sl.Title,
 		})
+
+		sh, err := myshows.FetchShowEpisodes(ctx, token, sl)
+		if err != nil || sh == nil {
+			continue
+		}
 
 		card := findOrFetchCard(ctx, sh.TmdbID, sh.ImdbID, sh.OrigTitle, sh.Title, "tv", sh.Year)
 		if card == nil || card.MediaType != "tv" {
@@ -459,7 +464,6 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 			origTitle = sh.OrigTitle
 		}
 
-		// Upsert episodes table with runtime data from MyShows (no extra API call).
 		if len(sh.AllEpisodes) > 0 {
 			rows := make([]store.EpisodeRow, 0, len(sh.AllEpisodes))
 			for _, e := range sh.AllEpisodes {

@@ -119,19 +119,13 @@ func GetStaleOngoingCards(ctx context.Context, deviceID int64) []*MediaCardEpInf
 	return result
 }
 
-// UpsertEpisodes replaces all episodes for a show with a fresh set from MyShows.
+// UpsertEpisodes inserts or updates episodes for a show from MyShows.
 func UpsertEpisodes(ctx context.Context, tmdbShowID int64, eps []EpisodeRow) error {
 	tx, err := postgres.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-
-	if _, err := tx.Exec(ctx,
-		`DELETE FROM episodes WHERE tmdb_show_id = $1`, tmdbShowID,
-	); err != nil {
-		return err
-	}
 
 	for _, ep := range eps {
 		var msEpID *int
@@ -140,11 +134,18 @@ func UpsertEpisodes(ctx context.Context, tmdbShowID int64, eps []EpisodeRow) err
 		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO episodes (tmdb_show_id, season, episode, title, duration_sec, is_special, hash, air_date, myshows_ep_id)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			ON CONFLICT (tmdb_show_id, season, episode) DO UPDATE SET
+				title        = COALESCE(EXCLUDED.title, episodes.title),
+				duration_sec = COALESCE(EXCLUDED.duration_sec, episodes.duration_sec),
+				is_special   = EXCLUDED.is_special,
+				hash         = EXCLUDED.hash,
+				air_date     = COALESCE(EXCLUDED.air_date, episodes.air_date),
+				myshows_ep_id = COALESCE(EXCLUDED.myshows_ep_id, episodes.myshows_ep_id)`,
 			tmdbShowID, ep.Season, ep.Episode, ep.Title, ep.DurationSec,
 			ep.IsSpecial, ep.Hash, ep.AirDate, msEpID,
 		); err != nil {
-			return fmt.Errorf("insert episode s%de%d: %w", ep.Season, ep.Episode, err)
+			return fmt.Errorf("upsert episode s%de%d: %w", ep.Season, ep.Episode, err)
 		}
 	}
 
