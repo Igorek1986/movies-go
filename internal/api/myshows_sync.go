@@ -446,6 +446,12 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
+		if res.mv.RuntimeMin > 0 {
+			postgres.Pool.Exec(ctx, //nolint:errcheck
+				`UPDATE media_cards SET runtime = $1, updated_at = now() WHERE card_id = $2`,
+				res.mv.RuntimeMin, res.card.CardID,
+			)
+		}
 		item := mediaHash(res.card.OrigTitle)
 		if item == "" {
 			item = res.card.CardID
@@ -526,11 +532,15 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 
 		if len(sh.AllEpisodes) > 0 {
 			rows := make([]store.EpisodeRow, 0, len(sh.AllEpisodes))
+			var runtimes []int
 			for _, e := range sh.AllEpisodes {
 				var durSec *int
 				if e.RuntimeMin > 0 {
 					d := e.RuntimeMin * 60
 					durSec = &d
+					if !e.IsSpecial && e.Season > 0 && e.Episode > 0 {
+						runtimes = append(runtimes, e.RuntimeMin)
+					}
 				}
 				var airDate *time.Time
 				if e.AirDate != "" {
@@ -553,6 +563,12 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 			if sh.MyshowsID > 0 {
 				store.SetMyshowsID(ctx, card.CardID, sh.MyshowsID) //nolint:errcheck
 			}
+			if rt := medianRuntime(runtimes); rt > 0 {
+				postgres.Pool.Exec(ctx, //nolint:errcheck
+					`UPDATE media_cards SET episode_run_time = $1, updated_at = now() WHERE card_id = $2`,
+					rt, card.CardID,
+				)
+			}
 		}
 
 		for _, ep := range sh.Episodes {
@@ -571,4 +587,23 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 		"not_found": notFound,
 		"trimmed":   trimmed,
 	})
+}
+
+// medianRuntime returns the median of a list of runtimes (in minutes), or 0 if empty.
+func medianRuntime(runtimes []int) int {
+	n := len(runtimes)
+	if n == 0 {
+		return 0
+	}
+	sorted := make([]int, n)
+	copy(sorted, runtimes)
+	for i := 1; i < n; i++ {
+		for j := i; j > 0 && sorted[j] < sorted[j-1]; j-- {
+			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
+		}
+	}
+	if n%2 == 0 {
+		return (sorted[n/2-1] + sorted[n/2]) / 2
+	}
+	return sorted[n/2]
 }

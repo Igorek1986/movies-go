@@ -100,6 +100,7 @@ type WatchedMovie struct {
 	ImdbID     string // "tt0123456" format
 	TmdbID     int64
 	Year       int
+	RuntimeMin int    // minutes; 0 if unknown
 	WatchedAt  string // ISO date string, e.g. "2024-03-15" (empty if unknown)
 }
 
@@ -164,6 +165,7 @@ func GetWatchedMovies(ctx context.Context, token string) ([]WatchedMovie, error)
 			ImdbID        any    `json:"imdbId"` // can be int or string
 			TmdbID        int64  `json:"tmdbId"`
 			Year          int    `json:"year"`
+			Runtime       int    `json:"runtime"`
 			UserMovie     struct {
 				WatchDate string `json:"watchDate"` // "2025-09-26T21:49:15+0300"
 			} `json:"userMovie"`
@@ -177,12 +179,13 @@ func GetWatchedMovies(ctx context.Context, token string) ([]WatchedMovie, error)
 			watchedDate = m.UserMovie.WatchDate[:10]
 		}
 		movies = append(movies, WatchedMovie{
-			Title:     m.Title,
-			OrigTitle: m.TitleOriginal,
-			ImdbID:    formatImdbID(m.ImdbID),
-			TmdbID:    m.TmdbID,
-			Year:      m.Year,
-			WatchedAt: watchedDate,
+			Title:      m.Title,
+			OrigTitle:  m.TitleOriginal,
+			ImdbID:     formatImdbID(m.ImdbID),
+			TmdbID:     m.TmdbID,
+			Year:       m.Year,
+			RuntimeMin: m.Runtime,
+			WatchedAt:  watchedDate,
 		})
 	}
 	return movies, nil
