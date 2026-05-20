@@ -85,13 +85,15 @@ func CacheTorrent(hash, cardID string) {
 
 // ─── Parse timestamp ──────────────────────────────────────────────────────────
 
-// LastParsedAt returns the time of the last successful rutor parse, or zero time if never.
-func LastParsedAt() time.Time {
+// LastParsedAtFor returns the last successful parse time for the given tracker,
+// or zero time if never parsed. Key: {tracker}_last_parsed_at.
+func LastParsedAtFor(tracker string) time.Time {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	var val string
 	err := postgres.Pool.QueryRow(ctx,
-		`SELECT value FROM app_settings WHERE key = 'rutor_last_parsed_at'`,
+		`SELECT value FROM app_settings WHERE key = $1`,
+		tracker+"_last_parsed_at",
 	).Scan(&val)
 	if err != nil {
 		return time.Time{}
@@ -103,22 +105,41 @@ func LastParsedAt() time.Time {
 	return t
 }
 
-// SetLastParsedAt records the current time as the last successful rutor parse.
-func SetLastParsedAt() {
-	SetLastParsedAtTime(time.Now().UTC())
+// SetLastParsedAtFor records the current time as the last successful parse for tracker.
+func SetLastParsedAtFor(tracker string) {
+	SetLastParsedAtTimeFor(tracker, time.Now().UTC())
 }
 
-// SetLastParsedAtTime records a specific time as the last successful rutor parse.
-func SetLastParsedAtTime(t time.Time) {
+// SetLastParsedAtTimeFor records a specific time as the last successful parse for tracker.
+func SetLastParsedAtTimeFor(tracker string, t time.Time) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	val := t.UTC().Format(time.RFC3339)
 	postgres.Pool.Exec(ctx, //nolint:errcheck
-		`INSERT INTO app_settings (key, value) VALUES ('rutor_last_parsed_at', $1)
+		`INSERT INTO app_settings (key, value) VALUES ($1, $2)
 		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-		val,
+		tracker+"_last_parsed_at", val,
 	)
 }
+
+// ResetLastParsedAtFor deletes the last_parsed_at record for tracker (triggers full scan).
+func ResetLastParsedAtFor(tracker string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`DELETE FROM app_settings WHERE key = $1`,
+		tracker+"_last_parsed_at",
+	)
+}
+
+// LastParsedAt returns the last successful rutor parse time (legacy wrapper).
+func LastParsedAt() time.Time { return LastParsedAtFor("rutor") }
+
+// SetLastParsedAt records the current time as the last successful rutor parse (legacy wrapper).
+func SetLastParsedAt() { SetLastParsedAtFor("rutor") }
+
+// SetLastParsedAtTime records a specific time as the last successful rutor parse (legacy wrapper).
+func SetLastParsedAtTime(t time.Time) { SetLastParsedAtTimeFor("rutor", t) }
 
 // UpdateQuality bumps best_video_quality for an already-known torrent (no TMDB call).
 // Uses GREATEST so quality never decreases.

@@ -36,6 +36,10 @@ type ConfigParser struct {
 	AdminUsernames string `env:"ADMIN_USERNAMES"`
 	AdminPassword  string `env:"ADMIN_PASSWORD"`
 
+	// Kinozal
+	KinozalLogin    string `env:"KINOZAL_LOGIN"`
+	KinozalPassword string `env:"KINOZAL_PASSWORD"`
+
 	// MyShows
 	MyShowsAPI     string `env:"MYSHOWS_API"      env-default:"https://myshows.me/v3/rpc/"`
 	MyShowsAuthURL string `env:"MYSHOWS_AUTH_URL" env-default:"https://myshows.me/api/session"`

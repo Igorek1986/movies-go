@@ -35,9 +35,10 @@ type RutorParser struct {
 }
 
 func NewRutor() *RutorParser {
-	rt := new(RutorParser)
-	return rt
+	return new(RutorParser)
 }
+
+func (self *RutorParser) Name() string { return "rutor" }
 
 type parseLink struct {
 	Host     string
@@ -70,7 +71,7 @@ func (self *RutorParser) Parse() {
 	// Full scan on first run; incremental otherwise.
 	// Incremental: stop when torrent date is older than (lastParsed - 2 days overlap).
 	// The 2-day overlap handles re-uploads and delayed additions.
-	lastParsed := store.LastParsedAt()
+	lastParsed := store.LastParsedAtFor("rutor")
 	fullScan := lastParsed.IsZero()
 	var cutoff time.Time
 	if !fullScan {
@@ -166,10 +167,10 @@ func (self *RutorParser) Parse() {
 	}
 
 	if n := processed.Load(); n > 0 {
-		store.SetLastParsedAt()
-		log.Printf("parser: scan complete, processed %d torrents", n)
+		store.SetLastParsedAtFor("rutor")
+		log.Printf("parser: rutor scan complete, processed %d torrents", n)
 	} else {
-		log.Println("parser: scan complete, no torrents processed — last_parsed_at not updated")
+		log.Println("parser: rutor scan complete, no torrents processed — last_parsed_at not updated")
 	}
 }
 

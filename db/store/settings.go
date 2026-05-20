@@ -71,7 +71,11 @@ var SettingDefaults = map[string]string{
 	"google_analytics_enabled": "0",
 	"google_analytics_id":      "",
 	// Parser
-	"parser_overlap_days": "2",
+	"parser_order":           "kinozal,nnmclub,rutor",
+	"parser_kinozal_enabled": "1",
+	"parser_nnmclub_enabled": "1",
+	"parser_rutor_enabled":   "0",
+	"parser_overlap_days":    "2",
 	// Category parser settings (applied at startup, require restart)
 	"movies_new_year_delta":  "2",
 	"movies_4k_year_delta":   "4",

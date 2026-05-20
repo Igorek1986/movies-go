@@ -177,7 +177,7 @@ func proxyHostSafe() string {
 }
 
 func scanReleases() {
-	parser.NewRutor().Parse()
+	parser.RunAll()
 	getDbInfo()
 }
 
