@@ -256,9 +256,14 @@ export default function AdminPage() {
       <div className={styles.page}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
           <h1 className={styles.title}>Администрирование</h1>
-          <Link to="/admin/settings" style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', textDecoration: 'none', padding: '4px 12px', border: '1px solid var(--color-border)', borderRadius: '4px' }}>
-            Настройки →
-          </Link>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Link to="/admin/parsers" style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', textDecoration: 'none', padding: '4px 12px', border: '1px solid var(--color-border)', borderRadius: '4px' }}>
+              Парсеры →
+            </Link>
+            <Link to="/admin/settings" style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', textDecoration: 'none', padding: '4px 12px', border: '1px solid var(--color-border)', borderRadius: '4px' }}>
+              Настройки →
+            </Link>
+          </div>
         </div>
 
         {stats && (

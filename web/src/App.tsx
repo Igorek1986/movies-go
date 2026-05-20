@@ -21,6 +21,7 @@ import RegisterSuccessPage from '@/pages/RegisterSuccessPage'
 import NotFoundPage from '@/pages/NotFoundPage'
 import ActorPage from '@/pages/ActorPage'
 import AdminSettingsPage from '@/pages/AdminSettingsPage'
+import ParsersPage from '@/pages/ParsersPage'
 import StaticPage from '@/pages/StaticPage'
 import TgMiniAppPage from '@/pages/TgMiniAppPage'
 
@@ -93,6 +94,7 @@ export default function App() {
       <Route path="/setup-2fa" element={<PrivateRoute><Setup2FAPage /></PrivateRoute>} />
       <Route path="/actor/:personId" element={<PrivateRoute><ActorPage /></PrivateRoute>} />
       <Route path="/admin/settings" element={<PrivateRoute><AdminSettingsPage /></PrivateRoute>} />
+      <Route path="/admin/parsers" element={<PrivateRoute><ParsersPage /></PrivateRoute>} />
 
       <Route path="*" element={<NotFoundPage />} />
       </Routes>
