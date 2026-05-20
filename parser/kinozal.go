@@ -254,7 +254,7 @@ var (
 
 func parseKinozalTitle(d *models.TorrentDetails, title string, catInfo kzCatInfo) {
 	parts := strings.Split(title, " / ")
-	if len(parts) < 3 {
+	if len(parts) < 2 {
 		d.Name = strings.TrimSpace(title)
 		return
 	}
@@ -262,13 +262,23 @@ func parseKinozalTitle(d *models.TorrentDetails, title string, catInfo kzCatInfo
 	ruName := reKzSeason.ReplaceAllString(parts[0], "")
 	d.Name = strings.TrimSpace(ruName)
 
-	d.Names = []string{strings.TrimSpace(parts[1])}
-
-	yearStr := strings.TrimSpace(parts[2])
-	if m := reKzYearRange.FindStringSubmatch(yearStr); m != nil {
-		yearStr = m[1]
+	// Detect whether parts[1] is an English title or the year.
+	// "Начало / Inception / 2010 / ..."  → parts[1] = English title
+	// "Капитанская дочка / 1958 / РУ / ..." → parts[1] = year (no English title)
+	p1 := strings.TrimSpace(parts[1])
+	if yr, err := strconv.Atoi(p1); err == nil && yr >= 1900 && yr <= 2100 {
+		// parts[1] is the year — no English title in this entry
+		d.Year = yr
+	} else {
+		d.Names = []string{p1}
+		if len(parts) >= 3 {
+			yearStr := strings.TrimSpace(parts[2])
+			if m := reKzYearRange.FindStringSubmatch(yearStr); m != nil {
+				yearStr = m[1]
+			}
+			d.Year, _ = strconv.Atoi(yearStr)
+		}
 	}
-	d.Year, _ = strconv.Atoi(yearStr)
 
 	qualPart := parts[len(parts)-1]
 	d.VideoQuality = ParseVQuality(qualPart)
