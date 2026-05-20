@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"net/http"
@@ -135,7 +136,8 @@ func (n *NNMClubParser) parseCategory(catID string, catInfo nnmCatInfo, fullScan
 			toEnrich = append(toEnrich, enrichJob{d, isMovie})
 		}
 
-		utils.PForLim(toEnrich, 10, func(_ int, job enrichJob) {
+		// Concurrency=2: nnmclub rate-limits aggressive parallel requests
+		utils.PForLim(toEnrich, 2, func(_ int, job enrichJob) {
 			d := job.d
 			hash, magnet, err := n.fetchHashFromTopic(d.Link)
 			if err != nil {
@@ -206,46 +208,63 @@ func (n *NNMClubParser) buildDetails(item nnmItem, catInfo nnmCatInfo) *models.T
 	return d
 }
 
+var nnmRateLimitMsg = []byte("\xd1\xeb\xe8\xf8\xea\xee\xec \xec\xed\xee\xe3\xee") // "Слишком много" in cp1251
+
 func (n *NNMClubParser) fetchHashFromTopic(topicURL string) (hash, magnet string, err error) {
-	body, err := httpGetBytes(n.client, topicURL)
-	if err != nil {
-		return "", "", err
-	}
-	utf8 := decodeWin1251(body)
-
-	// Try goquery: find <a href="magnet:...">
-	doc, parseErr := goquery.NewDocumentFromReader(strings.NewReader(utf8))
-	if parseErr == nil {
-		doc.Find("a").Each(func(_ int, s *goquery.Selection) {
-			if magnet != "" {
-				return
-			}
-			href, _ := s.Attr("href")
-			if strings.HasPrefix(href, "magnet:") {
-				magnet = href
-			}
-		})
-	}
-
-	// Fallback regex — handles both hex-40 and base32-32 hashes
-	if magnet == "" {
-		re := regexp.MustCompile(`(?i)(magnet:\?xt=urn:btih:[a-z0-9]{32,40}[^"' ]*)`)
-		if m := re.FindStringSubmatch(utf8); len(m) > 1 {
-			magnet = m[1]
+	const maxAttempts = 4
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			wait := time.Duration(attempt) * 90 * time.Second
+			log.Printf("nnmclub: rate limited, waiting %s before retry (%d/%d)", wait, attempt, maxAttempts-1)
+			time.Sleep(wait)
 		}
-	}
 
-	if magnet == "" {
-		// Log first 300 chars of body for debugging
-		preview := utf8
-		if len(preview) > 300 {
-			preview = preview[:300]
+		var body []byte
+		body, err = httpGetBytes(n.client, topicURL)
+		if err != nil {
+			return "", "", err
 		}
-		log.Printf("nnmclub: magnet not found on %s, body snippet: %q", topicURL, preview)
+
+		// Detect rate-limit page (message in cp1251 bytes)
+		if bytes.Contains(body, nnmRateLimitMsg) {
+			continue
+		}
+
+		utf8 := decodeWin1251(body)
+
+		// Try goquery: find <a href="magnet:...">
+		doc, parseErr := goquery.NewDocumentFromReader(strings.NewReader(utf8))
+		if parseErr == nil {
+			doc.Find("a").Each(func(_ int, s *goquery.Selection) {
+				if magnet != "" {
+					return
+				}
+				href, _ := s.Attr("href")
+				if strings.HasPrefix(href, "magnet:") {
+					magnet = href
+				}
+			})
+		}
+
+		// Fallback regex — handles both hex-40 and base32-32 hashes
+		if magnet == "" {
+			re := regexp.MustCompile(`(?i)(magnet:\?xt=urn:btih:[a-z0-9]{32,40}[^"' ]*)`)
+			if m := re.FindStringSubmatch(utf8); len(m) > 1 {
+				magnet = m[1]
+			}
+		}
+
+		if magnet != "" {
+			break
+		}
+		// Not rate-limited but no magnet — topic has no magnet link, don't retry
 		return "", "", fmt.Errorf("magnet not found on topic page")
 	}
 
-	// Extract hash from magnet
+	if magnet == "" {
+		return "", "", fmt.Errorf("magnet not found after %d attempts (rate limited)", maxAttempts)
+	}
+
 	reHash := regexp.MustCompile(`(?i)xt=urn:btih:([a-z0-9]{32,40})`)
 	m := reHash.FindStringSubmatch(magnet)
 	if len(m) < 2 {
