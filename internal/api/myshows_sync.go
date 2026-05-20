@@ -380,7 +380,7 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── Movies ───────────────────────────────────────────────────────────────
+	// ── Prefetch both lists before starting long SSE stream ──────────────────
 	sse.status("Загрузка фильмов…")
 	movies, err := myshows.GetWatchedMovies(ctx, token)
 	if err != nil {
@@ -388,6 +388,14 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sse.status("Загрузка сериалов…")
+	shows, err := myshows.GetWatchedShows(ctx, token)
+	if err != nil {
+		sse.errMsg("Ошибка получения сериалов: " + err.Error())
+		return
+	}
+
+	// ── Movies ───────────────────────────────────────────────────────────────
 	var notFound []string
 	moviesTotal := len(movies)
 
@@ -422,13 +430,6 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Shows ────────────────────────────────────────────────────────────────
-	sse.status("Загрузка сериалов…")
-	shows, err := myshows.GetWatchedShows(ctx, token)
-	if err != nil {
-		sse.errMsg("Ошибка получения сериалов: " + err.Error())
-		return
-	}
-
 	showsTotal := len(shows)
 	for i, sh := range shows {
 		select {
