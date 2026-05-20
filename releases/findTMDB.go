@@ -131,11 +131,20 @@ func FindTMDBID(isMovie bool, torr *models.TorrentDetails) *models.Entity {
 
 // tvYearDist returns how many years before the torrent year the show started.
 // Returns 9999 if the show started after the torrent year or has no date.
+// Handles both "YYYY-MM-DD" and "DD.MM.YYYY" (post-FixDate) formats.
 func tvYearDist(e *models.Entity, torrYear int) int {
-	if len(e.FirstAirDate) < 4 {
+	date := e.FirstAirDate
+	if len(date) < 4 {
 		return 9999
 	}
-	year, err := strconv.Atoi(e.FirstAirDate[:4])
+	var year int
+	var err error
+	if len(date) == 10 && date[2] == '.' {
+		// DD.MM.YYYY format (after FixDate)
+		year, err = strconv.Atoi(date[6:])
+	} else {
+		year, err = strconv.Atoi(date[:4])
+	}
 	if err != nil || year > torrYear {
 		return 9999
 	}
@@ -152,14 +161,26 @@ func FindTMDB(isMovie bool, torr *models.TorrentDetails) *models.Entity {
 	var matches []*models.Entity
 	seen := map[int64]bool{}
 
-	for _, query := range searchQueries(torr.Name, torr.Names) {
-		candidates := tmdb.Search(isMovie, query)
-		candidates = filterByYear(isMovie, candidates, torr.Year)
+	collect := func(candidates []*models.Entity) {
 		for _, cand := range candidates {
 			if nameMatches(names, cand) && !seen[cand.ID] {
 				seen[cand.ID] = true
 				matches = append(matches, cand)
 			}
+		}
+	}
+
+	for _, query := range searchQueries(torr.Name, torr.Names) {
+		candidates := tmdb.Search(isMovie, query)
+		candidates = filterByYear(isMovie, candidates, torr.Year)
+		collect(candidates)
+	}
+
+	// For TV shows with a known year, also search with first_air_date_year
+	// to surface new shows that rank below older same-name shows in general search.
+	if !isMovie && torr.Year > 0 {
+		for _, query := range searchQueries(torr.Name, torr.Names) {
+			collect(tmdb.SearchWithYear(isMovie, query, torr.Year))
 		}
 	}
 
