@@ -9,13 +9,21 @@ import (
 	"time"
 )
 
-// GetBodyLink fetches the torrent detail page from rutor and returns its HTML body.
+// GetBodyLink fetches the torrent detail page and returns its HTML body.
+// For rutor, torr.Link is a relative path that is resolved against the rutor host.
+// For other trackers, torr.Link is an absolute URL used as-is.
 func GetBodyLink(torr *models.TorrentDetails) string {
-	host := config.Get().Host
-	if host == "" {
-		host = "http://rutor.info"
+	if torr.Link == "" {
+		return ""
 	}
-	link := host + torr.Link
+	link := torr.Link
+	if !strings.HasPrefix(link, "http://") && !strings.HasPrefix(link, "https://") {
+		host := config.Get().Host
+		if host == "" {
+			host = "http://rutor.info"
+		}
+		link = host + link
+	}
 	body, err := fetchPage(link)
 	if err != nil {
 		log.Println("Error get torrent page:", err, link)

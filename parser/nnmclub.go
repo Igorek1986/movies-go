@@ -213,13 +213,45 @@ func (n *NNMClubParser) fetchHashFromTopic(topicURL string) (hash, magnet string
 	}
 	utf8 := decodeWin1251(body)
 
-	// Find magnet link
-	re := regexp.MustCompile(`magnet:\?xt=urn:btih:([0-9a-fA-F]{40})[^"]*`)
-	m := re.FindStringSubmatch(utf8)
-	if len(m) < 2 {
+	// Try goquery: find <a href="magnet:...">
+	doc, parseErr := goquery.NewDocumentFromReader(strings.NewReader(utf8))
+	if parseErr == nil {
+		doc.Find("a").Each(func(_ int, s *goquery.Selection) {
+			if magnet != "" {
+				return
+			}
+			href, _ := s.Attr("href")
+			if strings.HasPrefix(href, "magnet:") {
+				magnet = href
+			}
+		})
+	}
+
+	// Fallback regex — handles both hex-40 and base32-32 hashes
+	if magnet == "" {
+		re := regexp.MustCompile(`(?i)(magnet:\?xt=urn:btih:[a-z0-9]{32,40}[^"' ]*)`)
+		if m := re.FindStringSubmatch(utf8); len(m) > 1 {
+			magnet = m[1]
+		}
+	}
+
+	if magnet == "" {
+		// Log first 300 chars of body for debugging
+		preview := utf8
+		if len(preview) > 300 {
+			preview = preview[:300]
+		}
+		log.Printf("nnmclub: magnet not found on %s, body snippet: %q", topicURL, preview)
 		return "", "", fmt.Errorf("magnet not found on topic page")
 	}
-	return strings.ToLower(m[1]), m[0], nil
+
+	// Extract hash from magnet
+	reHash := regexp.MustCompile(`(?i)xt=urn:btih:([a-z0-9]{32,40})`)
+	m := reHash.FindStringSubmatch(magnet)
+	if len(m) < 2 {
+		return "", "", fmt.Errorf("hash not found in magnet %q", magnet)
+	}
+	return strings.ToLower(m[1]), magnet, nil
 }
 
 // ─── Title parsing ────────────────────────────────────────────────────────────
