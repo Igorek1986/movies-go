@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import styles from './AuthPage.module.scss'
+import PasswordInput from '@/components/PasswordInput'
 
 export default function RegisterPage() {
   const nav = useNavigate()
@@ -59,9 +60,8 @@ export default function RegisterPage() {
 
         <div className={styles.field}>
           <span>Пароль</span>
-          <input
+          <PasswordInput
             className={styles.input}
-            type="password"
             autoComplete="new-password"
             value={password}
             onChange={e => setPassword(e.target.value)}
@@ -76,9 +76,8 @@ export default function RegisterPage() {
 
         <div className={styles.field}>
           <span>Повторите пароль</span>
-          <input
+          <PasswordInput
             className={styles.input}
-            type="password"
             autoComplete="new-password"
             value={password2}
             onChange={e => setPassword2(e.target.value)}

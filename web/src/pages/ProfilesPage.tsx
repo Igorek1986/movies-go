@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import Layout from '@/components/Layout'
+import PasswordInput from '@/components/PasswordInput'
 import styles from './ProfilesPage.module.scss'
 
 interface TelegramStatus {
@@ -1058,9 +1059,8 @@ export default function ProfilesPage() {
                       autoComplete="username"
                       required
                     />
-                    <input
+                    <PasswordInput
                       className={styles.input}
-                      type="password"
                       placeholder="Пароль MyShows"
                       value={syncPassword}
                       onChange={e => setSyncPassword(e.target.value)}
@@ -1341,9 +1341,8 @@ export default function ProfilesPage() {
                   )}
                   <form className={styles.formCol} onSubmit={handleDisable2FA}>
                     <div className={styles.formRow}>
-                      <input
+                      <PasswordInput
                         className={styles.input}
-                        type="password"
                         placeholder="Текущий пароль"
                         value={disable2faPw}
                         onChange={e => setDisable2faPw(e.target.value)}
@@ -1379,15 +1378,15 @@ export default function ProfilesPage() {
               <h4 className={styles.subTitle}>Сменить пароль</h4>
               {pwMsg && <p className={pwMsg === 'Пароль изменён' ? styles.successText : styles.errorText}>{pwMsg}</p>}
               <form className={styles.formCol} onSubmit={handleChangePassword}>
-                <input className={styles.input} type="password" placeholder="Текущий пароль" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} required />
+                <PasswordInput className={styles.input} placeholder="Текущий пароль" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} required />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <input className={styles.input} type="password" placeholder="Новый пароль" value={pwNew} onChange={e => setPwNew(e.target.value)} minLength={6} required />
+                  <PasswordInput className={styles.input} placeholder="Новый пароль" value={pwNew} onChange={e => setPwNew(e.target.value)} minLength={6} required />
                   {pwNew.length > 0 && pwNew.length < 6 && (
                     <span className={styles.errorText}>минимум 6 символов</span>
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <input className={styles.input} type="password" placeholder="Повторите новый пароль" value={pwNew2} onChange={e => setPwNew2(e.target.value)} required />
+                  <PasswordInput className={styles.input} placeholder="Повторите новый пароль" value={pwNew2} onChange={e => setPwNew2(e.target.value)} required />
                   {pwNew2.length > 0 && (
                     <span className={pwNew === pwNew2 ? styles.successText : styles.errorText}>
                       {pwNew === pwNew2 ? 'Пароли совпадают' : 'Пароли не совпадают'}
@@ -1414,7 +1413,7 @@ export default function ProfilesPage() {
               <p className={styles.hint}>Все устройства и таймкоды будут удалены безвозвратно.</p>
               <form className={styles.formCol} onSubmit={handleDeleteAccount}>
                 <div className={styles.formRow}>
-                  <input className={styles.input} type="password" placeholder="Введите пароль для подтверждения" value={delPw} onChange={e => setDelPw(e.target.value)} required />
+                  <PasswordInput className={styles.input} placeholder="Введите пароль для подтверждения" value={delPw} onChange={e => setDelPw(e.target.value)} required />
                   {user?.totp_enabled && (
                     <input
                       className={`${styles.input} ${styles.inputMono}`}

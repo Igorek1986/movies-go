@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import styles from './AuthPage.module.scss'
+import PasswordInput from '@/components/PasswordInput'
 
 export default function LoginPage() {
   const nav = useNavigate()
@@ -63,9 +64,8 @@ export default function LoginPage() {
 
         <label className={styles.field}>
           <span>Пароль</span>
-          <input
+          <PasswordInput
             className={styles.input}
-            type="password"
             autoComplete="current-password"
             value={password}
             onChange={e => setPassword(e.target.value)}

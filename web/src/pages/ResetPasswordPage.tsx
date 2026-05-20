@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import styles from './AuthPage.module.scss'
+import PasswordInput from '@/components/PasswordInput'
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams()
@@ -66,9 +67,8 @@ export default function ResetPasswordPage() {
 
         <div className={styles.field}>
           <span>Новый пароль</span>
-          <input
+          <PasswordInput
             className={styles.input}
-            type="password"
             autoComplete="new-password"
             value={newPassword}
             onChange={e => setNewPassword(e.target.value)}
@@ -83,9 +83,8 @@ export default function ResetPasswordPage() {
 
         <div className={styles.field}>
           <span>Повторите пароль</span>
-          <input
+          <PasswordInput
             className={styles.input}
-            type="password"
             autoComplete="new-password"
             value={confirmPassword}
             onChange={e => setConfirmPassword(e.target.value)}

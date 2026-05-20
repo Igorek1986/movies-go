@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import styles from './AuthPage.module.scss'
+import PasswordInput from '@/components/PasswordInput'
 
 type Step = 'username' | 'code'
 
@@ -106,9 +107,8 @@ export default function ForgotPasswordPage() {
 
           <label className={styles.field}>
             <span>Новый пароль</span>
-            <input
+            <PasswordInput
               className={styles.input}
-              type="password"
               autoComplete="new-password"
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
@@ -119,9 +119,8 @@ export default function ForgotPasswordPage() {
 
           <label className={styles.field}>
             <span>Повторите пароль</span>
-            <input
+            <PasswordInput
               className={styles.input}
-              type="password"
               autoComplete="new-password"
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
