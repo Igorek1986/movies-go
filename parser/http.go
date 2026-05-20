@@ -30,12 +30,19 @@ func newHTTPClient() *http.Client {
 }
 
 func httpGetBytes(c *http.Client, link string) ([]byte, error) {
+	return httpGetBytesRef(c, link, "")
+}
+
+func httpGetBytesRef(c *http.Client, link, referer string) ([]byte, error) {
 	req, err := http.NewRequest("GET", link, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9")
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	}
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, err

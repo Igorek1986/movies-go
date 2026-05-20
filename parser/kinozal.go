@@ -1,9 +1,6 @@
 package parser
 
 import (
-	"bytes"
-	"crypto/sha1"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -114,14 +111,19 @@ func (k *KinozalParser) login() error {
 	form := url.Values{
 		"username": {cfg.KinozalLogin},
 		"password": {cfg.KinozalPassword},
-		"returnto": {""},
+		"touser":   {"1"},
+		"wact":     {"takerecover"},
 	}
 	resp, err := httpPostForm(k.client, "https://kinozal.tv/takelogin.php", form)
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+	if resp.Request != nil && strings.Contains(resp.Request.URL.Path, "login") {
+		return errors.New("login failed — redirected to login page")
+	}
 	k.loggedIn = true
+	log.Printf("kinozal: logged in as %s", cfg.KinozalLogin)
 	return nil
 }
 
@@ -170,23 +172,6 @@ func (k *KinozalParser) parseCategory(catID string, catInfo kzCatInfo, fullScan 
 				}
 				continue
 			}
-			// Hash unknown yet — need to download .torrent
-			if d.Hash == "" {
-				hash, err := k.fetchHash(item.torrentID)
-				if err != nil {
-					log.Printf("kinozal: hash fetch id=%s: %v", item.torrentID, err)
-					continue
-				}
-				d.Hash = hash
-				// Re-check cache with resolved hash
-				cached2, cardID2 := store.TorrentStatus(hash)
-				if cached2 && cardID2 != "" {
-					if d.VideoQuality > 0 {
-						store.UpdateQuality(cardID2, d.VideoQuality)
-					}
-					continue
-				}
-			}
 			toEnrich = append(toEnrich, enrichJob{d, isMovie})
 		}
 
@@ -212,7 +197,7 @@ func (k *KinozalParser) parseListing(utf8body, catID string) []kzItem {
 
 	var items []kzItem
 	doc.Find("tr").Each(func(_ int, row *goquery.Selection) {
-		a := row.Find("a.bt")
+		a := row.Find("td.nam a")
 		if a.Length() == 0 {
 			return
 		}
@@ -223,11 +208,12 @@ func (k *KinozalParser) parseListing(utf8body, catID string) []kzItem {
 			return
 		}
 
-		dateStr := strings.TrimSpace(row.Find("td.s").First().Text())
+		tds := row.Find("td.s")
+		dateStr := strings.TrimSpace(tds.Last().Text())
 		date := parseKzDate(dateStr)
 		seeds, _ := strconv.Atoi(strings.TrimSpace(row.Find("td.sl_s").Text()))
 		peers, _ := strconv.Atoi(strings.TrimSpace(row.Find("td.sl_p").Text()))
-		size := strings.TrimSpace(row.Find("td.s").Last().Text())
+		size := strings.TrimSpace(tds.Eq(1).Text())
 
 		items = append(items, kzItem{
 			torrentID: torrentID,
@@ -251,19 +237,11 @@ func (k *KinozalParser) buildDetails(item kzItem, catInfo kzCatInfo) *models.Tor
 		CreateDate: item.date,
 		Tracker:    "Kinozal",
 		Link:       "https://kinozal.tv/details.php?id=" + item.torrentID,
+		Hash:       "kz_" + item.torrentID, // pseudo-hash for deduplication; .torrent not publicly downloadable
 		Categories: catInfo.baseCat,
 	}
 	parseKinozalTitle(d, item.title, catInfo)
 	return d
-}
-
-func (k *KinozalParser) fetchHash(torrentID string) (string, error) {
-	link := "https://kinozal.tv/download.php?id=" + torrentID
-	data, err := httpGetBytes(k.client, link)
-	if err != nil {
-		return "", err
-	}
-	return infoHash(data)
 }
 
 // ─── Title parsing ────────────────────────────────────────────────────────────
@@ -319,11 +297,23 @@ func extractKzID(href string) string {
 }
 
 func parseKzDate(s string) time.Time {
-	t, err := time.ParseInLocation("02.01.2006", s, time.Local)
-	if err != nil {
-		return time.Time{}
+	s = strings.ToLower(strings.TrimSpace(s))
+	now := time.Now()
+	switch {
+	case strings.HasPrefix(s, "сегодня"):
+		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	case strings.HasPrefix(s, "вчера"):
+		y := now.AddDate(0, 0, -1)
+		return time.Date(y.Year(), y.Month(), y.Day(), 0, 0, 0, 0, time.Local)
+	default:
+		// "16.04.2026 в 06:40"
+		parts := strings.SplitN(s, " ", 2)
+		t, err := time.ParseInLocation("02.01.2006", parts[0], time.Local)
+		if err != nil {
+			return time.Time{}
+		}
+		return t
 	}
-	return t
 }
 
 func decodeWin1251(b []byte) string {
@@ -334,60 +324,3 @@ func decodeWin1251(b []byte) string {
 	return string(out)
 }
 
-// ─── Bencode info hash ────────────────────────────────────────────────────────
-
-// infoHash extracts the BitTorrent info hash (SHA-1 of the bencoded info value)
-// from raw .torrent file bytes.
-func infoHash(data []byte) (string, error) {
-	const marker = "4:info"
-	idx := bytes.Index(data, []byte(marker))
-	if idx < 0 {
-		return "", errors.New("info key not found in torrent")
-	}
-	start := idx + len(marker)
-	end, err := bencodeEnd(data, start)
-	if err != nil {
-		return "", fmt.Errorf("bencode parse: %w", err)
-	}
-	sum := sha1.Sum(data[start:end])
-	return hex.EncodeToString(sum[:]), nil
-}
-
-// bencodeEnd returns the index past the end of the bencode value at pos.
-func bencodeEnd(data []byte, pos int) (int, error) {
-	if pos >= len(data) {
-		return 0, errors.New("unexpected end of bencode data")
-	}
-	switch {
-	case data[pos] == 'd' || data[pos] == 'l':
-		pos++
-		for pos < len(data) && data[pos] != 'e' {
-			next, err := bencodeEnd(data, pos)
-			if err != nil {
-				return 0, err
-			}
-			pos = next
-		}
-		if pos >= len(data) {
-			return 0, errors.New("unterminated bencode dict/list")
-		}
-		return pos + 1, nil
-	case data[pos] == 'i':
-		end := bytes.IndexByte(data[pos+1:], 'e')
-		if end < 0 {
-			return 0, errors.New("unterminated bencode integer")
-		}
-		return pos + 1 + end + 1, nil
-	case data[pos] >= '0' && data[pos] <= '9':
-		colon := bytes.IndexByte(data[pos:], ':')
-		if colon < 0 {
-			return 0, errors.New("no colon in bencode string")
-		}
-		n, err := strconv.Atoi(string(data[pos : pos+colon]))
-		if err != nil {
-			return 0, fmt.Errorf("invalid bencode string length: %w", err)
-		}
-		return pos + colon + 1 + n, nil
-	}
-	return 0, fmt.Errorf("unknown bencode type %q at offset %d", data[pos], pos)
-}
