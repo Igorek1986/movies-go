@@ -347,5 +347,6 @@ ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS production_countries   JSONB;
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS keywords               JSONB;
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS year                   INT;
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS created_at             TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE media_cards DROP CONSTRAINT IF EXISTS uq_media_card_tmdb;
 ALTER TABLE timecodes   ADD COLUMN IF NOT EXISTS created_at             TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE UNIQUE INDEX IF NOT EXISTS uq_devices_user_name ON devices (user_id, lower(name));

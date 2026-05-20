@@ -191,8 +191,7 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			 last_ep_season, last_ep_number, episode_run_time,
 			 tmdb_updated_at, updated_at, created_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,now(),now(),now())
-		ON CONFLICT ON CONSTRAINT uq_media_card_tmdb DO UPDATE SET
-			card_id            = EXCLUDED.card_id,
+		ON CONFLICT (card_id) DO UPDATE SET
 			title              = EXCLUDED.title,
 			original_title     = EXCLUDED.original_title,
 			overview           = EXCLUDED.overview,
