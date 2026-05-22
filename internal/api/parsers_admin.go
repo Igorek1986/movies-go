@@ -61,6 +61,10 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 
 	kinozalLogin, _ := store.GetSetting(ctx, "kinozal_login")
 	kinozalPassword, _ := store.GetSetting(ctx, "kinozal_password")
+	catalogTrackers, _ := store.GetSetting(ctx, "catalog_trackers")
+	if catalogTrackers == "" {
+		catalogTrackers = "rutor"
+	}
 
 	nextRunAt := ""
 	if t := parser.NextRunAt(); !t.IsZero() {
@@ -79,7 +83,8 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 		"retry_ratio":     retryRatio,
 		"kinozal_login":    kinozalLogin,
 		"kinozal_password": kinozalPassword,
-		"tracker_cards":   store.CountCardsByTracker(),
+		"catalog_trackers": catalogTrackers,
+		"tracker_cards":    store.CountCardsByTracker(),
 	})
 }
 
@@ -97,6 +102,7 @@ func handleAPIAdminParsersSettings(w http.ResponseWriter, r *http.Request) {
 		RetryRatio      *string `json:"retry_ratio"`
 		KinozalLogin    *string `json:"kinozal_login"`
 		KinozalPassword *string `json:"kinozal_password"`
+		CatalogTrackers *string `json:"catalog_trackers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		Error(w, http.StatusBadRequest, "bad request")
@@ -138,6 +144,9 @@ func handleAPIAdminParsersSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.KinozalPassword != nil {
 		store.SetSetting(ctx, "kinozal_password", *body.KinozalPassword)
+	}
+	if body.CatalogTrackers != nil {
+		store.SetSetting(ctx, "catalog_trackers", *body.CatalogTrackers)
 	}
 
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})

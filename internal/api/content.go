@@ -154,6 +154,7 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 			PerPage:    perPage,
 		}
 		applyHideWatched(r, &f, profileID)
+		applyCatalogTrackers(&f)
 		rows, total := store.ListCategory(f)
 		sendCategoryResponse(w, rows, total, page, perPage)
 		return
@@ -173,12 +174,25 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 		f.Search = searchQ
 	}
 	applyHideWatched(r, &f, profileID)
+	applyCatalogTrackers(&f)
 
 	rows, total := store.ListCategory(f)
 	sendCategoryResponse(w, rows, total, page, perPage)
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+func applyCatalogTrackers(f *store.CategoryFilter) {
+	v, _ := store.GetSetting(context.Background(), "catalog_trackers")
+	if v == "" {
+		v = "rutor"
+	}
+	for _, t := range strings.Split(v, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			f.TrackerFilter = append(f.TrackerFilter, t)
+		}
+	}
+}
 
 func applyHideWatched(r *http.Request, f *store.CategoryFilter, profileID string) {
 	q := r.URL.Query()

@@ -58,6 +58,12 @@ const _cache = {
   catView: null as CatViewCache | null,
 }
 
+export function invalidateCatalogCache() {
+  _cache.categories = []
+  _cache.rows = {}
+  _cache.catView = null
+}
+
 function getItemTitle(item: MediaItem): string {
   return item.title || item.name || ''
 }

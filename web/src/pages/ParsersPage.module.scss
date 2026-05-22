@@ -122,11 +122,19 @@
   tr:last-child td { border-bottom: none; }
 }
 
-.thOrder { width: 80px; }
-.tdOrder { white-space: nowrap; }
-.tdName  { font-weight: 500; }
-.tdDate  { color: $color-text-muted; white-space: nowrap; }
-.tdCards { color: $color-text-muted; white-space: nowrap; text-align: right; }
+.thOrder   { width: 80px; }
+.tdOrder   { white-space: nowrap; }
+.tdName    { font-weight: 500; }
+.tdDate    { color: $color-text-muted; white-space: nowrap; }
+.tdCards   { color: $color-text-muted; white-space: nowrap; text-align: right; }
+.tdCatalog { text-align: center; }
+
+.catalogCheck {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: $color-primary;
+}
 
 .tdStatus {
   display: flex;

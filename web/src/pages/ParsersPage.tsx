@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import styles from './ParsersPage.module.scss'
 import { useCountdown, useParserStatus, fmtCountdown, fmtDateTime } from '@/hooks/useParserStatus'
+import { invalidateCatalogCache } from './CatalogPage'
 
 interface TrackerStatus {
   name: string
@@ -22,6 +23,7 @@ interface ParsersData {
   retry_ratio: string
   kinozal_login: string
   kinozal_password: string
+  catalog_trackers: string
   tracker_cards: Record<string, number>
 }
 
@@ -62,6 +64,7 @@ export default function ParsersPage() {
   const [retryMaxWait, setRetryMaxWait] = useState(120)
   const [retryRatio, setRetryRatio] = useState('2.0')
   const [trackerDates, setTrackerDates] = useState<Record<string, string>>({})
+  const [catalogTrackers, setCatalogTrackers] = useState<Set<string>>(new Set())
   const [credModal, setCredModal] = useState<{ tracker: string; login: string; password: string } | null>(null)
   const [credSaving, setCredSaving] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -88,6 +91,9 @@ export default function ParsersPage() {
     const map: Record<string, boolean> = {}
     for (const p of d.parsers) map[p.name] = p.enabled
     setEnabled(map)
+
+    const ct = d.catalog_trackers ?? 'rutor'
+    setCatalogTrackers(new Set(ct.split(',').map(s => s.trim()).filter(Boolean)))
 
     setTrackerDates(prev => {
       const next = { ...prev }
@@ -183,7 +189,9 @@ export default function ParsersPage() {
         retry_base_wait: retryBaseWait,
         retry_max_wait: retryMaxWait,
         retry_ratio: retryRatio,
+        catalog_trackers: [...catalogTrackers].join(','),
       })
+      invalidateCatalogCache()
       toast('Настройки сохранены')
       await load()
     } catch (e: unknown) {
@@ -333,6 +341,7 @@ export default function ParsersPage() {
                   <th>Последний запуск</th>
                   <th>Карточек</th>
                   <th>Статус</th>
+                  <th title="Карточки этого трекера видны в каталоге">В каталоге</th>
                   <th></th>
                 </tr>
               </thead>
@@ -352,6 +361,19 @@ export default function ParsersPage() {
                       <td className={styles.tdStatus}>
                         <span className={`${styles.dot} ${isEnabled ? styles.dotOn : styles.dotOff}`} />
                         {isEnabled ? 'Активен' : 'Выключен'}
+                      </td>
+                      <td className={styles.tdCatalog}>
+                        <input
+                          type="checkbox"
+                          className={styles.catalogCheck}
+                          checked={catalogTrackers.has(name)}
+                          onChange={e => setCatalogTrackers(prev => {
+                            const next = new Set(prev)
+                            if (e.target.checked) next.add(name); else next.delete(name)
+                            return next
+                          })}
+                          title={catalogTrackers.has(name) ? 'Карточки видны в каталоге' : 'Карточки скрыты из каталога'}
+                        />
                       </td>
                       <td className={styles.tdActions}>
                         <button

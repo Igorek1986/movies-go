@@ -395,6 +395,7 @@ type CategoryFilter struct {
 	OrderByRating   bool
 	Child           bool
 	Year            int    // exact release year filter
+	TrackerFilter   []string // if non-empty, only show cards linked to at least one of these trackers
 	NewOnly         bool   // only items released within last YearDelta years AND quality >= 200
 	OldOnly         bool   // only items released more than YearDelta years ago (complement of NewOnly)
 	YearDelta       int    // years window for NewOnly/OldOnly (default 2, use 4 for 4K)
@@ -485,6 +486,12 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 	if f.MinVoteCount > 0 {
 		where = append(where, fmt.Sprintf("m.vote_count >= $%d", n))
 		args = append(args, f.MinVoteCount)
+		n++
+	}
+	if len(f.TrackerFilter) > 0 {
+		where = append(where, fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM torrents t WHERE t.card_id = m.card_id AND t.tracker = ANY($%d))", n))
+		args = append(args, f.TrackerFilter)
 		n++
 	}
 	if len(f.Categories) > 0 {
