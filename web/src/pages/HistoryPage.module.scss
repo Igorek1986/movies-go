@@ -208,6 +208,13 @@
     transform: translateY(-2px);
     border-color: rgba($color-primary, 0.4);
   }
+
+  &:focus-visible {
+    outline: none;
+    border-color: $color-primary;
+    box-shadow: 0 0 0 2px rgba($color-primary, 0.35);
+    transform: translateY(-2px);
+  }
 }
 
 .poster {

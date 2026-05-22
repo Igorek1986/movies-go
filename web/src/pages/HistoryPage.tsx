@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
+import { scrollV, getGridCols } from '@/utils/scrollNav'
 import styles from './HistoryPage.module.scss'
 
 interface HistoryItem {
@@ -154,7 +155,7 @@ export default function HistoryPage() {
     const hash   = window.location.hash.slice(1)
 
     if (cached && cached.scrollY > 0) {
-      window.scrollTo(0, cached.scrollY)
+      window.scrollTo({ top: cached.scrollY, behavior: 'instant' })
       if (hash) window.history.replaceState(null, '', window.location.pathname)
       return
     }
@@ -369,6 +370,53 @@ export default function HistoryPage() {
     navigate(`/card/${item.card_id}`, { state: { backUrl: `/history#${item.card_id}` } })
   }
 
+  // Keyboard navigation
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const tag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') return
+
+      const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-hist-card]'))
+      if (!cards.length) return
+
+      const focused = document.activeElement as HTMLElement
+      const idx = cards.indexOf(focused)
+
+      if (e.key === 'Enter' && idx !== -1) {
+        e.preventDefault()
+        focused.click()
+        return
+      }
+
+      if (e.key === 'Backspace') {
+        navigate(-1)
+        return
+      }
+
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
+      e.preventDefault()
+
+      let next = -1
+      if (idx === -1) {
+        next = 0
+      } else {
+        const cols = getGridCols(cards)
+        if (e.key === 'ArrowRight') next = Math.min(idx + 1, cards.length - 1)
+        else if (e.key === 'ArrowLeft') next = Math.max(idx - 1, 0)
+        else if (e.key === 'ArrowDown') next = Math.min(idx + cols, cards.length - 1)
+        else if (e.key === 'ArrowUp') next = Math.max(idx - cols, 0)
+      }
+
+      if (next !== -1 && next !== idx) {
+        cards[next].focus()
+        scrollV(cards[next])
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [navigate])
+
   const visibleProfiles = profiles.filter(p => p.device_id === activeDevice?.id)
 
   const filterTabs = [
@@ -481,7 +529,7 @@ export default function HistoryPage() {
             {items.map(item => {
               const url = posterUrl(item.poster_path)
               return (
-                <div key={item.card_id} id={item.card_id} className={styles.card} onClick={() => handleCardClick(item)}>
+                <div key={item.card_id} id={item.card_id} className={styles.card} tabIndex={0} data-hist-card onClick={() => handleCardClick(item)} onKeyDown={e => { if (e.key === 'Enter') handleCardClick(item) }}>
                   {url ? (
                     <img className={styles.poster} src={url} alt={item.title} loading="lazy" />
                   ) : (

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react
 import { useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
+import { scrollV } from '@/utils/scrollNav'
 import styles from './CatalogPage.module.scss'
 
 interface MediaItem {
@@ -40,18 +41,6 @@ interface Profile {
   profile_id: string
   name: string
   icon?: string | null
-}
-
-const NAV_H = 52  // fixed nav bar height
-
-// Scroll the page so el is vertically centered in the area below the nav bar.
-// CSS scroll-behavior: smooth on <html> handles the animation.
-function scrollV(el: HTMLElement) {
-  const rect = el.getBoundingClientRect()
-  const availH = window.innerHeight - NAV_H
-  const elCenter = rect.top + rect.height / 2
-  const targetCenter = NAV_H + availH / 2
-  window.scrollBy({ top: elCenter - targetCenter })
 }
 
 // Scroll the horizontal row container so el is centered.
