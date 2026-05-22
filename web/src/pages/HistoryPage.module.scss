@@ -188,6 +188,8 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
   gap: $spacing-md;
+  padding-top: 10px;
+  margin-top: -10px;
 
   @media (max-width: $bp-sm) {
     grid-template-columns: repeat(2, 1fr);
@@ -202,19 +204,60 @@
   position: relative;
   display: block;
   cursor: pointer;
-  transition: transform $transition-fast, border-color $transition-fast;
+  transition: transform $transition-fast, border-color $transition-fast, outline-color $transition-fast;
 
   &:hover {
-    transform: translateY(-2px);
-    border-color: rgba($color-primary, 0.4);
+    transform: translateY(-5px);
+    outline: 2px solid rgba($color-primary, 0.55);
+    outline-offset: 0;
+  }
+
+  // Snake segments — invisible by default
+  &::before, &::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  &::before {
+    top: 0; left: 0;
+    border-top: 2px solid $color-primary;
+    border-right: 2px solid $color-primary;
+    border-top-left-radius: $radius-md;
+    border-top-right-radius: $radius-md;
+  }
+
+  &::after {
+    bottom: 0; right: 0;
+    border-bottom: 2px solid $color-primary;
+    border-left: 2px solid $color-primary;
+    border-bottom-right-radius: $radius-md;
+    border-bottom-left-radius: $radius-md;
   }
 
   &:focus-visible {
     outline: none;
-    border-color: $color-primary;
-    box-shadow: 0 0 0 2px rgba($color-primary, 0.35);
-    transform: translateY(-2px);
+    transform: translateY(-6px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+
+    &::before { animation: snakeTR 0.4s ease-out forwards; }
+    &::after  { animation: snakeBL 0.4s ease-out forwards; }
   }
+}
+
+@keyframes snakeTR {
+  0%   { width: 0;    height: 0; }
+  55%  { width: 100%; height: 0; }
+  100% { width: 100%; height: 100%; }
+}
+
+@keyframes snakeBL {
+  0%   { width: 0;    height: 0; }
+  55%  { width: 100%; height: 0; }
+  100% { width: 100%; height: 100%; }
 }
 
 .poster {
