@@ -160,6 +160,7 @@ export default function ParsersPage() {
   }
 
   async function stopNow() {
+    if (!confirm('Остановить парсер?\nТекущий трекер будет завершён.')) return
     try {
       await api('/api/admin/parsers/stop')
       toast('Остановка запрошена — парсер завершит текущий трекер')

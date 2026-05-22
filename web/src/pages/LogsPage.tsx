@@ -99,6 +99,17 @@ export default function LogsPage() {
     setAutoScroll(autoScrollRef.current)
   }
 
+  async function runNow() {
+    await fetch('/api/admin/parsers/run', { method: 'POST' })
+    refreshStatus()
+  }
+
+  async function stopNow() {
+    if (!confirm('Остановить парсер?\nТекущий трекер будет завершён.')) return
+    await fetch('/api/admin/parsers/stop', { method: 'POST' })
+    refreshStatus()
+  }
+
   function scrollToBottom() {
     autoScrollRef.current = true
     setAutoScroll(true)
@@ -179,21 +190,12 @@ export default function LogsPage() {
               <button
                 className={`${styles.btn} ${styles.btnWarn}`}
                 disabled={parserStatus.stopRequested}
-                onClick={async () => {
-                  await fetch('/api/admin/parsers/stop', { method: 'POST' })
-                  refreshStatus()
-                }}
+                onClick={stopNow}
               >
                 {parserStatus.stopRequested ? 'Остановка…' : 'Остановить'}
               </button>
             ) : (
-              <button
-                className={`${styles.btn} ${styles.btnPrimary}`}
-                onClick={async () => {
-                  await fetch('/api/admin/parsers/run', { method: 'POST' })
-                  refreshStatus()
-                }}
-              >
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={runNow}>
                 Запустить
               </button>
             )}
