@@ -213,6 +213,8 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
     return () => observer.disconnect()
   }, [loadItems])
 
+  if (items !== null && items.length === 0) return null
+
   const hasMore = totalPages > 1
 
   return (
