@@ -87,8 +87,8 @@ export default function LogsPage() {
   }, [selectedDay])
 
   useEffect(() => {
-    if (autoScrollRef.current) {
-      bottomRef.current?.scrollIntoView({ block: 'end' })
+    if (autoScrollRef.current && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
   }, [liveLines, histLines, tab, selectedDay])
 
@@ -167,7 +167,8 @@ export default function LogsPage() {
             {!autoScroll && (
               <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={scrollToBottom}>↓ В конец</button>
             )}
-            <Link to="/admin" className={styles.backLink}>← Назад</Link>
+            <Link to="/admin/parsers" className={styles.backLink}>Парсеры</Link>
+            <Link to="/admin" className={styles.backLink}>Назад</Link>
           </div>
         </div>
 

@@ -83,6 +83,10 @@ func (n *NNMClubParser) Parse() {
 	var processed atomic.Int64
 
 	for catID, catInfo := range nnmClubCats {
+		if stopRequest.Load() {
+			log.Println("nnmclub: stop requested")
+			break
+		}
 		catID, catInfo := catID, catInfo
 		n.parseCategory(catID, catInfo, fullScan, cutoff, &processed)
 	}
@@ -182,7 +186,7 @@ func (n *NNMClubParser) buildDetails(item nnmItem, catInfo nnmCatInfo) *models.T
 	d := &models.TorrentDetails{
 		Title:      item.title,
 		CreateDate: item.date,
-		Tracker:    "NNMClub",
+		Tracker:    "nnmclub",
 		Link:       "https://nnmclub.to/forum/viewtopic.php?t=" + item.topicID,
 		Categories: catInfo.baseCat,
 	}

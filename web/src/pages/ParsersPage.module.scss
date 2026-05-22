@@ -20,6 +20,12 @@
   color: $color-text;
 }
 
+.headerLinks {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
 .backLink {
   font-size: $font-size-sm;
   color: $color-text-muted;
@@ -51,6 +57,12 @@
   font-size: $font-size-lg;
   font-weight: 600;
   color: $color-text;
+}
+
+.sectionHint {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  opacity: 0.75;
 }
 
 // ── Status bar ────────────────────────────────────────────────────────────────
@@ -228,8 +240,20 @@
   &:hover { border-color: $color-primary; color: $color-primary; }
 }
 
-.btnSmWarn { &:hover { border-color: $color-warning; color: $color-warning; } }
-.btnSmOk   { &:hover { border-color: $color-success; color: $color-success; } }
+.btnSmWarn    { &:hover { border-color: $color-warning; color: $color-warning; } }
+.btnSmOk      { &:hover { border-color: $color-success; color: $color-success; } }
+.btnSmPrimary {
+  border-color: $color-primary;
+  color: $color-primary;
+  &:hover:not(:disabled) { background: rgba($color-primary, 0.1); }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+.btnSmRunning {
+  border-color: $color-warning;
+  color: $color-warning;
+  opacity: 0.7;
+  cursor: default;
+}
 
 .trackerDateInput {
   height: 28px;
@@ -349,9 +373,9 @@
   font-size: $font-size-sm;
 }
 
-// ── Mobile ────────────────────────────────────────────────────────────────────
+// ── Cards: телефоны + планшеты (до 1100px) ────────────────────────────────────
 
-@media (max-width: $bp-sm) {
+@media (max-width: 1100px) {
   .section { padding: $spacing-md; }
 
   .statusBar { flex-wrap: wrap; gap: $spacing-xs; }
@@ -359,7 +383,7 @@
   .statusActions { margin-left: 0; width: 100%; }
   .statusActions .btn { width: 100%; justify-content: center; }
 
-  // Table → card list
+  // Таблица → карточки
   .table {
     display: block;
 
@@ -375,8 +399,9 @@
       display: grid;
       grid-template-columns: 1fr auto;
       grid-template-areas:
-        "name  order"
-        "date  status"
+        "name    order"
+        "status  catalog"
+        "date    cards"
         "actions actions";
       row-gap: $spacing-xs;
       column-gap: $spacing-sm;
@@ -385,28 +410,92 @@
       padding: $spacing-sm $spacing-md;
     }
 
-    .tdOrder   { grid-area: order;   display: flex; align-items: center; justify-content: flex-end; padding: 0; }
+    .tdOrder   { grid-area: order;   display: flex; align-items: center; gap: 2px; padding: 0; }
     .tdName    { grid-area: name;    display: flex; align-items: center; padding: 0; }
-    .tdDate    { grid-area: date;    display: flex; align-items: center; padding: 0; font-size: $font-size-xs; }
-    .tdStatus  { grid-area: status;  display: flex; align-items: center; justify-content: flex-end; padding: 0; }
+
+    .tdStatus  {
+      grid-area: status;
+      display: flex;
+      align-items: center;
+      gap: $spacing-xs;
+      padding: 0;
+      font-size: $font-size-sm;
+    }
+
+    .tdCatalog {
+      grid-area: catalog;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: $spacing-xs;
+      padding: 0;
+      font-size: $font-size-xs;
+      color: $color-text-muted;
+      &::before { content: 'В каталоге'; }
+    }
+
+    .tdDate {
+      grid-area: date;
+      display: flex;
+      align-items: center;
+      gap: $spacing-xs;
+      padding: 0;
+      font-size: $font-size-xs;
+      color: $color-text-muted;
+      &::before { content: 'Запуск:'; opacity: 0.6; white-space: nowrap; }
+    }
+
+    .tdCards {
+      grid-area: cards;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: $spacing-xs;
+      padding: 0;
+      font-size: $font-size-xs;
+      color: $color-text-muted;
+      &::before { content: 'Карточек:'; opacity: 0.6; white-space: nowrap; }
+    }
+
     .tdActions {
       grid-area: actions;
       display: flex;
       flex-wrap: wrap;
-      justify-content: flex-start;
       gap: $spacing-xs;
-      padding: $spacing-xs 0 0;
-      margin-top: 2px;
+      padding: $spacing-sm 0 0;
       border-top: 1px solid rgba($color-border, 0.5);
     }
 
+    .trackerDateInput { flex: 1; min-width: 110px; }
+
     .rowDisabled .tdName,
     .rowDisabled .tdDate,
+    .rowDisabled .tdCards,
     .rowDisabled .tdStatus,
     .rowDisabled .tdOrder { opacity: 0.5; }
   }
+}
 
-  .retryGrid { gap: $spacing-sm; }
+// Планшет: две карточки в ряд
+@media (min-width: $bp-md) and (max-width: 1100px) {
+  .table tbody {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+// Телефоны + планшеты: настройки парсинга — каждый параметр со своей строки
+@media (max-width: 1100px) {
+  .retryGrid {
+    flex-direction: column;
+    gap: $spacing-sm;
+
+    .label { justify-content: space-between; }
+    .numInput { width: 80px; }
+  }
+
+  .settingsRow .label { justify-content: space-between; width: 100%; }
+  .settingsRow .numInput { width: 80px; }
 }
 
 // ── Credentials modal ─────────────────────────────────────────────────────────

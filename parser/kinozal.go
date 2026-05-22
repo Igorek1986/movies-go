@@ -93,6 +93,10 @@ func (k *KinozalParser) Parse() {
 	var processed atomic.Int64
 
 	for catID, catInfo := range kinozalCats {
+		if stopRequest.Load() {
+			log.Println("kinozal: stop requested")
+			break
+		}
 		catID, catInfo := catID, catInfo
 		k.parseCategory(catID, catInfo, fullScan, cutoff, &processed)
 	}
@@ -216,7 +220,7 @@ func (k *KinozalParser) buildDetails(item kzItem, catInfo kzCatInfo) *models.Tor
 		Seed:       item.seeds,
 		Peer:       item.peers,
 		CreateDate: item.date,
-		Tracker:    "Kinozal",
+		Tracker:    "kinozal",
 		Link:       "https://kinozal.tv/details.php?id=" + item.torrentID,
 		Hash:       "kz_" + item.torrentID, // pseudo-hash for deduplication; .torrent not publicly downloadable
 		Categories: catInfo.baseCat,

@@ -120,6 +120,7 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Post("/admin/parsers/settings", handleAPIAdminParsersSettings)
 			r.With(requireAdmin).Post("/admin/parsers/run", handleAPIAdminParsersRun)
 			r.With(requireAdmin).Post("/admin/parsers/stop", handleAPIAdminParsersStop)
+			r.With(requireAdmin).Post("/admin/parsers/{name}/run", handleAPIAdminParserTrackerRun)
 			r.With(requireAdmin).Post("/admin/parsers/{name}/reset", handleAPIAdminParserTrackerReset)
 			r.With(requireAdmin).Post("/admin/restart", handleAPIAdminRestart)
 			r.With(requireAdmin).Post("/admin/refresh-card/{card_id}", handleAPIAdminRefreshCard)

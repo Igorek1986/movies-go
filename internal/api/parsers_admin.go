@@ -76,6 +76,7 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 		"order":           orderVal,
 		"running":         parser.IsRunning(),
 		"stop_requested":  parser.IsStopRequested(),
+		"current_tracker": parser.CurrentTracker(),
 		"next_run_at":     nextRunAt,
 		"retry_attempts":  retryAttempts,
 		"retry_base_wait": retryBaseWait,
@@ -170,6 +171,22 @@ func handleAPIAdminParsersStop(w http.ResponseWriter, r *http.Request) {
 	}
 	parser.RequestStop()
 	JSON(w, http.StatusOK, map[string]string{"status": "stop_requested"})
+}
+
+// POST /api/admin/parsers/{name}/run
+func handleAPIAdminParserTrackerRun(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	switch name {
+	case "kinozal", "nnmclub", "rutor":
+	default:
+		Error(w, http.StatusBadRequest, "unknown tracker")
+		return
+	}
+	if !parser.StartOne(name) {
+		JSON(w, http.StatusOK, map[string]string{"status": "already_running"})
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"status": "started"})
 }
 
 // POST /api/admin/parsers/{name}/reset

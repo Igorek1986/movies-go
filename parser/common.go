@@ -61,6 +61,10 @@ func runPageLoop(
 	attempts, baseWait, maxWait, ratio := retryOpts()
 
 	for page := 0; ; page++ {
+		if stopRequest.Load() {
+			log.Printf("%s: stop requested, halting", tracker)
+			return
+		}
 		url := buildURL(page)
 		body, err := fetchBytesRetry(proxy, direct, url, attempts, baseWait, maxWait, ratio)
 		if err != nil {

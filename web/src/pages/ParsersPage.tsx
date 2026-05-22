@@ -16,6 +16,7 @@ interface ParsersData {
   order: string
   running: boolean
   stop_requested: boolean
+  current_tracker: string
   next_run_at: string
   retry_attempts: number
   retry_base_wait: number
@@ -157,6 +158,7 @@ export default function ParsersPage() {
         toast('Парсер уже запущен')
       } else {
         toast('Парсер запущен')
+        setData(prev => prev ? { ...prev, running: true, stop_requested: false } : prev)
         await Promise.all([load(), refreshStatus()])
         startPoll()
       }
@@ -170,7 +172,8 @@ export default function ParsersPage() {
     try {
       await api('/api/admin/parsers/stop')
       toast('Остановка запрошена — парсер завершит текущий трекер')
-      await refreshStatus()
+      setData(prev => prev ? { ...prev, stop_requested: true } : prev)
+      await Promise.all([load(), refreshStatus()])
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : String(e), false)
     }
@@ -181,23 +184,34 @@ export default function ParsersPage() {
     try {
       await api('/api/admin/parsers/settings', 'POST', {
         order: order.join(','),
-        kinozal_enabled: enabled['kinozal'] ?? true,
-        nnmclub_enabled: enabled['nnmclub'] ?? true,
-        rutor_enabled: enabled['rutor'] ?? false,
         overlap_days: overlapDays,
         retry_attempts: retryAttempts,
         retry_base_wait: retryBaseWait,
         retry_max_wait: retryMaxWait,
         retry_ratio: retryRatio,
-        catalog_trackers: [...catalogTrackers].join(','),
       })
-      invalidateCatalogCache()
       toast('Настройки сохранены')
       await load()
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : String(e), false)
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function runTracker(name: string) {
+    try {
+      const r = await api(`/api/admin/parsers/${name}/run`)
+      if (r.status === 'already_running') {
+        toast('Парсер уже запущен')
+      } else {
+        toast(`${TRACKER_LABELS[name] ?? name}: запущен`)
+        setData(prev => prev ? { ...prev, running: true, stop_requested: false, current_tracker: name } : prev)
+        await Promise.all([load(), refreshStatus()])
+        startPoll()
+      }
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
     }
   }
 
@@ -264,15 +278,36 @@ export default function ParsersPage() {
     setOrder(prev => { const a = [...prev]; [a[i], a[i + 1]] = [a[i + 1], a[i]]; return a })
   }
 
-  function toggleEnabled(name: string) {
-    setEnabled(prev => ({ ...prev, [name]: !prev[name] }))
+  async function toggleEnabled(name: string) {
+    const newVal = !(enabled[name] ?? true)
+    setEnabled(prev => ({ ...prev, [name]: newVal }))
+    try {
+      await api('/api/admin/parsers/settings', 'POST', { [`${name}_enabled`]: newVal })
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
+  async function toggleCatalogTracker(name: string, checked: boolean) {
+    const next = new Set(catalogTrackers)
+    if (checked) next.add(name); else next.delete(name)
+    setCatalogTrackers(next)
+    try {
+      await api('/api/admin/parsers/settings', 'POST', { catalog_trackers: [...next].join(',') })
+      invalidateCatalogCache()
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
   }
 
   // Build tracker info map for quick lookup
   const infoMap: Record<string, TrackerStatus> = {}
   for (const p of data?.parsers ?? []) infoMap[p.name] = p
 
-  const { running, stopRequested } = parserStatus
+  // Prefer data from local load() — it's refreshed after every action.
+  // Fall back to the hook's polling state (e.g. before first load completes).
+  const running = data?.running ?? parserStatus.running
+  const stopRequested = data?.stop_requested ?? parserStatus.stopRequested
 
   return (
     <Layout>
@@ -289,7 +324,10 @@ export default function ParsersPage() {
       <div className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Парсеры</h1>
-          <Link to="/admin" className={styles.backLink}>← Назад</Link>
+          <div className={styles.headerLinks}>
+            <Link to="/admin/logs" className={styles.backLink}>Логи</Link>
+            <Link to="/admin" className={styles.backLink}>Назад</Link>
+          </div>
         </div>
 
         {/* Status bar */}
@@ -349,6 +387,7 @@ export default function ParsersPage() {
                 {order.map((name, i) => {
                   const info = infoMap[name]
                   const isEnabled = enabled[name] ?? true
+                  const isCurrentlyRunning = running && data?.current_tracker === name
                   return (
                     <tr key={name} className={!isEnabled ? styles.rowDisabled : undefined}>
                       <td className={styles.tdOrder}>
@@ -359,19 +398,17 @@ export default function ParsersPage() {
                       <td className={styles.tdDate}>{formatDate(info?.last_parsed_at ?? '')}</td>
                       <td className={styles.tdCards}>{data?.tracker_cards?.[name]?.toLocaleString('ru-RU') ?? '—'}</td>
                       <td className={styles.tdStatus}>
-                        <span className={`${styles.dot} ${isEnabled ? styles.dotOn : styles.dotOff}`} />
-                        {isEnabled ? 'Активен' : 'Выключен'}
+                        {isCurrentlyRunning
+                          ? <><span className={`${styles.dot} ${styles.statusDotRunning}`} />Парсится…</>
+                          : <><span className={`${styles.dot} ${isEnabled ? styles.dotOn : styles.dotOff}`} />{isEnabled ? 'Активен' : 'Выключен'}</>
+                        }
                       </td>
                       <td className={styles.tdCatalog}>
                         <input
                           type="checkbox"
                           className={styles.catalogCheck}
                           checked={catalogTrackers.has(name)}
-                          onChange={e => setCatalogTrackers(prev => {
-                            const next = new Set(prev)
-                            if (e.target.checked) next.add(name); else next.delete(name)
-                            return next
-                          })}
+                          onChange={e => toggleCatalogTracker(name, e.target.checked)}
                           title={catalogTrackers.has(name) ? 'Карточки видны в каталоге' : 'Карточки скрыты из каталога'}
                         />
                       </td>
@@ -381,6 +418,14 @@ export default function ParsersPage() {
                           onClick={() => toggleEnabled(name)}
                         >
                           {isEnabled ? 'Выключить' : 'Включить'}
+                        </button>
+                        <button
+                          className={`${styles.btnSm} ${isCurrentlyRunning ? styles.btnSmRunning : styles.btnSmPrimary}`}
+                          onClick={() => runTracker(name)}
+                          disabled={running}
+                          title="Запустить только этот парсер (игнорирует статус включён/выключен)"
+                        >
+                          {isCurrentlyRunning ? 'Идёт…' : 'Запустить'}
                         </button>
                         <button
                           className={styles.btnSm}
@@ -421,6 +466,14 @@ export default function ParsersPage() {
             </table>
           )}
 
+        </div>
+
+        <div className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>Настройки парсинга</h2>
+            <span className={styles.sectionHint}>Применяются после нажатия «Сохранить»</span>
+          </div>
+
           <div className={styles.settingsRow}>
             <label className={styles.label}>
               Перекрытие (дней):
@@ -435,7 +488,7 @@ export default function ParsersPage() {
             </label>
           </div>
 
-          <h2 className={styles.sectionTitle} style={{ marginTop: '1.5rem' }}>Повторные попытки</h2>
+          <h2 className={styles.sectionTitle}>Повторные попытки</h2>
           <p className={styles.hint}>Применяется к листингам Kinozal и NNMClub. Пауза растёт по формуле: base × ratio^n, но не более max.</p>
           <div className={styles.retryGrid}>
             <label className={styles.label}>

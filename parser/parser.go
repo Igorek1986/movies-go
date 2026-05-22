@@ -17,10 +17,19 @@ type Parser interface {
 }
 
 var (
-	runActive    atomic.Bool
-	stopRequest  atomic.Bool
-	nextRunAtVal atomic.Value // stores time.Time
+	runActive      atomic.Bool
+	stopRequest    atomic.Bool
+	nextRunAtVal   atomic.Value // stores time.Time
+	currentTracker atomic.Value // stores string, "" when idle
 )
+
+// CurrentTracker returns the name of the tracker being parsed right now, or "".
+func CurrentTracker() string {
+	if v := currentTracker.Load(); v != nil {
+		return v.(string)
+	}
+	return ""
+}
 
 // SetNextRunAt stores the scheduled time of the next RunAll call.
 func SetNextRunAt(t time.Time) { nextRunAtVal.Store(t) }
@@ -42,6 +51,37 @@ func IsRunning() bool { return runActive.Load() }
 // IsStopRequested reports whether a stop has been requested.
 func IsStopRequested() bool { return stopRequest.Load() }
 
+// StartOne claims the run slot and launches a single named tracker in a goroutine.
+// Returns false if a run is already in progress or the name is unknown.
+// The CAS is done synchronously so IsRunning() returns true before the caller responds.
+func StartOne(name string) bool {
+	all := map[string]Parser{
+		"kinozal": NewKinozal(),
+		"nnmclub": NewNNMClub(),
+		"rutor":   NewRutor(),
+	}
+	p, ok := all[name]
+	if !ok {
+		log.Printf("parser: unknown tracker %q", name)
+		return false
+	}
+	if !runActive.CompareAndSwap(false, true) {
+		return false
+	}
+	stopRequest.Store(false)
+	currentTracker.Store(name)
+	go func() {
+		defer func() {
+			currentTracker.Store("")
+			runActive.Store(false)
+			log.Printf("parser: ■ %s завершён", name)
+		}()
+		log.Printf("parser: ▶ запуск %s (single)", name)
+		p.Parse()
+	}()
+	return true
+}
+
 // RunAll runs all enabled parsers in the configured order.
 // It is a no-op if a run is already in progress.
 func RunAll() {
@@ -52,6 +92,7 @@ func RunAll() {
 	stopRequest.Store(false)
 	log.Println("parser: ▶ запуск")
 	defer func() {
+		currentTracker.Store("")
 		runActive.Store(false)
 		log.Println("parser: ■ остановлен")
 	}()
@@ -99,6 +140,7 @@ func RunAll() {
 			continue
 		}
 		log.Printf("parser: starting %s", name)
+		currentTracker.Store(name)
 		p.Parse()
 	}
 	log.Println("parser: RunAll complete")

@@ -13,6 +13,37 @@
   color: $color-text;
 }
 
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+}
+
+.headerNav {
+  display: flex;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.navBtn {
+  height: 32px;
+  padding: 0 $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover { border-color: $color-primary; color: $color-primary; }
+}
+
 .section {
   @include card;
   display: flex;
