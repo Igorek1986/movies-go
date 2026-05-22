@@ -54,6 +54,17 @@ func main() {
 	setupProxy(cfg)
 	db.Init()
 
+	// Записываем дефолты только если ключа ещё нет в БД
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		for key, val := range store.SettingDefaults {
+			if _, ok := store.GetSetting(ctx, key); !ok {
+				store.SetSetting(ctx, key, val)
+			}
+		}
+		cancel()
+	}
+
 	mode := "parser"
 	{
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

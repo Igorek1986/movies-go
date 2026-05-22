@@ -87,6 +87,8 @@ var SettingDefaults = map[string]string{
 	"movies_new_min_quality": "200",
 	// Run mode
 	"app_mode": "parser",
+	// Security
+	"banned_patterns": "bylampa",
 	// Legal
 	"site_name":              "NUMParser",
 	"contact_email":          "",

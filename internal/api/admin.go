@@ -1,6 +1,9 @@
 package api
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"movies-api/config"
@@ -13,10 +16,59 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 )
+
+// ─── Parser-mode admin session ────────────────────────────────────────────────
+
+var parserSession struct {
+	sync.Mutex
+	token string
+}
+
+func newParserToken() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func setParserSession(w http.ResponseWriter) {
+	tok := newParserToken()
+	parserSession.Lock()
+	parserSession.token = tok
+	parserSession.Unlock()
+	http.SetCookie(w, &http.Cookie{
+		Name:     "parser_admin",
+		Value:    tok,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func checkParserSession(r *http.Request) bool {
+	c, err := r.Cookie("parser_admin")
+	if err != nil {
+		return false
+	}
+	parserSession.Lock()
+	tok := parserSession.token
+	parserSession.Unlock()
+	return tok != "" && c.Value == tok
+}
+
+func requireParserAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !checkParserSession(r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -797,117 +849,289 @@ func handleAPIAdminRestart(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
-// GET /admin — parser-mode only: simple mode-switch page
+// GET /admin — parser-mode only
 func handleParserModeAdmin(w http.ResponseWriter, r *http.Request) {
-	msg := ""
-	if r.URL.Query().Get("err") == "1" {
-		msg = `<p class="msg err">Неверный логин или пароль</p>`
-	}
-
-	html := fmt.Sprintf(`<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Настройки</title>
-<style>
-body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;
-     min-height:100vh;margin:0;background:#111;color:#eee}
-form{background:#1a1a1a;padding:2rem;border-radius:8px;width:320px;
-     display:flex;flex-direction:column;gap:1rem}
-h2{margin:0;font-size:1.1rem;text-align:center;color:#ccc}
-p.mode{margin:0;text-align:center;font-size:.9rem;color:#aaa}
-label{font-size:.85rem;color:#aaa;margin-bottom:-0.5rem}
-input{width:100%%;padding:.5rem;border-radius:4px;border:1px solid #333;
-      background:#222;color:#eee;font-size:1rem;box-sizing:border-box}
-button{padding:.65rem;border-radius:4px;border:none;background:#4a90e2;
-       color:#fff;font-size:1rem;cursor:pointer;margin-top:.25rem}
-button:hover{background:#357abd}
-.msg{padding:.5rem;border-radius:4px;text-align:center;font-size:.875rem}
-.err{background:#3a1a1a;color:#f44336}
-</style>
-</head>
-<body>
-<form method="POST" action="/admin">
-  <h2>Переключить в режим all</h2>
-  <p class="mode">Текущий режим: <strong>parser</strong></p>
-  %s
-  <input type="hidden" name="mode" value="all">
-  <label>Логин</label>
-  <input type="text" name="username" required autocomplete="username">
-  <label>Пароль</label>
-  <input type="password" name="password" required autocomplete="current-password">
-  <button type="submit">Включить полный режим и перезапустить</button>
-</form>
-</body>
-</html>`, msg)
-
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(html)) //nolint:errcheck
+	if !checkParserSession(r) {
+		errMsg := ""
+		if r.URL.Query().Get("err") == "1" {
+			errMsg = `<p class="err">Неверный логин или пароль</p>`
+		}
+		fmt.Fprintf(w, parserLoginHTML, errMsg) //nolint:errcheck
+		return
+	}
+	w.Write([]byte(parserAdminHTML)) //nolint:errcheck
 }
 
-// POST /admin — parser-mode only: save mode and restart
-func handleParserModeAdminSave(w http.ResponseWriter, r *http.Request) {
+// POST /admin/login — parser-mode only: verify credentials, set session
+func handleParserModeLogin(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Redirect(w, r, "/admin?err=1", http.StatusSeeOther)
 		return
 	}
-
-	username := r.FormValue("username")
-	password := r.FormValue("password")
 	cfg := config.Get()
 	if cfg.SuperUsername == "" || cfg.SuperPassword == "" ||
-		username != cfg.SuperUsername || password != cfg.SuperPassword {
+		r.FormValue("username") != cfg.SuperUsername ||
+		r.FormValue("password") != cfg.SuperPassword {
 		http.Redirect(w, r, "/admin?err=1", http.StatusSeeOther)
 		return
 	}
+	setParserSession(w)
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
 
+// POST /admin/mode — parser-mode only: switch mode and restart
+func handleParserModeSwitch(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
 	mode := r.FormValue("mode")
 	if mode != "all" {
 		mode = "parser"
 	}
 	store.SetSetting(r.Context(), "app_mode", mode)
-
-	html := `<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Перезапуск</title>
-<style>
-body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;
-     min-height:100vh;margin:0;background:#111;color:#eee;text-align:center}
-p{color:#aaa;font-size:.95rem}
-</style>
-</head>
-<body>
-<div>
-  <p id="msg">Настройки сохранены. Сервис перезапускается…</p>
-</div>
-<script>
-(function(){
-  var attempts = 0;
-  function poll(){
-    fetch('/health').then(function(r){
-      if(r.ok){ window.location.href='/admin'; }
-      else{ retry(); }
-    }).catch(function(){ retry(); });
-  }
-  function retry(){
-    attempts++;
-    if(attempts > 60){ document.getElementById('msg').textContent='Сервис не отвечает, проверьте вручную.'; return; }
-    setTimeout(poll, 1500);
-  }
-  setTimeout(poll, 2000);
-})();
-</script>
-</body>
-</html>`
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(html)) //nolint:errcheck
-
+	w.Write([]byte(parserRestartHTML)) //nolint:errcheck
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		os.Exit(0)
 	}()
+}
+
+var parserLoginHTML = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Админ</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;
+     min-height:100vh;margin:0;background:#111;color:#eee}
+form{background:#1a1a1a;padding:2rem;border-radius:8px;width:320px;display:flex;flex-direction:column;gap:.875rem}
+h2{margin:0;font-size:1rem;text-align:center;color:#ccc}
+label{font-size:.8rem;color:#aaa;margin-bottom:-4px}
+input[type=text],input[type=password]{width:100%%;padding:.5rem;border-radius:4px;border:1px solid #333;
+  background:#222;color:#eee;font-size:1rem}
+button{padding:.6rem;border-radius:4px;border:none;background:#4a90e2;color:#fff;font-size:.95rem;cursor:pointer}
+button:hover{background:#357abd}
+.err{background:#3a1a1a;color:#f44336;padding:.5rem;border-radius:4px;text-align:center;font-size:.85rem}
+</style>
+</head>
+<body>
+<form method="POST" action="/admin/login">
+  <h2>Вход в панель управления</h2>
+  %s
+  <label>Логин</label>
+  <input type="text" name="username" required autocomplete="username">
+  <label>Пароль</label>
+  <input type="password" name="password" required autocomplete="current-password">
+  <button type="submit">Войти</button>
+</form>
+</body></html>`
+
+var parserAdminHTML = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Админ (parser)</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:system-ui,sans-serif;margin:0;background:#111;color:#eee;padding:2rem 1rem}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:1.5rem}
+h1{margin:0;font-size:1.1rem;color:#ccc}
+section{background:#1a1a1a;border-radius:8px;padding:1.5rem;display:flex;flex-direction:column;gap:1rem}
+h2{margin:0;font-size:.95rem;color:#bbb;border-bottom:1px solid #2a2a2a;padding-bottom:.5rem}
+label{font-size:.82rem;color:#aaa}
+.row{display:flex;gap:.5rem;align-items:center}
+select,input[type=text]{flex:1;padding:.45rem .6rem;border-radius:4px;border:1px solid #333;
+  background:#222;color:#eee;font-size:.9rem}
+.btn{padding:.45rem 1rem;border-radius:4px;border:none;font-size:.9rem;cursor:pointer;white-space:nowrap}
+.btn-primary{background:#4a90e2;color:#fff}.btn-primary:hover{background:#357abd}
+.btn-danger{background:#c0392b;color:#fff}.btn-danger:hover{background:#a93226}
+.btn-ghost{background:#2a2a2a;color:#ccc}.btn-ghost:hover{background:#333}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{display:inline-flex;align-items:center;gap:4px;background:#c0392b;color:#fff;
+     border-radius:4px;padding:3px 8px;font-size:.8rem}
+.tag button{background:none;border:none;color:#fff;cursor:pointer;padding:0 2px;line-height:1;font-size:.9rem}
+.empty{color:#555;font-size:.82rem}
+#status{font-size:.82rem;color:#4a90e2;min-height:1.2em}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Панель управления <span style="color:#555;font-size:.8rem">(режим: parser)</span></h1>
+
+  <section>
+    <h2>Режим работы</h2>
+    <form method="POST" action="/admin/mode" onsubmit="return confirmMode()">
+      <div class="row">
+        <select name="mode" id="modeSelect">
+          <option value="parser">parser — только парсер</option>
+          <option value="all">all — полный режим (веб + авторизация)</option>
+        </select>
+        <button type="submit" class="btn btn-primary">Сохранить и перезапустить</button>
+      </div>
+    </form>
+  </section>
+
+  <section>
+    <h2>Заблокированные домены</h2>
+    <div class="row">
+      <input type="text" id="patInput" placeholder="example.ru example — через пробел или запятую. example заблокирует всё содержащее это слово"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();addPat()}">
+      <button class="btn btn-primary" onclick="addPat()">Добавить</button>
+    </div>
+    <div id="tags" class="tags"><span class="empty">Загрузка…</span></div>
+    <div id="status"></div>
+    <div id="clearWrap" style="display:none">
+      <button class="btn btn-ghost" onclick="clearAll()">Очистить список</button>
+    </div>
+  </section>
+</div>
+
+<script>
+function confirmMode(){
+  var m=document.getElementById('modeSelect').value;
+  return confirm('Переключить в режим "'+m+'" и перезапустить?');
+}
+
+var list=[];
+function render(){
+  var t=document.getElementById('tags');
+  var cw=document.getElementById('clearWrap');
+  if(!list.length){t.innerHTML='<span class="empty">Список пуст</span>';cw.style.display='none';return;}
+  cw.style.display='';
+  t.innerHTML=list.map(function(p){
+    return '<span class="tag">'+p+'<button onclick="delPat(\''+p+'\')">×</button></span>';
+  }).join('');
+}
+function setStatus(msg,err){
+  var s=document.getElementById('status');
+  s.style.color=err?'#e74c3c':'#4a90e2';
+  s.textContent=msg;
+  if(!err)setTimeout(function(){s.textContent=''},2000);
+}
+function loadPats(){
+  fetch('/api/admin/banned-patterns').then(function(r){return r.json();}).then(function(d){list=d;render();}).catch(function(){setStatus('Ошибка загрузки',true);});
+}
+function addPat(){
+  var v=document.getElementById('patInput').value.trim();
+  if(!v)return;
+  fetch('/api/admin/banned-patterns',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({patterns:v})})
+    .then(function(r){return r.json();}).then(function(d){list=d;render();document.getElementById('patInput').value='';setStatus('Добавлено');})
+    .catch(function(){setStatus('Ошибка',true);});
+}
+function delPat(p){
+  if(!confirm('Удалить «'+p+'»?'))return;
+  fetch('/api/admin/banned-patterns',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({pattern:p})})
+    .then(function(r){return r.json();}).then(function(d){list=d;render();setStatus('Удалено');})
+    .catch(function(){setStatus('Ошибка',true);});
+}
+function clearAll(){
+  if(!confirm('Очистить весь список?'))return;
+  Promise.all(list.map(function(p){
+    return fetch('/api/admin/banned-patterns',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({pattern:p})});
+  })).then(function(){list=[];render();setStatus('Список очищен');}).catch(function(){setStatus('Ошибка',true);});
+}
+loadPats();
+</script>
+</body></html>`
+
+var parserRestartHTML = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Перезапуск</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;
+     min-height:100vh;margin:0;background:#111;color:#eee;text-align:center}p{color:#aaa}</style>
+</head>
+<body>
+<div><p id="msg">Настройки сохранены. Сервис перезапускается…</p></div>
+<script>
+(function(){var n=0;function poll(){fetch('/health').then(function(r){if(r.ok){window.location.href='/admin';}else retry();}).catch(retry);}
+function retry(){if(++n>60){document.getElementById('msg').textContent='Сервис не отвечает, проверьте вручную.';return;}setTimeout(poll,1500);}
+setTimeout(poll,2000);})();
+</script>
+</body></html>`
+
+// ─── Banned patterns ──────────────────────────────────────────────────────────
+
+func loadBannedList(ctx context.Context) []string {
+	val, _ := store.GetSetting(ctx, "banned_patterns")
+	var list []string
+	for _, line := range strings.Split(val, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			list = append(list, line)
+		}
+	}
+	return list
+}
+
+func saveBannedList(ctx context.Context, list []string) {
+	store.SetSetting(ctx, "banned_patterns", strings.Join(list, "\n"))
+	invalidateBannedCache()
+}
+
+// GET /api/admin/banned-patterns
+func handleAPIAdminBannedGet(w http.ResponseWriter, r *http.Request) {
+	list := loadBannedList(r.Context())
+	if list == nil {
+		list = []string{}
+	}
+	JSON(w, http.StatusOK, list)
+}
+
+// POST /api/admin/banned-patterns  {"patterns": "lampa.mx cub.red"}
+func handleAPIAdminBannedAdd(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Patterns string `json:"patterns"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Patterns == "" {
+		Error(w, http.StatusBadRequest, "patterns required")
+		return
+	}
+	parts := strings.FieldsFunc(body.Patterns, func(c rune) bool {
+		return c == ' ' || c == ',' || c == ';' || c == '\n' || c == '\t'
+	})
+	existing := loadBannedList(r.Context())
+	set := make(map[string]struct{}, len(existing))
+	for _, p := range existing {
+		set[p] = struct{}{}
+	}
+	for _, p := range parts {
+		p = strings.ToLower(strings.TrimSpace(p))
+		if p != "" {
+			if _, dup := set[p]; !dup {
+				existing = append(existing, p)
+				set[p] = struct{}{}
+			}
+		}
+	}
+	saveBannedList(r.Context(), existing)
+	JSON(w, http.StatusOK, existing)
+}
+
+// DELETE /api/admin/banned-patterns  {"pattern": "lampa.mx"}
+func handleAPIAdminBannedDelete(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Pattern string `json:"pattern"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Pattern == "" {
+		Error(w, http.StatusBadRequest, "pattern required")
+		return
+	}
+	list := loadBannedList(r.Context())
+	filtered := list[:0]
+	for _, p := range list {
+		if p != body.Pattern {
+			filtered = append(filtered, p)
+		}
+	}
+	saveBannedList(r.Context(), filtered)
+	if filtered == nil {
+		filtered = []string{}
+	}
+	JSON(w, http.StatusOK, filtered)
 }

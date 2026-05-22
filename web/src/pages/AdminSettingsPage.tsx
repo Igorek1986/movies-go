@@ -1,7 +1,106 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import styles from './AdminSettingsPage.module.scss'
+
+function BannedPatterns() {
+  const [list, setList] = useState<string[]>([])
+  const [input, setInput] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/banned-patterns').then(r => r.json()).then(setList).catch(() => {})
+  }, [])
+
+  async function handleAdd() {
+    const val = input.trim()
+    if (!val) return
+    const r = await fetch('/api/admin/banned-patterns', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patterns: val }),
+    })
+    if (r.ok) { setList(await r.json()); setInput('') }
+    inputRef.current?.focus()
+  }
+
+  async function handleDelete(pattern: string) {
+    if (!confirm(`Удалить «${pattern}»?`)) return
+    const r = await fetch('/api/admin/banned-patterns', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pattern }),
+    })
+    if (r.ok) setList(await r.json())
+  }
+
+  async function handleClearAll() {
+    if (!confirm('Очистить весь список заблокированных доменов?')) return
+    for (const p of list) {
+      await fetch('/api/admin/banned-patterns', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pattern: p }),
+      })
+    }
+    setList([])
+  }
+
+  return (
+    <details open>
+      <summary className={styles.groupSummary}>
+        <span className={styles.groupName}>Безопасность — заблокированные домены</span>
+        <span className={styles.groupArrow}>▶</span>
+      </summary>
+      <div className={styles.groupBody} style={{ gridColumn: '1 / -1' }}>
+        <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              ref={inputRef}
+              type="text"
+              className={styles.rowInput}
+              placeholder="example.ru example — через пробел или запятую. example заблокирует всё содержащее это слово"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAdd())}
+              autoComplete="off"
+            />
+            <button type="button" className={styles.btnSave} style={{ whiteSpace: 'nowrap' }} onClick={handleAdd}>
+              Добавить
+            </button>
+          </div>
+          {list.length === 0 ? (
+            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Список пуст</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {list.map(p => (
+                  <span key={p} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    background: 'var(--color-danger, #c0392b)', color: '#fff',
+                    borderRadius: '4px', padding: '3px 8px', fontSize: '0.82rem',
+                  }}>
+                    {p}
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(p)}
+                      style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
+                    >×</button>
+                  </span>
+                ))}
+              </div>
+              <div>
+                <button type="button" className={styles.btnReset} onClick={handleClearAll}>
+                  Очистить список
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </details>
+  )
+}
 
 // ── Schema (mirrors Go settingsGroupDefs / settingLabels) ─────────────────────
 
@@ -334,6 +433,8 @@ export default function AdminSettingsPage() {
                 </div>
               </details>
             ))}
+
+            <BannedPatterns />
 
             <div className={styles.footer}>
               <button type="button" className={styles.btnReset} onClick={handleReset}>

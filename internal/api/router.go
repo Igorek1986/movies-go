@@ -18,11 +18,13 @@ func NewRouter(mode string) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
 	r.Use(corsMiddleware)
+	r.Use(bannedOriginsMiddleware)
 	r.Use(gzipMiddleware)
 	r.Use(servePlugins)
 
 	// ── Общие маршруты (parser + all) ───────────────────────────────────────
 	r.Get("/health", handleHealth)
+	r.Get("/blocked.png", handleBlockedImage)
 	r.Get("/imgproxy/*", handleImgProxy)
 
 	// Content API
@@ -123,6 +125,10 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Post("/admin/parsers/{name}/run", handleAPIAdminParserTrackerRun)
 			r.With(requireAdmin).Post("/admin/parsers/{name}/reset", handleAPIAdminParserTrackerReset)
 			r.With(requireAdmin).Post("/admin/restart", handleAPIAdminRestart)
+			r.With(requireAdmin).Get("/admin/banned-patterns", handleAPIAdminBannedGet)
+			r.With(requireAdmin).Post("/admin/banned-patterns", handleAPIAdminBannedAdd)
+			r.With(requireAdmin).Delete("/admin/banned-patterns", handleAPIAdminBannedDelete)
+
 			r.With(requireAdmin).Post("/admin/refresh-card/{card_id}", handleAPIAdminRefreshCard)
 			r.With(requireAdmin).Get("/admin/logs", handleAPIAdminLogsStream)
 			r.With(requireAdmin).Get("/admin/logs/day", handleAPIAdminLogsDay)
@@ -139,10 +145,16 @@ func NewRouter(mode string) http.Handler {
 	})
 
 	if mode != "all" {
+		r.Route("/api/admin", func(r chi.Router) {
+			r.Use(requireParserAdmin)
+			r.Get("/banned-patterns", handleAPIAdminBannedGet)
+			r.Post("/banned-patterns", handleAPIAdminBannedAdd)
+			r.Delete("/banned-patterns", handleAPIAdminBannedDelete)
+		})
 		r.Get("/admin", handleParserModeAdmin)
 		r.Get("/admin/", handleParserModeAdmin)
-		r.Post("/admin", handleParserModeAdminSave)
-		r.Post("/admin/", handleParserModeAdminSave)
+		r.Post("/admin/login", handleParserModeLogin)
+		r.Post("/admin/mode", handleParserModeSwitch)
 		return r
 	}
 
