@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"movies-api/db/store"
 	"movies-api/parser"
@@ -76,8 +77,9 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 		"retry_base_wait": retryBaseWait,
 		"retry_max_wait":  retryMaxWait,
 		"retry_ratio":     retryRatio,
-		"kinozal_login":   kinozalLogin,
+		"kinozal_login":    kinozalLogin,
 		"kinozal_password": kinozalPassword,
+		"tracker_cards":   store.CountCardsByTracker(),
 	})
 }
 
@@ -162,12 +164,27 @@ func handleAPIAdminParsersStop(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/admin/parsers/{name}/reset
+// Body (optional): {"date":"2024-01-15"} — set to date; omit to reset (full scan).
 func handleAPIAdminParserTrackerReset(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	switch name {
 	case "kinozal", "nnmclub", "rutor":
 	default:
 		Error(w, http.StatusBadRequest, "unknown tracker")
+		return
+	}
+	var body struct {
+		Date string `json:"date"`
+	}
+	json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
+	if body.Date != "" {
+		t, err := time.Parse("2006-01-02", body.Date)
+		if err != nil || t.IsZero() {
+			Error(w, http.StatusBadRequest, "неверная дата")
+			return
+		}
+		store.SetLastParsedAtTimeFor(name, t)
+		JSON(w, http.StatusOK, map[string]any{"status": "ok", "tracker": name, "date": t.Format("2006-01-02")})
 		return
 	}
 	store.ResetLastParsedAtFor(name)

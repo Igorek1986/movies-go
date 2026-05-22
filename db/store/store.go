@@ -67,20 +67,51 @@ func TorrentStatus(hash string) (cached bool, cardID string) {
 	return true, *id
 }
 
-// CacheTorrent records a processed torrent hash with its linked card (empty if not found).
-// On conflict: only upgrades card_id from NULL → real value, never clears it.
-func CacheTorrent(hash, cardID string) {
+// CacheTorrent records a processed torrent hash with its linked card and tracker.
+// On conflict: only upgrades card_id/tracker from NULL → real value, never clears them.
+func CacheTorrent(hash, cardID, tracker string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	var id *string
 	if cardID != "" {
 		id = &cardID
 	}
+	var tr *string
+	if tracker != "" {
+		tr = &tracker
+	}
 	postgres.Pool.Exec(ctx, //nolint:errcheck
-		`INSERT INTO torrents (hash, card_id) VALUES ($1, $2)
-		 ON CONFLICT (hash) DO UPDATE SET card_id = COALESCE(torrents.card_id, EXCLUDED.card_id)`,
-		hash, id,
+		`INSERT INTO torrents (hash, card_id, tracker) VALUES ($1, $2, $3)
+		 ON CONFLICT (hash) DO UPDATE SET
+		   card_id = COALESCE(torrents.card_id, EXCLUDED.card_id),
+		   tracker = COALESCE(torrents.tracker, EXCLUDED.tracker)`,
+		hash, id, tr,
 	)
+}
+
+// CountCardsByTracker returns the number of distinct linked cards per tracker.
+func CountCardsByTracker() map[string]int {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT tracker, COUNT(DISTINCT card_id)
+		 FROM torrents
+		 WHERE tracker IS NOT NULL AND card_id IS NOT NULL
+		 GROUP BY tracker`,
+	)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	result := map[string]int{}
+	for rows.Next() {
+		var tr string
+		var cnt int
+		if rows.Scan(&tr, &cnt) == nil {
+			result[tr] = cnt
+		}
+	}
+	return result
 }
 
 // ─── Parse timestamp ──────────────────────────────────────────────────────────

@@ -16,7 +16,6 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/text/encoding/charmap"
-	"movies-api/config"
 	"movies-api/db/models"
 	"movies-api/db/store"
 	"movies-api/releases"
@@ -110,11 +109,6 @@ func (k *KinozalParser) login() error {
 	login, _ := store.GetSetting(context.Background(), "kinozal_login")
 	password, _ := store.GetSetting(context.Background(), "kinozal_password")
 	if login == "" {
-		cfg := config.Get()
-		login = cfg.KinozalLogin
-		password = cfg.KinozalPassword
-	}
-	if login == "" {
 		return errors.New("Kinozal: логин не задан (укажите в настройках парсеров)")
 	}
 	form := url.Values{
@@ -152,7 +146,7 @@ func (k *KinozalParser) parseCategory(catID string, catInfo kzCatInfo, fullScan 
 				processed.Add(1)
 				d := k.buildDetails(item, catInfo)
 				if d.Categories == models.CatTVShow {
-					store.CacheTorrent(d.Hash, "")
+					store.CacheTorrent(d.Hash, "", "kinozal")
 					continue
 				}
 				isMovie := d.Categories == models.CatMovie ||

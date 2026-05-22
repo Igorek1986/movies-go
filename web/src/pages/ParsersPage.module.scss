@@ -126,6 +126,7 @@
 .tdOrder { white-space: nowrap; }
 .tdName  { font-weight: 500; }
 .tdDate  { color: $color-text-muted; white-space: nowrap; }
+.tdCards { color: $color-text-muted; white-space: nowrap; text-align: right; }
 
 .tdStatus {
   display: flex;
@@ -221,6 +222,19 @@
 
 .btnSmWarn { &:hover { border-color: $color-warning; color: $color-warning; } }
 .btnSmOk   { &:hover { border-color: $color-success; color: $color-success; } }
+
+.trackerDateInput {
+  height: 28px;
+  padding: 0 $spacing-xs;
+  background: $color-bg-input;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  color: $color-text;
+  font-size: $font-size-xs;
+  cursor: pointer;
+
+  &:focus { outline: none; border-color: $color-primary; }
+}
 
 // ── Settings row ──────────────────────────────────────────────────────────────
 
@@ -487,15 +501,38 @@
   &:focus { outline: none; border-color: $color-primary; }
 }
 
+.passwordWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  .modalInput { padding-right: 90px; }
+}
+
+.passwordToggle {
+  position: absolute;
+  right: $spacing-sm;
+  background: none;
+  border: none;
+  color: $color-text-muted;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+
+  &:hover { color: $color-text; }
+}
+
 .modalFooter {
   display: flex;
   justify-content: flex-end;
   gap: $spacing-sm;
   padding-top: $spacing-xs;
 
-  .btnPrimary {
+  .btn {
     flex: 1;
     height: 40px;
     font-size: $font-size-base;
+    justify-content: center;
   }
 }

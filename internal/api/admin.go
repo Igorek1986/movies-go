@@ -683,23 +683,6 @@ func handleAPIAdminRefreshCard(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func handleAPIAdminParserReset(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Date string `json:"date"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		Error(w, http.StatusBadRequest, "bad request")
-		return
-	}
-	t, err := time.Parse("2006-01-02", body.Date)
-	if err != nil || t.IsZero() {
-		Error(w, http.StatusBadRequest, "неверная дата")
-		return
-	}
-	store.SetLastParsedAtTime(t)
-	JSON(w, http.StatusOK, map[string]string{"status": "ok", "date": t.Format("2006-01-02")})
-}
-
 // ─── Admin settings ───────────────────────────────────────────────────────────
 
 // textareaKeys and checkboxKeys mirror FastAPI TEXTAREA_KEYS / CHECKBOX_KEYS.

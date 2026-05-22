@@ -18,14 +18,14 @@ func Enrich(label string, isMovie bool, t *models.TorrentDetails) bool {
 		}
 	}
 	if md == nil {
-		store.CacheTorrent(t.Hash, "")
+		store.CacheTorrent(t.Hash, "", t.Tracker)
 		log.Printf("%s: not found in TMDB: %s", label, t.Title)
 		return false
 	}
 	md.SetTorrent(t)
 	store.UpsertMediaCard(md, t)
 	cardID := fmt.Sprintf("%d_%s", md.ID, md.MediaType)
-	store.CacheTorrent(t.Hash, cardID)
+	store.CacheTorrent(t.Hash, cardID, t.Tracker)
 	log.Printf("%s: enriched: %s", label, t.Title)
 	return true
 }

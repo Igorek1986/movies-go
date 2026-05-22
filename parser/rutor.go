@@ -133,7 +133,7 @@ func (self *RutorParser) Parse() {
 					processed.Add(1)
 					// Sports/news/humor (CatTVShow) are never in TMDB — skip enrichment.
 					if d.Categories == models.CatTVShow {
-						store.CacheTorrent(d.Hash, "")
+						store.CacheTorrent(d.Hash, "", "rutor")
 						continue
 					}
 					isMovie := d.Categories == models.CatMovie ||

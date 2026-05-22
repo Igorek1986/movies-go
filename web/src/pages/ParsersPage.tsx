@@ -22,6 +22,7 @@ interface ParsersData {
   retry_ratio: string
   kinozal_login: string
   kinozal_password: string
+  tracker_cards: Record<string, number>
 }
 
 interface Toast {
@@ -60,8 +61,10 @@ export default function ParsersPage() {
   const [retryBaseWait, setRetryBaseWait] = useState(30)
   const [retryMaxWait, setRetryMaxWait] = useState(120)
   const [retryRatio, setRetryRatio] = useState('2.0')
+  const [trackerDates, setTrackerDates] = useState<Record<string, string>>({})
   const [credModal, setCredModal] = useState<{ tracker: string; login: string; password: string } | null>(null)
   const [credSaving, setCredSaving] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -85,6 +88,15 @@ export default function ParsersPage() {
     const map: Record<string, boolean> = {}
     for (const p of d.parsers) map[p.name] = p.enabled
     setEnabled(map)
+
+    setTrackerDates(prev => {
+      const next = { ...prev }
+      for (const p of d.parsers) {
+        if (!next[p.name] && p.last_parsed_at)
+          next[p.name] = p.last_parsed_at.split('T')[0]
+      }
+      return next
+    })
 
     if (d.retry_attempts) setRetryAttempts(d.retry_attempts)
     if (d.retry_base_wait) setRetryBaseWait(d.retry_base_wait)
@@ -191,9 +203,23 @@ export default function ParsersPage() {
     }
   }
 
+  async function setTrackerDate(name: string) {
+    const date = trackerDates[name]
+    if (!date) return
+    try {
+      await api(`/api/admin/parsers/${name}/reset`, 'POST', { date })
+      toast(`${TRACKER_LABELS[name] ?? name}: дата установлена`)
+      setTrackerDates(d => ({ ...d, [name]: date }))
+      await load()
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
   const CRED_TRACKERS = new Set(['kinozal'])
 
   function openCredModal(name: string) {
+    setShowPassword(false)
     setCredModal({
       tracker: name,
       login: data?.kinozal_login ?? '',
@@ -304,6 +330,7 @@ export default function ParsersPage() {
                   <th className={styles.thOrder}>Порядок</th>
                   <th>Трекер</th>
                   <th>Последний запуск</th>
+                  <th>Карточек</th>
                   <th>Статус</th>
                   <th></th>
                 </tr>
@@ -320,6 +347,7 @@ export default function ParsersPage() {
                       </td>
                       <td className={styles.tdName}>{TRACKER_LABELS[name] ?? name}</td>
                       <td className={styles.tdDate}>{formatDate(info?.last_parsed_at ?? '')}</td>
+                      <td className={styles.tdCards}>{data?.tracker_cards?.[name]?.toLocaleString('ru-RU') ?? '—'}</td>
                       <td className={styles.tdStatus}>
                         <span className={`${styles.dot} ${isEnabled ? styles.dotOn : styles.dotOff}`} />
                         {isEnabled ? 'Активен' : 'Выключен'}
@@ -336,7 +364,22 @@ export default function ParsersPage() {
                           onClick={() => resetTracker(name)}
                           title="Сбросить дату — следующий запуск выполнит полное сканирование"
                         >
-                          Сбросить дату
+                          Сбросить
+                        </button>
+                        <input
+                          type="date"
+                          className={styles.trackerDateInput}
+                          value={trackerDates[name] ?? ''}
+                          onChange={e => setTrackerDates(d => ({ ...d, [name]: e.target.value }))}
+                          onClick={e => (e.currentTarget as HTMLInputElement).showPicker?.()}
+                        />
+                        <button
+                          className={styles.btnSm}
+                          onClick={() => setTrackerDate(name)}
+                          disabled={!trackerDates[name]}
+                          title="Парсер остановится на этой дате с учётом перекрытия дней"
+                        >
+                          Установить
                         </button>
                         {CRED_TRACKERS.has(name) && (
                           <button
@@ -420,7 +463,6 @@ export default function ParsersPage() {
             </div>
             <form
               className={styles.modalForm}
-              autoComplete="on"
               onSubmit={e => { e.preventDefault(); saveCredentials() }}
             >
               <label className={styles.modalLabel}>
@@ -431,20 +473,42 @@ export default function ParsersPage() {
                   className={styles.modalInput}
                   value={credModal.login}
                   onChange={e => setCredModal(m => m && { ...m, login: e.target.value })}
-                  autoComplete="username"
+                  autoComplete="off"
+                  data-bwignore
+                  data-lpignore="true"
+                  data-1p-ignore
                   autoFocus
                 />
               </label>
               <label className={styles.modalLabel}>
                 Пароль
-                <input
-                  type="password"
-                  name="password"
-                  className={styles.modalInput}
-                  value={credModal.password}
-                  onChange={e => setCredModal(m => m && { ...m, password: e.target.value })}
-                  autoComplete="current-password"
-                />
+                <div className={styles.passwordWrap}>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    className={styles.modalInput}
+                    value={credModal.password}
+                    onChange={e => setCredModal(m => m && { ...m, password: e.target.value })}
+                    autoComplete="current-password"
+                    data-bwignore
+                    data-lpignore="true"
+                    data-1p-ignore
+                  />
+                  <button type="button" className={styles.passwordToggle} onClick={() => setShowPassword(s => !s)} tabIndex={-1}>
+                    {showPassword ? (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                      </svg>
+                    ) : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </label>
               <div className={styles.modalFooter}>
                 <button type="button" className={styles.btn} onClick={() => setCredModal(null)}>Отмена</button>

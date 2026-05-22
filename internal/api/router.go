@@ -116,7 +116,6 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Post("/admin/fix-runtime", handleAPIAdminFixRuntime)
 			r.With(requireAdmin).Post("/admin/fix-runtime/stop", handleAPIAdminFixRuntimeStop)
 			r.With(requireAdmin).Get("/admin/fix-runtime/status", handleAPIAdminFixRuntimeStatus)
-			r.With(requireAdmin).Post("/admin/parser-reset", handleAPIAdminParserReset)
 			r.With(requireAdmin).Get("/admin/parsers", handleAPIAdminParsersGet)
 			r.With(requireAdmin).Post("/admin/parsers/settings", handleAPIAdminParsersSettings)
 			r.With(requireAdmin).Post("/admin/parsers/run", handleAPIAdminParsersRun)

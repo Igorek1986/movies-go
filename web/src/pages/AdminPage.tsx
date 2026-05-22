@@ -38,7 +38,6 @@ export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
-  const [parserDate, setParserDate] = useState('')
   const [toasts, setToasts] = useState<Toast[]>([])
   const [fixRtStatus, setFixRtStatus] = useState<{ running: boolean; stage: string; current: number; total: number; fixed: number }>({
     running: false, stage: '', current: 0, total: 0, fixed: 0,
@@ -357,22 +356,6 @@ export default function AdminPage() {
             </div>
           )}
 
-          <div className={styles.parserResetRow}>
-            <label className={styles.parserLabel}>Сброс парсера:</label>
-            <input
-              type="date"
-              className={styles.dateInput}
-              value={parserDate}
-              onChange={e => setParserDate(e.target.value)}
-            />
-            <button
-              className={styles.actionBtn}
-              disabled={!parserDate}
-              onClick={() => globalAct('/api/admin/parser-reset', `Парсер сброшен на ${parserDate}`, { date: parserDate })}
-            >
-              Применить
-            </button>
-          </div>
         </div>
 
         {/* ── Users ──────────────────────────────────────────────────────────── */}
