@@ -42,6 +42,29 @@ interface Profile {
   icon?: string | null
 }
 
+const NAV_H = 52  // fixed nav bar height
+
+// Scroll the page so el is vertically centered in the area below the nav bar.
+// CSS scroll-behavior: smooth on <html> handles the animation.
+function scrollV(el: HTMLElement) {
+  const rect = el.getBoundingClientRect()
+  const availH = window.innerHeight - NAV_H
+  const elCenter = rect.top + rect.height / 2
+  const targetCenter = NAV_H + availH / 2
+  window.scrollBy({ top: elCenter - targetCenter })
+}
+
+// Scroll the horizontal row container so el is centered.
+// CSS scroll-behavior: smooth on .rowScroll handles the animation.
+function scrollH(el: HTMLElement) {
+  const scroll = el.closest<HTMLElement>('[data-row-scroll]')
+  if (!scroll) return
+  const sr = scroll.getBoundingClientRect()
+  const cr = el.getBoundingClientRect()
+  const relCenter = cr.left - sr.left + scroll.scrollLeft + cr.width / 2
+  scroll.scrollTo({ left: relCenter - scroll.clientWidth / 2 })
+}
+
 const LS_ROW_ORDER    = 'catalog_row_order'
 const LS_DEVICE_KEY   = 'active_device'
 const LS_PROFILE_KEY  = 'active_profile'
@@ -193,7 +216,7 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
       const cards = el.querySelectorAll<HTMLElement>('[data-card]')
       const target = cards[Math.min(savedIdx, cards.length - 1)]
       target?.focus()
-      target?.scrollIntoView({ block: 'nearest' })
+      if (target) { scrollH(target); scrollV(target) }
     })
   }, [items])
 
@@ -239,7 +262,7 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
           </button>
         )}
       </div>
-      <div className={styles.rowScroll}>
+      <div className={styles.rowScroll} data-row-scroll>
         <div
           ref={rowInnerRef}
           className={styles.rowInner}
@@ -256,10 +279,14 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
               if (idx === cards.length - 1) {
                 if (hasMore) onExpandCategory(category.id, items?.length ?? 0)
               } else {
-                cards[idx + 1]?.focus()
+                const next = cards[idx + 1]
+                next?.focus()
+                if (next) { scrollH(next); scrollV(next) }
               }
             } else {
-              cards[idx - 1]?.focus()
+              const prev = cards[idx - 1]
+              prev?.focus()
+              if (prev) { scrollH(prev); scrollV(prev) }
             }
           }}
         >
@@ -358,7 +385,7 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
 
   // Restore scroll when returning with cached items
   useLayoutEffect(() => {
-    if (cached && cached.scrollY > 0) window.scrollTo(0, cached.scrollY)
+    if (cached && cached.scrollY > 0) window.scrollTo({ top: cached.scrollY, behavior: 'instant' })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadPage = useCallback(async (pg: number, sq: string, reset: boolean) => {
@@ -428,7 +455,7 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
         const cards = document.querySelectorAll<HTMLElement>('[data-card]')
         const target = cards[focusAfterIdx]
         target?.focus()
-        target?.scrollIntoView({ block: 'nearest' })
+        if (target) scrollV(target)
       })
     } else if (!loadingRef.current && pageRef.current < totalPagesRef.current) {
       const next = pageRef.current + 1
@@ -607,7 +634,7 @@ export default function CatalogPage() {
     }
 
     if (_cache.categories.length > 0 && _cache.scrollY > 0) {
-      window.scrollTo(0, _cache.scrollY)
+      window.scrollTo({ top: _cache.scrollY, behavior: 'instant' })
       if (window.location.hash) {
         window.history.replaceState(null, '', window.location.pathname + window.location.search)
       }
@@ -776,7 +803,7 @@ export default function CatalogPage() {
     setExpandedCategory(null)
     const scrollY = savedScrollRef.current
     requestAnimationFrame(() => {
-      window.scrollTo(0, scrollY)
+      window.scrollTo({ top: scrollY, behavior: 'instant' })
     })
   }
 
@@ -858,7 +885,7 @@ export default function CatalogPage() {
             e.preventDefault()
             const first = document.querySelector<HTMLElement>('[data-card]')
             first?.focus()
-            first?.scrollIntoView({ block: 'nearest' })
+            if (first) scrollV(first)
           }
           return
         }
@@ -875,13 +902,13 @@ export default function CatalogPage() {
         const savedIdx = lastRowFocusIdx.current.get(targetRowId) ?? 0
         const targetCards = Array.from(targetRow.querySelectorAll<HTMLElement>('[data-card]'))
         if (!targetCards.length) {
-          targetRow.scrollIntoView({ block: 'nearest' })
+          scrollV(targetRow)
           targetRow.dataset.pendingFocus = String(savedIdx)
           return
         }
         const target = targetCards[Math.min(savedIdx, targetCards.length - 1)]
         target?.focus()
-        target?.scrollIntoView({ block: 'nearest' })
+        if (target) { scrollH(target); scrollV(target) }
       }
     }
     window.addEventListener('keydown', onKeyDown)

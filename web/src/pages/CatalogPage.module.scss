@@ -167,6 +167,7 @@
 
 .rowScroll {
   overflow-x: auto;
+  scroll-behavior: smooth;
   padding-bottom: $spacing-xs;
   // Reserve height = poster (185px × 3/2) + card body (~54px) to avoid layout shift while loading
   min-height: calc(185px * 3 / 2 + 54px);
