@@ -20,7 +20,7 @@ func filterByYear(isMovie bool, list []*models.Entity, torrYear int) []*models.E
 	return utils.Filter(list, func(i int, e *models.Entity) bool {
 		if len(e.ReleaseDate) > 6 {
 			year, _ := strconv.Atoi(e.ReleaseDate[6:])
-			return utils.Abs(year-torrYear) > 1
+			return utils.Abs(year-torrYear) <= 1
 		}
 		return true
 	})

@@ -1,7 +1,9 @@
 package parser
 
 import (
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -13,6 +15,11 @@ import (
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+func newDirectHTTPClient() *http.Client {
+	jar, _ := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+	return &http.Client{Jar: jar, Transport: &http.Transport{}, Timeout: 20 * time.Second}
+}
 
 func newHTTPClient() *http.Client {
 	jar, _ := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
@@ -26,7 +33,37 @@ func newHTTPClient() *http.Client {
 			transport.Proxy = http.ProxyURL(u)
 		}
 	}
-	return &http.Client{Jar: jar, Transport: transport, Timeout: 20 * time.Second}
+	// 30s for proxy client: SOCKS5 tunnel setup can take 2-5s
+	return &http.Client{Jar: jar, Transport: transport, Timeout: 30 * time.Second}
+}
+
+// fetchBytesRetry fetches url using the proxy client, falling back to direct on
+// network error. Retries up to maxAttempts with geometric backoff.
+func fetchBytesRetry(proxy, direct *http.Client, url string, maxAttempts int, baseWait, maxWait time.Duration, ratio float64) ([]byte, error) {
+	wait := baseWait
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			w := wait
+			if w > maxWait {
+				w = maxWait
+			}
+			log.Printf("parser: retry %d/%d in %s for %s", attempt, maxAttempts-1, w.Round(time.Second), url)
+			time.Sleep(w)
+			wait = time.Duration(float64(wait) * ratio)
+		}
+		body, err := httpGetBytes(proxy, url)
+		if err != nil {
+			// proxy failed — try direct
+			if body2, err2 := httpGetBytes(direct, url); err2 == nil {
+				return body2, nil
+			}
+			lastErr = err
+			continue
+		}
+		return body, nil
+	}
+	return nil, fmt.Errorf("недоступно после %d попыток: %w", maxAttempts, lastErr)
 }
 
 func httpGetBytes(c *http.Client, link string) ([]byte, error) {

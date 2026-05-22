@@ -16,38 +16,40 @@ import (
 	"movies-api/db/models"
 	"movies-api/db/store"
 	"movies-api/releases"
-	"movies-api/utils"
 )
 
 type NNMClubParser struct {
-	mu      sync.Mutex
-	isParse bool
-	client  *http.Client
+	mu           sync.Mutex
+	isParse      bool
+	client       *http.Client // proxy
+	directClient *http.Client // fallback without proxy
 }
 
 func NewNNMClub() *NNMClubParser {
-	return &NNMClubParser{client: newHTTPClient()}
+	return &NNMClubParser{
+		client:       newHTTPClient(),
+		directClient: newDirectHTTPClient(),
+	}
 }
 
 func (n *NNMClubParser) Name() string { return "nnmclub" }
 
 type nnmCatInfo struct {
-	rutor   string
 	baseCat string // empty = detect from title
 }
 
 var nnmClubCats = map[string]nnmCatInfo{
-	"219":  {"russkie", models.CatMovie},
-	"954":  {"kino", models.CatMovie},
-	"882":  {"russkie", models.CatMovie},
-	"227":  {"kino", models.CatMovie},
-	"1296": {"4k", models.CatMovie},
-	"768":  {"serial", models.CatSeries},
-	"769":  {"ruserial", models.CatSeries},
-	"621":  {"anime", models.CatAnime},
-	"625":  {"anime", models.CatAnime},
-	"1338": {"multiki", ""},
-	"1332": {"multiki", ""},
+	"219":  {models.CatMovie},
+	"954":  {models.CatMovie},
+	"882":  {models.CatMovie},
+	"227":  {models.CatMovie},
+	"1296": {models.CatMovie},
+	"768":  {models.CatSeries},
+	"769":  {models.CatSeries},
+	"621":  {models.CatAnime},
+	"625":  {models.CatAnime},
+	"1338": {""},
+	"1332": {""},
 }
 
 type nnmItem struct {
@@ -94,50 +96,35 @@ func (n *NNMClubParser) Parse() {
 }
 
 func (n *NNMClubParser) parseCategory(catID string, catInfo nnmCatInfo, fullScan bool, cutoff time.Time, processed *atomic.Int64) {
-	for offset := 0; ; offset += 50 {
-		link := fmt.Sprintf("https://nnmclub.to/forum/viewforum.php?f=%s&start=%d", catID, offset)
-		body, err := httpGetBytes(n.client, link)
-		if err != nil {
-			log.Printf("nnmclub: get %s: %v", link, err)
-			return
-		}
-		utf8 := decodeWin1251(body)
-		items := n.parseListing(utf8, catID)
-		if len(items) == 0 {
-			return
-		}
-
-		type enrichJob struct {
-			d       *models.TorrentDetails
-			isMovie bool
-		}
-		var toEnrich []enrichJob
-		hitCutoff := false
-
-		for _, item := range items {
-			if !fullScan && !item.date.IsZero() && item.date.Before(cutoff) {
-				log.Printf("nnmclub: reached cutoff at %s, stopping cat %s", item.date.Format("2006-01-02"), catID)
-				hitCutoff = true
-				break
+	// NNMClub paginates with start= offset (multiples of 50), not page index.
+	// We abuse the page argument as offset/50 and multiply inside buildURL.
+	// Concurrency=2: NNMClub rate-limits aggressive parallel requests.
+	runPageLoop(n.client, n.directClient, "nnmclub", 2, 50,
+		func(page int) string {
+			return fmt.Sprintf("https://nnmclub.to/forum/viewforum.php?f=%s&start=%d", catID, page*50)
+		},
+		func(body []byte) ([]enrichJob, bool, int) {
+			items := n.parseListing(decodeWin1251(body), catID)
+			var jobs []enrichJob
+			for _, item := range items {
+				if !fullScan && !item.date.IsZero() && item.date.Before(cutoff) {
+					log.Printf("nnmclub: reached cutoff at %s, stopping cat %s", item.date.Format("2006-01-02"), catID)
+					return jobs, true, len(items)
+				}
+				processed.Add(1)
+				d := n.buildDetails(item, catInfo)
+				if d.Categories == models.CatTVShow {
+					continue
+				}
+				isMovie := d.Categories == models.CatMovie ||
+					d.Categories == models.CatDocMovie ||
+					d.Categories == models.CatCartoonMovie
+				// Hash unknown until topic page is fetched — always enqueue.
+				jobs = append(jobs, enrichJob{d, isMovie})
 			}
-			processed.Add(1)
-
-			d := n.buildDetails(item, catInfo)
-			if d.Categories == models.CatTVShow {
-				continue
-			}
-			isMovie := d.Categories == models.CatMovie ||
-				d.Categories == models.CatDocMovie ||
-				d.Categories == models.CatCartoonMovie
-
-			// We don't have the hash yet — need to fetch topic page.
-			// But first check if this topic was already seen by title hash... we can't.
-			// So always add to enrichJobs; fetchHash + TorrentStatus check happens inside.
-			toEnrich = append(toEnrich, enrichJob{d, isMovie})
-		}
-
-		// Concurrency=2: nnmclub rate-limits aggressive parallel requests
-		utils.PForLim(toEnrich, 2, func(_ int, job enrichJob) {
+			return jobs, false, len(items)
+		},
+		func(job enrichJob) {
 			d := job.d
 			hash, magnet, err := n.fetchHashFromTopic(d.Link)
 			if err != nil {
@@ -146,7 +133,6 @@ func (n *NNMClubParser) parseCategory(catID string, catInfo nnmCatInfo, fullScan
 			}
 			d.Hash = hash
 			d.Magnet = magnet
-
 			cached, cardID := store.TorrentStatus(hash)
 			if cached && cardID != "" {
 				if d.VideoQuality > 0 {
@@ -155,12 +141,8 @@ func (n *NNMClubParser) parseCategory(catID string, catInfo nnmCatInfo, fullScan
 				return
 			}
 			releases.Enrich(d.Tracker, job.isMovie, d)
-		})
-
-		if hitCutoff || len(items) < 50 {
-			return
-		}
-	}
+		},
+	)
 }
 
 func (n *NNMClubParser) parseListing(utf8body, catID string) []nnmItem {
@@ -172,7 +154,7 @@ func (n *NNMClubParser) parseListing(utf8body, catID string) []nnmItem {
 
 	var items []nnmItem
 	doc.Find("tr").Each(func(_ int, row *goquery.Selection) {
-		a := row.Find("a.topictitle")
+		a := row.Find("a.topictitle").First()
 		if a.Length() == 0 {
 			return
 		}
@@ -183,7 +165,7 @@ func (n *NNMClubParser) parseListing(utf8body, catID string) []nnmItem {
 			return
 		}
 
-		dateStr := strings.TrimSpace(row.Find("td.vf").Text())
+		dateStr := strings.TrimSpace(row.Find("td.vf").First().Text())
 		date := parseNNMDate(dateStr)
 
 		items = append(items, nnmItem{
@@ -210,62 +192,89 @@ func (n *NNMClubParser) buildDetails(item nnmItem, catInfo nnmCatInfo) *models.T
 
 var nnmRateLimitMsg = []byte("\xd1\xeb\xe8\xf8\xea\xee\xec \xec\xed\xee\xe3\xee") // "Слишком много" in cp1251
 
+var (
+	reMagnet = regexp.MustCompile(`(?i)(magnet:\?xt=urn:btih:[a-z0-9]{32,40}[^"' ]*)`)
+	reHash   = regexp.MustCompile(`(?i)xt=urn:btih:([a-z0-9]{32,40})`)
+)
+
 func (n *NNMClubParser) fetchHashFromTopic(topicURL string) (hash, magnet string, err error) {
-	const maxAttempts = 4
+	const (
+		maxAttempts = 10
+		ratio       = 1.5
+		maxWait     = 5 * time.Minute
+	)
+	rlWait  := 60 * time.Second // rate-limit backoff
+	netWait := 5 * time.Second  // network error backoff
+
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		if attempt > 0 {
-			wait := time.Duration(attempt) * 90 * time.Second
-			log.Printf("nnmclub: rate limited, waiting %s before retry (%d/%d)", wait, attempt, maxAttempts-1)
-			time.Sleep(wait)
+		// Try proxy, fall back to direct on network error
+		body, fetchErr := httpGetBytes(n.client, topicURL)
+		if fetchErr != nil {
+			body2, directErr := httpGetBytes(n.directClient, topicURL)
+			if directErr == nil {
+				body, fetchErr = body2, nil
+			}
 		}
 
-		var body []byte
-		body, err = httpGetBytes(n.client, topicURL)
-		if err != nil {
-			return "", "", err
+		if fetchErr != nil {
+			err = fetchErr
+			if attempt+1 >= maxAttempts {
+				break
+			}
+			w := netWait
+			if w > maxWait {
+				w = maxWait
+			}
+			log.Printf("nnmclub: сеть недоступна, повтор %d/%d через %s", attempt+1, maxAttempts, w.Round(time.Second))
+			time.Sleep(w)
+			netWait = time.Duration(float64(netWait) * ratio)
+			continue
 		}
 
-		// Detect rate-limit page (message in cp1251 bytes)
 		if bytes.Contains(body, nnmRateLimitMsg) {
+			if attempt+1 >= maxAttempts {
+				break
+			}
+			w := rlWait
+			if w > maxWait {
+				w = maxWait
+			}
+			log.Printf("nnmclub: rate limit, повтор %d/%d через %s", attempt+1, maxAttempts, w.Round(time.Second))
+			time.Sleep(w)
+			rlWait = time.Duration(float64(rlWait) * ratio)
 			continue
 		}
 
 		utf8 := decodeWin1251(body)
-
-		// Try goquery: find <a href="magnet:...">
 		doc, parseErr := goquery.NewDocumentFromReader(strings.NewReader(utf8))
 		if parseErr == nil {
 			doc.Find("a").Each(func(_ int, s *goquery.Selection) {
 				if magnet != "" {
 					return
 				}
-				href, _ := s.Attr("href")
-				if strings.HasPrefix(href, "magnet:") {
+				if href, _ := s.Attr("href"); strings.HasPrefix(href, "magnet:") {
 					magnet = href
 				}
 			})
 		}
-
-		// Fallback regex — handles both hex-40 and base32-32 hashes
 		if magnet == "" {
-			re := regexp.MustCompile(`(?i)(magnet:\?xt=urn:btih:[a-z0-9]{32,40}[^"' ]*)`)
-			if m := re.FindStringSubmatch(utf8); len(m) > 1 {
+			if m := reMagnet.FindStringSubmatch(utf8); len(m) > 1 {
 				magnet = m[1]
 			}
 		}
-
 		if magnet != "" {
 			break
 		}
-		// Not rate-limited but no magnet — topic has no magnet link, don't retry
 		return "", "", fmt.Errorf("magnet not found on topic page")
 	}
 
 	if magnet == "" {
-		return "", "", fmt.Errorf("magnet not found after %d attempts (rate limited)", maxAttempts)
+		if err != nil {
+			return "", "", fmt.Errorf("сеть недоступна после %d попыток: %w", maxAttempts, err)
+		}
+		return "", "", fmt.Errorf("rate limit после %d попыток", maxAttempts)
 	}
 
-	reHash := regexp.MustCompile(`(?i)xt=urn:btih:([a-z0-9]{32,40})`)
 	m := reHash.FindStringSubmatch(magnet)
 	if len(m) < 2 {
 		return "", "", fmt.Errorf("hash not found in magnet %q", magnet)

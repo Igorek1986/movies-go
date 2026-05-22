@@ -260,6 +260,9 @@ export default function AdminPage() {
             <Link to="/admin/parsers" style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', textDecoration: 'none', padding: '4px 12px', border: '1px solid var(--color-border)', borderRadius: '4px' }}>
               Парсеры →
             </Link>
+            <Link to="/admin/logs" style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', textDecoration: 'none', padding: '4px 12px', border: '1px solid var(--color-border)', borderRadius: '4px' }}>
+              Логи →
+            </Link>
             <Link to="/admin/settings" style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', textDecoration: 'none', padding: '4px 12px', border: '1px solid var(--color-border)', borderRadius: '4px' }}>
               Настройки →
             </Link>

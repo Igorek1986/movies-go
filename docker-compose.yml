@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    container_name: movies-api-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-movies_api}
@@ -16,6 +17,7 @@ services:
 
   app:
     build: .
+    container_name: movies-api
     restart: unless-stopped
     env_file:
       - path: .env
@@ -30,9 +32,11 @@ services:
       - 1.1.1.1
     volumes:
       - ./plugins:/app/plugins
+      - logs_data:/app/logs
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   pg_data:
+  logs_data:

@@ -14,23 +14,29 @@ import (
 func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
-	trackers := []string{"kinozal", "nnmclub", "rutor"}
+	trackers := []string{"rutor", "kinozal", "nnmclub"}
 	orderVal, _ := store.GetSetting(ctx, "parser_order")
 	if orderVal == "" {
-		orderVal = "kinozal,nnmclub,rutor"
+		orderVal = "rutor,kinozal,nnmclub"
+	}
+
+	defaultEnabled := map[string]bool{
+		"rutor":   true,
+		"kinozal": false,
+		"nnmclub": false,
 	}
 
 	type trackerStatus struct {
-		Name        string `json:"name"`
-		Enabled     bool   `json:"enabled"`
-		LastParsed  string `json:"last_parsed_at"`
+		Name       string `json:"name"`
+		Enabled    bool   `json:"enabled"`
+		LastParsed string `json:"last_parsed_at"`
 	}
 
 	var statuses []trackerStatus
 	for _, name := range trackers {
-		enabled := true
+		enabled := defaultEnabled[name]
 		if v, ok := store.GetSetting(ctx, "parser_"+name+"_enabled"); ok {
-			enabled = v != "0"
+			enabled = v == "1"
 		}
 		last := store.LastParsedAtFor(name)
 		lastStr := ""
@@ -44,21 +50,51 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	retryAttempts := store.GetSettingInt(ctx, "parser_retry_attempts")
+	retryBaseWait := store.GetSettingInt(ctx, "parser_retry_base_wait_sec")
+	retryMaxWait := store.GetSettingInt(ctx, "parser_retry_max_wait_sec")
+	retryRatio := "2.0"
+	if v, ok := store.GetSetting(ctx, "parser_retry_ratio"); ok {
+		retryRatio = v
+	}
+
+	kinozalLogin, _ := store.GetSetting(ctx, "kinozal_login")
+	kinozalPassword, _ := store.GetSetting(ctx, "kinozal_password")
+
+	nextRunAt := ""
+	if t := parser.NextRunAt(); !t.IsZero() {
+		nextRunAt = t.UTC().Format("2006-01-02T15:04:05Z")
+	}
+
 	JSON(w, http.StatusOK, map[string]any{
-		"parsers": statuses,
-		"order":   orderVal,
-		"running": parser.IsRunning(),
+		"parsers":         statuses,
+		"order":           orderVal,
+		"running":         parser.IsRunning(),
+		"stop_requested":  parser.IsStopRequested(),
+		"next_run_at":     nextRunAt,
+		"retry_attempts":  retryAttempts,
+		"retry_base_wait": retryBaseWait,
+		"retry_max_wait":  retryMaxWait,
+		"retry_ratio":     retryRatio,
+		"kinozal_login":   kinozalLogin,
+		"kinozal_password": kinozalPassword,
 	})
 }
 
 // POST /api/admin/parsers/settings
 func handleAPIAdminParsersSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Order          string `json:"order"`
-		KinozalEnabled *bool  `json:"kinozal_enabled"`
-		NNMClubEnabled *bool  `json:"nnmclub_enabled"`
-		RutorEnabled   *bool  `json:"rutor_enabled"`
-		OverlapDays    *int   `json:"overlap_days"`
+		Order           string  `json:"order"`
+		KinozalEnabled  *bool   `json:"kinozal_enabled"`
+		NNMClubEnabled  *bool   `json:"nnmclub_enabled"`
+		RutorEnabled    *bool   `json:"rutor_enabled"`
+		OverlapDays     *int    `json:"overlap_days"`
+		RetryAttempts   *int    `json:"retry_attempts"`
+		RetryBaseWait   *int    `json:"retry_base_wait"`
+		RetryMaxWait    *int    `json:"retry_max_wait"`
+		RetryRatio      *string `json:"retry_ratio"`
+		KinozalLogin    *string `json:"kinozal_login"`
+		KinozalPassword *string `json:"kinozal_password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		Error(w, http.StatusBadRequest, "bad request")
@@ -80,11 +116,26 @@ func handleAPIAdminParsersSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		store.SetSetting(ctx, key, val)
 	}
+	intSetting := func(key string, v *int) {
+		if v != nil {
+			store.SetSetting(ctx, key, strconv.Itoa(*v))
+		}
+	}
 	boolSetting("parser_kinozal_enabled", body.KinozalEnabled)
 	boolSetting("parser_nnmclub_enabled", body.NNMClubEnabled)
 	boolSetting("parser_rutor_enabled", body.RutorEnabled)
-	if body.OverlapDays != nil {
-		store.SetSetting(ctx, "parser_overlap_days", strconv.Itoa(*body.OverlapDays))
+	intSetting("parser_overlap_days", body.OverlapDays)
+	intSetting("parser_retry_attempts", body.RetryAttempts)
+	intSetting("parser_retry_base_wait_sec", body.RetryBaseWait)
+	intSetting("parser_retry_max_wait_sec", body.RetryMaxWait)
+	if body.RetryRatio != nil {
+		store.SetSetting(ctx, "parser_retry_ratio", *body.RetryRatio)
+	}
+	if body.KinozalLogin != nil {
+		store.SetSetting(ctx, "kinozal_login", *body.KinozalLogin)
+	}
+	if body.KinozalPassword != nil {
+		store.SetSetting(ctx, "kinozal_password", *body.KinozalPassword)
 	}
 
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -98,6 +149,16 @@ func handleAPIAdminParsersRun(w http.ResponseWriter, r *http.Request) {
 	}
 	go parser.RunAll()
 	JSON(w, http.StatusOK, map[string]string{"status": "started"})
+}
+
+// POST /api/admin/parsers/stop
+func handleAPIAdminParsersStop(w http.ResponseWriter, r *http.Request) {
+	if !parser.IsRunning() {
+		JSON(w, http.StatusOK, map[string]string{"status": "not_running"})
+		return
+	}
+	parser.RequestStop()
+	JSON(w, http.StatusOK, map[string]string{"status": "stop_requested"})
 }
 
 // POST /api/admin/parsers/{name}/reset

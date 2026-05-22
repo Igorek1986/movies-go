@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS media_cards (
     episodes_synced_at   TIMESTAMPTZ,
     age_rating           INT,
     year                 INT,
-    rutor_category       VARCHAR(50),
+    category             VARCHAR(50),
     best_video_quality   INT          NOT NULL DEFAULT 0,
     latest_torrent_date  TIMESTAMPTZ,
     tmdb_updated_at      TIMESTAMPTZ,
@@ -235,7 +235,7 @@ CREATE INDEX IF NOT EXISTS idx_media_cards_tmdb_id        ON media_cards (tmdb_i
 CREATE INDEX IF NOT EXISTS idx_media_cards_imdb_id        ON media_cards (imdb_id);
 CREATE INDEX IF NOT EXISTS idx_media_cards_orig_title_low ON media_cards (lower(original_title));
 CREATE INDEX IF NOT EXISTS idx_media_cards_title_low      ON media_cards (lower(title));
-CREATE INDEX IF NOT EXISTS idx_media_cards_category       ON media_cards (rutor_category);
+CREATE INDEX IF NOT EXISTS idx_media_cards_category       ON media_cards (category);
 CREATE INDEX IF NOT EXISTS idx_media_cards_language       ON media_cards (original_language);
 
 -- ─── Episodes ─────────────────────────────────────────────────────────────────

@@ -1,0 +1,220 @@
+@use '@/styles/variables' as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  height: calc(100vh - 52px - $spacing-xl * 2);
+  min-height: 400px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: $font-size-xl;
+  font-weight: 700;
+  color: $color-text;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.connDot {
+  width: 8px;
+  height: 8px;
+  border-radius: $radius-full;
+  flex-shrink: 0;
+
+  &.connOn  { background: $color-success; }
+  &.connOff { background: $color-danger; }
+}
+
+.connLabel {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.btn {
+  height: 30px;
+  padding: 0 $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover { border-color: $color-primary; color: $color-primary; }
+}
+
+.btnPrimary {
+  border-color: $color-primary;
+  color: $color-primary;
+  &:hover { background: rgba($color-primary, 0.1); }
+}
+
+.btnWarn {
+  border-color: $color-warning;
+  color: $color-warning;
+  &:hover:not(:disabled) { background: rgba($color-warning, 0.1); }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+
+// ── Parser status bar ─────────────────────────────────────────────────────────
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-sm;
+  border: 1px solid $color-border;
+  font-size: $font-size-sm;
+}
+
+.statusRunning { border-color: rgba($color-warning, 0.4); background: rgba($color-warning, 0.06); }
+.statusIdle    { border-color: rgba($color-success, 0.3); background: rgba($color-success, 0.04); }
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: $radius-full;
+  flex-shrink: 0;
+}
+.statusDotRunning {
+  background: $color-warning;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.statusDotIdle { background: $color-success; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+.statusText { color: $color-text; flex: 1; }
+.statusActions { margin-left: auto; }
+
+.backLink {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  text-decoration: none;
+  padding: 4px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  transition: color $transition-fast, border-color $transition-fast;
+
+  &:hover { color: $color-text; border-color: $color-text-muted; }
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  height: 34px;
+  padding: 0 $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
+
+  &:hover { border-color: $color-text-muted; color: $color-text; }
+
+  &.tabActive {
+    background: $color-bg-card;
+    color: $color-text;
+    border-color: $color-text-muted;
+  }
+
+  &.tab_success:hover, &.tab_success.tabActive { border-color: $color-success; color: $color-success; }
+  &.tab_skip:hover,    &.tab_skip.tabActive    { border-color: $color-text-muted; color: $color-text; }
+  &.tab_error:hover,   &.tab_error.tabActive   { border-color: $color-danger; color: $color-danger; }
+  &.tab_info:hover,    &.tab_info.tabActive    { border-color: $color-primary; color: $color-primary; }
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: $radius-full;
+  background: rgba($color-text-muted, 0.15);
+  font-size: $font-size-xs;
+  line-height: 1;
+  color: $color-text-muted;
+  transition: background $transition-fast, color $transition-fast;
+
+  &.badge_success { background: rgba($color-success, 0.1); color: rgba($color-success, 0.7); }
+  &.badge_error   { background: rgba($color-danger, 0.1);  color: rgba($color-danger, 0.7); }
+  &.badge_info    { background: rgba($color-primary, 0.1); color: rgba($color-primary, 0.7); }
+
+  .tab_success.tabActive & { background: rgba($color-success, 0.2); color: $color-success; }
+  .tab_error.tabActive &   { background: rgba($color-danger, 0.2);  color: $color-danger; }
+  .tab_info.tabActive &    { background: rgba($color-primary, 0.2); color: $color-primary; }
+}
+
+// ── Terminal ──────────────────────────────────────────────────────────────────
+
+.terminal {
+  flex: 1;
+  overflow-y: auto;
+  background: #0a0c12;
+  border: 1px solid $color-border;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  scrollbar-width: thin;
+  scrollbar-color: $color-border transparent;
+
+  &::-webkit-scrollbar { width: 6px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: $color-border; border-radius: 3px; }
+}
+
+.line {
+  white-space: pre-wrap;
+  word-break: break-all;
+
+  &.lvl_info    { color: #c8cce8; }
+  &.lvl_success { color: #52c752; }
+  &.lvl_skip    { color: #606580; }
+  &.lvl_error   { color: #e05252; }
+}
+
+.empty {
+  color: #505570;
+  font-style: italic;
+}

@@ -19,7 +19,7 @@ interface CardDetail {
   seasons: Season[] | null
   age_rating: number; certification_ru: string
   genres: Genre[]; best_video_quality: number
-  torrent_date: string; rutor_category: string; imdb_id: string
+  torrent_date: string; category: string; imdb_id: string
   movie_item: string
 }
 interface Genre   { id: number; name: string }

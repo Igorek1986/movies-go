@@ -12,6 +12,7 @@ import (
 	"movies-api/internal/api"
 	"movies-api/internal/auth"
 	"movies-api/internal/bot"
+	"movies-api/internal/logbuf"
 	"movies-api/internal/tasks"
 	"movies-api/movies/tmdb"
 	"movies-api/parser"
@@ -37,6 +38,8 @@ var params args
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	log.SetOutput(logbuf.Default)
+	logbuf.Default.Init("/app/logs")
 	arg.MustParse(&params)
 
 	cfg := config.Get()
@@ -179,6 +182,9 @@ func proxyHostSafe() string {
 func scanReleases() {
 	parser.RunAll()
 	getDbInfo()
+	next := calcTime()
+	parser.SetNextRunAt(*next)
+	log.Printf("parser: следующий запуск в %s", next.Format("02.01.2006 15:04"))
 }
 
 func calcTime() *time.Time {
@@ -200,9 +206,9 @@ func getDbInfo() {
 	defer cancel()
 
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT rutor_category, COUNT(*) FROM media_cards
-		WHERE rutor_category IS NOT NULL
-		GROUP BY rutor_category ORDER BY rutor_category`)
+		SELECT category, COUNT(*) FROM media_cards
+		WHERE category IS NOT NULL
+		GROUP BY category ORDER BY category`)
 	if err != nil {
 		log.Println("getDbInfo:", err)
 		return

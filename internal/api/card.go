@@ -26,7 +26,7 @@ func handleMediaCard(w http.ResponseWriter, r *http.Request) {
 		       vote_average, vote_count, runtime, episode_run_time, original_language,
 		       adult, status, number_of_seasons, number_of_episodes, seasons,
 		       age_rating, certification_ru, genres, best_video_quality,
-		       latest_torrent_date, rutor_category, imdb_id
+		       latest_torrent_date, category, imdb_id
 		FROM media_cards WHERE card_id = $1`, cardID)
 
 	var (
@@ -114,7 +114,7 @@ func handleMediaCard(w http.ResponseWriter, r *http.Request) {
 		"genres":            genres,
 		"best_video_quality": intVal(bestQuality),
 		"torrent_date":      torrentDate,
-		"rutor_category":    strVal(rutorCat),
+		"category":          strVal(rutorCat),
 		"imdb_id":           strVal(imdbID),
 		"movie_item":        func() string {
 			if mediaType == "movie" && origTitle != "" {
@@ -211,7 +211,7 @@ func handleMediaCardFromTMDB(w http.ResponseWriter, cardID string) {
 		"genres":             genres,
 		"best_video_quality": 0,
 		"torrent_date":       "",
-		"rutor_category":     "",
+		"category":           "",
 		"imdb_id":            ent.ImdbID,
 		"movie_item":         movieItem,
 	})

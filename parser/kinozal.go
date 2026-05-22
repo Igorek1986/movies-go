@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -19,37 +20,39 @@ import (
 	"movies-api/db/models"
 	"movies-api/db/store"
 	"movies-api/releases"
-	"movies-api/utils"
 )
 
 type KinozalParser struct {
-	mu       sync.Mutex
-	isParse  bool
-	client   *http.Client
-	loggedIn bool
+	mu           sync.Mutex
+	isParse      bool
+	client       *http.Client // proxy
+	directClient *http.Client // fallback without proxy
+	loggedIn     bool
 }
 
 func NewKinozal() *KinozalParser {
-	return &KinozalParser{client: newHTTPClient()}
+	return &KinozalParser{
+		client:       newHTTPClient(),
+		directClient: newDirectHTTPClient(),
+	}
 }
 
 func (k *KinozalParser) Name() string { return "kinozal" }
 
-// kinozal category id → (rutor_category, base models.Cat*)
+// kinozal category id → (category, base models.Cat*)
 // multiki/anime rows need title-based series detection.
 type kzCatInfo struct {
-	rutor   string
 	baseCat string // empty = detect from title
 }
 
 var kinozalCats = map[string]kzCatInfo{
-	"8":  {"kino", models.CatMovie},
-	"9":  {"russkie", models.CatMovie},
-	"10": {"serial", models.CatSeries},
-	"11": {"ruserial", models.CatSeries},
-	"12": {"anime", models.CatAnime},
-	"14": {"multiki", ""},
-	"17": {"4k", models.CatMovie},
+	"8":  {models.CatMovie},
+	"9":  {models.CatMovie},
+	"10": {models.CatSeries},
+	"11": {models.CatSeries},
+	"12": {models.CatAnime},
+	"14": {""},
+	"17": {models.CatMovie},
 }
 
 type kzItem struct {
@@ -104,13 +107,19 @@ func (k *KinozalParser) Parse() {
 }
 
 func (k *KinozalParser) login() error {
-	cfg := config.Get()
-	if cfg.KinozalLogin == "" {
-		return errors.New("KINOZAL_LOGIN not set")
+	login, _ := store.GetSetting(context.Background(), "kinozal_login")
+	password, _ := store.GetSetting(context.Background(), "kinozal_password")
+	if login == "" {
+		cfg := config.Get()
+		login = cfg.KinozalLogin
+		password = cfg.KinozalPassword
+	}
+	if login == "" {
+		return errors.New("Kinozal: логин не задан (укажите в настройках парсеров)")
 	}
 	form := url.Values{
-		"username": {cfg.KinozalLogin},
-		"password": {cfg.KinozalPassword},
+		"username": {login},
+		"password": {password},
 		"touser":   {"1"},
 		"wact":     {"takerecover"},
 	}
@@ -123,69 +132,47 @@ func (k *KinozalParser) login() error {
 		return errors.New("login failed — redirected to login page")
 	}
 	k.loggedIn = true
-	log.Printf("kinozal: logged in as %s", cfg.KinozalLogin)
+	log.Printf("kinozal: logged in as %s", login)
 	return nil
 }
 
 func (k *KinozalParser) parseCategory(catID string, catInfo kzCatInfo, fullScan bool, cutoff time.Time, processed *atomic.Int64) {
-	for page := 0; ; page++ {
-		link := fmt.Sprintf("https://kinozal.tv/browse.php?c=%s&page=%d", catID, page)
-		body, err := httpGetBytes(k.client, link)
-		if err != nil {
-			log.Printf("kinozal: get %s: %v", link, err)
-			return
-		}
-		utf8 := decodeWin1251(body)
-		items := k.parseListing(utf8, catID)
-		if len(items) == 0 {
-			return
-		}
-
-		type enrichJob struct {
-			d       *models.TorrentDetails
-			isMovie bool
-		}
-		var toEnrich []enrichJob
-		hitCutoff := false
-
-		for _, item := range items {
-			if !fullScan && !item.date.IsZero() && item.date.Before(cutoff) {
-				log.Printf("kinozal: reached cutoff at %s, stopping cat %s", item.date.Format("2006-01-02"), catID)
-				hitCutoff = true
-				break
-			}
-			processed.Add(1)
-
-			d := k.buildDetails(item, catInfo)
-			if d.Categories == models.CatTVShow {
-				store.CacheTorrent(d.Hash, "")
-				continue
-			}
-			isMovie := d.Categories == models.CatMovie ||
-				d.Categories == models.CatDocMovie ||
-				d.Categories == models.CatCartoonMovie
-
-			cached, cardID := store.TorrentStatus(d.Hash)
-			if cached && cardID != "" {
-				if d.VideoQuality > 0 {
-					store.UpdateQuality(cardID, d.VideoQuality)
+	runPageLoop(k.client, k.directClient, "kinozal", 20, 50,
+		func(page int) string {
+			return fmt.Sprintf("https://kinozal.tv/browse.php?c=%s&page=%d", catID, page)
+		},
+		func(body []byte) ([]enrichJob, bool, int) {
+			items := k.parseListing(decodeWin1251(body), catID)
+			var jobs []enrichJob
+			for _, item := range items {
+				if !fullScan && !item.date.IsZero() && item.date.Before(cutoff) {
+					log.Printf("kinozal: reached cutoff at %s, stopping cat %s", item.date.Format("2006-01-02"), catID)
+					return jobs, true, len(items)
 				}
-				continue
+				processed.Add(1)
+				d := k.buildDetails(item, catInfo)
+				if d.Categories == models.CatTVShow {
+					store.CacheTorrent(d.Hash, "")
+					continue
+				}
+				isMovie := d.Categories == models.CatMovie ||
+					d.Categories == models.CatDocMovie ||
+					d.Categories == models.CatCartoonMovie
+				cached, cardID := store.TorrentStatus(d.Hash)
+				if cached && cardID != "" {
+					if d.VideoQuality > 0 {
+						store.UpdateQuality(cardID, d.VideoQuality)
+					}
+					continue
+				}
+				jobs = append(jobs, enrichJob{d, isMovie})
 			}
-			toEnrich = append(toEnrich, enrichJob{d, isMovie})
-		}
-
-		utils.PForLim(toEnrich, 20, func(_ int, job enrichJob) {
+			return jobs, false, len(items)
+		},
+		func(job enrichJob) {
 			releases.Enrich(job.d.Tracker, job.isMovie, job.d)
-		})
-
-		if hitCutoff || (!fullScan && len(items) < 50) {
-			return
-		}
-		if fullScan && len(items) < 50 {
-			return
-		}
-	}
+		},
+	)
 }
 
 func (k *KinozalParser) parseListing(utf8body, catID string) []kzItem {

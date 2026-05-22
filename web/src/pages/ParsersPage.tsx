@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import styles from './ParsersPage.module.scss'
+import { useCountdown, useParserStatus, fmtCountdown, fmtDateTime } from '@/hooks/useParserStatus'
 
 interface TrackerStatus {
   name: string
@@ -13,6 +14,14 @@ interface ParsersData {
   parsers: TrackerStatus[]
   order: string
   running: boolean
+  stop_requested: boolean
+  next_run_at: string
+  retry_attempts: number
+  retry_base_wait: number
+  retry_max_wait: number
+  retry_ratio: string
+  kinozal_login: string
+  kinozal_password: string
 }
 
 interface Toast {
@@ -27,6 +36,12 @@ const TRACKER_LABELS: Record<string, string> = {
   rutor: 'Rutor.info',
 }
 
+const TRACKER_DOMAINS: Record<string, string> = {
+  kinozal: 'kinozal.tv',
+  nnmclub: 'nnmclub.to',
+  rutor: 'rutor.info',
+}
+
 function formatDate(iso: string) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -34,10 +49,19 @@ function formatDate(iso: string) {
 }
 
 export default function ParsersPage() {
+  const [parserStatus, refreshStatus] = useParserStatus()
+  const countdown = useCountdown(parserStatus.nextRunAt)
+
   const [data, setData] = useState<ParsersData | null>(null)
   const [order, setOrder] = useState<string[]>([])
   const [enabled, setEnabled] = useState<Record<string, boolean>>({})
   const [overlapDays, setOverlapDays] = useState(2)
+  const [retryAttempts, setRetryAttempts] = useState(10)
+  const [retryBaseWait, setRetryBaseWait] = useState(30)
+  const [retryMaxWait, setRetryMaxWait] = useState(120)
+  const [retryRatio, setRetryRatio] = useState('2.0')
+  const [credModal, setCredModal] = useState<{ tracker: string; login: string; password: string } | null>(null)
+  const [credSaving, setCredSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -62,6 +86,11 @@ export default function ParsersPage() {
     for (const p of d.parsers) map[p.name] = p.enabled
     setEnabled(map)
 
+    if (d.retry_attempts) setRetryAttempts(d.retry_attempts)
+    if (d.retry_base_wait) setRetryBaseWait(d.retry_base_wait)
+    if (d.retry_max_wait) setRetryMaxWait(d.retry_max_wait)
+    if (d.retry_ratio) setRetryRatio(d.retry_ratio)
+
     if (d.running) startPoll()
     else stopPoll()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -83,6 +112,13 @@ export default function ParsersPage() {
     return () => stopPoll()
   }, [load])
 
+  useEffect(() => {
+    if (!credModal) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCredModal(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [credModal])
+
   async function api(url: string, method = 'POST', body?: object) {
     const res = await fetch(url, {
       method,
@@ -103,9 +139,19 @@ export default function ParsersPage() {
         toast('Парсер уже запущен')
       } else {
         toast('Парсер запущен')
-        await load()
+        await Promise.all([load(), refreshStatus()])
         startPoll()
       }
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
+  async function stopNow() {
+    try {
+      await api('/api/admin/parsers/stop')
+      toast('Остановка запрошена — парсер завершит текущий трекер')
+      await refreshStatus()
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : String(e), false)
     }
@@ -120,6 +166,10 @@ export default function ParsersPage() {
         nnmclub_enabled: enabled['nnmclub'] ?? true,
         rutor_enabled: enabled['rutor'] ?? false,
         overlap_days: overlapDays,
+        retry_attempts: retryAttempts,
+        retry_base_wait: retryBaseWait,
+        retry_max_wait: retryMaxWait,
+        retry_ratio: retryRatio,
       })
       toast('Настройки сохранены')
       await load()
@@ -141,6 +191,34 @@ export default function ParsersPage() {
     }
   }
 
+  const CRED_TRACKERS = new Set(['kinozal'])
+
+  function openCredModal(name: string) {
+    setCredModal({
+      tracker: name,
+      login: data?.kinozal_login ?? '',
+      password: data?.kinozal_password ?? '',
+    })
+  }
+
+  async function saveCredentials() {
+    if (!credModal) return
+    setCredSaving(true)
+    try {
+      await api('/api/admin/parsers/settings', 'POST', {
+        kinozal_login: credModal.login,
+        kinozal_password: credModal.password,
+      })
+      toast('Данные аккаунта сохранены')
+      setCredModal(null)
+      await load()
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    } finally {
+      setCredSaving(false)
+    }
+  }
+
   function moveUp(i: number) {
     if (i === 0) return
     setOrder(prev => { const a = [...prev]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; return a })
@@ -159,7 +237,7 @@ export default function ParsersPage() {
   const infoMap: Record<string, TrackerStatus> = {}
   for (const p of data?.parsers ?? []) infoMap[p.name] = p
 
-  const running = data?.running ?? false
+  const { running, stopRequested } = parserStatus
 
   return (
     <Layout>
@@ -179,16 +257,36 @@ export default function ParsersPage() {
           <Link to="/admin" className={styles.backLink}>← Назад</Link>
         </div>
 
+        {/* Status bar */}
+        <div className={`${styles.statusBar} ${running ? styles.statusRunning : styles.statusIdle}`}>
+          <span className={`${styles.statusDot} ${running ? styles.statusDotRunning : styles.statusDotIdle}`} />
+          {running ? (
+            stopRequested
+              ? <span className={styles.statusText}>Остановка после текущего трекера…</span>
+              : <span className={styles.statusText}>Парсер запущен</span>
+          ) : (
+            <span className={styles.statusText}>
+              {parserStatus.nextRunAt
+                ? <>Ожидает — следующий запуск в <strong>{fmtDateTime(parserStatus.nextRunAt)}</strong> (через {fmtCountdown(countdown)})</>
+                : 'Ожидает'}
+            </span>
+          )}
+          <div className={styles.statusActions}>
+            {running ? (
+              <button className={`${styles.btn} ${styles.btnWarn}`} onClick={stopNow} disabled={stopRequested}>
+                {stopRequested ? 'Остановка…' : 'Остановить'}
+              </button>
+            ) : (
+              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={runNow}>
+                Запустить
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className={styles.section}>
           <div className={styles.sectionHeader}>
             <h2 className={styles.sectionTitle}>Трекеры</h2>
-            <button
-              className={`${styles.btn} ${running ? styles.btnRunning : styles.btnPrimary}`}
-              onClick={runNow}
-              disabled={running}
-            >
-              {running ? 'Запущен…' : 'Запустить'}
-            </button>
           </div>
 
           {running && (
@@ -240,6 +338,15 @@ export default function ParsersPage() {
                         >
                           Сбросить дату
                         </button>
+                        {CRED_TRACKERS.has(name) && (
+                          <button
+                            className={styles.btnSm}
+                            onClick={() => openCredModal(name)}
+                            title="Логин и пароль для авторизации на трекере"
+                          >
+                            Аккаунт
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )
@@ -260,12 +367,95 @@ export default function ParsersPage() {
                 onChange={e => setOverlapDays(Number(e.target.value))}
               />
             </label>
+          </div>
+
+          <h2 className={styles.sectionTitle} style={{ marginTop: '1.5rem' }}>Повторные попытки</h2>
+          <p className={styles.hint}>Применяется к листингам Kinozal и NNMClub. Пауза растёт по формуле: base × ratio^n, но не более max.</p>
+          <div className={styles.retryGrid}>
+            <label className={styles.label}>
+              Попыток:
+              <input type="number" min={1} max={30} className={styles.numInput}
+                value={retryAttempts} onChange={e => setRetryAttempts(Number(e.target.value))} />
+            </label>
+            <label className={styles.label}>
+              Первая пауза (сек):
+              <input type="number" min={1} max={600} className={styles.numInput}
+                value={retryBaseWait} onChange={e => setRetryBaseWait(Number(e.target.value))} />
+            </label>
+            <label className={styles.label}>
+              Максимальная пауза (сек):
+              <input type="number" min={10} max={3600} className={styles.numInput}
+                value={retryMaxWait} onChange={e => setRetryMaxWait(Number(e.target.value))} />
+            </label>
+            <label className={styles.label}>
+              Коэффициент роста:
+              <input type="number" min={1.0} max={5.0} step={0.1} className={styles.numInput}
+                value={retryRatio} onChange={e => setRetryRatio(e.target.value)} />
+            </label>
+          </div>
+
+          <div className={styles.settingsRow}>
             <button className={styles.btn} onClick={saveSettings} disabled={saving}>
               {saving ? 'Сохранение…' : 'Сохранить'}
             </button>
           </div>
         </div>
       </div>
+      {credModal && (
+        <div className={styles.modalOverlay} onClick={() => setCredModal(null)}>
+          <div className={styles.modalDialog} onClick={e => e.stopPropagation()}>
+            <div className={styles.modalSiteHeader}>
+              <div className={styles.modalSiteIcon}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </div>
+              <div>
+                <div className={styles.modalSiteDomain}>
+                  {TRACKER_DOMAINS[credModal.tracker] ?? credModal.tracker}
+                </div>
+                <div className={styles.modalSiteDesc}>Аккаунт для парсера</div>
+              </div>
+            </div>
+            <form
+              className={styles.modalForm}
+              autoComplete="on"
+              onSubmit={e => { e.preventDefault(); saveCredentials() }}
+            >
+              <label className={styles.modalLabel}>
+                Логин
+                <input
+                  type="text"
+                  name="username"
+                  className={styles.modalInput}
+                  value={credModal.login}
+                  onChange={e => setCredModal(m => m && { ...m, login: e.target.value })}
+                  autoComplete="username"
+                  autoFocus
+                />
+              </label>
+              <label className={styles.modalLabel}>
+                Пароль
+                <input
+                  type="password"
+                  name="password"
+                  className={styles.modalInput}
+                  value={credModal.password}
+                  onChange={e => setCredModal(m => m && { ...m, password: e.target.value })}
+                  autoComplete="current-password"
+                />
+              </label>
+              <div className={styles.modalFooter}>
+                <button type="button" className={styles.btn} onClick={() => setCredModal(null)}>Отмена</button>
+                <button type="submit" className={`${styles.btn} ${styles.btnPrimary}`} disabled={credSaving}>
+                  {credSaving ? 'Сохранение…' : 'Сохранить'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }

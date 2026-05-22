@@ -180,6 +180,26 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 		episodeRunTime = &e.EpisodeRunTime[0]
 	}
 
+	category := t.Categories
+	if category == "" {
+		if e.MediaType == "tv" {
+			category = models.CatSeries
+		} else {
+			category = models.CatMovie
+		}
+	}
+
+	torrentDate := t.CreateDate
+	if torrentDate.IsZero() {
+		dateStr := e.ReleaseDate
+		if e.MediaType == "tv" {
+			dateStr = e.LastAirDate
+		}
+		if d, err := time.Parse("2006-01-02", fmtDate(dateStr)); err == nil && !d.After(time.Now()) {
+			torrentDate = d
+		}
+	}
+
 	_, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO media_cards
 			(card_id, tmdb_id, media_type, title, original_title, overview,
@@ -187,7 +207,7 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			 vote_average, vote_count, original_language, adult, runtime, status, imdb_id,
 			 genres, number_of_seasons, number_of_episodes, seasons,
 			 myshows_id, kinopoisk_id,
-			 rutor_category, best_video_quality, latest_torrent_date,
+			 category, best_video_quality, latest_torrent_date,
 			 last_ep_season, last_ep_number, episode_run_time,
 			 tmdb_updated_at, updated_at, created_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,now(),now(),now())
@@ -213,7 +233,7 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			seasons            = COALESCE(EXCLUDED.seasons, media_cards.seasons),
 			myshows_id         = COALESCE(EXCLUDED.myshows_id, media_cards.myshows_id),
 			kinopoisk_id       = COALESCE(EXCLUDED.kinopoisk_id, media_cards.kinopoisk_id),
-			rutor_category     = COALESCE(EXCLUDED.rutor_category, media_cards.rutor_category),
+			category           = COALESCE(EXCLUDED.category, media_cards.category),
 			best_video_quality = GREATEST(media_cards.best_video_quality, EXCLUDED.best_video_quality),
 			latest_torrent_date = CASE
 				WHEN media_cards.media_type = 'tv'
@@ -232,7 +252,7 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 		e.VoteAverage, e.VoteCount, e.OriginalLanguage, e.Adult, e.Runtime, e.Status, e.ImdbID,
 		marshalJSON(e.Genres), e.NumberOfSeasons, e.NumberOfEpisodes, marshalJSON(e.Seasons),
 		nilInt(e.MyShowsID), nilInt64(e.KinopoiskID),
-		nilStr(t.Categories), t.VideoQuality, nilTime(t.CreateDate),
+		nilStr(category), t.VideoQuality, nilTime(torrentDate),
 		lastEpSeason, lastEpNumber, episodeRunTime,
 	)
 	if err != nil {
@@ -336,7 +356,7 @@ type MediaRow struct {
 // CategoryFilter defines how to filter and sort a category listing.
 type CategoryFilter struct {
 	MediaTypes      []string // "movie", "tv"
-	Categories      []string // rutor_category values e.g. "Movie", "Series"
+	Categories      []string // category values e.g. "Movie", "Series"
 	Language        string   // "ru", "notru", or ""
 	MinVideoQuality int
 	MaxVideoQuality int
@@ -443,7 +463,7 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 			args = append(args, cat)
 			n++
 		}
-		where = append(where, "m.rutor_category IN ("+strings.Join(placeholders, ",")+")")
+		where = append(where, "m.category IN ("+strings.Join(placeholders, ",")+")")
 	}
 	if f.Search != "" {
 		snip, arg := searchSQL(f.Search, n)

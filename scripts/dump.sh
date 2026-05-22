@@ -4,7 +4,7 @@
 set -e
 
 OUT="${1:-dump.sql.gz}"
-DB_CONTAINER="${DB_CONTAINER:-movies-api-db-1}"
+DB_CONTAINER="${DB_CONTAINER:-movies-api-db}"
 DB_USER="${DB_USER:-movies_api}"
 DB_NAME="${DB_NAME:-movies_api}"
 

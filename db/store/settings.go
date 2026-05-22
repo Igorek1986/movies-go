@@ -76,6 +76,11 @@ var SettingDefaults = map[string]string{
 	"parser_nnmclub_enabled": "1",
 	"parser_rutor_enabled":   "0",
 	"parser_overlap_days":    "2",
+	// Retry / backoff (listing fetches for Kinozal and NNMClub)
+	"parser_retry_attempts":      "10",
+	"parser_retry_base_wait_sec": "30",
+	"parser_retry_max_wait_sec":  "120",
+	"parser_retry_ratio":         "2.0",
 	// Category parser settings (applied at startup, require restart)
 	"movies_new_year_delta":  "2",
 	"movies_4k_year_delta":   "4",
