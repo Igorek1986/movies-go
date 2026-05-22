@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
+	"movies-api/config"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
 	tasks "movies-api/internal/tasks"
@@ -760,6 +762,9 @@ var settingsGroupDefs = []struct {
 	{"Категории парсера (требует перезапуска)", []string{
 		"movies_new_year_delta", "movies_new_min_quality", "movies_4k_year_delta",
 	}},
+	{"Режим работы (требует перезапуска)", []string{
+		"app_mode",
+	}},
 }
 
 // GET /api/admin/settings
@@ -803,6 +808,121 @@ func handleAPIAdminSettingsSave(w http.ResponseWriter, r *http.Request) {
 // POST /api/admin/restart
 func handleAPIAdminRestart(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		os.Exit(0)
+	}()
+}
+
+// GET /admin — parser-mode only: simple mode-switch page
+func handleParserModeAdmin(w http.ResponseWriter, r *http.Request) {
+	msg := ""
+	if r.URL.Query().Get("err") == "1" {
+		msg = `<p class="msg err">Неверный логин или пароль</p>`
+	}
+
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Настройки</title>
+<style>
+body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;
+     min-height:100vh;margin:0;background:#111;color:#eee}
+form{background:#1a1a1a;padding:2rem;border-radius:8px;width:320px;
+     display:flex;flex-direction:column;gap:1rem}
+h2{margin:0;font-size:1.1rem;text-align:center;color:#ccc}
+p.mode{margin:0;text-align:center;font-size:.9rem;color:#aaa}
+label{font-size:.85rem;color:#aaa;margin-bottom:-0.5rem}
+input{width:100%%;padding:.5rem;border-radius:4px;border:1px solid #333;
+      background:#222;color:#eee;font-size:1rem;box-sizing:border-box}
+button{padding:.65rem;border-radius:4px;border:none;background:#4a90e2;
+       color:#fff;font-size:1rem;cursor:pointer;margin-top:.25rem}
+button:hover{background:#357abd}
+.msg{padding:.5rem;border-radius:4px;text-align:center;font-size:.875rem}
+.err{background:#3a1a1a;color:#f44336}
+</style>
+</head>
+<body>
+<form method="POST" action="/admin">
+  <h2>Переключить в режим all</h2>
+  <p class="mode">Текущий режим: <strong>parser</strong></p>
+  %s
+  <input type="hidden" name="mode" value="all">
+  <label>Логин</label>
+  <input type="text" name="username" required autocomplete="username">
+  <label>Пароль</label>
+  <input type="password" name="password" required autocomplete="current-password">
+  <button type="submit">Включить полный режим и перезапустить</button>
+</form>
+</body>
+</html>`, msg)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(html)) //nolint:errcheck
+}
+
+// POST /admin — parser-mode only: save mode and restart
+func handleParserModeAdminSave(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/admin?err=1", http.StatusSeeOther)
+		return
+	}
+
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	cfg := config.Get()
+	if cfg.SuperUsername == "" || cfg.SuperPassword == "" ||
+		username != cfg.SuperUsername || password != cfg.SuperPassword {
+		http.Redirect(w, r, "/admin?err=1", http.StatusSeeOther)
+		return
+	}
+
+	mode := r.FormValue("mode")
+	if mode != "all" {
+		mode = "parser"
+	}
+	store.SetSetting(r.Context(), "app_mode", mode)
+
+	html := `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Перезапуск</title>
+<style>
+body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;
+     min-height:100vh;margin:0;background:#111;color:#eee;text-align:center}
+p{color:#aaa;font-size:.95rem}
+</style>
+</head>
+<body>
+<div>
+  <p id="msg">Настройки сохранены. Сервис перезапускается…</p>
+</div>
+<script>
+(function(){
+  var attempts = 0;
+  function poll(){
+    fetch('/health').then(function(r){
+      if(r.ok){ window.location.href='/admin'; }
+      else{ retry(); }
+    }).catch(function(){ retry(); });
+  }
+  function retry(){
+    attempts++;
+    if(attempts > 60){ document.getElementById('msg').textContent='Сервис не отвечает, проверьте вручную.'; return; }
+    setTimeout(poll, 1500);
+  }
+  setTimeout(poll, 2000);
+})();
+</script>
+</body>
+</html>`
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(html)) //nolint:errcheck
+
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		os.Exit(0)

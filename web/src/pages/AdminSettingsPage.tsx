@@ -7,6 +7,10 @@ import styles from './AdminSettingsPage.module.scss'
 
 const TEXTAREA_KEYS = new Set(['privacy_policy_content', 'consent_content'])
 
+const SELECT_KEYS: Record<string, string[]> = {
+  app_mode: ['parser', 'all'],
+}
+
 const CHECKBOX_KEYS: Record<string, string> = {
   yandex_metrika_enabled:   'yandex_metrika_id',
   google_analytics_enabled: 'google_analytics_id',
@@ -71,6 +75,7 @@ const LABELS: Record<string, string> = {
   contact_email:          'Контактный email',
   privacy_policy_content: 'Политика обработки персональных данных (HTML)',
   consent_content:        'Согласие на обработку персональных данных (HTML)',
+  app_mode: 'Режим работы',
 }
 
 const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
@@ -117,6 +122,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   { name: 'Категории парсера', keys: [
     'movies_new_year_delta', 'movies_new_min_quality', 'movies_4k_year_delta',
   ], requiresRestart: true },
+  { name: 'Режим работы', keys: ['app_mode'], requiresRestart: true },
 ]
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -165,12 +171,16 @@ export default function AdminSettingsPage() {
       await fetch('/api/admin/restart', { method: 'POST' })
       setSuccess('Сервис перезапускается…')
       // Poll /health until the server comes back up
+      const goToAdmin = original['app_mode'] === 'parser'
       const poll = async () => {
         for (let i = 0; i < 30; i++) {
           await new Promise(r => setTimeout(r, 1000))
           try {
             const res = await fetch('/health')
-            if (res.ok) { setSuccess('Сервис запущен'); setTimeout(() => setSuccess(''), 3000); return }
+            if (res.ok) {
+              if (goToAdmin) { window.location.href = '/admin'; return }
+              setSuccess('Сервис запущен'); setTimeout(() => setSuccess(''), 3000); return
+            }
           } catch { /* still down */ }
         }
         setSuccess('Проверьте статус сервиса вручную')
@@ -265,6 +275,24 @@ export default function AdminSettingsPage() {
                           />
                           {label}
                         </label>
+                      )
+                    }
+
+                    if (SELECT_KEYS[key]) {
+                      return (
+                        <>
+                          <label key={key + '_label'} className={styles.rowLabel}>{label}</label>
+                          <select
+                            key={key}
+                            className={styles.rowInput}
+                            value={val}
+                            onChange={e => setValue(key, e.target.value)}
+                          >
+                            {SELECT_KEYS[key].map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        </>
                       )
                     }
 

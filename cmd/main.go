@@ -49,16 +49,22 @@ func main() {
 		httpPort = 8080
 	}
 
-	mode := cfg.AppMode
-	if mode != "parser" {
-		mode = "all"
-	}
-
 	fmt.Println("=========== START ===========")
-	fmt.Printf("lm_%s, %s, CPU: %d, mode: %s\n", version.Version, runtime.Version(), runtime.NumCPU(), mode)
 
 	setupProxy(cfg)
 	db.Init()
+
+	mode := "parser"
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if m, ok := store.GetSetting(ctx, "app_mode"); ok && m == "all" {
+			mode = "all"
+		}
+		cancel()
+	}
+
+	fmt.Printf("lm_%s, %s, CPU: %d, mode: %s\n", version.Version, runtime.Version(), runtime.NumCPU(), mode)
+
 	if mode == "all" {
 		ensureSuperuser(cfg)
 	}

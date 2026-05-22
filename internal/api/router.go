@@ -139,6 +139,10 @@ func NewRouter(mode string) http.Handler {
 	})
 
 	if mode != "all" {
+		r.Get("/admin", handleParserModeAdmin)
+		r.Get("/admin/", handleParserModeAdmin)
+		r.Post("/admin", handleParserModeAdminSave)
+		r.Post("/admin/", handleParserModeAdminSave)
 		return r
 	}
 

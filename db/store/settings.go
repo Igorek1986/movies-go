@@ -85,6 +85,8 @@ var SettingDefaults = map[string]string{
 	"movies_new_year_delta":  "2",
 	"movies_4k_year_delta":   "4",
 	"movies_new_min_quality": "200",
+	// Run mode
+	"app_mode": "parser",
 	// Legal
 	"site_name":              "NUMParser",
 	"contact_email":          "",
