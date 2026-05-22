@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react
 import { useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV } from '@/utils/scrollNav'
+import { scrollV, getGridCols } from '@/utils/scrollNav'
 import styles from './CatalogPage.module.scss'
 
 interface MediaItem {
@@ -866,7 +866,28 @@ export default function CatalogPage() {
         return
       }
 
-      if (expandedCategory) return
+      if (expandedCategory) {
+        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
+        e.preventDefault()
+        const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-card]'))
+        if (!cards.length) return
+        const idx = cards.indexOf(focused as HTMLElement)
+        let next = -1
+        if (idx === -1) {
+          next = 0
+        } else {
+          const cols = getGridCols(cards)
+          if (e.key === 'ArrowRight') next = Math.min(idx + 1, cards.length - 1)
+          else if (e.key === 'ArrowLeft') next = Math.max(idx - 1, 0)
+          else if (e.key === 'ArrowDown') next = Math.min(idx + cols, cards.length - 1)
+          else if (e.key === 'ArrowUp') next = Math.max(idx - cols, 0)
+        }
+        if (next !== -1 && next !== idx) {
+          cards[next].focus()
+          scrollV(cards[next])
+        }
+        return
+      }
 
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         if (!focused?.hasAttribute('data-card')) {
