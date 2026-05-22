@@ -75,7 +75,6 @@ func loadBannedPatterns() []string {
 	}
 	bannedCache.patterns = patterns
 	bannedCache.loadedAt = time.Now()
-	log.Printf("banned_patterns reloaded from DB: %v", patterns)
 	return patterns
 }
 
@@ -105,18 +104,15 @@ func bannedOriginsMiddleware(next http.Handler) http.Handler {
 				if blocked == "" {
 					blocked = referer
 				}
-				log.Printf("banned_block: patterns=%v path=%s origin=%q referer=%q → BLOCKED", patterns, r.URL.Path, origin, referer)
+				log.Printf("banned origin blocked: %s", blocked)
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(buildBlockedResponse()) //nolint:errcheck
-				_ = blocked
 				return
 			}
-		} else if origin != "" || referer != "" {
-			log.Printf("banned_check: patterns=%v path=%s origin=%q referer=%q → pass", patterns, r.URL.Path, origin, referer)
 		}
 		next.ServeHTTP(w, r)
 	})
