@@ -89,6 +89,9 @@ var SettingDefaults = map[string]string{
 	"app_mode": "parser",
 	// Security
 	"banned_patterns": "bylampa",
+	// MyShows
+	"myshows_api_url":  "https://myshows.me/v3/rpc/",
+	"myshows_auth_url": "https://myshows.me/api/session",
 	// Legal
 	"site_name":              "NUMParser",
 	"contact_email":          "",

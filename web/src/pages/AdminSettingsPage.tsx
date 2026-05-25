@@ -162,6 +162,8 @@ const LABELS: Record<string, string> = {
   rate_2fa_max:            'Rate: 2FA — попыток',
   rate_2fa_window_sec:     'Rate: 2FA — окно (сек)',
   sync_cooldown_sec:       'MyShows cooldown (сек)',
+  myshows_api_url:         'MyShows API URL',
+  myshows_auth_url:        'MyShows Auth URL',
   parser_overlap_days:     'Парсер — перекрытие дат (дней)',
   movies_new_year_delta:   'Новые фильмы — за сколько лет (YearDelta)',
   movies_4k_year_delta:    'Новые 4K фильмы — за сколько лет (YearDelta)',
@@ -218,6 +220,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'rate_2fa_max', 'rate_2fa_window_sec',
     'sync_cooldown_sec',
   ]},
+  { name: 'MyShows', keys: ['myshows_api_url', 'myshows_auth_url'] },
   { name: 'Категории парсера', keys: [
     'movies_new_year_delta', 'movies_new_min_quality', 'movies_4k_year_delta',
   ], requiresRestart: true },
@@ -324,7 +327,7 @@ export default function AdminSettingsPage() {
             <button type="button" className={styles.btnRestart} onClick={handleRestart} disabled={restarting}>
               {restarting ? 'Перезапуск…' : 'Перезапустить сервис'}
             </button>
-            <Link to="/admin" className={styles.backLink}>← Пользователи</Link>
+            <Link to="/admin" className={styles.backLink}>Админ</Link>
           </div>
         </div>
 

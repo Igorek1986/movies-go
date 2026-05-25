@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"movies-api/config"
 	"movies-api/db/store"
 	"log"
 	"net/http"
@@ -26,9 +25,9 @@ var httpClient = &http.Client{Timeout: 10 * time.Second}
 // ─── JSON-RPC client ──────────────────────────────────────────────────────────
 
 func rpc(ctx context.Context, method string, params map[string]any) (json.RawMessage, error) {
-	apiURL := config.Get().MyShowsAPI
+	apiURL, _ := store.GetSetting(ctx, "myshows_api_url")
 	if apiURL == "" {
-		apiURL = "https://myshows.me/v3/rpc/"
+		apiURL = store.SettingDefaults["myshows_api_url"]
 	}
 
 	body, _ := json.Marshal(map[string]any{

@@ -804,6 +804,9 @@ var settingsGroupDefs = []struct {
 		"rate_2fa_max", "rate_2fa_window_sec",
 		"sync_cooldown_sec",
 	}},
+	{"MyShows", []string{
+		"myshows_api_url", "myshows_auth_url",
+	}},
 	{"Парсер", []string{
 		"rutor_host", "kinozal_host", "nnmclub_host",
 	}},

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"movies-api/config"
+	"movies-api/db/store"
 	"net/http"
 	"strings"
 )
@@ -14,9 +14,9 @@ import (
 // rpcAuth sends an authenticated JSON-RPC call to MyShows.
 // MyShows requires the "authorization2" header (not "Authorization").
 func rpcAuth(ctx context.Context, token, method string, params map[string]any) (json.RawMessage, error) {
-	apiURL := config.Get().MyShowsAPI
+	apiURL, _ := store.GetSetting(ctx, "myshows_api_url")
 	if apiURL == "" {
-		apiURL = "https://myshows.me/v3/rpc/"
+		apiURL = store.SettingDefaults["myshows_api_url"]
 	}
 
 	body, _ := json.Marshal(map[string]any{
@@ -61,9 +61,9 @@ func rpcAuth(ctx context.Context, token, method string, params map[string]any) (
 
 // LoginUser authenticates with MyShows via /api/session and returns the access token.
 func LoginUser(ctx context.Context, login, password string) (string, error) {
-	authURL := config.Get().MyShowsAuthURL
+	authURL, _ := store.GetSetting(ctx, "myshows_auth_url")
 	if authURL == "" {
-		authURL = "https://myshows.me/api/session"
+		authURL = store.SettingDefaults["myshows_auth_url"]
 	}
 
 	body, _ := json.Marshal(map[string]string{"login": login, "password": password})
