@@ -106,6 +106,15 @@ function BannedPatterns() {
 
 const TEXTAREA_KEYS = new Set(['privacy_policy_content', 'consent_content'])
 
+const PLACEHOLDERS: Record<string, string> = {
+  base_url:        'https://yourdomain.com',
+  plugin_url:      'https://yourdomain.com/np.js (пусто = base_url + /np.js)',
+  donate_url:      'https://example.com/donate',
+  myshows_api_url: 'https://myshows.me/v3/rpc/',
+  myshows_auth_url:'https://myshows.me/api/session',
+  contact_email:   'admin@example.com',
+}
+
 const SELECT_KEYS: Record<string, string[]> = {
   app_mode: ['parser', 'all'],
 }
@@ -162,6 +171,9 @@ const LABELS: Record<string, string> = {
   rate_2fa_max:            'Rate: 2FA — попыток',
   rate_2fa_window_sec:     'Rate: 2FA — окно (сек)',
   sync_cooldown_sec:       'MyShows cooldown (сек)',
+  base_url:                'Base URL сайта',
+  plugin_url:              'Plugin URL (np.js)',
+  donate_url:              'Donate URL',
   myshows_api_url:         'MyShows API URL',
   myshows_auth_url:        'MyShows Auth URL',
   parser_overlap_days:     'Парсер — перекрытие дат (дней)',
@@ -209,6 +221,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'yandex_metrika_enabled', 'yandex_metrika_id',
     'google_analytics_enabled', 'google_analytics_id',
   ]},
+  { name: 'Сайт', keys: ['base_url', 'plugin_url', 'donate_url'] },
   { name: 'Юридические', keys: [
     'site_name', 'contact_email',
     'privacy_policy_content', 'consent_content',
@@ -427,6 +440,7 @@ export default function AdminSettingsPage() {
                           type="text"
                           className={styles.rowInput}
                           value={val}
+                          placeholder={PLACEHOLDERS[key] ?? ''}
                           onChange={e => setValue(key, e.target.value)}
                           autoComplete="off"
                         />

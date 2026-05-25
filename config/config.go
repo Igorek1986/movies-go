@@ -11,8 +11,7 @@ type ConfigParser struct {
 	TmdbToken string `env:"TMDB_TOKEN"`
 
 	// HTTP сервер
-	HTTPPort int    `env:"HTTP_PORT" env-default:"8080"`
-	BaseURL  string `env:"BASE_URL"`
+	HTTPPort int `env:"PORT" env-default:"8080"`
 
 	// Суперпользователь (создаётся при старте)
 	SuperUsername string `env:"SUPERUSER_USERNAME"`
@@ -24,10 +23,6 @@ type ConfigParser struct {
 	TelegramAdminIDs   string `env:"TELEGRAM_ADMIN_IDS"`
 	TelegramUsePolling bool   `env:"TELEGRAM_USE_POLLING"`
 
-	// Контент
-	DonateURL string `env:"DONATE_URL"`
-	SiteName           string `env:"SITE_NAME" env-default:"movies-api"`
-	ContactEmail       string `env:"CONTACT_EMAIL"`
 
 }
 

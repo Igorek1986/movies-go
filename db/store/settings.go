@@ -92,8 +92,12 @@ var SettingDefaults = map[string]string{
 	// MyShows
 	"myshows_api_url":  "https://myshows.me/v3/rpc/",
 	"myshows_auth_url": "https://myshows.me/api/session",
+	// Site
+	"base_url":   "",
+	"plugin_url": "",
+	"donate_url": "",
 	// Legal
-	"site_name":              "NUMParser",
+	"site_name":              "Movies-API",
 	"contact_email":          "",
 	"privacy_policy_content": "",
 	"consent_content":        "",

@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	_ "embed"
-	"movies-api/config"
 	"movies-api/db/store"
 	"net/http"
 	"strings"
@@ -27,7 +26,8 @@ func handleBlockedImage(w http.ResponseWriter, r *http.Request) {
 // ── Banned origins ────────────────────────────────────────────────────────────
 
 func buildBlockedResponse() map[string]any {
-	imgURL := strings.TrimRight(config.Get().BaseURL, "/") + "/blocked.png"
+	baseURL, _ := store.GetSetting(context.Background(), "base_url")
+	imgURL := strings.TrimRight(baseURL, "/") + "/blocked.png"
 	return map[string]any{
 		"page":     1,
 		"language": "ru",

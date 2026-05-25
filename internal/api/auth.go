@@ -108,9 +108,16 @@ func handleAppConfig(w http.ResponseWriter, r *http.Request) {
 	if proxy.Default.HasProxy(r.Context(), proxy.RouteImages) {
 		imgProxy = "/imgproxy"
 	}
+	pluginURL, _ := store.GetSetting(r.Context(), "plugin_url")
+	if pluginURL == "" {
+		if baseURL, _ := store.GetSetting(r.Context(), "base_url"); baseURL != "" {
+			pluginURL = strings.TrimRight(baseURL, "/") + "/np.js"
+		}
+	}
 	JSON(w, http.StatusOK, map[string]any{
 		"image_proxy_url": imgProxy,
 		"bot_name":        cfg.TelegramBotName,
+		"plugin_url":      pluginURL,
 	})
 }
 

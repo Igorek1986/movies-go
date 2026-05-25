@@ -1,9 +1,9 @@
 package api
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
-	"movies-api/config"
 	"movies-api/db/store"
 	"movies-api/internal/auth"
 	"net/http"
@@ -21,10 +21,10 @@ func buildQR(otpauthURL string) string {
 }
 
 func siteNameFromConfig() string {
-	if n := config.Get().SiteName; n != "" {
+	if n, ok := store.GetSetting(context.Background(), "site_name"); ok && n != "" {
 		return n
 	}
-	return "NUMParser"
+	return store.SettingDefaults["site_name"]
 }
 
 // ─── JSON API (React) ─────────────────────────────────────────────────────────

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"movies-api/config"
 	"movies-api/db/store"
 )
 
@@ -78,9 +77,8 @@ func handleUpdate(update tgbotapi.Update) {
 	case "📊 Статус":
 		sendStatus(ctx, chatID)
 	case "💰 Донат":
-		cfg := config.Get()
-		if cfg.DonateURL != "" {
-			send(chatID, fmt.Sprintf("💰 <a href=\"%s\">Поддержать проект</a>", cfg.DonateURL))
+		if donateURL, _ := store.GetSetting(ctx, "donate_url"); donateURL != "" {
+			send(chatID, fmt.Sprintf("💰 <a href=\"%s\">Поддержать проект</a>", donateURL))
 		}
 	case "🚨 Не работает":
 		if !reportAllowed(chatID) {
@@ -372,10 +370,9 @@ func handleAdminReply(ctx context.Context, msg *tgbotapi.Message) {
 // ─── Texts ────────────────────────────────────────────────────────────────────
 
 func welcomeText() string {
-	cfg := config.Get()
-	name := cfg.SiteName
+	name, _ := store.GetSetting(context.Background(), "site_name")
 	if name == "" {
-		name = "Movies API"
+		name = store.SettingDefaults["site_name"]
 	}
 	return fmt.Sprintf(
 		"👋 Привет! Это бот <b>%s</b>.\n\n"+

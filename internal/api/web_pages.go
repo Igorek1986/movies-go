@@ -246,26 +246,23 @@ func handleAPIProfileIDs(w http.ResponseWriter, r *http.Request) {
 // GET /api/public/page?name=consent|privacy
 func handlePublicPage(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
-	cfg := config.Get()
-	siteName := cfg.SiteName
-	if s, ok := store.GetSetting(r.Context(), "site_name"); ok && s != "" {
-		siteName = s
+	siteName, _ := store.GetSetting(r.Context(), "site_name")
+	if siteName == "" {
+		siteName = store.SettingDefaults["site_name"]
 	}
-	contactEmail := cfg.ContactEmail
-	if e, ok := store.GetSetting(r.Context(), "contact_email"); ok && e != "" {
-		contactEmail = e
-	}
+	contactEmail, _ := store.GetSetting(r.Context(), "contact_email")
+	baseURL, _ := store.GetSetting(r.Context(), "base_url")
 
 	var title, settingKey, defaultHTML string
 	switch name {
 	case "consent":
 		title = "Согласие на обработку персональных данных"
 		settingKey = "consent_content"
-		defaultHTML = consentDefaultHTML(siteName, contactEmail)
+		defaultHTML = consentDefaultHTML(siteName, baseURL, contactEmail)
 	case "privacy":
 		title = "Политика обработки персональных данных"
 		settingKey = "privacy_policy_content"
-		defaultHTML = privacyDefaultHTML(siteName, contactEmail)
+		defaultHTML = privacyDefaultHTML(siteName, baseURL, contactEmail)
 	default:
 		Error(w, http.StatusNotFound, "unknown page")
 		return
@@ -279,13 +276,22 @@ func handlePublicPage(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]string{"title": title, "html": html})
 }
 
-func consentDefaultHTML(site, email string) string {
+func consentDefaultHTML(site, siteURL, email string) string {
 	contact := ""
 	if email != "" {
 		contact = `<p><strong>Контактные данные оператора:</strong> <a href="mailto:` + email + `">` + email + `</a></p>`
 	}
+	siteRef := "<strong>" + site + "</strong>"
+	if siteURL != "" {
+		siteRef = `<a href="` + siteURL + `"><strong>` + site + `</strong></a>`
+	}
+	privacyLink := "/privacy"
+	if siteURL != "" {
+		privacyLink = siteURL + "/privacy"
+	}
 	return `<h2>Согласие на обработку персональных данных</h2>
-<p>Настоящим я, пользователь сервиса <strong>` + site + `</strong>, свободно, своей волей и в своём интересе даю согласие на обработку следующих персональных данных:</p>
+<p>Настоящим я, пользователь сервиса ` + siteRef + `, свободно, своей волей и в своём интересе даю согласие на обработку персональных данных в соответствии с <a href="` + privacyLink + `">Политикой обработки персональных данных</a>.</p>
+<p>Перечень обрабатываемых данных:</p>
 <ul><li>Telegram ID и username в мессенджере Telegram</li></ul>
 <p><strong>Цели обработки:</strong></p>
 <ul>
@@ -297,13 +303,17 @@ func consentDefaultHTML(site, email string) string {
 ` + contact
 }
 
-func privacyDefaultHTML(site, email string) string {
+func privacyDefaultHTML(site, siteURL, email string) string {
 	contact := ""
 	if email != "" {
 		contact = `<h4>7. Контактные данные</h4><p>По вопросам обработки персональных данных: <a href="mailto:` + email + `">` + email + `</a></p>`
 	}
+	siteRef := "<strong>" + site + "</strong>"
+	if siteURL != "" {
+		siteRef = `<a href="` + siteURL + `"><strong>` + site + `</strong></a>`
+	}
 	return `<h2>Политика обработки персональных данных</h2>
-<p>Настоящая Политика определяет порядок обработки персональных данных пользователей сервиса <strong>` + site + `</strong>.</p>
+<p>Настоящая Политика определяет порядок обработки персональных данных пользователей сервиса ` + siteRef + `.</p>
 <h4>1. Какие данные мы обрабатываем</h4>
 <ul>
   <li>Имя пользователя (логин)</li>

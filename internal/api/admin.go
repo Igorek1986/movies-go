@@ -793,6 +793,9 @@ var settingsGroupDefs = []struct {
 		"yandex_metrika_enabled", "yandex_metrika_id",
 		"google_analytics_enabled", "google_analytics_id",
 	}},
+	{"Сайт", []string{
+		"base_url", "plugin_url", "donate_url",
+	}},
 	{"Юридические", []string{
 		"site_name", "contact_email",
 		"privacy_policy_content", "consent_content",

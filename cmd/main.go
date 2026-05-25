@@ -80,8 +80,8 @@ func main() {
 	if mode == "all" {
 		if err := bot.Start(appCtx); err != nil {
 			log.Printf("Telegram bot error: %v", err)
-		} else if cfg.BaseURL != "" && cfg.TelegramBotToken != "" {
-			baseURL := strings.TrimRight(cfg.BaseURL, "/")
+		} else if rawBaseURL, _ := store.GetSetting(appCtx, "base_url"); rawBaseURL != "" && cfg.TelegramBotToken != "" {
+			baseURL := strings.TrimRight(rawBaseURL, "/")
 			if !cfg.TelegramUsePolling {
 				webhookURL := baseURL + "/bot/webhook"
 				if err := bot.SetWebhook(webhookURL); err != nil {

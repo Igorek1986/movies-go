@@ -10,6 +10,7 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"movies-api/config"
+	"movies-api/db/store"
 )
 
 var (
@@ -155,12 +156,12 @@ func sendWithKeyboard(chatID int64, text string, kb tgbotapi.ReplyKeyboardMarkup
 
 
 func mainKeyboard(isAdmin bool) tgbotapi.ReplyKeyboardMarkup {
-	cfg := config.Get()
 	rows := [][]tgbotapi.KeyboardButton{
 		{tgbotapi.NewKeyboardButton("📊 Статус")},
 		{tgbotapi.NewKeyboardButton("🚨 Не работает")},
 	}
-	if cfg.DonateURL != "" {
+	donateURL, _ := store.GetSetting(context.Background(), "donate_url")
+	if donateURL != "" {
 		rows = append([][]tgbotapi.KeyboardButton{
 			{tgbotapi.NewKeyboardButton("💰 Донат")},
 		}, rows...)
