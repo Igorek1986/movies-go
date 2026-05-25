@@ -106,8 +106,6 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Get("/admin/users", handleAdminListUsers)
 			r.With(requireAdmin).Patch("/admin/users/{id}/role", handleAdminSetRole)
 			r.With(requireAdmin).Delete("/admin/users/{id}", handleAdminDeleteUser)
-			r.With(requireAdmin).Get("/admin/settings", handleAPIAdminSettingsGet)
-			r.With(requireAdmin).Post("/admin/settings", handleAPIAdminSettingsSave)
 			r.With(requireAdmin).Patch("/admin/users/{id}/toggle-admin", handleAPIAdminToggleAdmin)
 			r.With(requireAdmin).Post("/admin/users/{id}/block", handleAPIAdminBlock)
 			r.With(requireAdmin).Post("/admin/users/{id}/unblock", handleAPIAdminUnblock)
@@ -119,12 +117,6 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Post("/admin/fix-runtime", handleAPIAdminFixRuntime)
 			r.With(requireAdmin).Post("/admin/fix-runtime/stop", handleAPIAdminFixRuntimeStop)
 			r.With(requireAdmin).Get("/admin/fix-runtime/status", handleAPIAdminFixRuntimeStatus)
-			r.With(requireAdmin).Get("/admin/parsers", handleAPIAdminParsersGet)
-			r.With(requireAdmin).Post("/admin/parsers/settings", handleAPIAdminParsersSettings)
-			r.With(requireAdmin).Post("/admin/parsers/run", handleAPIAdminParsersRun)
-			r.With(requireAdmin).Post("/admin/parsers/stop", handleAPIAdminParsersStop)
-			r.With(requireAdmin).Post("/admin/parsers/{name}/run", handleAPIAdminParserTrackerRun)
-			r.With(requireAdmin).Post("/admin/parsers/{name}/reset", handleAPIAdminParserTrackerReset)
 			r.With(requireAdmin).Post("/admin/restart", handleAPIAdminRestart)
 			r.With(requireAdmin).Get("/admin/banned-patterns", handleAPIAdminBannedGet)
 			r.With(requireAdmin).Post("/admin/banned-patterns", handleAPIAdminBannedAdd)
@@ -143,6 +135,33 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireSession).Post("/setup-2fa", handleAPISetup2FAConfirm)
 			r.Post("/verify-2fa", handleAPIVerify2FA)
 		}
+	})
+
+	// ── Settings + Parser management (admin, both modes) ────────────────────────
+	r.Route("/api/admin/settings", func(r chi.Router) {
+		r.Use(requireAnyAdmin(mode))
+		r.Get("/", handleAPIAdminSettingsGet)
+		r.Post("/", handleAPIAdminSettingsSave)
+	})
+	r.Route("/api/admin/parsers", func(r chi.Router) {
+		r.Use(requireAnyAdmin(mode))
+		r.Get("/", handleAPIAdminParsersGet)
+		r.Post("/settings", handleAPIAdminParsersSettings)
+		r.Post("/run", handleAPIAdminParsersRun)
+		r.Post("/stop", handleAPIAdminParsersStop)
+		r.Post("/{name}/run", handleAPIAdminParserTrackerRun)
+		r.Post("/{name}/reset", handleAPIAdminParserTrackerReset)
+	})
+
+	// ── Proxy config (admin, both modes) ────────────────────────────────────────
+	r.Route("/api/admin/proxies", func(r chi.Router) {
+		r.Use(requireAnyAdmin(mode))
+		r.Get("/", handleAPIProxiesList)
+		r.Post("/", handleAPIProxiesCreate)
+		r.Put("/{id}", handleAPIProxiesUpdate)
+		r.Delete("/{id}", handleAPIProxiesDelete)
+		r.Post("/{id}/test", handleAPIProxiesTest)
+		r.Post("/routing", handleAPIProxyRoutingSave)
 	})
 
 	if mode != "all" {

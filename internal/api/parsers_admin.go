@@ -71,6 +71,10 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 		nextRunAt = t.UTC().Format("2006-01-02T15:04:05Z")
 	}
 
+	rutorHost, _ := store.GetSetting(ctx, "rutor_host")
+	kinozalHost, _ := store.GetSetting(ctx, "kinozal_host")
+	nnmclubHost, _ := store.GetSetting(ctx, "nnmclub_host")
+
 	JSON(w, http.StatusOK, map[string]any{
 		"parsers":         statuses,
 		"order":           orderVal,
@@ -86,6 +90,9 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 		"kinozal_password": kinozalPassword,
 		"catalog_trackers": catalogTrackers,
 		"tracker_cards":    store.CountCardsByTracker(),
+		"rutor_host":    rutorHost,
+		"kinozal_host":  kinozalHost,
+		"nnmclub_host":  nnmclubHost,
 	})
 }
 

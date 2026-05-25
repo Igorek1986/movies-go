@@ -1,0 +1,386 @@
+@use '@/styles/variables' as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xl;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+}
+
+.title {
+  margin: 0;
+  font-size: $font-size-xl;
+  font-weight: 700;
+  color: $color-text;
+}
+
+.headerLinks {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.backLink {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  text-decoration: none;
+  padding: 4px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  transition: color $transition-fast, border-color $transition-fast;
+  &:hover { color: $color-text; border-color: $color-text-muted; }
+}
+
+.section {
+  @include card;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.empty {
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  margin: 0;
+}
+
+.hint {
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+  margin: 0;
+}
+
+// ── Proxy row ─────────────────────────────────────────────────────────────────
+
+.proxyRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: $color-bg-card;
+
+  &.disabled { opacity: 0.55; }
+
+  @media (max-width: $bp-sm) {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.proxyInfo {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.proxyName {
+  font-weight: 600;
+  color: $color-text;
+  font-size: $font-size-sm;
+}
+
+.proxyBadge {
+  font-size: $font-size-xs;
+  padding: 2px 6px;
+  border-radius: $radius-sm;
+  background: rgba($color-primary, 0.15);
+  color: $color-primary;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.proxyConfig {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+.disabledBadge {
+  font-size: $font-size-xs;
+  padding: 2px 6px;
+  border-radius: $radius-sm;
+  background: rgba($color-text-muted, 0.15);
+  color: $color-text-muted;
+}
+
+.priorityLabel {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
+.proxyActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.testOk {
+  font-size: $font-size-xs;
+  color: $color-success;
+  font-weight: 500;
+}
+
+.testFail {
+  font-size: $font-size-xs;
+  color: $color-danger;
+  font-weight: 500;
+}
+
+// ── Form ──────────────────────────────────────────────────────────────────────
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  max-width: 600px;
+}
+
+.formRow {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+}
+
+.label {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  min-width: 100px;
+}
+
+.input {
+  flex: 1;
+  padding: 6px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: $color-bg;
+  color: $color-text;
+  font-size: $font-size-sm;
+  min-width: 0;
+
+  &:focus { outline: none; border-color: $color-primary; }
+}
+
+.inputSmall {
+  @extend .input;
+  flex: none;
+  width: 80px;
+}
+
+
+.select {
+  @extend .input;
+  flex: none;
+  cursor: pointer;
+}
+
+.selectSmall {
+  @extend .input;
+  flex: none;
+  min-width: 160px;
+  cursor: pointer;
+}
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  font-size: $font-size-sm;
+  color: $color-text;
+  cursor: pointer;
+
+  input[type="checkbox"] { cursor: pointer; }
+}
+
+.formButtons {
+  display: flex;
+  gap: $spacing-sm;
+}
+
+// ── Routing ───────────────────────────────────────────────────────────────────
+
+.routeRow {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-md;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+
+  @media (max-width: $bp-sm) {
+    flex-direction: column;
+  }
+}
+
+.routeLabel {
+  font-size: $font-size-sm;
+  color: $color-text;
+  min-width: 160px;
+}
+
+.proxyCheckList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+  align-items: center;
+  flex: 1;
+
+  &.disabled { opacity: 0.45; pointer-events: none; }
+}
+
+.proxyCheckDisabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  input { cursor: not-allowed; }
+}
+
+.proxyCheckItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: $font-size-sm;
+  color: $color-text;
+  cursor: pointer;
+  padding: 3px 8px;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: $color-bg-card;
+  user-select: none;
+
+  input[type="checkbox"] { cursor: pointer; }
+  &:has(input:checked) {
+    border-color: $color-primary;
+    background: rgba($color-primary, 0.1);
+  }
+}
+
+.btnToggleAll {
+  @extend .btnEdit;
+  width: 96px;
+  text-align: center;
+  flex-shrink: 0;
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
+}
+
+.hintInline {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  font-style: italic;
+}
+
+// ── Buttons ───────────────────────────────────────────────────────────────────
+
+.btnAdd {
+  padding: 6px $spacing-md;
+  background: $color-primary;
+  color: white;
+  border: none;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  font-weight: 500;
+  &:hover { opacity: 0.88; }
+}
+
+.btnSave {
+  padding: 6px $spacing-md;
+  background: $color-primary;
+  color: white;
+  border: none;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  font-weight: 500;
+  &:hover { opacity: 0.88; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+.btnCancel {
+  padding: 6px $spacing-md;
+  background: transparent;
+  color: $color-text-muted;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  &:hover { color: $color-text; border-color: $color-text-muted; }
+}
+
+.btnEdit {
+  padding: 4px $spacing-sm;
+  background: transparent;
+  color: $color-text-muted;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-xs;
+  cursor: pointer;
+  &:hover { color: $color-text; border-color: $color-text-muted; }
+}
+
+.btnTest {
+  @extend .btnEdit;
+}
+
+.btnDel {
+  padding: 4px $spacing-sm;
+  background: transparent;
+  color: $color-danger;
+  border: 1px solid rgba($color-danger, 0.3);
+  border-radius: $radius-sm;
+  font-size: $font-size-xs;
+  cursor: pointer;
+  &:hover { background: rgba($color-danger, 0.08); border-color: $color-danger; }
+}
+
+// ── Toasts ────────────────────────────────────────────────────────────────────
+
+.toasts {
+  position: fixed;
+  bottom: $spacing-lg;
+  right: $spacing-lg;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  z-index: 1000;
+}
+
+.toast {
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.toastOk { background: $color-success; color: white; }
+.toastErr { background: $color-danger; color: white; }

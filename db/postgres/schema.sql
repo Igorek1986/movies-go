@@ -356,3 +356,24 @@ ALTER TABLE media_cards DROP CONSTRAINT IF EXISTS uq_media_card_tmdb;
 ALTER TABLE timecodes   ADD COLUMN IF NOT EXISTS created_at             TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE UNIQUE INDEX IF NOT EXISTS uq_devices_user_name ON devices (user_id, lower(name));
 ALTER TABLE torrents     ADD COLUMN IF NOT EXISTS tracker               VARCHAR(20);
+
+-- ─── Proxy configuration ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS proxy_configs (
+    id         SERIAL      PRIMARY KEY,
+    name       TEXT        NOT NULL,
+    type       TEXT        NOT NULL CHECK (type IN ('socks5')),
+    config     TEXT        NOT NULL,
+    enabled    BOOLEAN     NOT NULL DEFAULT true,
+    priority   INT         NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS proxy_routing (
+    route      TEXT      PRIMARY KEY,
+    enabled    BOOLEAN   NOT NULL DEFAULT false,
+    proxy_ids  INTEGER[] NOT NULL DEFAULT '{}'
+);
+
+-- Migration: replace single proxy_id with proxy_ids array
+ALTER TABLE proxy_routing ADD COLUMN IF NOT EXISTS proxy_ids INTEGER[] NOT NULL DEFAULT '{}';
+ALTER TABLE proxy_routing DROP COLUMN IF EXISTS proxy_id;

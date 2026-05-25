@@ -21,19 +21,23 @@ import (
 	"movies-api/releases"
 )
 
-type KinozalParser struct {
-	mu           sync.Mutex
-	isParse      bool
-	client       *http.Client // proxy
-	directClient *http.Client // fallback without proxy
-	loggedIn     bool
+func getKinozalHost() string {
+	if v, ok := store.GetSetting(context.Background(), "kinozal_host"); ok && v != "" {
+		return v
+	}
+	return "https://kinozal.tv"
 }
 
-func NewKinozal() *KinozalParser {
-	return &KinozalParser{
-		client:       newHTTPClient(),
-		directClient: newDirectHTTPClient(),
-	}
+type KinozalParser struct {
+	mu       sync.Mutex
+	isParse  bool
+	loggedIn bool
+}
+
+func NewKinozal() *KinozalParser { return &KinozalParser{} }
+
+func (k *KinozalParser) httpClient() *http.Client {
+	return clientForRoute("parser_kinozal")
 }
 
 func (k *KinozalParser) Name() string { return "kinozal" }
@@ -121,7 +125,7 @@ func (k *KinozalParser) login() error {
 		"touser":   {"1"},
 		"wact":     {"takerecover"},
 	}
-	resp, err := httpPostForm(k.client, "https://kinozal.tv/takelogin.php", form)
+	resp, err := httpPostForm(k.httpClient(), getKinozalHost()+"/takelogin.php", form)
 	if err != nil {
 		return err
 	}
@@ -135,9 +139,9 @@ func (k *KinozalParser) login() error {
 }
 
 func (k *KinozalParser) parseCategory(catID string, catInfo kzCatInfo, fullScan bool, cutoff time.Time, processed *atomic.Int64) {
-	runPageLoop(k.client, k.directClient, "kinozal", 20, 50,
+	runPageLoop(k.httpClient(), "kinozal", 20, 50,
 		func(page int) string {
-			return fmt.Sprintf("https://kinozal.tv/browse.php?c=%s&page=%d", catID, page)
+			return fmt.Sprintf(getKinozalHost()+"/browse.php?c=%s&page=%d", catID, page)
 		},
 		func(body []byte) ([]enrichJob, bool, int) {
 			items := k.parseListing(decodeWin1251(body), catID)
@@ -221,7 +225,7 @@ func (k *KinozalParser) buildDetails(item kzItem, catInfo kzCatInfo) *models.Tor
 		Peer:       item.peers,
 		CreateDate: item.date,
 		Tracker:    "kinozal",
-		Link:       "https://kinozal.tv/details.php?id=" + item.torrentID,
+		Link:       getKinozalHost()+"/details.php?id=" + item.torrentID,
 		Hash:       "kz_" + item.torrentID, // pseudo-hash for deduplication; .torrent not publicly downloadable
 		Categories: catInfo.baseCat,
 	}

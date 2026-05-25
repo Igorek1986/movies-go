@@ -2,6 +2,7 @@ package parser
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,18 +19,22 @@ import (
 	"movies-api/releases"
 )
 
-type NNMClubParser struct {
-	mu           sync.Mutex
-	isParse      bool
-	client       *http.Client // proxy
-	directClient *http.Client // fallback without proxy
+func getNNMClubHost() string {
+	if v, ok := store.GetSetting(context.Background(), "nnmclub_host"); ok && v != "" {
+		return v
+	}
+	return "https://nnmclub.to"
 }
 
-func NewNNMClub() *NNMClubParser {
-	return &NNMClubParser{
-		client:       newHTTPClient(),
-		directClient: newDirectHTTPClient(),
-	}
+type NNMClubParser struct {
+	mu      sync.Mutex
+	isParse bool
+}
+
+func NewNNMClub() *NNMClubParser { return &NNMClubParser{} }
+
+func (n *NNMClubParser) httpClient() *http.Client {
+	return clientForRoute("parser_nnmclub")
 }
 
 func (n *NNMClubParser) Name() string { return "nnmclub" }
@@ -103,9 +108,9 @@ func (n *NNMClubParser) parseCategory(catID string, catInfo nnmCatInfo, fullScan
 	// NNMClub paginates with start= offset (multiples of 50), not page index.
 	// We abuse the page argument as offset/50 and multiply inside buildURL.
 	// Concurrency=2: NNMClub rate-limits aggressive parallel requests.
-	runPageLoop(n.client, n.directClient, "nnmclub", 2, 50,
+	runPageLoop(n.httpClient(), "nnmclub", 2, 50,
 		func(page int) string {
-			return fmt.Sprintf("https://nnmclub.to/forum/viewforum.php?f=%s&start=%d", catID, page*50)
+			return fmt.Sprintf(getNNMClubHost()+"/forum/viewforum.php?f=%s&start=%d", catID, page*50)
 		},
 		func(body []byte) ([]enrichJob, bool, int) {
 			items := n.parseListing(decodeWin1251(body), catID)
@@ -187,7 +192,7 @@ func (n *NNMClubParser) buildDetails(item nnmItem, catInfo nnmCatInfo) *models.T
 		Title:      item.title,
 		CreateDate: item.date,
 		Tracker:    "nnmclub",
-		Link:       "https://nnmclub.to/forum/viewtopic.php?t=" + item.topicID,
+		Link:       getNNMClubHost()+"/forum/viewtopic.php?t=" + item.topicID,
 		Categories: catInfo.baseCat,
 	}
 	parseNNMTitle(d, item.title, catInfo)
@@ -211,14 +216,7 @@ func (n *NNMClubParser) fetchHashFromTopic(topicURL string) (hash, magnet string
 	netWait := 5 * time.Second  // network error backoff
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		// Try proxy, fall back to direct on network error
-		body, fetchErr := httpGetBytes(n.client, topicURL)
-		if fetchErr != nil {
-			body2, directErr := httpGetBytes(n.directClient, topicURL)
-			if directErr == nil {
-				body, fetchErr = body2, nil
-			}
-		}
+		body, fetchErr := httpGetBytes(n.httpClient(), topicURL)
 
 		if fetchErr != nil {
 			err = fetchErr

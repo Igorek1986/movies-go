@@ -21,6 +21,9 @@ import (
 )
 
 func loadRutorHost() string {
+	if v, ok := store.GetSetting(context.Background(), "rutor_host"); ok && v != "" {
+		return v
+	}
 	return config.Get().Host
 }
 

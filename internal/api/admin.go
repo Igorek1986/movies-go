@@ -60,6 +60,16 @@ func checkParserSession(r *http.Request) bool {
 	return tok != "" && c.Value == tok
 }
 
+// requireAnyAdmin returns a middleware that works in both run modes:
+// in "all" mode it requires a web session with is_admin=true;
+// in "parser" mode it falls back to the parser-mode cookie auth.
+func requireAnyAdmin(mode string) func(http.Handler) http.Handler {
+	if mode == "all" {
+		return requireAdmin
+	}
+	return requireParserAdmin
+}
+
 func requireParserAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !checkParserSession(r) {
@@ -794,6 +804,9 @@ var settingsGroupDefs = []struct {
 		"rate_2fa_max", "rate_2fa_window_sec",
 		"sync_cooldown_sec",
 	}},
+	{"Парсер", []string{
+		"rutor_host", "kinozal_host", "nnmclub_host",
+	}},
 	{"Категории парсера (требует перезапуска)", []string{
 		"movies_new_year_delta", "movies_new_min_quality", "movies_4k_year_delta",
 	}},
@@ -944,8 +957,12 @@ section{background:#1a1a1a;border-radius:8px;padding:1.5rem;display:flex;flex-di
 h2{margin:0;font-size:.95rem;color:#bbb;border-bottom:1px solid #2a2a2a;padding-bottom:.5rem}
 label{font-size:.82rem;color:#aaa}
 .row{display:flex;gap:.5rem;align-items:center}
-select,input[type=text]{flex:1;padding:.45rem .6rem;border-radius:4px;border:1px solid #333;
+select,input:not([type=checkbox]){flex:1;padding:.45rem .6rem;border-radius:4px;border:1px solid #333;
   background:#222;color:#eee;font-size:.9rem}
+input[type=number]{flex:none}
+.eye-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;
+  cursor:pointer;padding:2px 4px;color:#666;line-height:1;display:flex;align-items:center}
+.eye-btn:hover{color:#ccc}
 .btn{padding:.45rem 1rem;border-radius:4px;border:none;font-size:.9rem;cursor:pointer;white-space:nowrap}
 .btn-primary{background:#4a90e2;color:#fff}.btn-primary:hover{background:#357abd}
 .btn-danger{background:#c0392b;color:#fff}.btn-danger:hover{background:#a93226}
@@ -986,6 +1003,78 @@ select,input[type=text]{flex:1;padding:.45rem .6rem;border-radius:4px;border:1px
     <div id="status"></div>
     <div id="clearWrap" style="display:none">
       <button class="btn btn-ghost" onclick="clearAll()">Очистить список</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Парсеры</h2>
+    <div id="parsersStatus" style="font-size:.82rem;color:#4a90e2;min-height:1.2em"></div>
+    <div id="parsersList"><span class="empty">Загрузка…</span></div>
+    <div class="row" style="margin-top:.5rem;flex-wrap:wrap;gap:.4rem">
+      <button class="btn btn-primary" id="btnRunAll" onclick="parsersRunAll()">▶ Запустить все</button>
+      <button class="btn btn-danger" id="btnStopAll" onclick="parsersStop()" style="display:none">■ Остановить</button>
+    </div>
+    <hr style="border-color:#2a2a2a;margin:.5rem 0">
+    <div style="display:flex;flex-direction:column;gap:.5rem">
+      <label>Хост Rutor
+        <div class="row" style="margin-top:4px">
+          <input type="text" id="rutorHostInput" placeholder="http://rutor.info">
+        </div>
+      </label>
+      <label>Хост Kinozal
+        <div class="row" style="margin-top:4px">
+          <input type="text" id="kinozalHostInput" placeholder="https://kinozal.tv">
+        </div>
+      </label>
+      <label>Хост NNMClub
+        <div class="row" style="margin-top:4px">
+          <input type="text" id="nnmclubHostInput" placeholder="https://nnmclub.to">
+        </div>
+      </label>
+      <div class="row">
+        <button class="btn btn-primary" onclick="saveParserHosts()">Сохранить хосты</button>
+        <span id="rutorHostStatus" style="font-size:.82rem;color:#4a90e2"></span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Прокси</h2>
+    <div id="proxyList"><span class="empty">Загрузка…</span></div>
+    <hr style="border-color:#2a2a2a;margin:.5rem 0">
+    <div id="proxyForm" style="display:flex;flex-direction:column;gap:.6rem">
+      <label>Название <input type="text" id="pxName" placeholder="Мой прокси" style="margin-top:4px"></label>
+      <div class="row" style="gap:.5rem;align-items:flex-end">
+        <label style="flex:1">Хост <input type="text" id="pxHost" placeholder="host.example.com" style="margin-top:4px;width:100%"></label>
+        <label>Порт <input type="number" id="pxPort" value="1080" style="margin-top:4px;width:80px" min="1" max="65535"></label>
+      </div>
+      <div class="row" style="gap:.5rem;align-items:flex-end">
+        <label style="flex:1">Логин <input type="text" id="pxLogin" placeholder="необязательно" style="margin-top:4px;width:100%" autocomplete="off"></label>
+        <label style="flex:1">Пароль
+          <div style="position:relative;margin-top:4px">
+            <input type="password" id="pxPassword" placeholder="необязательно" style="width:100%;box-sizing:border-box;padding-right:44px" autocomplete="new-password">
+            <button type="button" onclick="togglePxPw()" class="eye-btn" id="pxPwEye"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </label>
+      </div>
+      <label>Приоритет <input type="number" id="pxPriority" value="0" style="margin-top:4px;width:80px"></label>
+      <label style="flex-direction:row;gap:.5rem;align-items:center"><input type="checkbox" id="pxEnabled" checked> Включён</label>
+      <input type="hidden" id="pxEditId" value="">
+      <div class="row">
+        <button class="btn btn-primary" onclick="saveProxy()">Сохранить</button>
+        <button class="btn btn-ghost" onclick="resetProxyForm()">Отмена</button>
+        <span id="pxStatus" style="font-size:.82rem;color:#4a90e2"></span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Маршрутизация прокси</h2>
+    <p style="font-size:.82rem;color:#888;margin:0">Для каких запросов использовать прокси</p>
+    <div id="routingList"><span class="empty">Загрузка…</span></div>
+    <div class="row" style="margin-top:.5rem">
+      <button class="btn btn-primary" onclick="saveRouting()">Сохранить маршруты</button>
+      <span id="rtStatus" style="font-size:.82rem;color:#4a90e2"></span>
     </div>
   </section>
 </div>
@@ -1034,7 +1123,312 @@ function clearAll(){
     return fetch('/api/admin/banned-patterns',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({pattern:p})});
   })).then(function(){list=[];render();setStatus('Список очищен');}).catch(function(){setStatus('Ошибка',true);});
 }
+// ── Parsers ───────────────────────────────────────────────────────────────────
+var parsersData={};
+
+function setParsersStatus(msg,err){
+  var s=document.getElementById('parsersStatus');
+  s.style.color=err?'#e74c3c':'#4a90e2';
+  s.textContent=msg;
+  if(!err)setTimeout(function(){s.textContent=''},2000);
+}
+
+function renderParsers(){
+  var d=parsersData;
+  var el=document.getElementById('parsersList');
+  if(!d.parsers){return;}
+  var running=d.running;
+  document.getElementById('btnRunAll').style.display=running?'none':'';
+  document.getElementById('btnStopAll').style.display=running?'':'none';
+  el.innerHTML=d.parsers.map(function(p){
+    var last=p.last_parsed_at?new Date(p.last_parsed_at).toLocaleString('ru'):'никогда';
+    var isCurrent=running&&d.current_tracker===p.name;
+    var rowStyle='padding:.35rem 0;border-bottom:1px solid #222;display:flex;flex-direction:column;gap:.3rem';
+    return '<div style="'+rowStyle+'">'
+      +'<div class="row" style="flex-wrap:wrap;gap:.4rem">'
+      +'<label style="display:flex;align-items:center;gap:.4rem;font-size:.88rem;min-width:90px">'
+      +'<input type="checkbox" onchange="toggleParser(\''+p.name+'\',this)"'+(p.enabled?' checked':'')+'>'
+      +'<b>'+p.name+'</b>'
+      +(isCurrent?'<span style="font-size:.72rem;color:#f0ad4e">▶ работает</span>':'')
+      +'</label>'
+      +'<span style="font-size:.75rem;color:#666;flex:1">последний: '+last+'</span>'
+      +'<button class="btn btn-ghost" style="padding:2px 8px;font-size:.78rem" onclick="parsersRunOne(\''+p.name+'\')">▶</button>'
+      +'<button class="btn btn-ghost" style="padding:2px 8px;font-size:.78rem" onclick="parsersResetOne(\''+p.name+'\')">Сброс даты</button>'
+      +'</div>'
+      +'</div>';
+  }).join('');
+}
+
+function loadParsers(){
+  fetch('/api/admin/parsers/').then(function(r){return r.json();}).then(function(d){
+    parsersData=d;
+    renderParsers();
+    document.getElementById('rutorHostInput').value=d.rutor_host||'';
+    document.getElementById('kinozalHostInput').value=d.kinozal_host||'';
+    document.getElementById('nnmclubHostInput').value=d.nnmclub_host||'';
+  }).catch(function(){setParsersStatus('Ошибка загрузки',true);});
+}
+
+function toggleParser(name,cb){
+  var body={};
+  body[name+'_enabled']=cb.checked;
+  fetch('/api/admin/parsers/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){if(!r.ok)throw new Error();setParsersStatus('Сохранено');})
+    .catch(function(){setParsersStatus('Ошибка',true);cb.checked=!cb.checked;});
+}
+
+function parsersRunAll(){
+  fetch('/api/admin/parsers/run',{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){setParsersStatus(d.status==='started'?'Запущен':'Уже работает');setTimeout(loadParsers,500);})
+    .catch(function(){setParsersStatus('Ошибка',true);});
+}
+
+function parsersStop(){
+  fetch('/api/admin/parsers/stop',{method:'POST'})
+    .then(function(){setParsersStatus('Запрос остановки отправлен');setTimeout(loadParsers,1000);})
+    .catch(function(){setParsersStatus('Ошибка',true);});
+}
+
+function parsersRunOne(name){
+  fetch('/api/admin/parsers/'+name+'/run',{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){setParsersStatus(name+': '+(d.status==='started'?'запущен':'уже работает'));setTimeout(loadParsers,500);})
+    .catch(function(){setParsersStatus('Ошибка',true);});
+}
+
+function parsersResetOne(name){
+  if(!confirm('Сбросить дату для '+name+'? Следующий запуск будет полным.'))return;
+  fetch('/api/admin/parsers/'+name+'/reset',{method:'POST'})
+    .then(function(){setParsersStatus(name+': дата сброшена');})
+    .catch(function(){setParsersStatus('Ошибка',true);});
+}
+
+// ── Parser hosts ──────────────────────────────────────────────────────────────
+function saveParserHosts(){
+  var s=document.getElementById('rutorHostStatus');
+  var body={
+    rutor_host:document.getElementById('rutorHostInput').value.trim(),
+    kinozal_host:document.getElementById('kinozalHostInput').value.trim(),
+    nnmclub_host:document.getElementById('nnmclubHostInput').value.trim()
+  };
+  fetch('/api/admin/settings/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){if(!r.ok)throw new Error();s.style.color='#4a90e2';s.textContent='Сохранено';setTimeout(function(){s.textContent=''},2000);})
+    .catch(function(){s.style.color='#e74c3c';s.textContent='Ошибка';});
+}
+
+loadParsers();
 loadPats();
+
+// ── Proxy management ──────────────────────────────────────────────────────────
+var pxConfigs=[], pxRoutes=[];
+
+
+function setPxStatus(msg,err){
+  var s=document.getElementById('pxStatus');
+  s.style.color=err?'#e74c3c':'#4a90e2';
+  s.textContent=msg;
+  if(!err)setTimeout(function(){s.textContent=''},2000);
+}
+function setRtStatus(msg,err){
+  var s=document.getElementById('rtStatus');
+  s.style.color=err?'#e74c3c':'#4a90e2';
+  s.textContent=msg;
+  if(!err)setTimeout(function(){s.textContent=''},2000);
+}
+
+function renderProxies(){
+  var el=document.getElementById('proxyList');
+  if(!pxConfigs.length){el.innerHTML='<span class="empty">Прокси не настроены</span>';return;}
+  el.innerHTML=pxConfigs.map(function(c){
+    return '<div class="row" style="padding:.4rem 0;border-bottom:1px solid #222;flex-wrap:wrap;gap:.4rem">'
+      +'<span style="font-weight:600;font-size:.88rem">'+c.name+'</span>'
+      +'<span style="font-size:.75rem;background:#1e3a5f;color:#6baed6;border-radius:3px;padding:1px 6px">'+c.type+'</span>'
+      +'<span style="font-size:.78rem;color:#666;font-family:monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+c.config+'</span>'
+      +(c.enabled?'':'<span style="font-size:.75rem;color:#888">[выкл]</span>')
+      +'<span style="font-size:.75rem;color:#666">p:'+c.priority+'</span>'
+      +'<button class="btn btn-ghost" style="padding:2px 8px;font-size:.78rem" onclick="testProxy('+c.id+')">Тест</button>'
+      +'<button class="btn btn-ghost" style="padding:2px 8px;font-size:.78rem" onclick="editProxy('+c.id+')">Изм.</button>'
+      +'<button class="btn btn-danger" style="padding:2px 8px;font-size:.78rem" onclick="delProxy('+c.id+')">✕</button>'
+      +'</div>';
+  }).join('');
+}
+
+function renderRouting(){
+  var el=document.getElementById('routingList');
+  if(!pxRoutes.length){el.innerHTML='<span class="empty">Нет маршрутов</span>';return;}
+  el.innerHTML=pxRoutes.map(function(rt){
+    var ids=rt.proxy_ids||[];
+    var allChk=ids.length===0?' checked':'';
+    var itemStyle='display:inline-flex;align-items:center;gap:4px;font-size:.82rem;cursor:pointer;padding:2px 7px;border:1px solid #333;border-radius:4px;background:#1a1a1a';
+    var btnLabel=(ids.length===pxConfigs.length&&pxConfigs.length>0)?'Снять все':'Выбрать все';
+    var checks=pxConfigs.length===0
+      ?'<span style="font-size:.78rem;color:#666">нет прокси</span>'
+      :'<button class="btn btn-ghost" style="padding:2px 10px;font-size:.78rem;width:96px;flex-shrink:0;text-align:center" onclick="toggleRtAll(\''+rt.route+'\')" id="rt_all_'+rt.route+'">'+btnLabel+'</button>'
+        +pxConfigs.map(function(c){
+          var chk=ids.indexOf(c.id)>=0?' checked':'';
+          var dis=c.enabled?'':' disabled';
+          var st=itemStyle+(c.enabled?'':';opacity:.4;cursor:not-allowed');
+          return '<label style="'+st+'">'
+            +'<input type="checkbox" id="rt_px_'+rt.route+'_'+c.id+'"'+chk+dis+' onchange="updateRtBtn(\''+rt.route+'\')"> '+c.name+'</label>';
+        }).join('');
+    return '<div style="padding:.35rem 0;border-bottom:1px solid #222">'
+      +'<div class="row" style="flex-wrap:wrap;gap:.4rem;margin-bottom:.3rem">'
+      +'<label style="display:flex;align-items:center;gap:.4rem;font-size:.88rem;min-width:160px">'
+      +'<input type="checkbox" id="rt_en_'+rt.route+'"'+(rt.enabled?' checked':'')+'>'
+      +'<span>'+rt.label+'</span>'
+      +'</label>'
+      +'</div>'
+      +'<div class="row" style="flex-wrap:wrap;gap:.3rem;margin-left:1rem">'+checks+'</div>'
+      +'</div>';
+  }).join('');
+}
+
+function toggleRtAll(route){
+  var btn=document.getElementById('rt_all_'+route);
+  var enabled=pxConfigs.filter(function(c){return c.enabled;});
+  var allSelected=enabled.length>0&&enabled.every(function(c){
+    var el=document.getElementById('rt_px_'+route+'_'+c.id);
+    return el&&el.checked;
+  });
+  var selectAll=!allSelected;
+  enabled.forEach(function(c){
+    var el=document.getElementById('rt_px_'+route+'_'+c.id);
+    if(el)el.checked=selectAll;
+  });
+  if(btn)btn.textContent=selectAll?'Снять все':'Выбрать все';
+}
+
+function updateRtBtn(route){
+  var btn=document.getElementById('rt_all_'+route);
+  if(!btn)return;
+  var enabled=pxConfigs.filter(function(c){return c.enabled;});
+  var allSelected=enabled.length>0&&enabled.every(function(c){
+    var el=document.getElementById('rt_px_'+route+'_'+c.id);
+    return el&&el.checked;
+  });
+  btn.textContent=allSelected?'Снять все':'Выбрать все';
+}
+
+function loadProxies(){
+  fetch('/api/admin/proxies/').then(function(r){return r.json();}).then(function(d){
+    pxConfigs=d.configs||[];
+    pxRoutes=d.routes||[];
+    renderProxies();
+    renderRouting();
+  }).catch(function(){setPxStatus('Ошибка загрузки',true);});
+}
+
+var svgEye='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+var svgEyeOff='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+function togglePxPw(){
+  var inp=document.getElementById('pxPassword');
+  var eye=document.getElementById('pxPwEye');
+  if(inp.type==='password'){inp.type='text';eye.innerHTML=svgEyeOff;}
+  else{inp.type='password';eye.innerHTML=svgEye;}
+}
+
+function buildSocks5Url(host,port,login,password){
+  var hp=host+':'+port;
+  if(!login)return 'socks5://'+hp;
+  return 'socks5://'+encodeURIComponent(login)+':'+encodeURIComponent(password)+'@'+hp;
+}
+
+function parseSocks5(config){
+  try{
+    var u=new URL(config.replace('socks5h://','socks5://'));
+    return{host:u.hostname,port:u.port||'1080',login:u.username?decodeURIComponent(u.username):'',password:u.password?decodeURIComponent(u.password):''};
+  }catch(e){
+    var bare=config.replace(/^socks5h?:\/\//,'');
+    var lc=bare.lastIndexOf(':');
+    return lc>0?{host:bare.slice(0,lc),port:bare.slice(lc+1),login:'',password:''}:{host:bare,port:'1080',login:'',password:''};
+  }
+}
+
+function resetProxyForm(){
+  document.getElementById('pxName').value='';
+  document.getElementById('pxHost').value='';
+  document.getElementById('pxPort').value='1080';
+  document.getElementById('pxLogin').value='';
+  document.getElementById('pxPassword').value='';
+  document.getElementById('pxPassword').type='password';
+  document.getElementById('pxPwEye').innerHTML=svgEye;
+  document.getElementById('pxPriority').value='0';
+  document.getElementById('pxEnabled').checked=true;
+  document.getElementById('pxEditId').value='';
+}
+
+function editProxy(id){
+  var c=pxConfigs.find(function(x){return x.id===id;});
+  if(!c)return;
+  var p=parseSocks5(c.config);
+  document.getElementById('pxName').value=c.name;
+  document.getElementById('pxHost').value=p.host;
+  document.getElementById('pxPort').value=p.port;
+  document.getElementById('pxLogin').value=p.login;
+  document.getElementById('pxPassword').value=p.password;
+  document.getElementById('pxPassword').type='password';
+  document.getElementById('pxPwEye').innerHTML=svgEye;
+  document.getElementById('pxPriority').value=c.priority;
+  document.getElementById('pxEnabled').checked=c.enabled;
+  document.getElementById('pxEditId').value=c.id;
+  document.getElementById('proxyForm').scrollIntoView({behavior:'smooth'});
+}
+
+function saveProxy(){
+  var id=document.getElementById('pxEditId').value;
+  var host=document.getElementById('pxHost').value.trim();
+  var port=document.getElementById('pxPort').value.trim()||'1080';
+  var login=document.getElementById('pxLogin').value.trim();
+  var password=document.getElementById('pxPassword').value;
+  var config=buildSocks5Url(host,port,login,password);
+  var body={
+    name:document.getElementById('pxName').value.trim(),
+    type:'socks5',
+    config:config,
+    priority:parseInt(document.getElementById('pxPriority').value)||0,
+    enabled:document.getElementById('pxEnabled').checked
+  };
+  if(!body.name||!host){setPxStatus('Заполните поля',true);return;}
+  var url=id?'/api/admin/proxies/'+id:'/api/admin/proxies/';
+  var method=id?'PUT':'POST';
+  fetch(url,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){if(!r.ok)throw new Error();return r;})
+    .then(function(){setPxStatus(id?'Сохранено':'Добавлено');resetProxyForm();loadProxies();})
+    .catch(function(){setPxStatus('Ошибка',true);});
+}
+
+function delProxy(id){
+  if(!confirm('Удалить прокси?'))return;
+  fetch('/api/admin/proxies/'+id,{method:'DELETE'})
+    .then(function(r){if(r.ok)loadProxies();else setPxStatus('Ошибка',true);});
+}
+
+function testProxy(id){
+  setPxStatus('Тестирование…');
+  fetch('/api/admin/proxies/'+id+'/test',{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){setPxStatus(d.ok?('✓ '+d.ms+'ms'):('✗ '+(d.error||d.status)));})
+    .catch(function(){setPxStatus('Ошибка',true);});
+}
+
+function saveRouting(){
+  var data=pxRoutes.map(function(rt){
+    var en=document.getElementById('rt_en_'+rt.route);
+    var ids=pxConfigs.reduce(function(acc,c){
+      var cb=document.getElementById('rt_px_'+rt.route+'_'+c.id);
+      if(cb&&cb.checked)acc.push(c.id);
+      return acc;
+    },[]);
+    return{route:rt.route,enabled:en?en.checked:false,proxy_ids:ids};
+  });
+  fetch('/api/admin/proxies/routing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+    .then(function(r){if(!r.ok)throw new Error();setRtStatus('Сохранено');})
+    .catch(function(){setRtStatus('Ошибка',true);});
+}
+
+loadProxies();
 </script>
 </body></html>`
 
