@@ -51,7 +51,7 @@ func retryOpts() (attempts int, baseWait, maxWait time.Duration, ratio float64) 
 //
 // Stops when: rawCount == 0, rawCount < pageSize, hitCutoff, or fetch fails.
 func runPageLoop(
-	proxy, direct *http.Client,
+	client *http.Client,
 	tracker string,
 	concurrency, pageSize int,
 	buildURL func(page int) string,
@@ -66,7 +66,7 @@ func runPageLoop(
 			return
 		}
 		url := buildURL(page)
-		body, err := fetchBytesRetry(proxy, direct, url, attempts, baseWait, maxWait, ratio)
+		body, err := fetchBytesRetry(client, url, attempts, baseWait, maxWait, ratio)
 		if err != nil {
 			log.Printf("%s: get %s: %v", tracker, url, err)
 			return

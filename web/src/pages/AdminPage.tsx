@@ -257,6 +257,7 @@ export default function AdminPage() {
           <h1 className={styles.title}>Администрирование</h1>
           <div className={styles.headerNav}>
             <Link to="/admin/parsers" className={styles.navBtn}>Парсеры</Link>
+            <Link to="/admin/proxies" className={styles.navBtn}>Прокси</Link>
             <Link to="/admin/logs" className={styles.navBtn}>Логи</Link>
             <Link to="/admin/settings" className={styles.navBtn}>Настройки</Link>
           </div>

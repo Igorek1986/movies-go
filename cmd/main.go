@@ -19,28 +19,19 @@ import (
 	"movies-api/version"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
 	"time"
 
-	"github.com/alexflint/go-arg"
 	"github.com/jasonlvhit/gocron"
 )
-
-type args struct {
-	Proxy string `arg:"--proxy" help:"proxy for rutor, http://user:password@ip:port"`
-}
-
-var params args
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	log.SetOutput(logbuf.Default)
 	logbuf.Default.Init("/app/logs")
-	arg.MustParse(&params)
 
 	cfg := config.Get()
 
@@ -51,7 +42,6 @@ func main() {
 
 	fmt.Println("=========== START ===========")
 
-	setupProxy(cfg)
 	db.Init()
 
 	// Записываем дефолты только если ключа ещё нет в БД
@@ -80,11 +70,6 @@ func main() {
 		ensureSuperuser(cfg)
 	}
 	tmdb.Init()
-	if config.ProxyHost != "" {
-		log.Printf("Rutor: using SOCKS5 proxy %s", proxyHostSafe())
-	} else {
-		log.Println("Rutor proxy: none (direct connection)")
-	}
 
 	getDbInfo()
 
@@ -172,30 +157,6 @@ func ensureSuperuser(cfg *config.ConfigParser) {
 	}
 }
 
-func setupProxy(cfg *config.ConfigParser) {
-	raw := cfg.Proxy
-	if params.Proxy != "" {
-		raw = params.Proxy
-	}
-	if raw != "" {
-		if u, err := url.Parse(raw); err == nil {
-			if cfg.ProxyRutorUser != "" {
-				u.User = url.UserPassword(cfg.ProxyRutorUser, cfg.ProxyRutorPass)
-			}
-			config.ProxyHost = u.String()
-			return
-		}
-	}
-}
-
-func proxyHostSafe() string {
-	u, err := url.Parse(config.ProxyHost)
-	if err != nil {
-		return config.ProxyHost
-	}
-	u.User = nil
-	return u.String()
-}
 
 func scanReleases() {
 	parser.RunAll()

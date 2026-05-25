@@ -1,16 +1,18 @@
 package tmdb
 
 import (
-	"movies-api/config"
-	"movies-api/db/models"
-	"movies-api/db/store"
-	"movies-api/utils"
+	"context"
 	"log"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
+
+	"movies-api/config"
+	"movies-api/db/models"
+	"movies-api/db/store"
+	iproxy "movies-api/internal/proxy"
+	"movies-api/utils"
 )
 
 const (
@@ -21,11 +23,12 @@ const (
 var (
 	genres      []*models.Genre
 	TMDBAuthKey string
-	tmdbClient  = &http.Client{Timeout: 30 * time.Second}
 )
 
-// HTTPClient returns the configured TMDB HTTP client (proxy-aware).
-func HTTPClient() *http.Client { return tmdbClient }
+// HTTPClient returns an http.Client for TMDB, routed through proxy if configured.
+func HTTPClient() *http.Client {
+	return iproxy.Default.ClientFor(context.Background(), iproxy.RouteTMDB)
+}
 
 func Init() {
 	log.Println("Init tmdb")
@@ -36,15 +39,6 @@ func Init() {
 		return
 	}
 	TMDBAuthKey = strings.TrimSpace(cfg.TmdbToken)
-
-	if cfg.ProxyURL != "" {
-		if t, err := buildSocks5Transport(cfg.ProxyURL, cfg.ProxyUser, cfg.ProxyPass); err == nil {
-			tmdbClient = &http.Client{Transport: t, Timeout: 30 * time.Second}
-			log.Printf("TMDB: using SOCKS5 proxy %s", cfg.ProxyURL)
-		} else {
-			log.Println("TMDB: proxy setup failed:", err)
-		}
-	}
 
 	go func() {
 		lstmg := GetGenres("movie")

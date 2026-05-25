@@ -171,7 +171,7 @@ export default function LogsPage() {
               <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={scrollToBottom}>↓ В конец</button>
             )}
             <Link to="/admin/parsers" className={styles.backLink}>Парсеры</Link>
-            <Link to="/admin" className={styles.backLink}>Назад</Link>
+            <Link to="/admin" className={styles.backLink}>Админ</Link>
           </div>
         </div>
 

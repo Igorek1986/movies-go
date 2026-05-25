@@ -1,7 +1,6 @@
 package client
 
 import (
-	"movies-api/config"
 	"net/http"
 	"time"
 
@@ -28,9 +27,6 @@ func GetParam(link, referer, cookie string) *gorequest.SuperAgent {
 		agent.AppendHeader("referer", referer)
 	}
 
-	if config.ProxyHost != "" {
-		agent.Proxy(config.ProxyHost)
-	}
 	agent.Timeout(30 * time.Second)
 	return agent.Get(link)
 }

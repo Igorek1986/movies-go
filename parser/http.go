@@ -1,45 +1,27 @@
 package parser
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"time"
 
-	"golang.org/x/net/publicsuffix"
-	"movies-api/config"
+	"movies-api/internal/proxy"
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
-func newDirectHTTPClient() *http.Client {
-	jar, _ := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
-	return &http.Client{Jar: jar, Transport: &http.Transport{}, Timeout: 20 * time.Second}
-}
-
-func newHTTPClient() *http.Client {
-	jar, _ := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
-	transport := &http.Transport{}
-	cfg := config.Get()
-	if cfg.ProxyURL != "" {
-		if u, err := url.Parse(cfg.ProxyURL); err == nil {
-			if cfg.ProxyUser != "" {
-				u.User = url.UserPassword(cfg.ProxyUser, cfg.ProxyPass)
-			}
-			transport.Proxy = http.ProxyURL(u)
-		}
-	}
-	// 30s for proxy client: SOCKS5 tunnel setup can take 2-5s
-	return &http.Client{Jar: jar, Transport: transport, Timeout: 30 * time.Second}
+func clientForRoute(route string) *http.Client {
+	return proxy.Default.ClientFor(context.Background(), route)
 }
 
 // fetchBytesRetry fetches url using the proxy client, falling back to direct on
 // network error. Retries up to maxAttempts with geometric backoff.
-func fetchBytesRetry(proxy, direct *http.Client, url string, maxAttempts int, baseWait, maxWait time.Duration, ratio float64) ([]byte, error) {
+func fetchBytesRetry(proxyClient *http.Client, url string, maxAttempts int, baseWait, maxWait time.Duration, ratio float64) ([]byte, error) {
 	wait := baseWait
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
@@ -52,16 +34,11 @@ func fetchBytesRetry(proxy, direct *http.Client, url string, maxAttempts int, ba
 			time.Sleep(w)
 			wait = time.Duration(float64(wait) * ratio)
 		}
-		body, err := httpGetBytes(proxy, url)
-		if err != nil {
-			// proxy failed — try direct
-			if body2, err2 := httpGetBytes(direct, url); err2 == nil {
-				return body2, nil
-			}
-			lastErr = err
-			continue
+		body, err := httpGetBytes(proxyClient, url)
+		if err == nil {
+			return body, nil
 		}
-		return body, nil
+		lastErr = err
 	}
 	return nil, fmt.Errorf("недоступно после %d попыток: %w", maxAttempts, lastErr)
 }

@@ -325,8 +325,9 @@ export default function ParsersPage() {
         <div className={styles.header}>
           <h1 className={styles.title}>Парсеры</h1>
           <div className={styles.headerLinks}>
+            <Link to="/admin/proxies" className={styles.backLink}>Прокси</Link>
             <Link to="/admin/logs" className={styles.backLink}>Логи</Link>
-            <Link to="/admin" className={styles.backLink}>Назад</Link>
+            <Link to="/admin" className={styles.backLink}>Админ</Link>
           </div>
         </div>
 

@@ -1,50 +1,13 @@
 package tmdb
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
-
-	"golang.org/x/net/proxy"
 )
-
-// buildSocks5Transport creates an http.Transport that routes all connections
-// through a SOCKS5 proxy (socks5:// or socks5h://). DNS is resolved by the
-// proxy server (socks5h behavior) because http.Transport passes the raw
-// hostname to DialContext, which the SOCKS5 dialer forwards as-is.
-func buildSocks5Transport(rawURL, user, pass string) (*http.Transport, error) {
-	rawURL = strings.Replace(rawURL, "socks5h://", "socks5://", 1)
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return nil, err
-	}
-	var auth *proxy.Auth
-	if user != "" {
-		auth = &proxy.Auth{User: user, Password: pass}
-	} else if u.User != nil {
-		p, _ := u.User.Password()
-		auth = &proxy.Auth{User: u.User.Username(), Password: p}
-	}
-	d, err := proxy.SOCKS5("tcp", u.Host, auth, proxy.Direct)
-	if err != nil {
-		return nil, err
-	}
-	t := &http.Transport{
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-	if cd, ok := d.(proxy.ContextDialer); ok {
-		t.DialContext = cd.DialContext
-	} else {
-		t.Dial = d.Dial //nolint:staticcheck
-	}
-	return t, nil
-}
 
 func readPageTmdb(path string, params map[string]string, results interface{}) error {
 	link := tmdbEndpoint + path
@@ -60,14 +23,14 @@ func readPageTmdb(path string, params map[string]string, results interface{}) er
 		if attempt > 0 {
 			time.Sleep(2 * time.Second)
 		}
-		req, err := http.NewRequest("GET", link, nil)
+		req, err := http.NewRequestWithContext(context.Background(), "GET", link, nil)
 		if err != nil {
 			return err
 		}
 		req.Header.Set("accept", "application/json")
 		req.Header.Set("Authorization", TMDBAuthKey)
 
-		resp, err := tmdbClient.Do(req)
+		resp, err := HTTPClient().Do(req)
 		if err != nil {
 			lastErr = err
 			continue

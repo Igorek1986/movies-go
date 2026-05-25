@@ -7,6 +7,7 @@ import (
 	"movies-api/db/models"
 	"movies-api/db/store"
 	"movies-api/internal/auth"
+	"movies-api/internal/proxy"
 	"net/http"
 	"strings"
 )
@@ -104,7 +105,7 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 func handleAppConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Get()
 	imgProxy := ""
-	if cfg.ProxyURL != "" {
+	if proxy.Default.HasProxy(r.Context(), proxy.RouteImages) {
 		imgProxy = "/imgproxy"
 	}
 	JSON(w, http.StatusOK, map[string]any{
