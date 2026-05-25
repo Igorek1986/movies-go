@@ -54,6 +54,7 @@ export default function LogsPage() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const autoScrollRef = useRef(true)
+  const isAutoScrollingRef = useRef(false)
 
   // SSE for live + today history
   useEffect(() => {
@@ -87,12 +88,14 @@ export default function LogsPage() {
   }, [selectedDay])
 
   useEffect(() => {
-    if (autoScrollRef.current && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
-    }
+    if (!autoScrollRef.current || !containerRef.current) return
+    isAutoScrollingRef.current = true
+    containerRef.current.scrollTop = containerRef.current.scrollHeight
+    requestAnimationFrame(() => { isAutoScrollingRef.current = false })
   }, [liveLines, histLines, tab, selectedDay])
 
   function handleScroll() {
+    if (isAutoScrollingRef.current) return
     const el = containerRef.current
     if (!el) return
     autoScrollRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
