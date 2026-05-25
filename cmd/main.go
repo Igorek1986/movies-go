@@ -115,6 +115,7 @@ func main() {
 	}
 
 	api.InitCategorySettings()
+	parser.OnComplete = api.InvalidateCategoryCache
 
 	// HTTP сервер
 	srv := &http.Server{

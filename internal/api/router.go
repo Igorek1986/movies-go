@@ -31,15 +31,16 @@ func NewRouter(mode string) http.Handler {
 	r.Get("/api/search", handleSearch)
 	r.Get("/search", handleSearch)
 
+	cached := withCategoryCache(handleCategory)
 	for route := range categoryRoutes {
-		r.Get("/"+route, handleCategory)
+		r.Get("/"+route, cached)
 	}
-	r.Get("/movies_id_{year:[0-9]+}", handleCategory)
-	r.Get("/continues", handleCategory)
-	r.Get("/continues_movie", handleCategory)
-	r.Get("/continues_tv", handleCategory)
-	r.Get("/continues_anime", handleCategory)
-	r.Get("/np_popular", handleCategory)
+	r.Get("/movies_id_{year:[0-9]+}", cached)
+	r.Get("/continues", cached)
+	r.Get("/continues_movie", cached)
+	r.Get("/continues_tv", cached)
+	r.Get("/continues_anime", cached)
+	r.Get("/np_popular", cached)
 
 	r.Get("/api/refresh-card-episodes", handleRefreshCardEpisodes)
 	r.Get("/api/check-ongoing", handleCheckOngoing)

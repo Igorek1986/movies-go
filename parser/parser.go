@@ -16,6 +16,10 @@ type Parser interface {
 	Parse()
 }
 
+// OnComplete is called after every RunAll or StartOne completes.
+// Set from main to trigger cache invalidation without a circular import.
+var OnComplete func()
+
 var (
 	runActive      atomic.Bool
 	stopRequest    atomic.Bool
@@ -75,6 +79,9 @@ func StartOne(name string) bool {
 			currentTracker.Store("")
 			runActive.Store(false)
 			log.Printf("parser: ■ %s завершён", name)
+			if OnComplete != nil {
+				OnComplete()
+			}
 		}()
 		log.Printf("parser: ▶ запуск %s (single)", name)
 		p.Parse()
@@ -144,5 +151,8 @@ func RunAll() {
 		p.Parse()
 	}
 	log.Println("parser: RunAll complete")
+	if OnComplete != nil {
+		OnComplete()
+	}
 }
 

@@ -183,11 +183,7 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 func applyCatalogTrackers(f *store.CategoryFilter) {
-	v, _ := store.GetSetting(context.Background(), "catalog_trackers")
-	if v == "" {
-		v = "rutor"
-	}
-	for _, t := range strings.Split(v, ",") {
+	for _, t := range strings.Split(cachedTrackers(), ",") {
 		if t = strings.TrimSpace(t); t != "" {
 			f.TrackerFilter = append(f.TrackerFilter, t)
 		}

@@ -237,6 +237,11 @@ CREATE INDEX IF NOT EXISTS idx_media_cards_orig_title_low ON media_cards (lower(
 CREATE INDEX IF NOT EXISTS idx_media_cards_title_low      ON media_cards (lower(title));
 CREATE INDEX IF NOT EXISTS idx_media_cards_category       ON media_cards (category);
 CREATE INDEX IF NOT EXISTS idx_media_cards_language       ON media_cards (original_language);
+-- Sort indexes for category queries (eliminates seq scan + disk sort)
+CREATE INDEX IF NOT EXISTS idx_mc_latest_torrent  ON media_cards (latest_torrent_date DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS idx_mc_release_date    ON media_cards ((COALESCE(release_date, first_air_date)) DESC NULLS LAST);
+-- Tracker filter: avoids full seq scan on 389K-row torrents table
+CREATE INDEX IF NOT EXISTS idx_torrents_tracker_card ON torrents (tracker, card_id);
 
 -- ─── Episodes ─────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS episodes (
