@@ -80,9 +80,10 @@ func main() {
 	if mode == "all" {
 		if err := bot.Start(appCtx); err != nil {
 			log.Printf("Telegram bot error: %v", err)
-		} else if rawBaseURL, _ := store.GetSetting(appCtx, "base_url"); rawBaseURL != "" && cfg.TelegramBotToken != "" {
+		} else if rawBaseURL, _ := store.GetSetting(appCtx, "base_url"); rawBaseURL != "" && bot.Enabled() {
 			baseURL := strings.TrimRight(rawBaseURL, "/")
-			if !cfg.TelegramUsePolling {
+			usePolling, _ := store.GetSetting(appCtx, "telegram_use_polling")
+			if usePolling != "1" {
 				webhookURL := baseURL + "/bot/webhook"
 				if err := bot.SetWebhook(webhookURL); err != nil {
 					log.Printf("Telegram webhook register error: %v", err)

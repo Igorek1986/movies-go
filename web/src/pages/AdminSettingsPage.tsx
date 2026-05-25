@@ -188,7 +188,7 @@ const LABELS: Record<string, string> = {
   contact_email:          'Контактный email',
   privacy_policy_content: 'Политика обработки персональных данных (HTML)',
   consent_content:        'Согласие на обработку персональных данных (HTML)',
-  app_mode: 'Режим работы',
+  app_mode:               'Режим работы',
 }
 
 const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [

@@ -1,0 +1,218 @@
+@use '@/styles/variables' as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xl;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+}
+
+.title {
+  margin: 0;
+  font-size: $font-size-xl;
+  font-weight: 700;
+  color: $color-text;
+}
+
+.headerLinks {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.backLink {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  text-decoration: none;
+  padding: 4px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  transition: color $transition-fast, border-color $transition-fast;
+
+  &:hover { color: $color-text; border-color: $color-text-muted; }
+}
+
+// ── Status bar ────────────────────────────────────────────────────────────────
+
+.statusBar {
+  @include card;
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+}
+
+.statusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: $radius-full;
+  flex-shrink: 0;
+}
+.statusOn  { background: $color-success; }
+.statusOff { background: $color-text-muted; }
+
+.statusText {
+  font-size: $font-size-sm;
+  color: $color-text;
+  flex: 1;
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+.section {
+  @include card;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: $spacing-sm $spacing-md;
+  align-items: center;
+
+  @media (max-width: $bp-sm) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.label {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.input {
+  width: 100%;
+  padding: 6px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: $color-bg-input;
+  color: $color-text;
+  font-size: $font-size-sm;
+  font-family: monospace;
+  box-sizing: border-box;
+
+  &:focus { outline: none; border-color: $color-primary; }
+}
+
+.checkboxRow {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  font-size: $font-size-sm;
+  color: $color-text;
+  cursor: pointer;
+}
+
+.checkboxInput {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: $color-primary;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+}
+
+.btn {
+  height: 34px;
+  padding: 0 $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover:not(:disabled) { border-color: $color-text; color: $color-text; }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+
+.btnPrimary {
+  border-color: $color-primary;
+  color: $color-primary;
+  &:hover:not(:disabled) { background: rgba($color-primary, 0.1); }
+}
+
+.actionStatus {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+// ── Logs ──────────────────────────────────────────────────────────────────────
+
+.logsSection {
+  @include card;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  min-height: 300px;
+  max-height: 500px;
+}
+
+.logsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.connDot {
+  width: 8px;
+  height: 8px;
+  border-radius: $radius-full;
+  flex-shrink: 0;
+  &.connOn  { background: $color-success; }
+  &.connOff { background: $color-danger; }
+}
+
+.connLabel {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.logScroll {
+  flex: 1;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: $color-text;
+}
+
+.logLine {
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 1px 0;
+  border-bottom: 1px solid rgba($color-border, 0.3);
+
+  &:last-child { border-bottom: none; }
+}
+
+.logEmpty {
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  padding: $spacing-sm 0;
+}

@@ -101,6 +101,11 @@ var SettingDefaults = map[string]string{
 	"contact_email":          "",
 	"privacy_policy_content": "",
 	"consent_content":        "",
+	// Telegram bot
+	"telegram_bot_token":   "",
+	"telegram_bot_name":    "",
+	"telegram_admin_ids":   "",
+	"telegram_use_polling": "0",
 }
 
 // ─── Generic key-value settings ───────────────────────────────────────────────

@@ -16,14 +16,6 @@ type ConfigParser struct {
 	// Суперпользователь (создаётся при старте)
 	SuperUsername string `env:"SUPERUSER_USERNAME"`
 	SuperPassword string `env:"SUPERUSER_PASSWORD"`
-
-	// Telegram
-	TelegramBotToken   string `env:"TELEGRAM_BOT_TOKEN"`
-	TelegramBotName    string `env:"TELEGRAM_BOT_NAME"`
-	TelegramAdminIDs   string `env:"TELEGRAM_ADMIN_IDS"`
-	TelegramUsePolling bool   `env:"TELEGRAM_USE_POLLING"`
-
-
 }
 
 var cfg ConfigParser

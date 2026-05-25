@@ -1,9 +1,9 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"movies-api/config"
 	"movies-api/db/store"
 	"movies-api/internal/auth"
 	botpkg "movies-api/internal/bot"
@@ -155,11 +155,10 @@ func handleAPIResetPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func botName() string {
-	name := config.Get().TelegramBotName
-	if name == "" {
-		return "bot"
+	if name, ok := store.GetSetting(context.Background(), "telegram_bot_name"); ok && name != "" {
+		return name
 	}
-	return name
+	return "bot"
 }
 
 // ─── Categories / Profile IDs ─────────────────────────────────────────────────

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"movies-api/config"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
 	botpkg "movies-api/internal/bot"
@@ -96,7 +95,7 @@ func tgAppFromCtx(r *http.Request) *tgAppCtx {
 // requireTgAuth middleware validates initData from X-Telegram-Init-Data header.
 func requireTgAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := config.Get().TelegramBotToken
+		token, _ := store.GetSetting(r.Context(), "telegram_bot_token")
 		if token == "" {
 			Error(w, http.StatusServiceUnavailable, "telegram bot not configured")
 			return
@@ -179,7 +178,7 @@ func registerTgAppRoutes(r chi.Router) {
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 func handleTgAppAuth(w http.ResponseWriter, r *http.Request) {
-	token := config.Get().TelegramBotToken
+	token, _ := store.GetSetting(r.Context(), "telegram_bot_token")
 	if token == "" {
 		Error(w, http.StatusServiceUnavailable, "telegram bot not configured")
 		return

@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"movies-api/config"
 	"movies-api/db/store"
 	"movies-api/internal/bot"
 )
@@ -38,7 +37,7 @@ func handleGenerateLinkCode(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "failed to create link code")
 		return
 	}
-	botName := config.Get().TelegramBotName
+	botName, _ := store.GetSetting(r.Context(), "telegram_bot_name")
 	JSON(w, http.StatusOK, map[string]any{
 		"code":     code,
 		"bot_name": botName,

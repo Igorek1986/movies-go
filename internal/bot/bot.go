@@ -9,35 +9,74 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"movies-api/config"
 	"movies-api/db/store"
+	"movies-api/internal/proxy"
 )
 
 var (
-	instance *tgbotapi.BotAPI
-	adminIDs []int64
+	instance      *tgbotapi.BotAPI
+	adminIDs      []int64
+	pollingCancel context.CancelFunc
 )
 
 // Start initializes the Telegram bot. Does nothing if token is not configured.
 func Start(ctx context.Context) error {
-	cfg := config.Get()
-	if cfg.TelegramBotToken == "" {
+	token, _ := store.GetSetting(ctx, "telegram_bot_token")
+	if token == "" {
+		log.Println("bot: token not configured, skipping")
 		return nil
 	}
 
-	bot, err := tgbotapi.NewBotAPI(cfg.TelegramBotToken)
+	httpClient := proxy.Default.ClientFor(ctx, proxy.RouteTelegram)
+	bot, err := tgbotapi.NewBotAPIWithClient(token, tgbotapi.APIEndpoint, httpClient)
 	if err != nil {
+		log.Printf("bot: init error: %v", err)
 		return fmt.Errorf("telegram bot init: %w", err)
 	}
 	instance = bot
-	adminIDs = parseAdminIDs(cfg.TelegramAdminIDs)
+	adminIDsStr, _ := store.GetSetting(ctx, "telegram_admin_ids")
+	adminIDs = parseAdminIDs(adminIDsStr)
 
-	log.Printf("Telegram bot: @%s (admins: %v)", bot.Self.UserName, adminIDs)
+	usePolling, _ := store.GetSetting(ctx, "telegram_use_polling")
+	mode := "webhook"
+	if usePolling == "1" {
+		mode = "polling"
+	}
+	log.Printf("bot: started @%s, mode=%s, admins=%v", bot.Self.UserName, mode, adminIDs)
 
-	if cfg.TelegramUsePolling {
-		go runPolling(ctx)
+	if usePolling == "1" {
+		if _, err := bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: false}); err != nil {
+			log.Printf("bot: deleteWebhook error: %v", err)
+		} else {
+			log.Println("bot: webhook deleted, starting polling")
+		}
+		pollCtx, cancel := context.WithCancel(ctx)
+		pollingCancel = cancel
+		go runPolling(pollCtx)
 	}
 	return nil
+}
+
+// Stop shuts down the bot instance and cancels polling if active.
+func Stop() {
+	if instance == nil {
+		return
+	}
+	log.Println("bot: stopping")
+	if pollingCancel != nil {
+		pollingCancel()
+		pollingCancel = nil
+	}
+	instance.StopReceivingUpdates()
+	instance = nil
+	adminIDs = nil
+}
+
+// Restart stops the current bot instance and starts a fresh one from settings.
+func Restart(ctx context.Context) error {
+	log.Println("bot: restarting")
+	Stop()
+	return Start(ctx)
 }
 
 // SetWebhook registers the bot webhook at the given URL.
@@ -80,6 +119,9 @@ func SendMessage(telegramID int64, text string) bool {
 	msg := tgbotapi.NewMessage(telegramID, text)
 	msg.ParseMode = tgbotapi.ModeHTML
 	_, err := instance.Send(msg)
+	if err != nil {
+		log.Printf("bot: send to %d failed: %v", telegramID, err)
+	}
 	return err == nil
 }
 
@@ -121,19 +163,30 @@ func AdminIDs() []int64 {
 // Enabled reports whether the bot is configured and running.
 func Enabled() bool { return instance != nil }
 
+// Username returns the bot's Telegram username, or empty string if not running.
+func Username() string {
+	if instance == nil {
+		return ""
+	}
+	return instance.Self.UserName
+}
+
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 func runPolling(ctx context.Context) {
+	log.Println("bot: polling started")
+	local := instance // capture before loop; Stop() may nil instance concurrently
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
-	updates := instance.GetUpdatesChan(u)
+	updates := local.GetUpdatesChan(u)
 	for {
 		select {
 		case <-ctx.Done():
-			instance.StopReceivingUpdates()
+			log.Println("bot: polling stopped (context cancelled)")
 			return
 		case update, ok := <-updates:
 			if !ok {
+				log.Println("bot: polling stopped (updates channel closed)")
 				return
 			}
 			handleUpdate(update)

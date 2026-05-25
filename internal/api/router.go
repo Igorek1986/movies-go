@@ -118,6 +118,8 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Post("/admin/fix-runtime/stop", handleAPIAdminFixRuntimeStop)
 			r.With(requireAdmin).Get("/admin/fix-runtime/status", handleAPIAdminFixRuntimeStatus)
 			r.With(requireAdmin).Post("/admin/restart", handleAPIAdminRestart)
+			r.With(requireAdmin).Get("/admin/bot/status", handleAPIAdminBotStatus)
+			r.With(requireAdmin).Post("/admin/bot/restart", handleAPIAdminBotRestart)
 			r.With(requireAdmin).Get("/admin/banned-patterns", handleAPIAdminBannedGet)
 			r.With(requireAdmin).Post("/admin/banned-patterns", handleAPIAdminBannedAdd)
 			r.With(requireAdmin).Delete("/admin/banned-patterns", handleAPIAdminBannedDelete)

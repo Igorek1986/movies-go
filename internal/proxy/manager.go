@@ -25,6 +25,7 @@ const (
 	RouteParserRutor   = "parser_rutor"
 	RouteParserKinozal = "parser_kinozal"
 	RouteParserNNMClub = "parser_nnmclub"
+	RouteTelegram      = "telegram"
 )
 
 // Default is the package-level proxy manager singleton.

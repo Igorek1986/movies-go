@@ -333,18 +333,20 @@ export default function ParsersPage() {
 
         {/* Status bar */}
         <div className={`${styles.statusBar} ${running ? styles.statusRunning : styles.statusIdle}`}>
-          <span className={`${styles.statusDot} ${running ? styles.statusDotRunning : styles.statusDotIdle}`} />
-          {running ? (
-            stopRequested
-              ? <span className={styles.statusText}>Остановка после текущего трекера…</span>
-              : <span className={styles.statusText}>Парсер запущен</span>
-          ) : (
-            <span className={styles.statusText}>
-              {parserStatus.nextRunAt
-                ? <>Ожидает — следующий запуск в <strong>{fmtDateTime(parserStatus.nextRunAt)}</strong> (через {fmtCountdown(countdown)})</>
-                : 'Ожидает'}
-            </span>
-          )}
+          <div className={styles.statusMain}>
+            <span className={`${styles.statusDot} ${running ? styles.statusDotRunning : styles.statusDotIdle}`} />
+            {running ? (
+              stopRequested
+                ? <span className={styles.statusText}>Остановка после текущего трекера…</span>
+                : <span className={styles.statusText}>Парсер запущен</span>
+            ) : (
+              <span className={styles.statusText}>
+                {parserStatus.nextRunAt
+                  ? <>Ожидает — следующий запуск в <strong>{fmtDateTime(parserStatus.nextRunAt)}</strong> (через {fmtCountdown(countdown)})</>
+                  : 'Ожидает'}
+              </span>
+            )}
+          </div>
           <div className={styles.statusActions}>
             {running ? (
               <button className={`${styles.btn} ${styles.btnWarn}`} onClick={stopNow} disabled={stopRequested}>

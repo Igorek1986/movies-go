@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"movies-api/config"
 	"movies-api/db/models"
 	"movies-api/db/store"
 	"movies-api/internal/auth"
@@ -103,7 +102,6 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/config — public non-sensitive config for the frontend
 func handleAppConfig(w http.ResponseWriter, r *http.Request) {
-	cfg := config.Get()
 	imgProxy := ""
 	if proxy.Default.HasProxy(r.Context(), proxy.RouteImages) {
 		imgProxy = "/imgproxy"
@@ -114,9 +112,10 @@ func handleAppConfig(w http.ResponseWriter, r *http.Request) {
 			pluginURL = strings.TrimRight(baseURL, "/") + "/np.js"
 		}
 	}
+	botName, _ := store.GetSetting(r.Context(), "telegram_bot_name")
 	JSON(w, http.StatusOK, map[string]any{
 		"image_proxy_url": imgProxy,
-		"bot_name":        cfg.TelegramBotName,
+		"bot_name":        botName,
 		"plugin_url":      pluginURL,
 	})
 }

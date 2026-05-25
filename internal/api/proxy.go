@@ -15,13 +15,24 @@ import (
 
 // ─── List routes (for UI labels) ─────────────────────────────────────────────
 
-var proxyRouteLabels = map[string]string{
-	proxy.RouteImages:        "Картинки TMDB",
-	proxy.RouteTMDB:          "TMDB API",
-	proxy.RouteParserRutor:   "Парсер Rutor",
-	proxy.RouteParserKinozal: "Парсер Kinozal",
-	proxy.RouteParserNNMClub: "Парсер NNMClub",
+// proxyRouteOrder defines display order; labels are looked up from this slice.
+var proxyRouteOrder = []struct{ key, label string }{
+	{proxy.RouteTelegram,      "Telegram бот"},
+	{proxy.RouteTMDB,          "TMDB API"},
+	{proxy.RouteImages,        "Картинки TMDB"},
+	{proxy.RouteParserKinozal, "Парсер Kinozal"},
+	{proxy.RouteParserNNMClub, "Парсер NNMClub"},
+	{proxy.RouteParserRutor,   "Парсер Rutor"},
 }
+
+// proxyRouteLabels is used for quick key → label lookup and save validation.
+var proxyRouteLabels = func() map[string]string {
+	m := make(map[string]string, len(proxyRouteOrder))
+	for _, r := range proxyRouteOrder {
+		m[r.key] = r.label
+	}
+	return m
+}()
 
 // ─── Proxy configs CRUD ───────────────────────────────────────────────────────
 
@@ -48,10 +59,13 @@ func handleAPIProxiesList(w http.ResponseWriter, r *http.Request) {
 		routeMap[rt.Route] = rt
 	}
 	var routesOut []routeOut
-	for key, label := range proxyRouteLabels {
-		rt := routeMap[key]
-		rt.Route = key
-		routesOut = append(routesOut, routeOut{ProxyRoute: rt, Label: label})
+	for _, r := range proxyRouteOrder {
+		rt := routeMap[r.key]
+		rt.Route = r.key
+		if rt.ProxyIDs == nil {
+			rt.ProxyIDs = []int{}
+		}
+		routesOut = append(routesOut, routeOut{ProxyRoute: rt, Label: r.label})
 	}
 
 	JSON(w, http.StatusOK, map[string]any{

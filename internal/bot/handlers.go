@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -46,6 +47,16 @@ func handleUpdate(update tgbotapi.Update) {
 	msg := update.Message
 	chatID := msg.Chat.ID
 	text := strings.TrimSpace(msg.Text)
+
+	username := ""
+	if msg.From != nil {
+		username = msg.From.UserName
+	}
+	if msg.IsCommand() {
+		log.Printf("bot: cmd /%s from @%s (id=%d)", msg.Command(), username, chatID)
+	} else if text != "" {
+		log.Printf("bot: msg from @%s (id=%d): %.80s", username, chatID, text)
+	}
 
 	// ── Admin broadcast FSM ───────────────────────────────────────────────────
 	broadcastWaitingMu.Lock()
@@ -167,13 +178,16 @@ func handleStart(ctx context.Context, chatID int64, arg string, from *tgbotapi.U
 		// Link Telegram account via code
 		userID, err := store.ConsumeTelegramLinkCode(ctx, arg)
 		if err != nil || userID == 0 {
+			log.Printf("bot: /start link failed for @%s (id=%d): code=%q err=%v", username, chatID, arg, err)
 			send(chatID, "❌ Неверный или устаревший код привязки.")
 			return
 		}
 		if err := store.UpsertTelegramLink(ctx, userID, chatID, username); err != nil {
+			log.Printf("bot: upsert link failed for userID=%d tgID=%d: %v", userID, chatID, err)
 			send(chatID, "❌ Ошибка привязки аккаунта.")
 			return
 		}
+		log.Printf("bot: linked userID=%d to tg @%s (id=%d)", userID, username, chatID)
 		sendWithKeyboard(chatID, "✅ Telegram успешно привязан к вашему аккаунту!\n\nНажмите кнопку <b>«📱 Управление»</b> рядом с полем ввода.", mainKeyboard(IsAdmin(chatID)))
 		return
 	}
@@ -297,6 +311,7 @@ func sendUserStats(ctx context.Context, chatID int64) {
 
 func doBroadcast(ctx context.Context, adminChatID int64, text string) {
 	ids := store.GetAllTelegramIDs(ctx)
+	log.Printf("bot: broadcast started, recipients=%d", len(ids))
 	sent, failed := 0, 0
 	for _, id := range ids {
 		if SendMessage(id, text) {
@@ -305,6 +320,7 @@ func doBroadcast(ctx context.Context, adminChatID int64, text string) {
 			failed++
 		}
 	}
+	log.Printf("bot: broadcast done, sent=%d failed=%d", sent, failed)
 	send(adminChatID, fmt.Sprintf("📢 Рассылка завершена: отправлено %d, ошибок %d", sent, failed))
 }
 

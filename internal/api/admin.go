@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"movies-api/config"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
+	"movies-api/internal/bot"
 	tasks "movies-api/internal/tasks"
 	"movies-api/movies/tmdb"
 	"math"
@@ -796,6 +798,9 @@ var settingsGroupDefs = []struct {
 	{"Сайт", []string{
 		"base_url", "plugin_url", "donate_url",
 	}},
+	{"Телеграм бот", []string{
+		"telegram_bot_token", "telegram_bot_name", "telegram_admin_ids", "telegram_use_polling",
+	}},
 	{"Юридические", []string{
 		"site_name", "contact_email",
 		"privacy_policy_content", "consent_content",
@@ -866,6 +871,34 @@ func handleAPIAdminRestart(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(500 * time.Millisecond)
 		os.Exit(0)
 	}()
+}
+
+func handleAPIAdminBotStatus(w http.ResponseWriter, r *http.Request) {
+	JSON(w, http.StatusOK, map[string]any{
+		"enabled":  bot.Enabled(),
+		"username": bot.Username(),
+	})
+}
+
+func handleAPIAdminBotRestart(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	if err := bot.Restart(ctx); err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if rawBaseURL, _ := store.GetSetting(ctx, "base_url"); rawBaseURL != "" && bot.Enabled() {
+		baseURL := strings.TrimRight(rawBaseURL, "/")
+		usePolling, _ := store.GetSetting(ctx, "telegram_use_polling")
+		if usePolling != "1" {
+			if err := bot.SetWebhook(baseURL + "/bot/webhook"); err != nil {
+				log.Printf("bot restart: webhook error: %v", err)
+			}
+		}
+		if err := bot.SetMenuButton(baseURL + "/tg-app"); err != nil {
+			log.Printf("bot restart: menu button error: %v", err)
+		}
+	}
+	JSON(w, http.StatusOK, map[string]any{"ok": true, "enabled": bot.Enabled()})
 }
 
 // GET /admin — parser-mode only

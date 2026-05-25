@@ -80,6 +80,13 @@
 .statusRunning { border-color: rgba($color-warning, 0.4); background: rgba($color-warning, 0.06); }
 .statusIdle    { border-color: rgba($color-success, 0.3); background: rgba($color-success, 0.04); }
 
+.statusMain {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex: 1;
+}
+
 .statusDot {
   width: 8px;
   height: 8px;
@@ -97,7 +104,7 @@
   50%       { opacity: 0.35; }
 }
 
-.statusText { color: $color-text; flex: 1; }
+.statusText { color: $color-text; }
 
 .statusActions { margin-left: auto; }
 
@@ -379,9 +386,6 @@
   .section { padding: $spacing-md; }
 
   .statusBar { flex-wrap: wrap; gap: $spacing-xs; }
-  .statusText { flex: 1 1 100%; order: -1; }
-  .statusActions { margin-left: 0; width: 100%; }
-  .statusActions .btn { width: 100%; justify-content: center; }
 
   // Таблица → карточки
   .table {
