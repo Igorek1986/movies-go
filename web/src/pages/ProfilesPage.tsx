@@ -309,11 +309,11 @@ export default function ProfilesPage() {
     setLinkError('')
     setLinkSuccess('')
     setLinkLoading(true)
-    const body: Record<string, string> = { code: linkCode }
+    const body: Record<string, string | number> = { code: linkCode }
     if (linkDeviceId === 'new') {
       body.name = linkNewName || 'Устройство'
     } else {
-      body.name = devices.find(d => d.id === linkDeviceId)?.name || 'Устройство'
+      body.device_id = linkDeviceId
     }
     const res = await fetch('/api/device/link', {
       method: 'POST',

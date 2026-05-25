@@ -113,14 +113,26 @@ func CreateDevice(ctx context.Context, userID int64, name string) (*models.Devic
 	if err != nil {
 		return nil, err
 	}
-	var d models.Device
-	err = postgres.Pool.QueryRow(ctx, `
-		INSERT INTO devices (user_id, name, token)
-		VALUES ($1, $2, $3)
-		RETURNING id, user_id, name, token, created_at`,
-		userID, name, token,
-	).Scan(&d.ID, &d.UserID, &d.Name, &d.Token, &d.CreatedAt)
-	return &d, err
+	for suffix := 0; suffix <= 10; suffix++ {
+		candidateName := name
+		if suffix > 0 {
+			candidateName = fmt.Sprintf("%s %d", name, suffix+1)
+		}
+		var d models.Device
+		err = postgres.Pool.QueryRow(ctx, `
+			INSERT INTO devices (user_id, name, token)
+			VALUES ($1, $2, $3)
+			RETURNING id, user_id, name, token, created_at`,
+			userID, candidateName, token,
+		).Scan(&d.ID, &d.UserID, &d.Name, &d.Token, &d.CreatedAt)
+		if err == nil {
+			return &d, nil
+		}
+		if !strings.Contains(err.Error(), "uq_devices_user_name") && !strings.Contains(err.Error(), "duplicate key") {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("device name conflict")
 }
 
 func DeleteDevice(ctx context.Context, deviceID, userID int64) error {
@@ -207,8 +219,9 @@ func GetDeviceCode(ctx context.Context, code string) *models.DeviceCode {
 }
 
 // LinkDeviceCode links an activation code to a user's device.
-// Creates the device if maxDevices allows; returns the device token on success.
-func LinkDeviceCode(ctx context.Context, code string, userID int64, deviceName string, maxDevices int) (string, error) {
+// If existingDeviceID is non-nil, links to that device (must belong to userID).
+// Otherwise creates a new device (with maxDevices limit check); returns the token on success.
+func LinkDeviceCode(ctx context.Context, code string, userID int64, deviceName string, maxDevices int, existingDeviceID *int64) (string, error) {
 	dc := GetDeviceCode(ctx, code)
 	if dc == nil {
 		return "", fmt.Errorf("code not found or expired")
@@ -217,23 +230,38 @@ func LinkDeviceCode(ctx context.Context, code string, userID int64, deviceName s
 		return "", fmt.Errorf("code already used")
 	}
 
-	if maxDevices > 0 && CountUserDevices(ctx, userID) >= maxDevices {
-		return "", fmt.Errorf("device limit reached")
+	var devID int64
+	var token string
+
+	if existingDeviceID != nil {
+		// Link to existing device — verify ownership.
+		err := postgres.Pool.QueryRow(ctx,
+			`SELECT id, token FROM devices WHERE id = $1 AND user_id = $2`,
+			*existingDeviceID, userID,
+		).Scan(&devID, &token)
+		if err != nil {
+			return "", fmt.Errorf("device not found")
+		}
+	} else {
+		if maxDevices > 0 && CountUserDevices(ctx, userID) >= maxDevices {
+			return "", fmt.Errorf("device limit reached")
+		}
+		dev, err := CreateDevice(ctx, userID, deviceName)
+		if err != nil {
+			return "", err
+		}
+		devID = dev.ID
+		token = dev.Token
 	}
 
-	dev, err := CreateDevice(ctx, userID, deviceName)
-	if err != nil {
-		return "", err
-	}
-
-	_, err = postgres.Pool.Exec(ctx, `
+	_, err := postgres.Pool.Exec(ctx, `
 		UPDATE device_codes SET user_id = $1, device_id = $2 WHERE code = $3`,
-		userID, dev.ID, code,
+		userID, devID, code,
 	)
 	if err != nil {
 		return "", err
 	}
-	return dev.Token, nil
+	return token, nil
 }
 
 // DeviceCodeStatus returns ("pending"|"linked"|"expired", token).

@@ -64,8 +64,9 @@ func handleDeviceLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Code string `json:"code"`
-		Name string `json:"name"`
+		Code     string `json:"code"`
+		Name     string `json:"name"`
+		DeviceID *int64 `json:"device_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		Error(w, http.StatusBadRequest, "invalid json")
@@ -80,7 +81,7 @@ func handleDeviceLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	maxDev := deviceLimit(u.Role)
-	token, err := store.LinkDeviceCode(r.Context(), req.Code, u.ID, req.Name, maxDev)
+	token, err := store.LinkDeviceCode(r.Context(), req.Code, u.ID, req.Name, maxDev, req.DeviceID)
 	if err != nil {
 		switch err.Error() {
 		case "code not found or expired":
@@ -89,6 +90,8 @@ func handleDeviceLink(w http.ResponseWriter, r *http.Request) {
 			Error(w, http.StatusConflict, err.Error())
 		case "device limit reached":
 			Error(w, http.StatusForbidden, err.Error())
+		case "device not found":
+			Error(w, http.StatusNotFound, err.Error())
 		default:
 			Error(w, http.StatusInternalServerError, "link error")
 		}
