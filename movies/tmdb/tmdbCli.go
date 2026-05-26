@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -32,16 +33,26 @@ func readPageTmdb(path string, params map[string]string, results interface{}) er
 
 		resp, err := HTTPClient().Do(req)
 		if err != nil {
+			log.Printf("tmdb: network error (attempt %d/3) %s: %v", attempt+1, path, err)
 			lastErr = err
+			continue
+		}
+		if resp.StatusCode == 429 {
+			resp.Body.Close()
+			retryAfter := resp.Header.Get("Retry-After")
+			log.Printf("tmdb: rate limit 429 (attempt %d/3) %s — Retry-After: %s", attempt+1, path, retryAfter)
+			lastErr = errors.New(resp.Status)
 			continue
 		}
 		if retryCodes[resp.StatusCode] {
 			resp.Body.Close()
+			log.Printf("tmdb: server error %s (attempt %d/3) %s", resp.Status, attempt+1, path)
 			lastErr = errors.New(resp.Status)
 			continue
 		}
 		if resp.StatusCode != 200 {
 			resp.Body.Close()
+			log.Printf("tmdb: unexpected status %s %s", resp.Status, path)
 			return errors.New(resp.Status)
 		}
 		err = json.NewDecoder(resp.Body).Decode(results)
