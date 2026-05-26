@@ -383,14 +383,54 @@ func GetTMDBMissingCards(ctx context.Context) []TMDBMissingCard {
 	var out []TMDBMissingCard
 	for rows.Next() {
 		var c TMDBMissingCard
-		var notFoundAt *string
+		var notFoundAt *time.Time
 		if rows.Scan(&c.CardID, &c.TmdbID, &c.MediaType, &c.Title, &c.OriginalTitle,
 			&c.ReleaseDate, &c.VoteAverage, &c.VoteCount, &notFoundAt) == nil {
 			if notFoundAt != nil {
-				c.NotFoundAt = *notFoundAt
+				c.NotFoundAt = notFoundAt.Format("2006-01-02")
 			}
 			out = append(out, c)
 		}
+	}
+	return out
+}
+
+type NewTodayCard struct {
+	CardID        string  `json:"card_id"`
+	TmdbID        int64   `json:"tmdb_id"`
+	MediaType     string  `json:"media_type"`
+	Title         string  `json:"title"`
+	OriginalTitle string  `json:"original_title"`
+	Year          string  `json:"year"`
+	VoteAverage   float64 `json:"vote_average"`
+	VoteCount     int     `json:"vote_count"`
+	CreatedAt     string  `json:"created_at"`
+}
+
+func GetNewTodayCards(ctx context.Context) []NewTodayCard {
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT card_id, tmdb_id, media_type, title, original_title,
+		       COALESCE(LEFT(COALESCE(release_date::text, first_air_date::text, ''), 4), '') AS year,
+		       vote_average, vote_count, created_at
+		FROM media_cards
+		WHERE created_at::date = CURRENT_DATE
+		ORDER BY created_at DESC`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []NewTodayCard
+	for rows.Next() {
+		var c NewTodayCard
+		var createdAt time.Time
+		if rows.Scan(&c.CardID, &c.TmdbID, &c.MediaType, &c.Title, &c.OriginalTitle,
+			&c.Year, &c.VoteAverage, &c.VoteCount, &createdAt) == nil {
+			c.CreatedAt = createdAt.Format("15:04")
+			out = append(out, c)
+		}
+	}
+	if out == nil {
+		out = []NewTodayCard{}
 	}
 	return out
 }
@@ -447,12 +487,14 @@ type CategoryFilter struct {
 	MaxVideoQuality int
 	MinVoteCount    int
 	OrderByRating   bool
+	RandomOrder     bool     // ORDER BY RANDOM()
+	Genres          []string // genre names (OR logic), e.g. ["боевик", "Боевик и Приключения"]
 	Child           bool
-	Year            int    // exact release year filter
+	Year            int      // exact release year filter
 	TrackerFilter   []string // if non-empty, only show cards linked to at least one of these trackers
-	NewOnly         bool   // only items released within last YearDelta years AND quality >= 200
-	OldOnly         bool   // only items released more than YearDelta years ago (complement of NewOnly)
-	YearDelta       int    // years window for NewOnly/OldOnly (default 2, use 4 for 4K)
+	NewOnly         bool     // only items released within last YearDelta years AND quality >= 200
+	OldOnly         bool     // only items released more than YearDelta years ago (complement of NewOnly)
+	YearDelta       int      // years window for NewOnly/OldOnly (default 2, use 4 for 4K)
 	Page            int
 	PerPage         int
 	Search          string
@@ -542,6 +584,19 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		args = append(args, f.MinVoteCount)
 		n++
 	}
+	if len(f.Genres) > 0 {
+		parts := make([]string, len(f.Genres))
+		for i, g := range f.Genres {
+			parts[i] = fmt.Sprintf(`m.genres @> $%d::jsonb`, n)
+			args = append(args, fmt.Sprintf(`[{"name":"%s"}]`, g))
+			n++
+		}
+		if len(parts) == 1 {
+			where = append(where, parts[0])
+		} else {
+			where = append(where, "("+strings.Join(parts, " OR ")+")")
+		}
+	}
 	if len(f.TrackerFilter) > 0 {
 		where = append(where, fmt.Sprintf(
 			"EXISTS (SELECT 1 FROM torrents t WHERE t.card_id = m.card_id AND t.tracker = ANY($%d))", n))
@@ -603,7 +658,9 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 	}
 
 	orderBy := "m.latest_torrent_date DESC NULLS LAST, m.created_at DESC"
-	if f.OrderByRating {
+	if f.RandomOrder {
+		orderBy = "RANDOM()"
+	} else if f.OrderByRating {
 		orderBy = "m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST, m.created_at DESC"
 	} else if f.OldOnly || f.Year > 0 {
 		// Archive / year categories: sort by release/air date descending

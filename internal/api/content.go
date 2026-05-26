@@ -100,6 +100,23 @@ var categoryRoutes = map[string]store.CategoryFilter{
 	"cartoon_series": {MediaTypes: []string{"tv"}, Categories: []string{models.CatCartoonSeries}},
 	// Anime
 	"anime": {MediaTypes: []string{"tv"}, Categories: []string{models.CatAnime}},
+
+	// Genre collections — random order, all media types
+	"genre_comedy":      {Genres: []string{"комедия"}, RandomOrder: true},
+	"genre_action":      {Genres: []string{"боевик", "Боевик и Приключения"}, RandomOrder: true},
+	"genre_thriller":    {Genres: []string{"триллер"}, RandomOrder: true},
+	"genre_crime":       {Genres: []string{"криминал"}, RandomOrder: true},
+	"genre_horror":      {Genres: []string{"ужасы"}, RandomOrder: true},
+	"genre_romance":     {Genres: []string{"мелодрама"}, RandomOrder: true},
+	"genre_adventure":   {Genres: []string{"приключения"}, RandomOrder: true},
+	"genre_scifi":       {Genres: []string{"фантастика", "НФ и Фэнтези"}, RandomOrder: true},
+	"genre_fantasy":     {Genres: []string{"фэнтези"}, RandomOrder: true},
+	"genre_detective":   {Genres: []string{"детектив"}, RandomOrder: true},
+	"genre_history":     {Genres: []string{"история"}, RandomOrder: true},
+	"genre_war":         {Genres: []string{"военный", "Война и Политика"}, RandomOrder: true},
+	"genre_documentary": {Genres: []string{"документальный"}, RandomOrder: true},
+	"genre_western":     {Genres: []string{"вестерн"}, RandomOrder: true},
+	"genre_random":      {RandomOrder: true},
 }
 
 // handleCategory handles /{category}?page=&token=&profile_id=&search=
