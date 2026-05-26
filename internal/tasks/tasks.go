@@ -52,6 +52,7 @@ func runDailyTasks(ctx context.Context) {
 	RunPremiumExpiryCheck(ctx)
 	RunInactiveUserCheck(ctx)
 	go RunFixZeroRuntime(ctx)
+	go RunRefreshCards(ctx)
 }
 
 // ─── Delivery loop (every 10 min) ────────────────────────────────────────────

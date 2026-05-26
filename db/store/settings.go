@@ -70,6 +70,9 @@ var SettingDefaults = map[string]string{
 	"yandex_metrika_id":        "",
 	"google_analytics_enabled": "0",
 	"google_analytics_id":      "",
+	// TMDB card refresh
+	"tmdb_refresh_batch":    "1000",
+	"tmdb_refresh_age_days": "30",
 	// Parser
 	"parser_order":           "kinozal,nnmclub,rutor",
 	"parser_kinozal_enabled": "1",

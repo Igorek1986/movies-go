@@ -43,6 +43,10 @@ export default function AdminPage() {
     running: false, stage: '', current: 0, total: 0, fixed: 0,
   })
   const fixRuntimePoll = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [refreshCardsStatus, setRefreshCardsStatus] = useState<{ running: boolean; current: number; total: number; updated: number }>({
+    running: false, current: 0, total: 0, updated: 0,
+  })
+  const refreshCardsPoll = useRef<ReturnType<typeof setInterval> | null>(null)
   const meId = useRef<number | null>(null)
 
   function toast(text: string, ok = true) {
@@ -88,14 +92,61 @@ export default function AdminPage() {
     }, 3000)
   }
 
+  async function fetchRefreshCardsStatus() {
+    const res = await fetch('/api/admin/refresh-cards/status')
+    if (!res.ok) return
+    const data = await res.json()
+    setRefreshCardsStatus(data)
+    return data
+  }
+
+  function startRefreshCardsPoll() {
+    if (refreshCardsPoll.current) return
+    refreshCardsPoll.current = setInterval(async () => {
+      const data = await fetchRefreshCardsStatus()
+      if (data && !data.running) {
+        clearInterval(refreshCardsPoll.current!)
+        refreshCardsPoll.current = null
+      }
+    }, 3000)
+  }
+
+  async function runRefreshCards() {
+    try {
+      const res = await api('/api/admin/refresh-cards', 'POST')
+      if (res.status === 'already_running') {
+        toast('Задача уже запущена')
+      } else {
+        toast('Обновление карточек из TMDB запущено в фоне')
+        await fetchRefreshCardsStatus()
+      }
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
+  async function stopRefreshCards() {
+    try {
+      await api('/api/admin/refresh-cards/stop', 'POST')
+      toast('Задача остановлена')
+      await fetchRefreshCardsStatus()
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
   useEffect(() => {
     setLoading(true)
-    Promise.all([refresh(), fetchFixRtStatus()]).finally(() => setLoading(false))
+    Promise.all([refresh(), fetchFixRtStatus(), fetchRefreshCardsStatus()]).finally(() => setLoading(false))
   }, [refresh]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (fixRtStatus.running) startFixRuntimePoll()
   }, [fixRtStatus.running]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (refreshCardsStatus.running) startRefreshCardsPoll()
+  }, [refreshCardsStatus.running]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function runFixRuntime() {
     try {
@@ -338,6 +389,10 @@ export default function AdminPage() {
               ? <button className={`${styles.actionBtn} ${styles.danger}`} title="Остановить фоновую задачу обновления runtime" onClick={stopFixRuntime}>Остановить runtime</button>
               : <button className={styles.actionBtn} title="Запустить фоновое обновление runtime/episode_run_time из TMDB для карточек с нулевым значением" onClick={runFixRuntime}>Обновить runtime</button>
             }
+            {refreshCardsStatus.running
+              ? <button className={`${styles.actionBtn} ${styles.danger}`} title="Остановить обновление карточек из TMDB" onClick={stopRefreshCards}>Остановить TMDB</button>
+              : <button className={styles.actionBtn} title="Обновить метаданные карточек из TMDB (пакетно, по tmdb_refresh_batch карточек)" onClick={runRefreshCards}>Обновить TMDB</button>
+            }
           </div>
           {fixRtStatus.running && fixRtStatus.total > 0 && (
             <div className={styles.fixRtProgress}>
@@ -348,6 +403,18 @@ export default function AdminPage() {
               </div>
               <div className={styles.fixRtBar}>
                 <div className={styles.fixRtBarFill} style={{ width: `${Math.round(fixRtStatus.current / fixRtStatus.total * 100)}%` }} />
+              </div>
+            </div>
+          )}
+          {refreshCardsStatus.running && refreshCardsStatus.total > 0 && (
+            <div className={styles.fixRtProgress}>
+              <div className={styles.fixRtLabel}>
+                <span>TMDB refresh: {refreshCardsStatus.current} / {refreshCardsStatus.total}</span>
+                <span>Обновлено: {refreshCardsStatus.updated}</span>
+                <span>{Math.round(refreshCardsStatus.current / refreshCardsStatus.total * 100)}%</span>
+              </div>
+              <div className={styles.fixRtBar}>
+                <div className={styles.fixRtBarFill} style={{ width: `${Math.round(refreshCardsStatus.current / refreshCardsStatus.total * 100)}%` }} />
               </div>
             </div>
           )}

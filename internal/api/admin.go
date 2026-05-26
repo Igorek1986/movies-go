@@ -709,6 +709,24 @@ func handleAPIAdminEpisodesRefresh(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "Обновление эпизодов запущено"})
 }
 
+func handleAPIAdminRefreshCards(w http.ResponseWriter, r *http.Request) {
+	if tasks.GetRefreshCardsStatus().Running {
+		JSON(w, http.StatusOK, map[string]any{"status": "already_running"})
+		return
+	}
+	go tasks.RunRefreshCards(tasks.AppCtx())
+	JSON(w, http.StatusOK, map[string]any{"status": "started"})
+}
+
+func handleAPIAdminRefreshCardsStop(w http.ResponseWriter, r *http.Request) {
+	tasks.StopRefreshCards()
+	JSON(w, http.StatusOK, map[string]any{"status": "stopped"})
+}
+
+func handleAPIAdminRefreshCardsStatus(w http.ResponseWriter, r *http.Request) {
+	JSON(w, http.StatusOK, tasks.GetRefreshCardsStatus())
+}
+
 func handleAPIAdminFixRuntime(w http.ResponseWriter, r *http.Request) {
 	if tasks.GetFixRuntimeStatus().Running {
 		JSON(w, http.StatusOK, map[string]any{"status": "already_running"})
