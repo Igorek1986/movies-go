@@ -796,7 +796,7 @@ var settingsGroupDefs = []struct {
 		"google_analytics_enabled", "google_analytics_id",
 	}},
 	{"Сайт", []string{
-		"base_url", "plugin_url", "donate_url",
+		"base_url", "plugin_url", "donate_url", "popular_source_url",
 	}},
 	{"Телеграм бот", []string{
 		"telegram_bot_token", "telegram_bot_name", "telegram_admin_ids", "telegram_use_polling",

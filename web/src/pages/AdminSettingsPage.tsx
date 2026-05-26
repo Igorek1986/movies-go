@@ -107,9 +107,10 @@ function BannedPatterns() {
 const TEXTAREA_KEYS = new Set(['privacy_policy_content', 'consent_content'])
 
 const PLACEHOLDERS: Record<string, string> = {
-  base_url:        'https://yourdomain.com',
-  plugin_url:      'https://yourdomain.com/np.js (пусто = base_url + /np.js)',
-  donate_url:      'https://example.com/donate',
+  base_url:           'https://yourdomain.com',
+  plugin_url:         'https://yourdomain.com/np.js (пусто = base_url + /np.js)',
+  donate_url:         'https://yourdomain.com/donate',
+  popular_source_url: 'https://yourdomain.com/popular',
   myshows_api_url: 'https://myshows.me/v3/rpc/',
   myshows_auth_url:'https://myshows.me/api/session',
   contact_email:   'admin@example.com',
@@ -122,6 +123,10 @@ const SELECT_KEYS: Record<string, string[]> = {
 const CHECKBOX_KEYS: Record<string, string> = {
   yandex_metrika_enabled:   'yandex_metrika_id',
   google_analytics_enabled: 'google_analytics_id',
+}
+
+const DESCRIPTIONS: Record<string, string> = {
+  popular_source_url: 'URL публичного парсера для категории «Популярное» и форвардинга play events. Если не задан — Популярное берётся из локальной БД.',
 }
 
 const LABELS: Record<string, string> = {
@@ -174,6 +179,7 @@ const LABELS: Record<string, string> = {
   base_url:                'Base URL сайта',
   plugin_url:              'Plugin URL (np.js)',
   donate_url:              'Donate URL',
+  popular_source_url:      'Popular Source URL',
   myshows_api_url:         'MyShows API URL',
   myshows_auth_url:        'MyShows Auth URL',
   parser_overlap_days:     'Парсер — перекрытие дат (дней)',
@@ -221,7 +227,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'yandex_metrika_enabled', 'yandex_metrika_id',
     'google_analytics_enabled', 'google_analytics_id',
   ]},
-  { name: 'Сайт', keys: ['base_url', 'plugin_url', 'donate_url'] },
+  { name: 'Сайт', keys: ['base_url', 'plugin_url', 'donate_url', 'popular_source_url'] },
   { name: 'Юридические', keys: [
     'site_name', 'contact_email',
     'privacy_policy_content', 'consent_content',
@@ -248,6 +254,7 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [restarting, setRestarting] = useState(false)
+  const [activeDesc, setActiveDesc] = useState<string | null>(null)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
@@ -432,9 +439,32 @@ export default function AdminSettingsPage() {
 
                     if (hidden) return null
 
+                    const desc = DESCRIPTIONS[key]
                     return (
                       <>
-                        <label key={key + '_label'} className={styles.rowLabel}>{label}</label>
+                        <label key={key + '_label'} className={styles.rowLabel}>
+                          {label}
+                          {desc && (
+                            <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                              <span
+                                title={desc}
+                                onClick={() => setActiveDesc(activeDesc === key ? null : key)}
+                                style={{ marginLeft: '5px', cursor: 'help', opacity: 0.5, fontSize: '0.8em', userSelect: 'none' }}
+                              >ⓘ</span>
+                              {activeDesc === key && (
+                                <span style={{
+                                  position: 'absolute', left: '1.4em', top: '50%', transform: 'translateY(-50%)',
+                                  background: 'var(--color-bg-elevated, #2a2a2a)', color: 'var(--color-text, #eee)',
+                                  border: '1px solid var(--color-border, #444)', borderRadius: '6px',
+                                  padding: '6px 10px', fontSize: '0.78rem', lineHeight: '1.4',
+                                  whiteSpace: 'normal', width: '240px', zIndex: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                                }}>
+                                  {desc}
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </label>
                         <input
                           key={key}
                           type="text"

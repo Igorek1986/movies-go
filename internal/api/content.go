@@ -9,7 +9,6 @@ import (
 	"movies-api/db/store"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -17,10 +16,13 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-var popularSourceURL = strings.TrimRight(os.Getenv("POPULAR_SOURCE_URL"), "/")
+func getPopularSourceURL(ctx context.Context) string {
+	v, _ := store.GetSetting(ctx, "popular_source_url")
+	return strings.TrimRight(v, "/")
+}
 
 func proxyToPopularSource(w http.ResponseWriter, r *http.Request) {
-	target := popularSourceURL + "/np_popular"
+	target := getPopularSourceURL(r.Context()) + "/np_popular"
 	if r.URL.RawQuery != "" {
 		target += "?" + r.URL.RawQuery
 	}
@@ -41,11 +43,12 @@ func proxyToPopularSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func forwardPlayEvent(cardID, uid string, pct int) {
-	if popularSourceURL == "" {
+	src := getPopularSourceURL(context.Background())
+	if src == "" {
 		return
 	}
 	url := fmt.Sprintf("%s/api/view?card_id=%s&uid=%s&percent=%d",
-		popularSourceURL,
+		src,
 		cardID, uid, pct,
 	)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, nil)
@@ -128,7 +131,7 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 
 	// ── np_popular ────────────────────────────────────────────────────────────
 	if category == "np_popular" {
-		if popularSourceURL != "" {
+		if getPopularSourceURL(r.Context()) != "" {
 			proxyToPopularSource(w, r)
 		} else {
 			handlePopular(w, r, page, perPage, searchQ)
