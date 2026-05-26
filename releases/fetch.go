@@ -1,9 +1,10 @@
 package releases
 
 import (
+	"context"
 	"movies-api/client"
-	"movies-api/config"
 	"movies-api/db/models"
+	"movies-api/db/store"
 	"log"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ func GetBodyLink(torr *models.TorrentDetails) string {
 	}
 	link := torr.Link
 	if !strings.HasPrefix(link, "http://") && !strings.HasPrefix(link, "https://") {
-		host := config.Get().Host
+		host, _ := store.GetSetting(context.Background(), "rutor_host")
 		if host == "" {
 			host = "http://rutor.info"
 		}

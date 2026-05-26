@@ -7,7 +7,6 @@ type ConfigParser struct {
 	DatabaseURL string `env:"DATABASE_URL"`
 
 	// Парсер
-	Host      string `env:"HOST_RUTOR" env-default:"http://rutor.info"`
 	TmdbToken string `env:"TMDB_TOKEN"`
 
 	// HTTP сервер

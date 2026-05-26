@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"movies-api/config"
 	"movies-api/db/models"
 	"movies-api/db/store"
 	"movies-api/releases"
@@ -24,7 +23,7 @@ func loadRutorHost() string {
 	if v, ok := store.GetSetting(context.Background(), "rutor_host"); ok && v != "" {
 		return v
 	}
-	return config.Get().Host
+	return "http://rutor.info"
 }
 
 var (
