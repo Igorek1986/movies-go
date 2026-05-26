@@ -25,12 +25,6 @@ func detectLevel(text string) string {
 	if strings.Contains(lower, ": enriched:") {
 		return "success"
 	}
-	if strings.Contains(lower, "error") ||
-		strings.Contains(lower, "failed") ||
-		strings.Contains(lower, "fatal") ||
-		strings.Contains(lower, "panic") {
-		return "error"
-	}
 	if strings.Contains(lower, "not found in tmdb") ||
 		strings.Contains(lower, "skipping") ||
 		strings.Contains(lower, "disabled,") ||
@@ -38,6 +32,12 @@ func detectLevel(text string) string {
 		strings.Contains(lower, "magnet not found") ||
 		strings.Contains(lower, "not found after") {
 		return "skip"
+	}
+	if strings.Contains(lower, "error") ||
+		strings.Contains(lower, "failed") ||
+		strings.Contains(lower, "fatal") ||
+		strings.Contains(lower, "panic") {
+		return "error"
 	}
 	return "info"
 }

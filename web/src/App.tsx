@@ -1,5 +1,11 @@
 import { useEffect } from 'react'
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
+
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => { window.scrollTo(0, 0) }, [pathname])
+  return null
+}
 import { useAuth } from '@/hooks/useAuth'
 import { setImgProxy } from '@/utils/poster'
 import footerStyles from '@/components/AppFooter.module.scss'
@@ -26,6 +32,7 @@ import ProxiesPage from '@/pages/ProxiesPage'
 import LogsPage from '@/pages/LogsPage'
 import BotPage from '@/pages/BotPage'
 import TMDBMissingPage from '@/pages/TMDBMissingPage'
+import NewCardsPage from '@/pages/NewCardsPage'
 import StaticPage from '@/pages/StaticPage'
 import TgMiniAppPage from '@/pages/TgMiniAppPage'
 
@@ -72,6 +79,7 @@ export default function App() {
 
   return (
     <>
+      <ScrollToTop />
       <div style={{ flex: 1 }}>
       <Routes>
       {/* Публичные */}
@@ -103,6 +111,7 @@ export default function App() {
       <Route path="/admin/logs" element={<PrivateRoute><LogsPage /></PrivateRoute>} />
       <Route path="/admin/bot" element={<PrivateRoute><BotPage /></PrivateRoute>} />
       <Route path="/admin/tmdb-missing" element={<PrivateRoute><TMDBMissingPage /></PrivateRoute>} />
+      <Route path="/admin/cards-today" element={<PrivateRoute><NewCardsPage /></PrivateRoute>} />
 
       <Route path="*" element={<NotFoundPage />} />
       </Routes>

@@ -90,7 +90,7 @@ func (k *KinozalParser) Parse() {
 	}
 
 	if err := k.login(); err != nil {
-		log.Printf("kinozal: login failed: %v", err)
+		log.Printf("kinozal: no auth: %v", err)
 		// continue anyway — listing doesn't require auth; only .torrent download does
 	}
 

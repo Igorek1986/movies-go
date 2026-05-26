@@ -118,7 +118,7 @@
   border-radius: $radius-sm;
   transition: color $transition-fast, border-color $transition-fast;
 
-  &:hover { color: $color-text; border-color: $color-text-muted; }
+  &:hover { color: $color-primary; border-color: $color-primary; }
 }
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
