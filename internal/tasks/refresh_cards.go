@@ -102,18 +102,16 @@ func RunRefreshCards(parentCtx context.Context) {
 	// Новые карточки: вышли за последние newYearDelta лет — обновляем ежедневно.
 	// Старые карточки: batch из oldBatch штук, ротация по tmdb_updated_at ASC.
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT card_id, tmdb_id, media_type FROM media_cards
-		WHERE (
-			COALESCE(release_date, first_air_date) > now() - ($1 * interval '1 year')
-			AND (tmdb_updated_at IS NULL OR tmdb_updated_at < now() - interval '1 day')
-		)
-		UNION ALL
-		SELECT card_id, tmdb_id, media_type FROM media_cards
-		WHERE (
-			(COALESCE(release_date, first_air_date) IS NULL
-			  OR COALESCE(release_date, first_air_date) <= now() - ($1 * interval '1 year'))
-			AND (tmdb_updated_at IS NULL OR tmdb_updated_at < now() - ($2 * interval '1 day'))
-		)
+		SELECT card_id, tmdb_id, media_type FROM (
+			SELECT card_id, tmdb_id, media_type, tmdb_updated_at FROM media_cards
+			WHERE COALESCE(release_date, first_air_date) > now() - ($1 * interval '1 year')
+			  AND (tmdb_updated_at IS NULL OR tmdb_updated_at < now() - interval '1 day')
+			UNION ALL
+			SELECT card_id, tmdb_id, media_type, tmdb_updated_at FROM media_cards
+			WHERE (COALESCE(release_date, first_air_date) IS NULL
+			    OR COALESCE(release_date, first_air_date) <= now() - ($1 * interval '1 year'))
+			  AND (tmdb_updated_at IS NULL OR tmdb_updated_at < now() - ($2 * interval '1 day'))
+		) t
 		ORDER BY tmdb_updated_at ASC NULLS FIRST
 		LIMIT $3`,
 		newYearDelta, ageDays, oldBatch,
