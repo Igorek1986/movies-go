@@ -37,7 +37,7 @@ func main() {
 
 	httpPort := cfg.HTTPPort
 	if httpPort == 0 {
-		httpPort = 8080
+		httpPort = 8888
 	}
 
 	fmt.Println("=========== START ===========")

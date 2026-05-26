@@ -24,7 +24,7 @@ services:
         required: false
     environment:
       - DATABASE_URL=postgres://${DB_USER:-movies_api}:${DB_PASSWORD:-movies_api}@db:5432/${DB_NAME:-movies_api}?sslmode=disable
-      - HTTP_PORT=${PORT:-8888}
+      - PORT=${PORT:-8888}
     ports:
       - "${PORT:-8888}:${PORT:-8888}"
     dns:

@@ -10,7 +10,7 @@ type ConfigParser struct {
 	TmdbToken string `env:"TMDB_TOKEN"`
 
 	// HTTP сервер
-	HTTPPort int `env:"PORT" env-default:"8080"`
+	HTTPPort int `env:"PORT" env-default:"8888"`
 
 	// Суперпользователь (создаётся при старте)
 	SuperUsername string `env:"SUPERUSER_USERNAME"`
