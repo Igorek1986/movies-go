@@ -8,10 +8,9 @@ import (
 	"movies-api/movies/tmdb"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
-const refreshCardsWorkers = 3
+const refreshCardsWorkers = 20
 
 var (
 	refreshCardsRunning atomic.Bool
@@ -139,7 +138,6 @@ func RunRefreshCards(parentCtx context.Context) {
 					refreshCardsUpdated.Add(1)
 				}
 				refreshCardsCurrent.Add(1)
-				time.Sleep(50 * time.Millisecond)
 			}
 		}()
 	}
