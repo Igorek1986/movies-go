@@ -564,6 +564,7 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
 export default function CatalogPage() {
   const navigate = useNavigate()
   const [categories, setCategories] = useState<Category[]>(() => applyRowOrder(_cache.categories))
+  const [hasCustomOrder, setHasCustomOrder] = useState(() => !!localStorage.getItem(LS_ROW_ORDER))
   const [expandedCategory, setExpandedCategory] = useState<string | null>(() => {
     const p = new URLSearchParams(window.location.search)
     return p.get('cat')
@@ -829,7 +830,14 @@ export default function CatalogPage() {
   function onDragEnd() {
     const ids = categories.map(c => c.id)
     saveRowOrder(ids)
+    setHasCustomOrder(true)
     dragSrcRef.current = null
+  }
+
+  function resetRowOrder() {
+    try { localStorage.removeItem(LS_ROW_ORDER) } catch {}
+    setCategories(_cache.categories)
+    setHasCustomOrder(false)
   }
 
   function onDragOver(e: React.DragEvent, targetId: string) {
@@ -947,6 +955,11 @@ export default function CatalogPage() {
                     </button>
                   ))}
                 </div>
+              )}
+              {hasCustomOrder && (
+                <button className={styles.resetOrderBtn} onClick={resetRowOrder} title="Вернуть порядок по умолчанию">
+                  Сбросить порядок
+                </button>
               )}
               <div ref={mainSearchRef} className={styles.searchWrap}>
                 <input

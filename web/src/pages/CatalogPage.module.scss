@@ -84,8 +84,25 @@
   font-weight: 600;
 }
 
-.searchWrap {
+.resetOrderBtn {
   margin-left: auto;
+  padding: 2px $spacing-md;
+  border: 1px solid $color-border;
+  border-radius: $radius-full;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover {
+    border-color: $color-danger;
+    color: $color-danger;
+  }
+}
+
+.searchWrap {
   flex-shrink: 0;
 }
 

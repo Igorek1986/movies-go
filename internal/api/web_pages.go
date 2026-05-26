@@ -177,6 +177,21 @@ var categoryTitles = map[string]string{
 	"cartoon_series": "Мультсериалы",
 	"anime":          "Аниме",
 	"np_popular": "Популярное",
+	"genre_comedy":      "Комедии",
+	"genre_action":      "Боевики",
+	"genre_thriller":    "Триллеры",
+	"genre_crime":       "Криминал",
+	"genre_horror":      "Ужасы",
+	"genre_romance":     "Мелодрамы",
+	"genre_adventure":   "Приключения",
+	"genre_scifi":       "Фантастика",
+	"genre_fantasy":     "Фэнтези",
+	"genre_detective":   "Детективы",
+	"genre_history":     "Историческое",
+	"genre_war":         "Военное",
+	"genre_documentary": "Документальные",
+	"genre_western":     "Вестерны",
+	"genre_random":      "Случайное",
 }
 
 func categoryDisplayName(id string) string {
@@ -197,6 +212,10 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 	}
 	order := []string{
 		"movies_ru_new", "movies_new", "tv_shows", "tv_shows_ru",
+		"genre_comedy", "genre_action", "genre_thriller", "genre_crime",
+		"genre_horror", "genre_romance", "genre_adventure", "genre_scifi",
+		"genre_fantasy", "genre_detective", "genre_history", "genre_war",
+		"genre_documentary", "genre_western", "genre_random",
 		"movies_4k_new", "legends_id", "movies_4k", "movies", "movies_ru",
 		"cartoon_movies", "cartoon_series", "anime",
 	}
