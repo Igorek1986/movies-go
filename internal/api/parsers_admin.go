@@ -59,6 +59,10 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 		retryRatio = v
 	}
 
+	tmdbRetryAttempts := store.GetSettingInt(ctx, "tmdb_retry_attempts")
+	tmdbRetryBaseWait := store.GetSettingInt(ctx, "tmdb_retry_base_wait_sec")
+	tmdbRetryMaxWait := store.GetSettingInt(ctx, "tmdb_retry_max_wait_sec")
+
 	kinozalLogin, _ := store.GetSetting(ctx, "kinozal_login")
 	kinozalPassword, _ := store.GetSetting(ctx, "kinozal_password")
 	catalogTrackers, _ := store.GetSetting(ctx, "catalog_trackers")
@@ -86,6 +90,9 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 		"retry_base_wait": retryBaseWait,
 		"retry_max_wait":  retryMaxWait,
 		"retry_ratio":     retryRatio,
+		"tmdb_retry_attempts":  tmdbRetryAttempts,
+		"tmdb_retry_base_wait": tmdbRetryBaseWait,
+		"tmdb_retry_max_wait":  tmdbRetryMaxWait,
 		"kinozal_login":    kinozalLogin,
 		"kinozal_password": kinozalPassword,
 		"catalog_trackers": catalogTrackers,
@@ -108,6 +115,9 @@ func handleAPIAdminParsersSettings(w http.ResponseWriter, r *http.Request) {
 		RetryBaseWait   *int    `json:"retry_base_wait"`
 		RetryMaxWait    *int    `json:"retry_max_wait"`
 		RetryRatio      *string `json:"retry_ratio"`
+		TMDBRetryAttempts *int  `json:"tmdb_retry_attempts"`
+		TMDBRetryBaseWait *int  `json:"tmdb_retry_base_wait"`
+		TMDBRetryMaxWait  *int  `json:"tmdb_retry_max_wait"`
 		KinozalLogin    *string `json:"kinozal_login"`
 		KinozalPassword *string `json:"kinozal_password"`
 		CatalogTrackers *string `json:"catalog_trackers"`
@@ -144,6 +154,9 @@ func handleAPIAdminParsersSettings(w http.ResponseWriter, r *http.Request) {
 	intSetting("parser_retry_attempts", body.RetryAttempts)
 	intSetting("parser_retry_base_wait_sec", body.RetryBaseWait)
 	intSetting("parser_retry_max_wait_sec", body.RetryMaxWait)
+	intSetting("tmdb_retry_attempts", body.TMDBRetryAttempts)
+	intSetting("tmdb_retry_base_wait_sec", body.TMDBRetryBaseWait)
+	intSetting("tmdb_retry_max_wait_sec", body.TMDBRetryMaxWait)
 	if body.RetryRatio != nil {
 		store.SetSetting(ctx, "parser_retry_ratio", *body.RetryRatio)
 	}

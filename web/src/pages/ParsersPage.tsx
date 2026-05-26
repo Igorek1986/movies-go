@@ -22,6 +22,9 @@ interface ParsersData {
   retry_base_wait: number
   retry_max_wait: number
   retry_ratio: string
+  tmdb_retry_attempts: number
+  tmdb_retry_base_wait: number
+  tmdb_retry_max_wait: number
   kinozal_login: string
   kinozal_password: string
   catalog_trackers: string
@@ -64,6 +67,9 @@ export default function ParsersPage() {
   const [retryBaseWait, setRetryBaseWait] = useState(30)
   const [retryMaxWait, setRetryMaxWait] = useState(120)
   const [retryRatio, setRetryRatio] = useState('2.0')
+  const [tmdbRetryAttempts, setTmdbRetryAttempts] = useState(5)
+  const [tmdbRetryBaseWait, setTmdbRetryBaseWait] = useState(2)
+  const [tmdbRetryMaxWait, setTmdbRetryMaxWait] = useState(8)
   const [trackerDates, setTrackerDates] = useState<Record<string, string>>({})
   const [catalogTrackers, setCatalogTrackers] = useState<Set<string>>(new Set())
   const [credModal, setCredModal] = useState<{ tracker: string; login: string; password: string } | null>(null)
@@ -109,6 +115,9 @@ export default function ParsersPage() {
     if (d.retry_base_wait) setRetryBaseWait(d.retry_base_wait)
     if (d.retry_max_wait) setRetryMaxWait(d.retry_max_wait)
     if (d.retry_ratio) setRetryRatio(d.retry_ratio)
+    if (d.tmdb_retry_attempts) setTmdbRetryAttempts(d.tmdb_retry_attempts)
+    if (d.tmdb_retry_base_wait) setTmdbRetryBaseWait(d.tmdb_retry_base_wait)
+    if (d.tmdb_retry_max_wait) setTmdbRetryMaxWait(d.tmdb_retry_max_wait)
 
     if (d.running) startPoll()
     else stopPoll()
@@ -189,6 +198,9 @@ export default function ParsersPage() {
         retry_base_wait: retryBaseWait,
         retry_max_wait: retryMaxWait,
         retry_ratio: retryRatio,
+        tmdb_retry_attempts: tmdbRetryAttempts,
+        tmdb_retry_base_wait: tmdbRetryBaseWait,
+        tmdb_retry_max_wait: tmdbRetryMaxWait,
       })
       toast('Настройки сохранены')
       await load()
@@ -513,6 +525,26 @@ export default function ParsersPage() {
               Коэффициент роста:
               <input type="number" min={1.0} max={5.0} step={0.1} className={styles.numInput}
                 value={retryRatio} onChange={e => setRetryRatio(e.target.value)} />
+            </label>
+          </div>
+
+          <h2 className={styles.sectionTitle}>TMDB — повторные попытки</h2>
+          <p className={styles.hint}>При ошибках 429/500/502/503/504 и сетевых таймаутах. Пауза: base × 2^n, но не более max.</p>
+          <div className={styles.retryGrid}>
+            <label className={styles.label}>
+              Попыток:
+              <input type="number" min={1} max={20} className={styles.numInput}
+                value={tmdbRetryAttempts} onChange={e => setTmdbRetryAttempts(Number(e.target.value))} />
+            </label>
+            <label className={styles.label}>
+              Первая пауза (сек):
+              <input type="number" min={1} max={60} className={styles.numInput}
+                value={tmdbRetryBaseWait} onChange={e => setTmdbRetryBaseWait(Number(e.target.value))} />
+            </label>
+            <label className={styles.label}>
+              Максимальная пауза (сек):
+              <input type="number" min={1} max={300} className={styles.numInput}
+                value={tmdbRetryMaxWait} onChange={e => setTmdbRetryMaxWait(Number(e.target.value))} />
             </label>
           </div>
 
