@@ -344,7 +344,7 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <Layout>
+    <Layout wide>
       <form className={styles.page} onSubmit={handleSave}>
 
         <div className={styles.header}>

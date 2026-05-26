@@ -7,15 +7,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"movies-api/config"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
 	"movies-api/internal/bot"
 	tasks "movies-api/internal/tasks"
 	"movies-api/movies/tmdb"
-	"math"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +24,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 )
+
+var appStartTime = time.Now()
 
 // ─── Parser-mode admin session ────────────────────────────────────────────────
 
@@ -86,6 +89,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var users, usersToday, devices, devicesToday, cards, cardsToday, timecodes, timecodesToday int
 	var noRuntimeMovies, noRuntimeTV int
+	var tmdbRefreshedToday, tmdbNotFound int
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&users)                                                    //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE created_at::date = CURRENT_DATE`).Scan(&usersToday)         //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&devices)                                                //nolint:errcheck
@@ -94,8 +98,10 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE created_at::date = CURRENT_DATE`).Scan(&cardsToday)   //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes`).Scan(&timecodes)                                            //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes WHERE created_at::date = CURRENT_DATE`).Scan(&timecodesToday) //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='movie' AND (runtime IS NULL OR runtime=0)`).Scan(&noRuntimeMovies)                        //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='tv' AND (episode_run_time IS NULL OR episode_run_time=0)`).Scan(&noRuntimeTV) //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='movie' AND (runtime IS NULL OR runtime=0)`).Scan(&noRuntimeMovies)               //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='tv' AND (episode_run_time IS NULL OR episode_run_time=0)`).Scan(&noRuntimeTV)    //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_updated_at::date = CURRENT_DATE AND tmdb_not_found_at IS NULL`).Scan(&tmdbRefreshedToday) //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_not_found_at IS NOT NULL`).Scan(&tmdbNotFound)                                            //nolint:errcheck
 
 	type newUser struct {
 		Username  string `json:"username"`
@@ -163,8 +169,10 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"api_total":         apiTotal,
 		"cats_today":        catsToday,
 		"cats_total":        catsTotal,
-		"myshows_today":     myshowsToday,
-		"myshows_total":     myshowsTotal,
+		"myshows_today":          myshowsToday,
+		"myshows_total":          myshowsTotal,
+		"tmdb_refreshed_today": tmdbRefreshedToday,
+		"tmdb_not_found":       tmdbNotFound,
 	})
 }
 
@@ -707,6 +715,10 @@ func handleAPIAdminExtendAllPremium(w http.ResponseWriter, r *http.Request) {
 func handleAPIAdminEpisodesRefresh(w http.ResponseWriter, r *http.Request) {
 	go tasks.RunRefreshOngoingEpisodes(tasks.AppCtx())
 	JSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "Обновление эпизодов запущено"})
+}
+
+func handleAPIAdminCardsToday(w http.ResponseWriter, r *http.Request) {
+	JSON(w, http.StatusOK, store.GetNewTodayCards(r.Context()))
 }
 
 func handleAPIAdminTMDBMissing(w http.ResponseWriter, r *http.Request) {
@@ -1605,4 +1617,23 @@ func handleAPIAdminBannedDelete(w http.ResponseWriter, r *http.Request) {
 		filtered = []string{}
 	}
 	JSON(w, http.StatusOK, filtered)
+}
+
+func handleAPIAdminSystemStats(w http.ResponseWriter, _ *http.Request) {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+
+	uptime := time.Since(appStartTime)
+	days := int(uptime.Hours()) / 24
+	hours := int(uptime.Hours()) % 24
+	minutes := int(uptime.Minutes()) % 60
+
+	JSON(w, http.StatusOK, map[string]any{
+		"uptime_days":    days,
+		"uptime_hours":   hours,
+		"uptime_minutes": minutes,
+		"goroutines":     runtime.NumGoroutine(),
+		"memory_mb":      ms.Sys / 1024 / 1024,
+		"num_cpu":        runtime.NumCPU(),
+	})
 }

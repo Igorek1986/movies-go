@@ -124,7 +124,7 @@ export default function BotPage() {
   }
 
   return (
-    <Layout>
+    <Layout wide>
       <div className={styles.page}>
 
         <div className={styles.header}>

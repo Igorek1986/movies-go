@@ -26,6 +26,17 @@ interface Stats {
   timecodes_today: number
   no_runtime_movies: number
   no_runtime_tv: number
+  tmdb_refreshed_today: number
+  tmdb_not_found: number
+}
+
+interface SystemStats {
+  uptime_days: number
+  uptime_hours: number
+  uptime_minutes: number
+  goroutines: number
+  memory_mb: number
+  num_cpu: number
 }
 
 interface Toast {
@@ -37,6 +48,7 @@ interface Toast {
 export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
+  const [sysStats, setSysStats] = useState<SystemStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [fixRtStatus, setFixRtStatus] = useState<{ running: boolean; stage: string; current: number; total: number; fixed: number }>({
@@ -54,6 +66,11 @@ export default function AdminPage() {
     setToasts(prev => [...prev, { id, text, ok }])
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000)
   }
+
+  const fetchSysStats = useCallback(async () => {
+    const res = await fetch('/api/admin/system-stats')
+    if (res.ok) setSysStats(await res.json())
+  }, [])
 
   // Silent refresh — no loading spinner, no flash
   const refresh = useCallback(async () => {
@@ -137,8 +154,10 @@ export default function AdminPage() {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([refresh(), fetchFixRtStatus(), fetchRefreshCardsStatus()]).finally(() => setLoading(false))
-  }, [refresh]) // eslint-disable-line react-hooks/exhaustive-deps
+    Promise.all([refresh(), fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchSysStats()]).finally(() => setLoading(false))
+    const sysInterval = setInterval(fetchSysStats, 5000)
+    return () => clearInterval(sysInterval)
+  }, [refresh, fetchSysStats]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (fixRtStatus.running) startFixRuntimePoll()
@@ -291,7 +310,7 @@ export default function AdminPage() {
   }
 
   return (
-    <Layout>
+    <Layout wide>
       {/* ── Toasts ─────────────────────────────────────────────────────────── */}
       {toasts.length > 0 && (
         <div className={styles.toasts}>
@@ -315,6 +334,31 @@ export default function AdminPage() {
             <Link to="/admin/settings" className={styles.navBtn}>Настройки</Link>
           </div>
         </div>
+
+        {sysStats && (
+          <div className={styles.sysBar}>
+            <div className={styles.sysItem}>
+              <span className={styles.sysValue}>
+                {sysStats.uptime_days > 0 && `${sysStats.uptime_days}д `}
+                {sysStats.uptime_hours > 0 && `${sysStats.uptime_hours}ч `}
+                {sysStats.uptime_minutes}м
+              </span>
+              <span className={styles.sysLabel}>Аптайм</span>
+            </div>
+            <div className={styles.sysItem}>
+              <span className={styles.sysValue}>{sysStats.goroutines}</span>
+              <span className={styles.sysLabel}>Горутины</span>
+            </div>
+            <div className={styles.sysItem}>
+              <span className={styles.sysValue}>{sysStats.memory_mb} MB</span>
+              <span className={styles.sysLabel}>Память</span>
+            </div>
+            <div className={styles.sysItem}>
+              <span className={styles.sysValue}>{sysStats.num_cpu}</span>
+              <span className={styles.sysLabel}>CPU</span>
+            </div>
+          </div>
+        )}
 
         {stats && (
           <div className={styles.stats}>
@@ -344,8 +388,10 @@ export default function AdminPage() {
             </div>
             {stats.media_cards_today > 0 && (
               <div className={styles.statCard}>
-                <p className={styles.statValue}>+{stats.media_cards_today.toLocaleString()}</p>
-                <p className={styles.statLabel}>Карточек сегодня</p>
+                <Link to="/admin/cards-today" className={styles.statLink}>
+                  <p className={styles.statValue}>+{stats.media_cards_today.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Карточек сегодня</p>
+                </Link>
               </div>
             )}
             <div className={styles.statCard}>
@@ -368,6 +414,20 @@ export default function AdminPage() {
               <div className={styles.statCard}>
                 <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.no_runtime_tv.toLocaleString()}</p>
                 <p className={styles.statLabel}>Сериалов без runtime</p>
+              </div>
+            )}
+            {stats.tmdb_refreshed_today > 0 && (
+              <div className={styles.statCard}>
+                <p className={styles.statValue}>{stats.tmdb_refreshed_today.toLocaleString()}</p>
+                <p className={styles.statLabel}>Обновлено из TMDB сегодня</p>
+              </div>
+            )}
+            {stats.tmdb_not_found > 0 && (
+              <div className={styles.statCard}>
+                <Link to="/admin/tmdb-missing" className={styles.statLink}>
+                  <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.tmdb_not_found.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Не найдено в TMDB</p>
+                </Link>
               </div>
             )}
           </div>

@@ -143,7 +143,7 @@ export default function StatsPage() {
   }, [user, navigate, fetchStats])
 
   if (loading) {
-    return <Layout><div className={styles.loading}>Загрузка…</div></Layout>
+    return <Layout wide><div className={styles.loading}>Загрузка…</div></Layout>
   }
 
   const counters = [
@@ -157,7 +157,7 @@ export default function StatsPage() {
   ]
 
   return (
-    <Layout>
+    <Layout wide>
       <div className={styles.page}>
         <div className={styles.pageHeader}>
           <h1 className={styles.pageTitle}>Статистика</h1>

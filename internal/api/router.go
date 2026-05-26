@@ -165,6 +165,12 @@ func NewRouter(mode string) http.Handler {
 		r.Delete("/{cardID}", handleAPIAdminTMDBMissingDelete)
 	})
 
+	// ── Cards added today (admin, both modes) ────────────────────────────────────
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/cards-today", handleAPIAdminCardsToday)
+
+	// ── System stats (admin, both modes) ─────────────────────────────────────────
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/system-stats", handleAPIAdminSystemStats)
+
 	// ── Proxy config (admin, both modes) ────────────────────────────────────────
 	r.Route("/api/admin/proxies", func(r chi.Router) {
 		r.Use(requireAnyAdmin(mode))

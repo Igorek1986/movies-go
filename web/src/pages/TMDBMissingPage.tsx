@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import styles from './TMDBMissingPage.module.scss'
 
@@ -16,6 +16,7 @@ interface MissingCard {
 }
 
 export default function TMDBMissingPage() {
+  const navigate = useNavigate()
   const [cards, setCards] = useState<MissingCard[]>([])
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState<Set<string>>(new Set())
@@ -44,10 +45,10 @@ export default function TMDBMissingPage() {
   }
 
   return (
-    <Layout>
+    <Layout wide>
       <div className={styles.page}>
         <div className={styles.header}>
-          <h1 className={styles.title}>Проблемные карточки TMDB</h1>
+          <h1 className={styles.title}>Не найдено в TMDB</h1>
           <Link to="/admin" className={styles.backLink}>Админ</Link>
         </div>
 
@@ -77,31 +78,34 @@ export default function TMDBMissingPage() {
             </thead>
             <tbody>
               {cards.map(c => (
-                <tr key={c.card_id}>
-                  <td>
+                <tr
+                  key={c.card_id}
+                  className={styles.row}
+                  onClick={() => navigate(`/card/${c.card_id}`, { state: { backUrl: '/admin/tmdb-missing' } })}
+                >
+                  <td data-label="TMDB ID">
                     <a
                       href={`https://www.themoviedb.org/${c.media_type}/${c.tmdb_id}`}
                       target="_blank"
                       rel="noreferrer"
                       className={styles.tmdbLink}
+                      onClick={e => e.stopPropagation()}
                     >
                       {c.tmdb_id}
                     </a>
                   </td>
-                  <td className={styles.type}>{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
-                  <td>
-                    <Link to={`/card/${c.card_id}`} className={styles.cardLink}>{c.title}</Link>
-                  </td>
-                  <td className={styles.muted}>{c.original_title !== c.title ? c.original_title : '—'}</td>
-                  <td className={styles.year}>{c.release_date || '—'}</td>
-                  <td className={styles.rating}>
+                  <td data-label="Тип" className={styles.type}>{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
+                  <td data-label="Название" className={styles.cardLink}>{c.title}</td>
+                  <td data-label="Оригинал" className={styles.muted}>{c.original_title !== c.title ? c.original_title : '—'}</td>
+                  <td data-label="Год" className={styles.year}>{c.release_date || '—'}</td>
+                  <td data-label="Рейтинг" className={styles.rating}>
                     {c.vote_count > 0 ? `${c.vote_average.toFixed(1)} (${c.vote_count})` : '—'}
                   </td>
-                  <td className={styles.muted}>{c.not_found_at ? c.not_found_at.slice(0, 10) : '—'}</td>
-                  <td>
+                  <td data-label="Не найден" className={styles.muted}>{c.not_found_at ? c.not_found_at.slice(0, 10) : '—'}</td>
+                  <td data-label="">
                     <button
                       className={styles.deleteBtn}
-                      onClick={() => handleDelete(c.card_id)}
+                      onClick={e => { e.stopPropagation(); handleDelete(c.card_id) }}
                       disabled={deleting.has(c.card_id)}
                     >
                       {deleting.has(c.card_id) ? '…' : 'Удалить'}

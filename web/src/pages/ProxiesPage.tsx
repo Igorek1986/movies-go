@@ -206,7 +206,7 @@ export default function ProxiesPage() {
   function sf(patch: Partial<FormState>) { setForm(f => ({ ...f, ...patch })) }
 
   return (
-    <Layout>
+    <Layout wide>
       <div className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Прокси</h1>

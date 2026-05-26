@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import styles from './Layout.module.scss'
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function Layout({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
   const { user } = useAuth()
   const nav = useNavigate()
   const location = useLocation()
@@ -96,7 +96,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <button className={styles.drawerLogout} onClick={handleLogout}>Выйти</button>
       </div>
 
-      <main className={styles.main}>{children}</main>
+      <main className={`${styles.main}${wide ? ' ' + styles.mainWide : ''}`}>{children}</main>
     </div>
   )
 }

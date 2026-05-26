@@ -158,7 +158,7 @@ export default function LogsPage() {
     .slice(-MAX_DISPLAY)
 
   return (
-    <Layout>
+    <Layout wide>
       <div className={styles.page}>
         {/* Header */}
         <div className={styles.header}>

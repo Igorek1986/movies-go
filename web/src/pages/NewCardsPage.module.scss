@@ -1,0 +1,121 @@
+@use '../styles/variables' as *;
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.backLink {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  text-decoration: none;
+  padding: 4px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  white-space: nowrap;
+  transition: color $transition-fast, border-color $transition-fast;
+  &:hover { color: $color-primary; border-color: $color-primary; }
+}
+
+.desc {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin-bottom: 20px;
+}
+
+.empty {
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  padding: 32px 0;
+  text-align: center;
+}
+
+// ── Desktop table ──────────────────────────────────────────────────────────────
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $font-size-sm;
+
+  th {
+    text-align: left;
+    padding: 8px 10px;
+    color: $color-text-muted;
+    font-weight: 500;
+    border-bottom: 1px solid $color-border;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid $color-border;
+    vertical-align: middle;
+  }
+
+  .row {
+    cursor: pointer;
+    &:hover td { background: rgba($color-border, 0.2); }
+  }
+}
+
+// ── Mobile: table rows → cards ─────────────────────────────────────────────────
+
+@media (max-width: $bp-sm) {
+  .table {
+    thead { display: none; }
+
+    tbody tr {
+      display: block;
+      background: $color-bg-card;
+      border: 1px solid $color-border;
+      border-radius: $radius-md;
+      padding: $spacing-sm $spacing-md;
+      margin-bottom: $spacing-sm;
+      cursor: pointer;
+
+      &:hover { background: lighten($color-bg-card, 3%); }
+    }
+
+    td {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      border-bottom: none;
+      gap: $spacing-sm;
+
+      &::before {
+        content: attr(data-label);
+        color: $color-text-muted;
+        font-size: $font-size-xs;
+        flex-shrink: 0;
+        min-width: 80px;
+      }
+    }
+  }
+}
+
+// ── Cell styles ────────────────────────────────────────────────────────────────
+
+.cardTitle { color: $color-text; }
+.muted     { color: $color-text-muted; }
+.time      { color: $color-text-muted; white-space: nowrap; font-family: monospace; }
+.year      { color: $color-text-muted; white-space: nowrap; }
+.type      { white-space: nowrap; }
+.rating    { white-space: nowrap; }

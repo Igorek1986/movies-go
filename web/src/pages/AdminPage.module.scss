@@ -366,3 +366,47 @@
   color: $color-text-muted;
   margin: $spacing-xs 0 0;
 }
+
+.statLink {
+  display: block;
+  text-decoration: none;
+  &:hover .statValue { opacity: 0.8; }
+}
+
+// ── System stats bar ──────────────────────────────────────────────────────────
+
+.sysBar {
+  @include card;
+  display: flex;
+  padding: $spacing-md $spacing-lg;
+  flex-wrap: wrap;
+}
+
+.sysItem {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0 $spacing-lg;
+  border-left: 1px solid $color-border;
+
+  &:first-child {
+    padding-left: 0;
+    border-left: none;
+  }
+}
+
+.sysValue {
+  font-size: $font-size-xl;
+  font-weight: 700;
+  color: $color-text;
+  line-height: 1;
+}
+
+.sysLabel {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}

@@ -310,7 +310,7 @@ export default function ParsersPage() {
   const stopRequested = data?.stop_requested ?? parserStatus.stopRequested
 
   return (
-    <Layout>
+    <Layout wide>
       {toasts.length > 0 && (
         <div className={styles.toasts}>
           {toasts.map(t => (
