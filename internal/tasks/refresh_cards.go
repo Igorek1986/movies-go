@@ -126,6 +126,11 @@ func RunRefreshCards(parentCtx context.Context) {
 	work := make(chan refreshCardRow, refreshCardsWorkers*2)
 	var wg sync.WaitGroup
 
+	logStep := total / 10
+	if logStep < 100 {
+		logStep = 100
+	}
+
 	for range refreshCardsWorkers {
 		wg.Add(1)
 		go func() {
@@ -136,8 +141,13 @@ func RunRefreshCards(parentCtx context.Context) {
 				if md != nil {
 					store.RefreshCardTMDB(ctx, c.CardID, md)
 					refreshCardsUpdated.Add(1)
+				} else {
+					log.Printf("tasks: refresh_cards: TMDB not found tmdb_id=%d type=%s card=%s", c.TmdbID, c.MediaType, c.CardID)
 				}
-				refreshCardsCurrent.Add(1)
+				cur := refreshCardsCurrent.Add(1)
+				if cur%logStep == 0 {
+					log.Printf("tasks: refresh_cards: progress %d/%d updated=%d", cur, total, refreshCardsUpdated.Load())
+				}
 			}
 		}()
 	}
