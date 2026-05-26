@@ -346,6 +346,60 @@ func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
 	}
 }
 
+func MarkCardTMDBNotFound(ctx context.Context, cardID string) {
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`UPDATE media_cards SET tmdb_not_found_at = now() WHERE card_id = $1`, cardID)
+}
+
+func ClearCardTMDBNotFound(ctx context.Context, cardID string) {
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`UPDATE media_cards SET tmdb_not_found_at = NULL WHERE card_id = $1`, cardID)
+}
+
+type TMDBMissingCard struct {
+	CardID          string  `json:"card_id"`
+	TmdbID          int64   `json:"tmdb_id"`
+	MediaType       string  `json:"media_type"`
+	Title           string  `json:"title"`
+	OriginalTitle   string  `json:"original_title"`
+	ReleaseDate     string  `json:"release_date"`
+	VoteAverage     float64 `json:"vote_average"`
+	VoteCount       int     `json:"vote_count"`
+	NotFoundAt      string  `json:"not_found_at"`
+}
+
+func GetTMDBMissingCards(ctx context.Context) []TMDBMissingCard {
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT card_id, tmdb_id, media_type, title, original_title,
+		       COALESCE(LEFT(COALESCE(release_date::text, first_air_date::text, ''), 4), '') AS year,
+		       vote_average, vote_count, tmdb_not_found_at
+		FROM media_cards
+		WHERE tmdb_not_found_at IS NOT NULL
+		ORDER BY tmdb_not_found_at DESC`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []TMDBMissingCard
+	for rows.Next() {
+		var c TMDBMissingCard
+		var notFoundAt *string
+		if rows.Scan(&c.CardID, &c.TmdbID, &c.MediaType, &c.Title, &c.OriginalTitle,
+			&c.ReleaseDate, &c.VoteAverage, &c.VoteCount, &notFoundAt) == nil {
+			if notFoundAt != nil {
+				c.NotFoundAt = *notFoundAt
+			}
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func DeleteCard(ctx context.Context, cardID string) error {
+	_, err := postgres.Pool.Exec(ctx, `DELETE FROM media_cards WHERE card_id = $1`, cardID)
+	return err
+}
+
 func nilIntFromInt(v int) *int {
 	if v == 0 {
 		return nil

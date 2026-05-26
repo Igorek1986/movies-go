@@ -311,6 +311,7 @@ export default function AdminPage() {
             <Link to="/admin/proxies" className={styles.navBtn}>Прокси</Link>
             <Link to="/admin/bot" className={styles.navBtn}>Бот</Link>
             <Link to="/admin/logs" className={styles.navBtn}>Логи</Link>
+            <Link to="/admin/tmdb-missing" className={styles.navBtn}>TMDB проблемы</Link>
             <Link to="/admin/settings" className={styles.navBtn}>Настройки</Link>
           </div>
         </div>

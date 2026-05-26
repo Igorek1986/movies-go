@@ -709,6 +709,23 @@ func handleAPIAdminEpisodesRefresh(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "Обновление эпизодов запущено"})
 }
 
+func handleAPIAdminTMDBMissing(w http.ResponseWriter, r *http.Request) {
+	cards := store.GetTMDBMissingCards(r.Context())
+	if cards == nil {
+		cards = []store.TMDBMissingCard{}
+	}
+	JSON(w, http.StatusOK, cards)
+}
+
+func handleAPIAdminTMDBMissingDelete(w http.ResponseWriter, r *http.Request) {
+	cardID := chi.URLParam(r, "cardID")
+	if err := store.DeleteCard(r.Context(), cardID); err != nil {
+		Error(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"deleted": cardID})
+}
+
 func handleAPIAdminRefreshCards(w http.ResponseWriter, r *http.Request) {
 	if tasks.GetRefreshCardsStatus().Running {
 		JSON(w, http.StatusOK, map[string]any{"status": "already_running"})

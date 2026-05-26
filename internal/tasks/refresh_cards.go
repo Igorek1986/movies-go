@@ -156,9 +156,11 @@ func RunRefreshCards(parentCtx context.Context) {
 				md := tmdb.FetchVideoDetails(isMovie, c.TmdbID)
 				if md != nil {
 					store.RefreshCardTMDB(ctx, c.CardID, md)
+					store.ClearCardTMDBNotFound(ctx, c.CardID)
 					refreshCardsUpdated.Add(1)
 				} else {
 					log.Printf("tasks: refresh_cards: TMDB not found tmdb_id=%d type=%s card=%s", c.TmdbID, c.MediaType, c.CardID)
+					store.MarkCardTMDBNotFound(ctx, c.CardID)
 				}
 				cur := refreshCardsCurrent.Add(1)
 				if cur%logStep == 0 {

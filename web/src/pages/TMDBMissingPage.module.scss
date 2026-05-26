@@ -1,0 +1,95 @@
+@use '../styles/variables' as *;
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.backLink {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  text-decoration: none;
+  &:hover { color: var(--color-text); }
+}
+
+.desc {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin-bottom: 20px;
+}
+
+.empty {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  padding: 32px 0;
+  text-align: center;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+
+  th {
+    text-align: left;
+    padding: 8px 10px;
+    color: var(--color-text-muted);
+    font-weight: 500;
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+  }
+
+  tr:hover td { background: var(--color-bg-elevated); }
+}
+
+.tmdbLink {
+  color: var(--color-accent);
+  text-decoration: none;
+  font-family: monospace;
+  &:hover { text-decoration: underline; }
+}
+
+.cardLink {
+  color: var(--color-text);
+  text-decoration: none;
+  &:hover { color: var(--color-accent); }
+}
+
+.muted { color: var(--color-text-muted); }
+.year  { color: var(--color-text-muted); white-space: nowrap; }
+.type  { white-space: nowrap; }
+.rating { white-space: nowrap; }
+
+.deleteBtn {
+  background: var(--color-danger, #c0392b);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) { opacity: 0.85; }
+  &:disabled { opacity: 0.5; cursor: default; }
+}

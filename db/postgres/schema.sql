@@ -227,6 +227,7 @@ CREATE TABLE IF NOT EXISTS media_cards (
     best_video_quality   INT          NOT NULL DEFAULT 0,
     latest_torrent_date  TIMESTAMPTZ,
     tmdb_updated_at      TIMESTAMPTZ,
+    tmdb_not_found_at    TIMESTAMPTZ,
     updated_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT uq_media_card_tmdb UNIQUE (tmdb_id, media_type)
 );
@@ -377,3 +378,6 @@ CREATE TABLE IF NOT EXISTS proxy_routing (
 -- Migration: replace single proxy_id with proxy_ids array
 ALTER TABLE proxy_routing ADD COLUMN IF NOT EXISTS proxy_ids INTEGER[] NOT NULL DEFAULT '{}';
 ALTER TABLE proxy_routing DROP COLUMN IF EXISTS proxy_id;
+
+-- Migration: track cards not found in TMDB
+ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS tmdb_not_found_at TIMESTAMPTZ;

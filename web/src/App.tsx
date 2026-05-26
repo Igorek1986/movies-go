@@ -25,6 +25,7 @@ import ParsersPage from '@/pages/ParsersPage'
 import ProxiesPage from '@/pages/ProxiesPage'
 import LogsPage from '@/pages/LogsPage'
 import BotPage from '@/pages/BotPage'
+import TMDBMissingPage from '@/pages/TMDBMissingPage'
 import StaticPage from '@/pages/StaticPage'
 import TgMiniAppPage from '@/pages/TgMiniAppPage'
 
@@ -101,6 +102,7 @@ export default function App() {
       <Route path="/admin/proxies" element={<PrivateRoute><ProxiesPage /></PrivateRoute>} />
       <Route path="/admin/logs" element={<PrivateRoute><LogsPage /></PrivateRoute>} />
       <Route path="/admin/bot" element={<PrivateRoute><BotPage /></PrivateRoute>} />
+      <Route path="/admin/tmdb-missing" element={<PrivateRoute><TMDBMissingPage /></PrivateRoute>} />
 
       <Route path="*" element={<NotFoundPage />} />
       </Routes>

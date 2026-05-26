@@ -158,6 +158,13 @@ func NewRouter(mode string) http.Handler {
 		r.Post("/{name}/reset", handleAPIAdminParserTrackerReset)
 	})
 
+	// ── TMDB missing cards (admin, both modes) ──────────────────────────────────
+	r.Route("/api/admin/tmdb-missing", func(r chi.Router) {
+		r.Use(requireAnyAdmin(mode))
+		r.Get("/", handleAPIAdminTMDBMissing)
+		r.Delete("/{cardID}", handleAPIAdminTMDBMissingDelete)
+	})
+
 	// ── Proxy config (admin, both modes) ────────────────────────────────────────
 	r.Route("/api/admin/proxies", func(r chi.Router) {
 		r.Use(requireAnyAdmin(mode))
