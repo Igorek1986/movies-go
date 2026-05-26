@@ -8,6 +8,7 @@ import (
 	"movies-api/movies/tmdb"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const refreshCardsWorkers = 20
@@ -132,6 +133,7 @@ func RunRefreshCards(parentCtx context.Context) {
 	total := int64(len(cards))
 	log.Printf("tasks: refresh_cards: %d cards to process (new<=%dy daily + old batch=%d age=%dd)",
 		total, newYearDelta, oldBatch, ageDays)
+	startedAt := time.Now()
 	refreshCardsTotal.Store(total)
 	if total == 0 {
 		return
@@ -176,5 +178,6 @@ func RunRefreshCards(parentCtx context.Context) {
 done:
 	close(work)
 	wg.Wait()
-	log.Printf("tasks: refresh_cards done: updated=%d/%d", refreshCardsUpdated.Load(), total)
+	log.Printf("tasks: refresh_cards done: updated=%d/%d elapsed=%s",
+		refreshCardsUpdated.Load(), total, time.Since(startedAt).Round(time.Second))
 }
