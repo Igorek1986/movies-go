@@ -153,7 +153,7 @@ func (self *RutorParser) Parse() {
 
 				// Enrich new/retry torrents in parallel (up to 20 concurrent TMDB calls).
 				utils.PForLim(toEnrich, 20, func(_ int, job enrichJob) {
-					releases.Enrich(p.Cat, job.isMovie, job.d)
+					releases.Enrich("rutor/"+p.Cat, job.isMovie, job.d)
 				})
 
 				return !hitCutoff
@@ -275,7 +275,7 @@ func (self *RutorParser) parsePage(pl parseLink) []*models.TorrentDetails {
 				itm.Peer, _ = strconv.Atoi(prarr[1])
 			}
 		}
-		itm.Tracker = "Rutor"
+		itm.Tracker = "rutor"
 		list = append(list, itm)
 	})
 	return list

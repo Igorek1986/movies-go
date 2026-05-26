@@ -13,6 +13,7 @@ import (
 // filterByYear filters movie search results by release year (±1).
 // For TV shows year filtering is skipped: first_air_date is the debut year of the show,
 // not the current season, so it can differ from the torrent year by many years.
+// Note: utils.Filter removes items where fn=true, so the predicate is inverted.
 func filterByYear(isMovie bool, list []*models.Entity, torrYear int) []*models.Entity {
 	if !isMovie || torrYear == 0 {
 		return list
@@ -20,9 +21,9 @@ func filterByYear(isMovie bool, list []*models.Entity, torrYear int) []*models.E
 	return utils.Filter(list, func(i int, e *models.Entity) bool {
 		if len(e.ReleaseDate) > 6 {
 			year, _ := strconv.Atoi(e.ReleaseDate[6:])
-			return utils.Abs(year-torrYear) <= 1
+			return utils.Abs(year-torrYear) > 1 // remove if year is far from torrent year
 		}
-		return true
+		return false // no release date — keep the candidate
 	})
 }
 
