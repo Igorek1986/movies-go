@@ -833,6 +833,9 @@ var settingsGroupDefs = []struct {
 	{"MyShows", []string{
 		"myshows_api_url", "myshows_auth_url",
 	}},
+	{"TMDB обновление карточек", []string{
+		"tmdb_refresh_new_year_delta", "tmdb_refresh_old_batch", "tmdb_refresh_age_days",
+	}},
 	{"Парсер", []string{
 		"rutor_host", "kinozal_host", "nnmclub_host",
 	}},

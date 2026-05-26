@@ -86,22 +86,37 @@ func RunRefreshCards(parentCtx context.Context) {
 		refreshCardsRunning.Store(false)
 	}()
 
-	batchSize := store.GetSettingInt(ctx, "tmdb_refresh_batch")
-	if batchSize <= 0 {
-		batchSize = 1000
+	newYearDelta := store.GetSettingInt(ctx, "tmdb_refresh_new_year_delta")
+	if newYearDelta <= 0 {
+		newYearDelta = 2
+	}
+	oldBatch := store.GetSettingInt(ctx, "tmdb_refresh_old_batch")
+	if oldBatch <= 0 {
+		oldBatch = 10000
 	}
 	ageDays := store.GetSettingInt(ctx, "tmdb_refresh_age_days")
 	if ageDays <= 0 {
 		ageDays = 30
 	}
 
-	rows, err := postgres.Pool.Query(ctx,
-		`SELECT card_id, tmdb_id, media_type FROM media_cards
-		 WHERE tmdb_updated_at IS NULL
-		    OR tmdb_updated_at < now() - ($1 * interval '1 day')
-		 ORDER BY tmdb_updated_at ASC NULLS FIRST
-		 LIMIT $2`,
-		ageDays, batchSize,
+	// Новые карточки: вышли за последние newYearDelta лет — обновляем ежедневно.
+	// Старые карточки: batch из oldBatch штук, ротация по tmdb_updated_at ASC.
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT card_id, tmdb_id, media_type FROM media_cards
+		WHERE (
+			COALESCE(release_date, first_air_date) > now() - ($1 * interval '1 year')
+			AND (tmdb_updated_at IS NULL OR tmdb_updated_at < now() - interval '1 day')
+		)
+		UNION ALL
+		SELECT card_id, tmdb_id, media_type FROM media_cards
+		WHERE (
+			(COALESCE(release_date, first_air_date) IS NULL
+			  OR COALESCE(release_date, first_air_date) <= now() - ($1 * interval '1 year'))
+			AND (tmdb_updated_at IS NULL OR tmdb_updated_at < now() - ($2 * interval '1 day'))
+		)
+		ORDER BY tmdb_updated_at ASC NULLS FIRST
+		LIMIT $3`,
+		newYearDelta, ageDays, oldBatch,
 	)
 	if err != nil {
 		log.Printf("tasks: refresh_cards query: %v", err)
@@ -117,7 +132,8 @@ func RunRefreshCards(parentCtx context.Context) {
 	rows.Close()
 
 	total := int64(len(cards))
-	log.Printf("tasks: refresh_cards: %d cards to process (batch=%d age=%dd)", total, batchSize, ageDays)
+	log.Printf("tasks: refresh_cards: %d cards to process (new<=%dy daily + old batch=%d age=%dd)",
+		total, newYearDelta, oldBatch, ageDays)
 	refreshCardsTotal.Store(total)
 	if total == 0 {
 		return

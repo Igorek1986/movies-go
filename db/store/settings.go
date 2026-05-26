@@ -71,8 +71,9 @@ var SettingDefaults = map[string]string{
 	"google_analytics_enabled": "0",
 	"google_analytics_id":      "",
 	// TMDB card refresh
-	"tmdb_refresh_batch":    "1000",
-	"tmdb_refresh_age_days": "30",
+	"tmdb_refresh_new_year_delta": "2",
+	"tmdb_refresh_old_batch":      "10000",
+	"tmdb_refresh_age_days":       "30",
 	// Parser
 	"parser_order":           "kinozal,nnmclub,rutor",
 	"parser_kinozal_enabled": "1",
