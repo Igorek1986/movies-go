@@ -33,6 +33,7 @@ services:
     volumes:
       - ./plugins:/app/plugins
       - logs_data:/app/logs
+      - /etc/localtime:/etc/localtime:ro
     depends_on:
       db:
         condition: service_healthy
