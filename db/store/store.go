@@ -405,16 +405,24 @@ type NewTodayCard struct {
 	VoteAverage   float64 `json:"vote_average"`
 	VoteCount     int     `json:"vote_count"`
 	CreatedAt     string  `json:"created_at"`
+	Trackers      string  `json:"trackers"`
+	Language      string  `json:"language"`
 }
 
 func GetNewTodayCards(ctx context.Context) []NewTodayCard {
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT card_id, tmdb_id, media_type, title, original_title,
-		       COALESCE(LEFT(COALESCE(release_date::text, first_air_date::text, ''), 4), '') AS year,
-		       vote_average, vote_count, created_at
-		FROM media_cards
-		WHERE created_at::date = CURRENT_DATE
-		ORDER BY created_at DESC`)
+		SELECT mc.card_id, mc.tmdb_id, mc.media_type, mc.title, mc.original_title,
+		       COALESCE(LEFT(COALESCE(mc.release_date::text, mc.first_air_date::text, ''), 4), '') AS year,
+		       mc.vote_average, mc.vote_count, mc.created_at,
+		       COALESCE(STRING_AGG(DISTINCT t.tracker, ',' ORDER BY t.tracker), '') AS trackers,
+		       COALESCE(mc.original_language, '') AS language
+		FROM media_cards mc
+		LEFT JOIN torrents t ON t.card_id = mc.card_id
+		WHERE mc.created_at::date = CURRENT_DATE
+		GROUP BY mc.card_id, mc.tmdb_id, mc.media_type, mc.title, mc.original_title,
+		         mc.release_date, mc.first_air_date, mc.vote_average, mc.vote_count, mc.created_at,
+		         mc.original_language
+		ORDER BY mc.created_at DESC`)
 	if err != nil {
 		return nil
 	}
@@ -424,7 +432,7 @@ func GetNewTodayCards(ctx context.Context) []NewTodayCard {
 		var c NewTodayCard
 		var createdAt time.Time
 		if rows.Scan(&c.CardID, &c.TmdbID, &c.MediaType, &c.Title, &c.OriginalTitle,
-			&c.Year, &c.VoteAverage, &c.VoteCount, &createdAt) == nil {
+			&c.Year, &c.VoteAverage, &c.VoteCount, &createdAt, &c.Trackers, &c.Language) == nil {
 			c.CreatedAt = createdAt.Format("15:04")
 			out = append(out, c)
 		}
@@ -502,6 +510,7 @@ type CategoryFilter struct {
 	DeviceID        int64
 	ProfileID       string
 	WatchedPercent  int
+	RequirePoster   bool // exclude cards with empty/null poster_path
 }
 
 // ListCategory returns a page of media_cards matching the filter.
@@ -617,6 +626,9 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		where = append(where, snip)
 		args = append(args, arg)
 		n++
+	}
+	if f.RequirePoster {
+		where = append(where, "m.poster_path IS NOT NULL AND m.poster_path <> ''")
 	}
 	if f.HideWatched && f.DeviceID > 0 {
 		where = append(where, fmt.Sprintf(`NOT (

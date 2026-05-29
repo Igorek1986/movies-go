@@ -53,8 +53,6 @@ export default function LogsPage() {
   const [autoScroll, setAutoScroll] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const autoScrollRef = useRef(true)
-  const isAutoScrollingRef = useRef(false)
 
   // SSE for live + today history
   useEffect(() => {
@@ -88,18 +86,17 @@ export default function LogsPage() {
   }, [selectedDay])
 
   useEffect(() => {
-    if (!autoScrollRef.current || !containerRef.current) return
-    isAutoScrollingRef.current = true
-    containerRef.current.scrollTop = containerRef.current.scrollHeight
-    requestAnimationFrame(() => { isAutoScrollingRef.current = false })
+    const el = containerRef.current
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    if (atBottom) el.scrollTop = el.scrollHeight
   }, [liveLines, histLines, tab, selectedDay])
 
   function handleScroll() {
-    if (isAutoScrollingRef.current) return
     const el = containerRef.current
     if (!el) return
-    autoScrollRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
-    setAutoScroll(autoScrollRef.current)
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    setAutoScroll(atBottom)
   }
 
   async function runNow() {
@@ -114,22 +111,18 @@ export default function LogsPage() {
   }
 
   function scrollToBottom() {
-    autoScrollRef.current = true
+    const el = containerRef.current
+    if (el) el.scrollTop = el.scrollHeight
     setAutoScroll(true)
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }
 
   function switchDay(day: string) {
     setSelectedDay(day)
     setTab('all')
-    autoScrollRef.current = true
-    setAutoScroll(true)
   }
 
   function switchTab(t: Tab) {
     setTab(t)
-    autoScrollRef.current = true
-    setAutoScroll(true)
   }
 
   const isToday = selectedDay === todayKey()
@@ -168,7 +161,10 @@ export default function LogsPage() {
             {isToday && <span className={styles.connLabel}>{connected ? 'Live' : 'Отключено'}</span>}
             <button className={styles.btn} onClick={() => { setLiveLines([]); setHistLines([]) }}>Очистить</button>
             {!autoScroll && (
-              <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={scrollToBottom}>↓ В конец</button>
+              <>
+                <span className={styles.pausedLabel}>⏸ пауза</span>
+                <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={scrollToBottom}>↓ В конец</button>
+              </>
             )}
             <Link to="/admin/parsers" className={styles.backLink}>Парсеры</Link>
             <Link to="/admin" className={styles.backLink}>Админ</Link>

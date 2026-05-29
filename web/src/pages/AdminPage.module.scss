@@ -379,7 +379,13 @@
   @include card;
   display: flex;
   padding: $spacing-md $spacing-lg;
-  flex-wrap: wrap;
+
+  @media (max-width: $bp-sm) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: $spacing-md;
+    gap: 0;
+  }
 }
 
 .sysItem {
@@ -394,6 +400,19 @@
   &:first-child {
     padding-left: 0;
     border-left: none;
+  }
+
+  @media (max-width: $bp-sm) {
+    padding: $spacing-sm 0;
+    border-left: none;
+
+    &:nth-child(even) {
+      border-left: 1px solid $color-border;
+    }
+
+    &:nth-child(n + 3) {
+      border-top: 1px solid $color-border;
+    }
   }
 }
 

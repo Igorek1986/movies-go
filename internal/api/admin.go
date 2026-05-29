@@ -805,6 +805,9 @@ var checkboxSettingKeys = map[string]string{
 	"yandex_metrika_enabled":   "yandex_metrika_id",
 	"google_analytics_enabled": "google_analytics_id",
 }
+var boolSettingKeys = map[string]bool{
+	"catalog_require_poster": true,
+}
 
 // settingsGroupDefs mirrors FastAPI GROUPS.
 var settingsGroupDefs = []struct {
@@ -871,6 +874,9 @@ var settingsGroupDefs = []struct {
 	{"Категории парсера (требует перезапуска)", []string{
 		"movies_new_year_delta", "movies_new_min_quality", "movies_4k_year_delta",
 	}},
+	{"Настройки каталога", []string{
+		"catalog_require_poster",
+	}},
 	{"Режим работы (требует перезапуска)", []string{
 		"app_mode",
 	}},
@@ -895,7 +901,7 @@ func handleAPIAdminSettingsSave(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				continue
 			}
-			if checkboxSettingKeys[key] != "" {
+			if boolSettingKeys[key] || checkboxSettingKeys[key] != "" {
 				v := "0"
 				if val == "1" || val == "true" {
 					v = "1"

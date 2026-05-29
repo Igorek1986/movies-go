@@ -78,16 +78,7 @@ func (k *KinozalParser) Parse() {
 	defer func() { k.isParse = false }()
 	k.mu.Unlock()
 
-	lastParsed := store.LastParsedAtFor("kinozal")
-	fullScan := lastParsed.IsZero()
-	var cutoff time.Time
-	if !fullScan {
-		overlapDays := 2
-		cutoff = lastParsed.Add(-time.Duration(overlapDays) * 24 * time.Hour)
-		log.Printf("kinozal: incremental scan, cutoff %s", cutoff.Format("2006-01-02"))
-	} else {
-		log.Println("kinozal: first run — full scan")
-	}
+	fullScan, cutoff := scanCutoff("kinozal")
 
 	if err := k.login(); err != nil {
 		log.Printf("kinozal: no auth: %v", err)
@@ -96,21 +87,18 @@ func (k *KinozalParser) Parse() {
 
 	var processed atomic.Int64
 
+	var wg sync.WaitGroup
 	for catID, catInfo := range kinozalCats {
-		if stopRequest.Load() {
-			log.Println("kinozal: stop requested")
-			break
-		}
 		catID, catInfo := catID, catInfo
-		k.parseCategory(catID, catInfo, fullScan, cutoff, &processed)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			k.parseCategory(catID, catInfo, fullScan, cutoff, &processed)
+		}()
 	}
+	wg.Wait()
 
-	if n := processed.Load(); n > 0 {
-		store.SetLastParsedAtFor("kinozal")
-		log.Printf("kinozal: scan complete, processed %d torrents", n)
-	} else {
-		log.Println("kinozal: scan complete, no torrents processed — last_parsed_at not updated")
-	}
+	commitScan("kinozal", &processed)
 }
 
 func (k *KinozalParser) login() error {
@@ -139,7 +127,8 @@ func (k *KinozalParser) login() error {
 }
 
 func (k *KinozalParser) parseCategory(catID string, catInfo kzCatInfo, fullScan bool, cutoff time.Time, processed *atomic.Int64) {
-	runPageLoop(k.httpClient(), "kinozal", 20, 50,
+	label := "kinozal/" + catID
+	runPageLoop(k.httpClient(), label, 20, 50,
 		func(page int) string {
 			return fmt.Sprintf(getKinozalHost()+"/browse.php?c=%s&page=%d", catID, page)
 		},
@@ -148,7 +137,7 @@ func (k *KinozalParser) parseCategory(catID string, catInfo kzCatInfo, fullScan 
 			var jobs []enrichJob
 			for _, item := range items {
 				if !fullScan && !item.date.IsZero() && item.date.Before(cutoff) {
-					log.Printf("kinozal: reached cutoff at %s, stopping cat %s", item.date.Format("2006-01-02"), catID)
+					log.Printf("%s: reached cutoff at %s", label, item.date.Format("2006-01-02"))
 					return jobs, true, len(items)
 				}
 				processed.Add(1)
@@ -157,9 +146,7 @@ func (k *KinozalParser) parseCategory(catID string, catInfo kzCatInfo, fullScan 
 					store.CacheTorrent(d.Hash, "", "kinozal")
 					continue
 				}
-				isMovie := d.Categories == models.CatMovie ||
-					d.Categories == models.CatDocMovie ||
-					d.Categories == models.CatCartoonMovie
+				isMovie := isMovieCat(d.Categories)
 				cached, cardID := store.TorrentStatus(d.Hash)
 				if cached && cardID != "" {
 					if d.VideoQuality > 0 {
@@ -172,7 +159,7 @@ func (k *KinozalParser) parseCategory(catID string, catInfo kzCatInfo, fullScan 
 			return jobs, false, len(items)
 		},
 		func(job enrichJob) {
-			releases.Enrich(job.d.Tracker, job.isMovie, job.d)
+			releases.Enrich(label, job.isMovie, job.d)
 		},
 	)
 }
@@ -238,44 +225,13 @@ func (k *KinozalParser) buildDetails(item kzItem, catInfo kzCatInfo) *models.Tor
 var (
 	reKzSeason    = regexp.MustCompile(`(?i)\(\d+\s*сезон[^)]*\)`)
 	reKzSeriesHdr = regexp.MustCompile(`(?i)\d+\s*сезон|серии\s*из`)
-	reKzYearRange = regexp.MustCompile(`(\d{4})-\d{4}`)
 )
 
 func parseKinozalTitle(d *models.TorrentDetails, title string, catInfo kzCatInfo) {
-	parts := strings.Split(title, " / ")
-	if len(parts) < 2 {
-		d.Name = strings.TrimSpace(title)
-		return
-	}
-
-	ruName := reKzSeason.ReplaceAllString(parts[0], "")
-	d.Name = strings.TrimSpace(ruName)
-
-	// Detect whether parts[1] is an English title or the year.
-	// "Начало / Inception / 2010 / ..."  → parts[1] = English title
-	// "Капитанская дочка / 1958 / РУ / ..." → parts[1] = year (no English title)
-	p1 := strings.TrimSpace(parts[1])
-	if yr, err := strconv.Atoi(p1); err == nil && yr >= 1900 && yr <= 2100 {
-		// parts[1] is the year — no English title in this entry
-		d.Year = yr
-	} else {
-		d.Names = []string{p1}
-		if len(parts) >= 3 {
-			yearStr := strings.TrimSpace(parts[2])
-			if m := reKzYearRange.FindStringSubmatch(yearStr); m != nil {
-				yearStr = m[1]
-			}
-			d.Year, _ = strconv.Atoi(yearStr)
-		}
-	}
-
-	qualPart := parts[len(parts)-1]
-	d.VideoQuality = ParseVQuality(qualPart)
-	d.AudioQuality = ParseAQuality(qualPart)
-
-	// Category detection for multiki (detect series from title)
+	ParseTorrentTitle(d, title)
+	d.Name = strings.TrimSpace(reKzSeason.ReplaceAllString(d.Name, ""))
 	if catInfo.baseCat == "" {
-		if reKzSeriesHdr.MatchString(title) {
+		if reKzSeriesHdr.MatchString(title) || HasEpisodeBrackets(title) {
 			d.Categories = models.CatCartoonSeries
 		} else {
 			d.Categories = models.CatCartoonMovie

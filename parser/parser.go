@@ -49,6 +49,24 @@ func NextRunAt() time.Time {
 // RequestStop asks a running RunAll to stop after the current tracker finishes.
 func RequestStop() { stopRequest.Store(true) }
 
+// interruptibleSleep sleeps for d but returns false immediately if stop is requested.
+func interruptibleSleep(d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-timer.C:
+			return true
+		case <-tick.C:
+			if stopRequest.Load() {
+				return false
+			}
+		}
+	}
+}
+
 // IsRunning reports whether RunAll is currently executing.
 func IsRunning() bool { return runActive.Load() }
 

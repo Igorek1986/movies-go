@@ -32,6 +32,10 @@ func InvalidateCategoryCache() {
 	trackerCached = ""
 	trackerMu.Unlock()
 
+	requirePosterMu.Lock()
+	requirePosterCached = nil
+	requirePosterMu.Unlock()
+
 	log.Println("catcache: invalidated")
 }
 
@@ -94,7 +98,33 @@ func (c *responseCapture) Write(b []byte) (int, error) {
 var (
 	trackerMu     sync.RWMutex
 	trackerCached string
+
+	requirePosterMu     sync.RWMutex
+	requirePosterCached *bool
 )
+
+// cachedRequirePoster returns true if cards without a poster should be excluded.
+// Default: true. Reset by InvalidateCategoryCache.
+func cachedRequirePoster() bool {
+	requirePosterMu.RLock()
+	v := requirePosterCached
+	requirePosterMu.RUnlock()
+	if v != nil {
+		return *v
+	}
+
+	requirePosterMu.Lock()
+	defer requirePosterMu.Unlock()
+	if requirePosterCached != nil {
+		return *requirePosterCached
+	}
+	val := true // default: enabled
+	if s, ok := store.GetSetting(context.Background(), "catalog_require_poster"); ok {
+		val = s != "0"
+	}
+	requirePosterCached = &val
+	return val
+}
 
 // cachedTrackers returns the catalog_trackers setting, reading from DB only once
 // per parser cycle. Reset by InvalidateCategoryCache.

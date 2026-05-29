@@ -13,6 +13,8 @@ interface NewCard {
   vote_average: number
   vote_count: number
   created_at: string
+  trackers: string
+  language: string
 }
 
 export default function NewCardsPage() {
@@ -55,6 +57,8 @@ export default function NewCardsPage() {
                 <th>Оригинал</th>
                 <th>Год</th>
                 <th>Рейтинг</th>
+                <th>Язык</th>
+                <th>Трекер</th>
               </tr>
             </thead>
             <tbody>
@@ -72,6 +76,8 @@ export default function NewCardsPage() {
                   <td data-label="Рейтинг" className={styles.rating}>
                     {c.vote_count > 0 ? `${c.vote_average.toFixed(1)} (${c.vote_count})` : '—'}
                   </td>
+                  <td data-label="Язык" className={styles.muted}>{c.language ? c.language.toUpperCase() : '—'}</td>
+                  <td data-label="Трекер" className={styles.muted}>{c.trackers || '—'}</td>
                 </tr>
               ))}
             </tbody>

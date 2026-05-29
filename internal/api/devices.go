@@ -23,6 +23,16 @@ func deviceLimit(role string) int {
 	}
 }
 
+// GET /device/ping
+func handleDevicePing(w http.ResponseWriter, r *http.Request) {
+	d := deviceFromRequest(r)
+	if d == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // GET /device/code
 // Client calls this to get a pairing code, then shows it to the user.
 func handleDeviceGetCode(w http.ResponseWriter, r *http.Request) {

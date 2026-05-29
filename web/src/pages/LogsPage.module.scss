@@ -46,6 +46,12 @@
   color: $color-text-muted;
 }
 
+.pausedLabel {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  opacity: 0.7;
+}
+
 .btn {
   height: 30px;
   padding: 0 $spacing-sm;

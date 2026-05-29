@@ -123,6 +123,7 @@ const SELECT_KEYS: Record<string, string[]> = {
 const CHECKBOX_KEYS: Record<string, string> = {
   yandex_metrika_enabled:   'yandex_metrika_id',
   google_analytics_enabled: 'google_analytics_id',
+  catalog_require_poster:   '',
 }
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -189,6 +190,7 @@ const LABELS: Record<string, string> = {
   movies_new_year_delta:   'Новые фильмы — за сколько лет (YearDelta)',
   movies_4k_year_delta:    'Новые 4K фильмы — за сколько лет (YearDelta)',
   movies_new_min_quality:  'Новые фильмы — мин. качество (0=любое, 100=720p+, 200=1080p+, 300=4K+)',
+  catalog_require_poster:  'Скрывать карточки без постера',
   yandex_metrika_enabled:   'Яндекс.Метрика — включена',
   yandex_metrika_id:        'Яндекс.Метрика ID',
   google_analytics_enabled: 'Google Analytics — включена',
@@ -249,6 +251,9 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   { name: 'Категории парсера', keys: [
     'movies_new_year_delta', 'movies_new_min_quality', 'movies_4k_year_delta',
   ], requiresRestart: true },
+  { name: 'Настройки каталога', keys: [
+    'catalog_require_poster',
+  ]},
   { name: 'Режим работы', keys: ['app_mode'], requiresRestart: true },
 ]
 

@@ -23,8 +23,7 @@ interface ParsersData {
   retry_max_wait: number
   retry_ratio: string
   tmdb_retry_attempts: number
-  tmdb_retry_base_wait: number
-  tmdb_retry_max_wait: number
+  tmdb_retry_wait: number
   kinozal_login: string
   kinozal_password: string
   catalog_trackers: string
@@ -68,8 +67,7 @@ export default function ParsersPage() {
   const [retryMaxWait, setRetryMaxWait] = useState(120)
   const [retryRatio, setRetryRatio] = useState('2.0')
   const [tmdbRetryAttempts, setTmdbRetryAttempts] = useState(5)
-  const [tmdbRetryBaseWait, setTmdbRetryBaseWait] = useState(2)
-  const [tmdbRetryMaxWait, setTmdbRetryMaxWait] = useState(8)
+  const [tmdbRetryWait, setTmdbRetryWait] = useState(10)
   const [trackerDates, setTrackerDates] = useState<Record<string, string>>({})
   const [catalogTrackers, setCatalogTrackers] = useState<Set<string>>(new Set())
   const [credModal, setCredModal] = useState<{ tracker: string; login: string; password: string } | null>(null)
@@ -105,8 +103,11 @@ export default function ParsersPage() {
     setTrackerDates(prev => {
       const next = { ...prev }
       for (const p of d.parsers) {
-        if (!next[p.name] && p.last_parsed_at)
+        if (p.last_parsed_at) {
           next[p.name] = p.last_parsed_at.split('T')[0]
+        } else {
+          delete next[p.name]
+        }
       }
       return next
     })
@@ -116,8 +117,7 @@ export default function ParsersPage() {
     if (d.retry_max_wait) setRetryMaxWait(d.retry_max_wait)
     if (d.retry_ratio) setRetryRatio(d.retry_ratio)
     if (d.tmdb_retry_attempts) setTmdbRetryAttempts(d.tmdb_retry_attempts)
-    if (d.tmdb_retry_base_wait) setTmdbRetryBaseWait(d.tmdb_retry_base_wait)
-    if (d.tmdb_retry_max_wait) setTmdbRetryMaxWait(d.tmdb_retry_max_wait)
+    if (d.tmdb_retry_wait) setTmdbRetryWait(d.tmdb_retry_wait)
 
     if (d.running) startPoll()
     else stopPoll()
@@ -199,8 +199,7 @@ export default function ParsersPage() {
         retry_max_wait: retryMaxWait,
         retry_ratio: retryRatio,
         tmdb_retry_attempts: tmdbRetryAttempts,
-        tmdb_retry_base_wait: tmdbRetryBaseWait,
-        tmdb_retry_max_wait: tmdbRetryMaxWait,
+        tmdb_retry_wait: tmdbRetryWait,
       })
       toast('Настройки сохранены')
       await load()
@@ -529,7 +528,7 @@ export default function ParsersPage() {
           </div>
 
           <h2 className={styles.sectionTitle}>TMDB — повторные попытки</h2>
-          <p className={styles.hint}>При ошибках 429/500/502/503/504 и сетевых таймаутах. Пауза: base × 2^n, но не более max.</p>
+          <p className={styles.hint}>При ошибках 429/500/502/503/504 и сетевых таймаутах. Фиксированная пауза между попытками (или Retry-After от сервера, если больше).</p>
           <div className={styles.retryGrid}>
             <label className={styles.label}>
               Попыток:
@@ -537,14 +536,9 @@ export default function ParsersPage() {
                 value={tmdbRetryAttempts} onChange={e => setTmdbRetryAttempts(Number(e.target.value))} />
             </label>
             <label className={styles.label}>
-              Первая пауза (сек):
-              <input type="number" min={1} max={60} className={styles.numInput}
-                value={tmdbRetryBaseWait} onChange={e => setTmdbRetryBaseWait(Number(e.target.value))} />
-            </label>
-            <label className={styles.label}>
-              Максимальная пауза (сек):
+              Пауза (сек):
               <input type="number" min={1} max={300} className={styles.numInput}
-                value={tmdbRetryMaxWait} onChange={e => setTmdbRetryMaxWait(Number(e.target.value))} />
+                value={tmdbRetryWait} onChange={e => setTmdbRetryWait(Number(e.target.value))} />
             </label>
           </div>
 

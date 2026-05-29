@@ -31,7 +31,9 @@ func fetchBytesRetry(proxyClient *http.Client, url string, maxAttempts int, base
 				w = maxWait
 			}
 			log.Printf("parser: retry %d/%d in %s for %s", attempt, maxAttempts-1, w.Round(time.Second), url)
-			time.Sleep(w)
+			if !interruptibleSleep(w) {
+				return nil, fmt.Errorf("stop requested")
+			}
 			wait = time.Duration(float64(wait) * ratio)
 		}
 		body, err := httpGetBytes(proxyClient, url)

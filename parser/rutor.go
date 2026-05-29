@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -36,18 +37,20 @@ type RutorParser struct {
 	isParse bool
 }
 
-func NewRutor() *RutorParser {
-	return new(RutorParser)
-}
+func NewRutor() *RutorParser { return new(RutorParser) }
 
 func (self *RutorParser) Name() string { return "rutor" }
+
+func (self *RutorParser) httpClient() *http.Client {
+	return clientForRoute("parser_rutor")
+}
 
 type parseLink struct {
 	Host     string
 	Link     string
 	Cat      string
-	FullScan bool      // true = parse all pages; false = stop by cutoff date
-	Cutoff   time.Time // incremental: skip torrents older than this
+	FullScan bool
+	Cutoff   time.Time
 }
 
 func getHost() string {
@@ -70,23 +73,7 @@ func (self *RutorParser) Parse() {
 	defer func() { self.isParse = false }()
 	self.mu.Unlock()
 
-	// Full scan on first run; incremental otherwise.
-	// Incremental: stop when torrent date is older than (lastParsed - 2 days overlap).
-	// The 2-day overlap handles re-uploads and delayed additions.
-	lastParsed := store.LastParsedAtFor("rutor")
-	fullScan := lastParsed.IsZero()
-	var cutoff time.Time
-	if !fullScan {
-		overlapDays := store.GetSettingInt(context.Background(), "parser_overlap_days")
-		if overlapDays <= 0 {
-			overlapDays = 2
-		}
-		cutoff = lastParsed.Add(-time.Duration(overlapDays) * 24 * time.Hour)
-		log.Printf("parser: incremental scan, cutoff date: %s (overlap %d days)", cutoff.Format("2006-01-02"), overlapDays)
-	} else {
-		log.Println("parser: first run — full scan of all pages")
-	}
-
+	fullScan, cutoff := scanCutoff("rutor")
 	pages := self.readCategories()
 
 	var taskers []*tasker.Tasker
@@ -98,12 +85,10 @@ func (self *RutorParser) Parse() {
 		taskers = append(taskers, tsk)
 
 		for i := 0; i < pgs; i++ {
-			page := strconv.Itoa(i)
 			host := getHost()
-			link := host + "/browse/" + page + "/" + cat + "/0/0"
 			pl := parseLink{
 				Host:     host,
-				Link:     link,
+				Link:     host + "/browse/" + strconv.Itoa(i) + "/" + cat + "/0/0",
 				Cat:      cat,
 				FullScan: fullScan,
 				Cutoff:   cutoff,
@@ -111,36 +96,29 @@ func (self *RutorParser) Parse() {
 
 			tsk.Add(func(pl interface{}) bool {
 				p := pl.(parseLink)
+				if stopRequest.Load() {
+					log.Printf("rutor/%s: stop requested, halting", p.Cat)
+					return false
+				}
 				list := self.parsePage(p)
 				if len(list) == 0 {
 					return false
 				}
 
-				type enrichJob struct {
-					d       *models.TorrentDetails
-					isMovie bool
-				}
 				var toEnrich []enrichJob
 				hitCutoff := false
 
 				for _, d := range list {
-					// In incremental mode: stop when all remaining torrents are older than cutoff.
-					// Rutor pages are ordered newest→oldest, so once we pass cutoff we're done.
 					if !p.FullScan && !d.CreateDate.IsZero() && d.CreateDate.Before(p.Cutoff) {
-						log.Printf("parser: reached cutoff at %s, stopping cat %s",
-							d.CreateDate.Format("2006-01-02"), p.Cat)
+						log.Printf("rutor/%s: reached cutoff at %s", p.Cat, d.CreateDate.Format("2006-01-02"))
 						hitCutoff = true
 						break
 					}
 					processed.Add(1)
-					// Sports/news/humor (CatTVShow) are never in TMDB — skip enrichment.
 					if d.Categories == models.CatTVShow {
 						store.CacheTorrent(d.Hash, "", "rutor")
 						continue
 					}
-					isMovie := d.Categories == models.CatMovie ||
-						d.Categories == models.CatDocMovie ||
-						d.Categories == models.CatCartoonMovie
 					cached, cardID := store.TorrentStatus(d.Hash)
 					if cached && cardID != "" {
 						if d.VideoQuality > 0 {
@@ -148,10 +126,9 @@ func (self *RutorParser) Parse() {
 						}
 						continue
 					}
-					toEnrich = append(toEnrich, enrichJob{d, isMovie})
+					toEnrich = append(toEnrich, enrichJob{d, isMovieCat(d.Categories)})
 				}
 
-				// Enrich new/retry torrents in parallel (up to 20 concurrent TMDB calls).
 				utils.PForLim(toEnrich, 20, func(_ int, job enrichJob) {
 					releases.Enrich("rutor/"+p.Cat, job.isMovie, job.d)
 				})
@@ -168,51 +145,42 @@ func (self *RutorParser) Parse() {
 		t.Wait()
 	}
 
-	if n := processed.Load(); n > 0 {
-		store.SetLastParsedAtFor("rutor")
-		log.Printf("parser: rutor scan complete, processed %d torrents", n)
-	} else {
-		log.Println("parser: rutor scan complete, no torrents processed — last_parsed_at not updated")
-	}
+	commitScan("rutor", &processed)
 }
 
-// читаем категории и заносим в таски что парсить
 func (self *RutorParser) readCategories() map[string]int {
-	// 1  - Зарубежные фильмы          	| Фильмы
-	// 5  - Наши фильмы                	| Фильмы
-	// 4  - Зарубежные сериалы         	| Сериалы
-	// 16 - Наши сериалы               	| Сериалы
-	// 12 - Научно-популярные фильмы   	| Док. сериалы, Док. фильмы
-	// 6  - Телевизор                  	| ТВ Шоу
-	// 7  - Мультипликация             	| Мультфильмы, Мультсериалы
-	// 10 - Аниме                      	| Аниме
-	// 17 - Иностранные релизы         	| UA озвучка
-	// 13 - Спорт и Здоровье 			| ТВ Шоу
-	// 15 - Юмор						| ТВ Шоу
-
+	// 1  - Зарубежные фильмы   | Фильмы
+	// 5  - Наши фильмы         | Фильмы
+	// 4  - Зарубежные сериалы  | Сериалы
+	// 16 - Наши сериалы        | Сериалы
+	// 12 - Науч-поп фильмы     | Dok
+	// 6  - Телевизор           | ТВ Шоу
+	// 7  - Мультипликация      | Мультфильмы
+	// 10 - Аниме               | Аниме
+	// 17 - Иностранные релизы  | UA озвучка
+	// 13 - Спорт и Здоровье    | ТВ Шоу
+	// 15 - Юмор                | ТВ Шоу
 	log.Println("Read Rutor categories")
 
-	var categories = []string{"1", "5", "4", "16", "12", "6", "7", "10", "17", "13", "15"}
-	var pages = map[string]int{}
+	categories := []string{"1", "5", "4", "16", "12", "6", "7", "10", "17", "13", "15"}
+	pages := map[string]int{}
 	var mm sync.Mutex
+	attempts, baseWait, maxWait, ratio := retryOpts()
 
-	utils.PFor(categories, func(i int, cat string) {
+	utils.PFor(categories, func(_ int, cat string) {
 		link := getHost() + "/browse/0/" + cat + "/0/0"
-		body, err := get(link)
-		if err == nil {
-			re, err := regexp.Compile("<a href=\"/browse/([0-9]+)/[0-9]+/[0-9]+/[0-9]+\"><b>[0-9]+&nbsp;-&nbsp;[0-9]+</b></a></p>")
-			if err != nil {
-				log.Fatalf("Error compile regex %v", err)
-			}
-			matches := re.FindStringSubmatch(body)
-			if len(matches) > 1 {
-				pgs, err := strconv.Atoi(matches[1])
-				if err == nil {
-					mm.Lock()
-					pages[cat] = pgs
-					log.Println("Category readed", link, pgs)
-					mm.Unlock()
-				}
+		bodyBytes, err := fetchBytesRetry(self.httpClient(), link, attempts, baseWait, maxWait, ratio)
+		if err != nil {
+			return
+		}
+		re := regexp.MustCompile(`<a href="/browse/([0-9]+)/[0-9]+/[0-9]+/[0-9]+"><b>[0-9]+&nbsp;-&nbsp;[0-9]+</b></a></p>`)
+		matches := re.FindStringSubmatch(string(bodyBytes))
+		if len(matches) > 1 {
+			if pgs, err := strconv.Atoi(matches[1]); err == nil {
+				mm.Lock()
+				pages[cat] = pgs
+				log.Println("Category readed", link, pgs)
+				mm.Unlock()
 			}
 		}
 	})
@@ -221,12 +189,13 @@ func (self *RutorParser) readCategories() map[string]int {
 }
 
 func (self *RutorParser) parsePage(pl parseLink) []*models.TorrentDetails {
-	// Парсим страницу с торрентами
-	body, err := get(pl.Link)
+	attempts, baseWait, maxWait, ratio := retryOpts()
+	bodyBytes, err := fetchBytesRetry(self.httpClient(), pl.Link, attempts, baseWait, maxWait, ratio)
 	if err != nil {
 		log.Println("Error get page:", err, pl.Link)
 		return nil
 	}
+	body := string(bodyBytes)
 	if !strings.Contains(body, "<title>rutor.info") {
 		log.Println("Not rutor page:", pl.Link)
 		return nil
@@ -239,15 +208,14 @@ func (self *RutorParser) parsePage(pl parseLink) []*models.TorrentDetails {
 	}
 
 	var list []*models.TorrentDetails
-
-	doc.Find("div#index").Find("tr").Each(func(_ int, selection *goquery.Selection) {
-		if selection.HasClass("backgr") {
+	doc.Find("div#index").Find("tr").Each(func(_ int, sel *goquery.Selection) {
+		if sel.HasClass("backgr") {
 			return
 		}
-		selTd := selection.Find("td")
+		selTd := sel.Find("td")
 
 		itm := new(models.TorrentDetails)
-		itm.CreateDate = self.parseDate(node2Text(selTd.Get(0)))
+		itm.CreateDate = parseRuDate(node2Text(selTd.Get(0)))
 		itm.Title = node2Text(selTd.Get(1))
 		self.parseTitle(itm, pl.Cat)
 		itm.Magnet = selTd.Get(1).FirstChild.NextSibling.Attr[0].Val
@@ -256,20 +224,18 @@ func (self *RutorParser) parsePage(pl parseLink) []*models.TorrentDetails {
 			return
 		}
 		itm.Hash = hash
-		linkParam := strings.TrimSpace(selTd.Get(1).LastChild.Attr[0].Val)
-		itm.Link = linkParam
-		if len(selTd.Nodes) == 4 {
+		itm.Link = strings.TrimSpace(selTd.Get(1).LastChild.Attr[0].Val)
+		switch len(selTd.Nodes) {
+		case 4:
 			itm.Size = node2Text(selTd.Get(2))
-			peers := node2Text(selTd.Get(3))
-			prarr := strings.Split(peers, "  ")
+			prarr := strings.Split(node2Text(selTd.Get(3)), "  ")
 			if len(prarr) > 1 {
 				itm.Seed, _ = strconv.Atoi(prarr[0])
 				itm.Peer, _ = strconv.Atoi(prarr[1])
 			}
-		} else if len(selTd.Nodes) == 5 {
+		case 5:
 			itm.Size = node2Text(selTd.Get(3))
-			peers := node2Text(selTd.Get(4))
-			prarr := strings.Split(peers, "  ")
+			prarr := strings.Split(node2Text(selTd.Get(4)), "  ")
 			if len(prarr) > 1 {
 				itm.Seed, _ = strconv.Atoi(prarr[0])
 				itm.Peer, _ = strconv.Atoi(prarr[1])
@@ -281,104 +247,16 @@ func (self *RutorParser) parsePage(pl parseLink) []*models.TorrentDetails {
 	return list
 }
 
-// ParseTitle extracts Name, Names, and Year from a torrent title string.
-// Categories must already be set on td before calling.
-func ParseTitle(td *models.TorrentDetails) {
-	td.Title = strings.ReplaceAll(td.Title, "&amp;", "&")
-	re, err := regexp.Compile("(.+)\\((.+)\\)(.+)")
-	if err != nil {
-		return
-	}
-	matches := re.FindStringSubmatch(td.Title)
-	reBrackets, err2 := regexp.Compile("\\[.*?\\]")
-	if len(matches) > 2 {
-		yrs := strings.TrimSpace(matches[2])
-		if strings.Contains(yrs, "-") {
-			arr := strings.Split(yrs, "-")
-			if len(arr) > 1 {
-				yrs = strings.TrimSpace(arr[0])
-			}
-		}
-		yr, _ := strconv.Atoi(yrs)
-		td.Year = yr
-		arr := strings.Split(matches[1], "/")
-		if len(arr) == 1 {
-			td.Name = arr[0]
-		} else if len(arr) > 1 {
-			td.Name = arr[0]
-			td.Names = arr[1:]
-		}
-		if err2 == nil {
-			if strings.Contains(td.Title, "З/Л/О 94") {
-				td.Name = "З/Л/О 94"
-				td.Names = []string{"V/H/S/94"}
-			} else {
-				td.Name = strings.TrimSpace(reBrackets.ReplaceAllString(td.Name, ""))
-				for i := range td.Names {
-					td.Names[i] = strings.TrimSpace(reBrackets.ReplaceAllString(td.Names[i], ""))
-				}
-			}
-		}
-	}
-}
-
 func (self *RutorParser) parseTitle(td *models.TorrentDetails, cat string) {
-	td.Title = strings.ReplaceAll(td.Title, "&amp;", "&")
-	re, err := regexp.Compile("(.+)\\((.+)\\)(.+)")
-	if err != nil {
-		log.Fatalf("Error parse torrent name: %v", err)
-	}
-	matches := re.FindStringSubmatch(td.Title)
-	re, err = regexp.Compile("\\[.*?\\]")
-	if len(matches) > 2 {
-		yrs := strings.TrimSpace(matches[2])
-		if strings.Contains(yrs, "-") {
-			arr := strings.Split(yrs, "-")
-			if len(arr) > 1 {
-				yrs = strings.TrimSpace(arr[0])
-			}
-		}
-
-		yr, _ := strconv.Atoi(yrs)
-		td.Year = yr
-		arr := strings.Split(matches[1], "/")
-		if len(arr) == 1 {
-			td.Name = arr[0]
-		} else if len(arr) > 1 {
-			td.Name = arr[0]
-			td.Names = arr[1:]
-		}
-		if err == nil {
-			if strings.Contains(td.Title, "З/Л/О 94") {
-				td.Name = "З/Л/О 94"
-				td.Names = []string{"V/H/S/94"}
-			} else {
-				td.Name = strings.TrimSpace(re.ReplaceAllString(td.Name, ""))
-				for i := range td.Names {
-					td.Names[i] = strings.TrimSpace(re.ReplaceAllString(td.Names[i], ""))
-				}
-			}
-		}
-		if len(matches) > 3 {
-			vq := ParseVQuality(strings.TrimSpace(matches[3]))
-			aq := ParseAQuality(strings.TrimSpace(matches[3]))
-			td.VideoQuality = vq
-			td.AudioQuality = aq
-		}
-	}
-
-	title := td.Title
-	if len(matches) > 0 {
-		title = matches[1]
-	}
-
+	ParseTorrentTitle(td, td.Title)
+	hasBrackets := HasEpisodeBrackets(td.Title)
 	switch {
 	case cat == "1", cat == "5", cat == "17":
 		td.Categories = models.CatMovie
 	case cat == "4", cat == "16":
 		td.Categories = models.CatSeries
 	case cat == "12":
-		if re.MatchString(title) {
+		if hasBrackets {
 			td.Categories = models.CatDocSeries
 		} else {
 			td.Categories = models.CatDocMovie
@@ -386,7 +264,7 @@ func (self *RutorParser) parseTitle(td *models.TorrentDetails, cat string) {
 	case cat == "6", cat == "13", cat == "15":
 		td.Categories = models.CatTVShow
 	case cat == "7":
-		if re.MatchString(title) {
+		if hasBrackets {
 			td.Categories = models.CatCartoonSeries
 		} else {
 			td.Categories = models.CatCartoonMovie
@@ -394,343 +272,4 @@ func (self *RutorParser) parseTitle(td *models.TorrentDetails, cat string) {
 	case cat == "10":
 		td.Categories = models.CatAnime
 	}
-}
-
-func (self *RutorParser) parseDate(date string) time.Time {
-	var rutorMonth = map[string]int{
-		"Янв": 1, "Фев": 2, "Мар": 3,
-		"Апр": 4, "Май": 5, "Июн": 6,
-		"Июл": 7, "Авг": 8, "Сен": 9,
-		"Окт": 10, "Ноя": 11, "Дек": 12,
-	}
-
-	darr := strings.Split(date, " ")
-	if len(darr) != 3 {
-		return time.Date(0, 0, 0, 0, 0, 0, 0, time.Now().Location())
-	}
-
-	day, _ := strconv.Atoi(darr[0])
-	month, _ := rutorMonth[darr[1]]
-	year, _ := strconv.Atoi("20" + darr[2])
-
-	return time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.Now().Location())
-}
-
-func ParseVQuality(params string) int {
-	info := clear(strings.ToLower(params))
-	info = strings.ReplaceAll(info, "вdrip", "bdrip")
-	info = strings.ReplaceAll(info, "web dl", "webdl")
-
-	// check uhd bdremux 2160
-	if strings.Contains(info, "2160") && (strings.Contains(info, "bdremux") || strings.Contains(info, "bluray")) {
-		if strings.Contains(info, "dolby vision") {
-			return models.Q_UHD_BDREMUX_DV
-		} else if strings.Contains(info, "hdr") {
-			return models.Q_UHD_BDREMUX_HDR
-		} else {
-			return models.Q_UHD_BDREMUX_SDR
-		}
-	}
-	// check bdrip hevc 2160
-	if strings.Contains(info, "2160") && strings.Contains(info, "bdrip") {
-		if strings.Contains(info, "dolby vision") {
-			return models.Q_BDRIP_DV_2160
-		} else if strings.Contains(info, "hdr") {
-			return models.Q_BDRIP_HDR_2160
-		} else {
-			return models.Q_BDRIP_SDR_2160
-		}
-	}
-	// check webdl 2160
-	if strings.Contains(info, "2160") && (strings.Contains(info, "webdl") || (strings.Contains(info, "webrip"))) {
-		if strings.Contains(info, "dolby vision") {
-			return models.Q_WEBDL_DV_2160
-		} else if strings.Contains(info, "hdr") {
-			return models.Q_WEBDL_HDR_2160
-		} else {
-			return models.Q_WEBDL_SDR_2160
-		}
-	}
-	// check bdremux 1080
-	if strings.Contains(info, "1080") && (strings.Contains(info, "remux") || strings.Contains(info, "bluray")) {
-		return models.Q_BDREMUX_1080
-	}
-	// check bdrip hevc 1080
-	if strings.Contains(info, "1080") && strings.Contains(info, "bdrip") && strings.Contains(info, "hevc") {
-		return models.Q_BDRIP_HEVC_1080
-	}
-	// check bdrip 1080
-	if strings.Contains(info, "1080") && strings.Contains(info, "bdrip") {
-		return models.Q_BDRIP_1080
-	}
-	// check webdl 1080
-	if strings.Contains(info, "1080") && (strings.Contains(info, "webdl") || strings.Contains(info, "webrip") || strings.Contains(info, "hdrip") || strings.Contains(info, "hybrid")) {
-		return models.Q_WEBDL_1080
-	}
-	// check bdrip hevc 720
-	if strings.Contains(info, "720") && strings.Contains(info, "bdrip") && strings.Contains(info, "hevc") {
-		return models.Q_BDRIP_HEVC_720
-	}
-	// check bdrip 720
-	if strings.Contains(info, "720") && strings.Contains(info, "bdrip") {
-		return models.Q_BDRIP_720
-	}
-	// check webdl 720
-	if strings.Contains(info, "720") && (strings.Contains(info, "webdl") || strings.Contains(info, "webrip") || strings.Contains(info, "dvd") || strings.Contains(info, "hdrip")) {
-		return models.Q_WEBDL_720
-	}
-	return models.Q_LOWER
-}
-
-func ParseAQuality(params string) int {
-	arr := strings.Split(params, "|")
-	qualities := []int{}
-	for _, name := range arr {
-		name = clear(name)
-		for _, qn := range Q_Lic_Names {
-			if strings.Contains(name, clear(qn)) {
-				qualities = append(qualities, models.Q_LICENSE)
-			}
-		}
-		// Ищем проф студию
-		for _, qn := range Q_P_Names {
-			// одно слово ищем по словам
-			if !strings.Contains(qn, " ") {
-				arr := strings.Split(clear(name), " ")
-				for _, s := range arr {
-					if s == clear(qn) {
-						qualities = append(qualities, models.Q_PS)
-					}
-				}
-			} else {
-				if strings.Contains(name, clear(qn)) {
-					qualities = append(qualities, models.Q_PS)
-				}
-			}
-		}
-		// Ищем любительскую студию
-		for _, qn := range Q_L_Names {
-			if strings.Contains(name, clear(qn)) {
-				qualities = append(qualities, models.Q_LS)
-			}
-		}
-		// Ищем в названии упоминания озвучки
-		wrd := strings.Split(name, " ")
-		for _, w := range wrd {
-			w = strings.TrimSpace(w)
-			if w == "d" {
-				qualities = append(qualities, models.Q_D)
-			} else if w == "p" {
-				qualities = append(qualities, models.Q_P)
-			} else if w == "p2" {
-				qualities = append(qualities, models.Q_P2)
-			} else if w == "p1" {
-				qualities = append(qualities, models.Q_P1)
-			} else if w == "l" {
-				qualities = append(qualities, models.Q_L)
-			} else if w == "l2" {
-				qualities = append(qualities, models.Q_L2)
-			} else if w == "l1" {
-				qualities = append(qualities, models.Q_L1)
-			} else if w == "a" {
-				qualities = append(qualities, models.Q_A)
-			}
-		}
-	}
-
-	if len(qualities) > 0 {
-		max := models.Q_UNKNOWN
-		for _, q := range qualities {
-			if q > max {
-				max = q
-			}
-		}
-		return max
-	}
-
-	return models.Q_UNKNOWN
-}
-
-func clear(txt string) string {
-	ret := ""
-	txt = strings.ToLower(txt)
-	for _, r := range txt {
-		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'а' && r <= 'я') || r == 'ё' || r == ' ' {
-			ret = ret + string(r)
-		}
-	}
-	return ret
-}
-
-var Q_Lic_Names = []string{
-	"лицензия",
-	"itunes",
-	"netflix",
-}
-
-var Q_P_Names = []string{
-	"100ТВ",
-	"2х2",
-	"Agatha Studdio",
-	"AlexFilm",
-	"Amedia",
-	"NovaFilm",
-	"Novamedia",
-	"AMS",
-	"ARS-studio",
-	"Astana TV",
-	"AzOnFilm",
-	"AXN Sci-Fi",
-	"CDV",
-	"CGInfo",
-	"CP Digital",
-	"Disney",
-	"DniproFilm",
-	"DVDXpert",
-	"Elrom",
-	"Filiza Studio",
-	"Flarrow Films",
-	"FocusX",
-	"FocusStudio",
-	"FOXCrime",
-	"FoxLife",
-	"Gears Media",
-	"Good People",
-	"HDrezka Studio",
-	"IdeaFilm",
-	"IVI",
-	"Jaskier",
-	"Kansai Studio",
-	"LostFilm",
-	"MC Entertaiment",
-	"Mega-Anime",
-	"MTV",
-	"Neoclassica",
-	"NewComers",
-	"NewStudio",
-	"Nickelodeon",
-	"NovaFilm",
-	"NovaMedia",
-	"Ozz",
-	"Paramount",
-	"Profix Media",
-	"Rattlebox",
-	"SDI Media",
-	"Sony Sci-Fi",
-	"Superbit",
-	"TUMBLER Studio",
-	"TVShows",
-	"FilmsClub",
-	"Tycoon",
-	"Universal",
-	"ViruseProject",
-	"WestVideo",
-	"Арена",
-	"Арк-ТВ",
-	"Воротилин",
-	"Домашний",
-	"ДТВ",
-	"ДубльPR studio",
-	"Екатеринбург-Арт",
-	"Инис",
-	"Лексикон",
-	"Киномания",
-	"Кипарис",
-	"Кириллица",
-	"Кравец",
-	"Кубик в Кубе",
-	"Кураж Бомбей",
-	"Невафильм",
-	"Новый канал",
-	"НТВ",
-	"НТВ+",
-	"Омикрон",
-	"ОРТ",
-	"Парадиз-ВС",
-	"Первый канал",
-	"Петербург 5 канал",
-	"Пифагор",
-	"Позитив-Мультимедиа",
-	"Премьер Видео Фильм",
-	"РЕН-ТВ",
-	"С.Р.И.",
-	"Специальное Российское Издание",
-	"СВ-Студия",
-	"СоюзВидео",
-	"студия «Велес»",
-	"студия «Нота»",
-	"студия «СВ Дубль»",
-	"ТВ3",
-	"ТВЦ",
-	"ТНТ",
-	"ТОО Прим",
-	"Хабар",
-	"Pazl Voice",
-}
-
-var Q_L_Names = []string{
-	"Albion Studio",
-	"Alternative Production",
-	"AniDub",
-	"AniFilm",
-	"AniLibria",
-	"Anilife Project",
-	"AniMedia",
-	"AnimeReactor",
-	"AnimeVost",
-	"AniPlay",
-	"AniStar",
-	"ApofysTeam",
-	"Baibako",
-	"BraveSound",
-	"CACTUS TEAM",
-	"СoldFilm",
-	"DexterTV",
-	"DreamRecords",
-	"Eleonor Film",
-	"E-Production",
-	"Etvox Film",
-	"Filiza Studio",
-	"Flux-Team",
-	"F-TRAIN",
-	"GladiolusTV",
-	"GostFilm",
-	"Gramalant",
-	"GREEN TEA",
-	"GSGroup",
-	"HamsterStudio",
-	"ICG",
-	"Jetvis Studio",
-	"Jimmy J",
-	"LevshaFilm",
-	"LugaDUB",
-	"LE-Production",
-	"Mallorn Studio",
-	"MYDIMKA",
-	"Naruto-Hokage",
-	"NetLab Anima Group",
-	"NewStation",
-	"NikiStudio Records",
-	"OmskBird",
-	"OneFilm",
-	"OpenDub",
-	"Padabajour",
-	"ParadoX",
-	"RG.Paravozik",
-	"Shiza Project",
-	"SkyeFilmTV",
-	"STEPonee",
-	"StopGame",
-	"Sunny-Films",
-	"To4kaTV",
-	"VictoryFilms",
-	"Web_Money",
-	"ZM-SHOW",
-	"Несмертельное оружие",
-	"Причудики",
-	"Райдо",
-	"Синема-УС",
-	"Студия Пиратского Дубляжа",
-	"Сладкая парочка",
-	"Частная Студия",
 }

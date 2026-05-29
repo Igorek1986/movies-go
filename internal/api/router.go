@@ -202,6 +202,7 @@ func NewRouter(mode string) http.Handler {
 
 	registerTgAppRoutes(r)
 
+	r.Get("/device/ping", handleDevicePing)
 	r.Post("/device/code", handleDeviceGetCode)
 	r.Get("/device/code", handleDeviceGetCode)
 	r.Get("/device/status", handleDeviceStatus)

@@ -208,6 +208,7 @@ func applyCatalogTrackers(f *store.CategoryFilter) {
 			f.TrackerFilter = append(f.TrackerFilter, t)
 		}
 	}
+	f.RequirePoster = cachedRequirePoster()
 }
 
 func applyHideWatched(r *http.Request, f *store.CategoryFilter, profileID string) {
