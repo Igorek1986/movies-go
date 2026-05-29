@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"movies-api/db/store"
-	"movies-api/internal/auth"
 	"net/http"
 	"strconv"
 	"strings"
@@ -262,19 +261,3 @@ type deviceCtx struct {
 	Token  string
 }
 
-// requireToken middleware: for Movies API endpoints that use device tokens.
-func requireToken(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		d := deviceFromRequest(r)
-		if d == nil {
-			// Fall back to session auth for web UI calls.
-			key := auth.SessionFromRequest(r)
-			user := auth.GetSessionUser(r.Context(), key)
-			if user == nil {
-				Error(w, http.StatusUnauthorized, "unauthorized")
-				return
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
-}
