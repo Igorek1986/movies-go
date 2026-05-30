@@ -36,7 +36,16 @@ func ParseTorrentTitle(d *models.TorrentDetails, title string) {
 	title = strings.ReplaceAll(title, "&amp;", "&")
 	parts := strings.Split(title, " / ")
 	if len(parts) < 2 {
-		d.Name = strings.TrimSpace(title)
+		// "Name (YEAR) Quality..." format — common in rutor/nnmclub without "/" separator
+		if m := reTitleYearParen.FindStringIndex(title); m != nil {
+			d.Year, _ = strconv.Atoi(title[m[0]+1 : m[1]-1])
+			d.Name = strings.TrimSpace(reTitleBrackets.ReplaceAllString(title[:m[0]], ""))
+			qual := strings.TrimSpace(title[m[1]:])
+			d.VideoQuality = ParseVQuality(qual)
+			d.AudioQuality = ParseAQuality(qual)
+		} else {
+			d.Name = strings.TrimSpace(title)
+		}
 		return
 	}
 

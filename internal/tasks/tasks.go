@@ -51,8 +51,27 @@ func runDailyTasks(ctx context.Context) {
 	log.Println("tasks: running daily tasks")
 	RunPremiumExpiryCheck(ctx)
 	RunInactiveUserCheck(ctx)
+	cleanGhostCards(ctx)
 	go RunFixZeroRuntime(ctx)
 	go RunRefreshCards(ctx)
+}
+
+// cleanGhostCards removes media cards that have no linked torrents.
+// These arise when UpsertMediaCard succeeds but the subsequent CacheTorrent
+// call is lost (crash, timeout, or stale cache from a wrong prior match).
+func cleanGhostCards(ctx context.Context) {
+	tag, err := postgres.Pool.Exec(ctx, `
+		DELETE FROM media_cards
+		WHERE card_id NOT IN (
+			SELECT DISTINCT card_id FROM torrents WHERE card_id IS NOT NULL
+		)`)
+	if err != nil {
+		log.Printf("tasks: cleanGhostCards: %v", err)
+		return
+	}
+	if tag.RowsAffected() > 0 {
+		log.Printf("tasks: cleanGhostCards: removed %d cards with no torrents", tag.RowsAffected())
+	}
 }
 
 // ─── Delivery loop (every 10 min) ────────────────────────────────────────────
