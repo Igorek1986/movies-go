@@ -330,16 +330,25 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * limit
 
-	rows := store.SearchMedia(query, limit)
+	rows := store.SearchMedia(query, limit, offset)
 	results := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		results = append(results, toMediaItem(row))
 	}
+	totalPages := page
+	if len(rows) == limit {
+		totalPages = page + 1
+	}
 	JSON(w, http.StatusOK, map[string]any{
-		"page":          1,
+		"page":          page,
 		"results":       results,
-		"total_pages":   1,
+		"total_pages":   totalPages,
 		"total_results": len(results),
 	})
 }

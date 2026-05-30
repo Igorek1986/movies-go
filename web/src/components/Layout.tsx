@@ -48,7 +48,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   const links = (
     <>
       <NavLink to="/profiles" className={linkClass} onClick={() => setMenuOpen(false)}>Устройства</NavLink>
-      <NavLink to="/catalog"  className={linkClass} onClick={() => setMenuOpen(false)}>Каталог</NavLink>
+      <NavLink to="/catalog"  className={linkClass} onClick={() => { setMenuOpen(false); window.dispatchEvent(new CustomEvent('catalog:back')) }}>Каталог</NavLink>
       <NavLink to="/history"  className={linkClass} onClick={() => setMenuOpen(false)}>История</NavLink>
       <NavLink to="/sessions" className={linkClass} onClick={() => setMenuOpen(false)}>Сессии</NavLink>
       {user?.is_admin && (

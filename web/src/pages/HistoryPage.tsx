@@ -470,6 +470,9 @@ export default function HistoryPage() {
                   value={searchInput}
                   onChange={e => handleSearchInput(e.target.value)}
                 />
+                {searchInput && (
+                  <button className={styles.searchClear} onClick={() => handleSearchInput('')} title="Очистить">✕</button>
+                )}
               </div>
             </form>
           </div>
@@ -570,12 +573,17 @@ export default function HistoryPage() {
           <div className={styles.floatingBar}>
             <div className={styles.floatingBarInner}>
               <span className={styles.floatingIcon}>🔍</span>
-              <input
-                className={styles.floatingInput}
-                placeholder="Поиск…"
-                value={searchInput}
-                onChange={e => handleSearchInput(e.target.value)}
-              />
+              <div className={styles.searchWrap} style={{flex: 1}}>
+                <input
+                  className={styles.floatingInput}
+                  placeholder="Поиск…"
+                  value={searchInput}
+                  onChange={e => handleSearchInput(e.target.value)}
+                />
+                {searchInput && (
+                  <button className={styles.searchClear} onClick={() => handleSearchInput('')} title="Очистить">✕</button>
+                )}
+              </div>
             </div>
           </div>
         )}

@@ -724,7 +724,7 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 
 // ─── Search ───────────────────────────────────────────────────────────────────
 
-func SearchMedia(query string, limit int) []MediaRow {
+func SearchMedia(query string, limit, offset int) []MediaRow {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -741,9 +741,9 @@ func SearchMedia(query string, limit int) []MediaRow {
 		FROM media_cards m
 		WHERE REGEXP_REPLACE(LOWER(m.title), '[-''.,;:!?()\[\]]', ' ', 'g') ILIKE $1
 		   OR REGEXP_REPLACE(LOWER(m.original_title), '[-''.,;:!?()\[\]]', ' ', 'g') ILIKE $1
-		ORDER BY m.vote_count DESC
-		LIMIT $2`,
-		"%"+normalizeSearch(query)+"%", limit,
+		ORDER BY m.latest_torrent_date DESC NULLS LAST, m.vote_count DESC
+		LIMIT $2 OFFSET $3`,
+		"%"+normalizeSearch(query)+"%", limit, offset,
 	)
 	if err != nil {
 		log.Printf("store: search %q: %v", query, err)

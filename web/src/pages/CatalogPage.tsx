@@ -526,6 +526,9 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
             value={searchValue}
             onChange={e => handleSearchChange(e.target.value)}
           />
+          {searchValue && (
+            <button className={styles.searchClear} onClick={() => handleSearchChange('')} title="Очистить">✕</button>
+          )}
         </div>
       </div>
       {loading && items.length === 0 && <div className={styles.loading}>Загрузка…</div>}
@@ -548,12 +551,17 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
         <div className={styles.floatingBar}>
           <div className={styles.floatingBarInner}>
             <span className={styles.floatingIcon}>🔍</span>
-            <input
-              className={styles.floatingInput}
-              placeholder="Поиск…"
-              value={searchValue}
-              onChange={e => handleSearchChange(e.target.value)}
-            />
+            <div className={styles.searchWrap} style={{flex: 1}}>
+              <input
+                className={styles.floatingInput}
+                placeholder="Поиск…"
+                value={searchValue}
+                onChange={e => handleSearchChange(e.target.value)}
+              />
+              {searchValue && (
+                <button className={styles.searchClear} onClick={() => handleSearchChange('')} title="Очистить">✕</button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -574,6 +582,9 @@ export default function CatalogPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<MediaItem[] | null>(null)
   const [searchLoading, setSearchLoading] = useState(false)
+  const [searchHasMore, setSearchHasMore] = useState(false)
+  const searchSentinelRef = useRef<HTMLDivElement>(null)
+  const searchPageRef = useRef(1)
 
   const [devices, setDevices] = useState<Device[]>([])
   const [profiles, setProfiles] = useState<Profile[]>(() => loadProfiles())
@@ -741,24 +752,44 @@ export default function CatalogPage() {
     loadCategories()
   }, [])
 
-  useEffect(() => {
-    if (searchQuery.length < 3) {
-      setSearchResults(null)
-      return
-    }
-    if (expandedCategory) return
+  const loadSearchPage = useCallback((query: string, page: number, reset: boolean) => {
     setSearchLoading(true)
-    fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`)
-      .then(r => r.ok ? r.json() : { results: [] })
+    fetch(`/api/search?q=${encodeURIComponent(query)}&page=${page}`)
+      .then(r => r.ok ? r.json() : { results: [], total_pages: 1 })
       .then(data => {
-        setSearchResults(data.results || [])
+        const rows: MediaItem[] = data.results || []
+        setSearchResults(prev => reset ? rows : [...(prev ?? []), ...rows])
+        setSearchHasMore((data.total_pages ?? 1) > page)
+        searchPageRef.current = page
         setSearchLoading(false)
       })
       .catch(() => {
-        setSearchResults([])
+        if (reset) setSearchResults([])
         setSearchLoading(false)
       })
-  }, [searchQuery, expandedCategory])
+  }, [])
+
+  useEffect(() => {
+    if (searchQuery.length < 3 || expandedCategory) {
+      setSearchResults(null)
+      setSearchHasMore(false)
+      return
+    }
+    loadSearchPage(searchQuery, 1, true)
+  }, [searchQuery, expandedCategory, loadSearchPage])
+
+  // Infinite scroll for search results
+  useEffect(() => {
+    const sentinel = searchSentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && searchHasMore && !searchLoading) {
+        loadSearchPage(searchQuery, searchPageRef.current + 1, false)
+      }
+    }, { rootMargin: '200px' })
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [searchHasMore, searchLoading, searchQuery, loadSearchPage])
 
   function handleSearchChange(value: string) {
     setSearchValue(value)
@@ -933,6 +964,12 @@ export default function CatalogPage() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [expandedCategory, navigate])
 
+  useEffect(() => {
+    const onCatalogBack = () => { if (expandedCategory) handleBack() }
+    window.addEventListener('catalog:back', onCatalogBack)
+    return () => window.removeEventListener('catalog:back', onCatalogBack)
+  }, [expandedCategory]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const expandedCat = categories.find(c => c.id === expandedCategory) ?? null
 
   const showSearch = searchQuery.length >= 3 && !expandedCategory
@@ -968,6 +1005,9 @@ export default function CatalogPage() {
                   value={searchValue}
                   onChange={e => handleSearchChange(e.target.value)}
                 />
+                {searchValue && (
+                  <button className={styles.searchClear} onClick={() => handleSearchChange('')} title="Очистить">✕</button>
+                )}
               </div>
             </div>
             {visibleProfiles.length > 0 && (
@@ -1005,8 +1045,7 @@ export default function CatalogPage() {
 
         {!expandedCategory && showSearch && (
           <div>
-            {searchLoading && <div className={styles.loading}>Поиск…</div>}
-            {!searchLoading && searchResults !== null && searchResults.length === 0 && (
+            {searchResults !== null && searchResults.length === 0 && !searchLoading && (
               <div className={styles.empty}>Ничего не найдено</div>
             )}
             {searchResults !== null && searchResults.length > 0 && (
@@ -1019,6 +1058,8 @@ export default function CatalogPage() {
                 })}
               </div>
             )}
+            {searchLoading && <div className={styles.loading}>Поиск…</div>}
+            <div ref={searchSentinelRef} className={styles.sentinel} />
           </div>
         )}
 
@@ -1043,12 +1084,17 @@ export default function CatalogPage() {
           <div className={styles.floatingBar}>
             <div className={styles.floatingBarInner}>
               <span className={styles.floatingIcon}>🔍</span>
-              <input
-                className={styles.floatingInput}
-                placeholder="Поиск…"
-                value={searchValue}
-                onChange={e => handleSearchChange(e.target.value)}
-              />
+              <div className={styles.searchWrap} style={{flex: 1}}>
+                <input
+                  className={styles.floatingInput}
+                  placeholder="Поиск…"
+                  value={searchValue}
+                  onChange={e => handleSearchChange(e.target.value)}
+                />
+                {searchValue && (
+                  <button className={styles.searchClear} onClick={() => handleSearchChange('')} title="Очистить">✕</button>
+                )}
+              </div>
             </div>
           </div>
         )}

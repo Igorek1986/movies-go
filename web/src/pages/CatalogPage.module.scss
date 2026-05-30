@@ -104,6 +104,7 @@
 
 .searchWrap {
   flex-shrink: 0;
+  position: relative;
 }
 
 .searchInput {
@@ -112,10 +113,29 @@
   width: 220px;
   font-size: $font-size-sm;
   border-radius: $radius-sm;
+  padding-right: 28px;
 
   @media (max-width: $bp-sm) {
     width: 150px;
   }
+}
+
+.searchClear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: $color-text-muted;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  &:hover { color: $color-text; }
 }
 
 // ── Rows (main view) ──────────────────────────────────────────────────────────
@@ -447,9 +467,10 @@
 .floatingInput {
   @include input-base;
   height: 34px;
-  flex: 1;
+  width: 100%;
   font-size: $font-size-sm;
   border-radius: $radius-sm;
+  padding-right: 28px;
 }
 
 .categoryTitle {
