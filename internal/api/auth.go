@@ -6,6 +6,7 @@ import (
 	"movies-api/db/models"
 	"movies-api/db/store"
 	"movies-api/internal/auth"
+	"movies-api/internal/bot"
 	"movies-api/internal/proxy"
 	"net/http"
 	"strings"
@@ -176,6 +177,9 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	auth.SetSessionCookie(w, sess.Key, sess.ExpiresAt)
+	if tg := store.GetTelegramLinkByUserID(r.Context(), u.ID); tg != nil {
+		go bot.SendNewSessionNotification(tg.TelegramID, realIP(r), r.Header.Get("User-Agent"))
+	}
 	JSON(w, http.StatusOK, map[string]any{
 		"id":       u.ID,
 		"username": u.Username,

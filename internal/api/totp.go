@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"movies-api/db/store"
 	"movies-api/internal/auth"
+	"movies-api/internal/bot"
 	"net/http"
 
 	"github.com/pquerna/otp/totp"
@@ -166,6 +167,9 @@ func handleAPIVerify2FA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth.SetSessionCookie(w, sess.Key, sess.ExpiresAt)
+	if tg := store.GetTelegramLinkByUserID(ctx, u.ID); tg != nil {
+		go bot.SendNewSessionNotification(tg.TelegramID, realIP(r), r.Header.Get("User-Agent"))
+	}
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
