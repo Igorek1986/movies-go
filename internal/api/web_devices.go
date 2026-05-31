@@ -32,7 +32,7 @@ func handleProfilePatch(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	if err := store.UpdateProfile(r.Context(), req.DeviceID, req.ProfileID, req.Name, nil, req.Child, req.Params); err != nil {
+	if err := store.UpdateProfile(r.Context(), req.DeviceID, req.ProfileID, req.Name, nil, req.Child, nil, req.Params); err != nil {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}

@@ -507,6 +507,7 @@ type CategoryFilter struct {
 	RandomOrder     bool     // ORDER BY RANDOM()
 	Genres          []string // genre names (OR logic), e.g. ["боевик", "Боевик и Приключения"]
 	Child           bool
+	ChildAge        int // computed from birth year; 0 = child but no age set
 	Year            int      // exact release year filter
 	TrackerFilter   []string // if non-empty, only show cards linked to at least one of these trackers
 	NewOnly         bool     // only items released within last YearDelta years AND quality >= 200
@@ -589,8 +590,35 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 	}
 	if f.Child {
 		where = append(where, "m.adult = false")
-		where = append(where, "(m.age_rating IS NULL OR m.age_rating <= 12)")
-		where = append(where, "NOT (m.genres @> '[{\"id\":27}]' OR m.genres @> '[{\"id\":53}]' OR m.genres @> '[{\"id\":80}]')")
+		if f.ChildAge > 0 {
+			// cert_level: RU cert → numeric; US cert → numeric (fallback)
+			certLevel := `
+				CASE
+					WHEN m.certification_ru = '0+'  THEN 0
+					WHEN m.certification_ru = '6+'  THEN 6
+					WHEN m.certification_ru = '12+' THEN 12
+					WHEN m.certification_ru = '16+' THEN 16
+					WHEN m.certification_ru = '18+' THEN 18
+					WHEN (m.certification_ru IS NULL OR m.certification_ru = '') AND m.certification_us IN ('G','TV-G','TV-Y') THEN 0
+					WHEN (m.certification_ru IS NULL OR m.certification_ru = '') AND m.certification_us IN ('PG','TV-Y7','TV-PG') THEN 6
+					WHEN (m.certification_ru IS NULL OR m.certification_ru = '') AND m.certification_us IN ('PG-13','TV-14') THEN 12
+					WHEN (m.certification_ru IS NULL OR m.certification_ru = '') AND m.certification_us = 'R' THEN 16
+					WHEN (m.certification_ru IS NULL OR m.certification_ru = '') AND m.certification_us IN ('NC-17','TV-MA') THEN 18
+					ELSE NULL
+				END`
+			where = append(where, fmt.Sprintf(
+				"(%s IS NULL OR %s <= $%d)",
+				certLevel, certLevel, n,
+			))
+			args = append(args, f.ChildAge)
+			n++
+		} else {
+			// No birth year — fallback to old age_rating based filter
+			where = append(where, "(m.age_rating IS NULL OR m.age_rating <= 12)")
+		}
+		if f.ChildAge == 0 || f.ChildAge < 12 {
+			where = append(where, "NOT (m.genres @> '[{\"id\":27}]' OR m.genres @> '[{\"id\":53}]' OR m.genres @> '[{\"id\":80}]')")
+		}
 	}
 	if f.Year > 0 {
 		where = append(where, fmt.Sprintf("LEFT(COALESCE(m.release_date::text, m.first_air_date::text, ''), 4) = $%d", n))

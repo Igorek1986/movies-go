@@ -194,6 +194,7 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 		f.Search = searchQ
 	}
 	applyHideWatched(r, &f, profileID)
+	applyChildFilter(r, &f, profileID)
 	applyCatalogTrackers(&f)
 
 	rows, total := store.ListCategory(f)
@@ -209,6 +210,31 @@ func applyCatalogTrackers(f *store.CategoryFilter) {
 		}
 	}
 	f.RequirePoster = cachedRequirePoster()
+}
+
+func applyChildFilter(r *http.Request, f *store.CategoryFilter, profileID string) {
+	d := deviceFromRequest(r)
+	if d == nil || profileID == "" {
+		return
+	}
+	child, birthYear := store.GetProfileChildInfo(r.Context(), d.ID, profileID)
+	if !child {
+		return
+	}
+	f.Child = true
+	if birthYear != nil && *birthYear > 0 {
+		age := time.Now().Year() - *birthYear
+		switch {
+		case age < 6:
+			f.ChildAge = 0
+		case age < 12:
+			f.ChildAge = 6
+		case age < 16:
+			f.ChildAge = 12
+		default:
+			f.ChildAge = 16
+		}
+	}
 }
 
 func applyHideWatched(r *http.Request, f *store.CategoryFilter, profileID string) {

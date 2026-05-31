@@ -102,16 +102,17 @@ func handleWebUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	profileID := chi.URLParam(r, "profile_id")
 	var req struct {
-		Name   *string        `json:"name"`
-		Icon   *string        `json:"icon"`
-		Child  *bool          `json:"child"`
-		Params map[string]any `json:"params"`
+		Name           *string        `json:"name"`
+		Icon           *string        `json:"icon"`
+		Child          *bool          `json:"child"`
+		ChildBirthYear *int           `json:"child_birth_year"`
+		Params         map[string]any `json:"params"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		Error(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if err := store.UpdateProfile(r.Context(), deviceID, profileID, req.Name, req.Icon, req.Child, req.Params); err != nil {
+	if err := store.UpdateProfile(r.Context(), deviceID, profileID, req.Name, req.Icon, req.Child, req.ChildBirthYear, req.Params); err != nil {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
@@ -193,7 +194,7 @@ func handleProfileName(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "name required")
 		return
 	}
-	if err := store.UpdateProfile(r.Context(), req.DeviceID, req.ProfileID, &name, nil, nil, nil); err != nil {
+	if err := store.UpdateProfile(r.Context(), req.DeviceID, req.ProfileID, &name, nil, nil, nil, nil); err != nil {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}

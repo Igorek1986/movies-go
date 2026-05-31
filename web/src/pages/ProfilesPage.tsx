@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react'
+import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import Layout from '@/components/Layout'
 import PasswordInput from '@/components/PasswordInput'
@@ -30,6 +30,7 @@ interface Profile {
   name: string
   icon: string
   child: boolean
+  child_birth_year?: number | null
   params: Record<string, unknown>
   timecodes_count: number
 }
@@ -81,6 +82,86 @@ function IconPicker({ current, onSelect, onClose }: { current: string; onSelect:
   )
 }
 
+function BirthYearPicker({ current, onSave, onClose }: {
+  current: number | null
+  onSave: (year: number | null) => void
+  onClose: () => void
+}) {
+  const currentYear = new Date().getFullYear()
+  const years = useMemo(() => {
+    const arr: number[] = []
+    for (let y = currentYear; y >= currentYear - 18; y--) arr.push(y)
+    return arr
+  }, [currentYear])
+
+  const [selected, setSelected] = useState(current ?? currentYear - 8)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const ITEM_H = 40
+  const PAD = 2 // padding items top/bottom
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const idx = years.indexOf(selected)
+    if (idx === -1) return
+    el.scrollTop = (idx + PAD) * ITEM_H - (el.clientHeight / 2 - ITEM_H / 2)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleScroll() {
+    const el = scrollRef.current
+    if (!el) return
+    const centerOffset = el.scrollTop + el.clientHeight / 2
+    const idx = Math.round((centerOffset / ITEM_H) - PAD - 0.5)
+    const clamped = Math.max(0, Math.min(years.length - 1, idx))
+    setSelected(years[clamped])
+  }
+
+  const padItems = Array(PAD).fill(null)
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.yearPickerModal} onClick={e => e.stopPropagation()}>
+        <p className={styles.yearPickerTitle}>Год рождения</p>
+        <div className={styles.yearDrum}>
+          <div className={styles.yearDrumScroll} ref={scrollRef} onScroll={handleScroll}>
+            {padItems.map((_, i) => <div key={`t${i}`} style={{ height: ITEM_H }} />)}
+            {years.map(y => (
+              <div
+                key={y}
+                className={`${styles.yearDrumItem} ${y === selected ? styles.yearDrumItemSelected : ''}`}
+                onClick={() => {
+                  setSelected(y)
+                  const el = scrollRef.current
+                  if (!el) return
+                  const idx = years.indexOf(y)
+                  el.scrollTo({ top: (idx + PAD) * ITEM_H - (el.clientHeight / 2 - ITEM_H / 2), behavior: 'smooth' })
+                }}
+              >
+                {y} ({currentYear - y} лет)
+              </div>
+            ))}
+            {padItems.map((_, i) => <div key={`b${i}`} style={{ height: ITEM_H }} />)}
+          </div>
+          <div className={styles.yearDrumHighlight} />
+          <div className={styles.yearDrumShadowTop} />
+          <div className={styles.yearDrumShadowBottom} />
+        </div>
+        <div className={styles.yearPickerActions}>
+          <button className={styles.btnPrimary} style={{ flex: 1 }} onClick={() => onSave(selected)}>
+            Сохранить
+          </button>
+          {current && (
+            <button className={`${styles.btnSm} ${styles.danger}`} onClick={() => onSave(null)}>
+              Убрать
+            </button>
+          )}
+          <button className={styles.btnSm} onClick={onClose}>Отмена</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ProfilesPage() {
   const { user } = useAuth()
   const [devices, setDevices] = useState<Device[]>([])
@@ -102,6 +183,7 @@ export default function ProfilesPage() {
   const [openProfilesFor, setOpenProfilesFor] = useState<number | null>(null)
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [profilesLimit, setProfilesLimit] = useState<number>(0)
+  const [yearPickerProfile, setYearPickerProfile] = useState<Profile | null>(null)
   const [newProfileName, setNewProfileName] = useState('')
   const [newProfileId, setNewProfileId] = useState('')
   const [profileError, setProfileError] = useState('')
@@ -450,10 +532,26 @@ export default function ProfilesPage() {
   }
 
   async function handleToggleChild(p: Profile) {
+    const newChild = !p.child
     await fetch(`/api/devices/${openProfilesFor}/profiles/${p.profile_id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ child: !p.child }),
+      body: JSON.stringify({ child: newChild, child_birth_year: newChild ? p.child_birth_year ?? null : 0 }),
+    })
+    reloadProfiles()
+  }
+
+  function handleSetBirthYear(p: Profile) {
+    setYearPickerProfile(p)
+  }
+
+  async function handleSaveBirthYear(year: number | null) {
+    if (!yearPickerProfile || !openProfilesFor) return
+    setYearPickerProfile(null)
+    await fetch(`/api/devices/${openProfilesFor}/profiles/${yearPickerProfile.profile_id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ child_birth_year: year ?? 0 }),
     })
     reloadProfiles()
   }
@@ -918,6 +1016,15 @@ export default function ProfilesPage() {
                             >
                               Детский {p.child ? '✓' : ''}
                             </button>
+                            {p.child && (
+                              <button
+                                className={styles.btnSm}
+                                onClick={() => handleSetBirthYear(p)}
+                                title="Год рождения ребёнка для ограничения контента по возрасту"
+                              >
+                                {p.child_birth_year ? `${p.child_birth_year} (${new Date().getFullYear() - p.child_birth_year} лет)` : 'Год рождения'}
+                              </button>
+                            )}
                             <button className={styles.btnSm} onClick={() => handleEditParams(p)}>
                               Параметры
                             </button>
@@ -1481,6 +1588,13 @@ export default function ProfilesPage() {
 
       </div>
 
+      {yearPickerProfile && (
+        <BirthYearPicker
+          current={yearPickerProfile.child_birth_year ?? null}
+          onSave={handleSaveBirthYear}
+          onClose={() => setYearPickerProfile(null)}
+        />
+      )}
       {linkedToken && (
         <div className={styles.modalOverlay} onClick={() => setLinkedToken(null)}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>

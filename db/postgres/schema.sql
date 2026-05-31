@@ -381,3 +381,6 @@ ALTER TABLE proxy_routing DROP COLUMN IF EXISTS proxy_id;
 
 -- Migration: track cards not found in TMDB
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS tmdb_not_found_at TIMESTAMPTZ;
+
+-- Migration: child profile birth year for age-based content filtering
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS child_birth_year SMALLINT;

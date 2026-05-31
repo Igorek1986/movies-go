@@ -584,6 +584,7 @@ type ProfileInfo struct {
 	Name           string         `json:"name"`
 	Icon           string         `json:"icon"`
 	Child          bool           `json:"child"`
+	ChildBirthYear *int           `json:"child_birth_year,omitempty"`
 	Params         map[string]any `json:"params"`
 	TimecodesCount int            `json:"timecodes_count"`
 }
@@ -591,7 +592,7 @@ type ProfileInfo struct {
 func ListProfiles(ctx context.Context, deviceID int64) []ProfileInfo {
 	// UNION: named profiles + "orphan" profiles (have timecodes but no profiles entry)
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT lp.profile_id, lp.name, COALESCE(lp.icon,''), lp.child, lp.params::text,
+		SELECT lp.profile_id, lp.name, COALESCE(lp.icon,''), lp.child, lp.child_birth_year, lp.params::text,
 		       COUNT(t.id) AS tc_count
 		FROM profiles lp
 		LEFT JOIN timecodes t ON t.device_id = lp.device_id
@@ -601,7 +602,7 @@ func ListProfiles(ctx context.Context, deviceID int64) []ProfileInfo {
 
 		UNION ALL
 
-		SELECT t.profile_id, t.profile_id, '', false, '{}',
+		SELECT t.profile_id, t.profile_id, '', false, NULL::smallint, '{}',
 		       COUNT(t.id) AS tc_count
 		FROM timecodes t
 		WHERE t.device_id = $1
@@ -622,7 +623,7 @@ func ListProfiles(ctx context.Context, deviceID int64) []ProfileInfo {
 	for rows.Next() {
 		var p ProfileInfo
 		var paramsRaw []byte
-		err := rows.Scan(&p.ProfileID, &p.Name, &p.Icon, &p.Child, &paramsRaw, &p.TimecodesCount)
+		err := rows.Scan(&p.ProfileID, &p.Name, &p.Icon, &p.Child, &p.ChildBirthYear, &paramsRaw, &p.TimecodesCount)
 		if err != nil {
 			continue
 		}
@@ -669,7 +670,16 @@ func CreateProfile(ctx context.Context, deviceID int64, profileID, name, icon st
 	return lp, nil
 }
 
-func UpdateProfile(ctx context.Context, deviceID int64, profileID string, name, icon *string, child *bool, params map[string]any) error {
+// GetProfileChildInfo returns child flag and birth year for a profile. Used for content filtering.
+func GetProfileChildInfo(ctx context.Context, deviceID int64, profileID string) (child bool, birthYear *int) {
+	postgres.Pool.QueryRow(ctx, //nolint:errcheck
+		`SELECT child, child_birth_year FROM profiles WHERE device_id=$1 AND profile_id=$2`,
+		deviceID, profileID,
+	).Scan(&child, &birthYear)
+	return
+}
+
+func UpdateProfile(ctx context.Context, deviceID int64, profileID string, name, icon *string, child *bool, childBirthYear *int, params map[string]any) error {
 	sets := []string{}
 	args := []any{}
 	n := 1
@@ -688,6 +698,15 @@ func UpdateProfile(ctx context.Context, deviceID int64, profileID string, name, 
 		sets = append(sets, fmt.Sprintf("child=$%d", n))
 		args = append(args, *child)
 		n++
+	}
+	if childBirthYear != nil {
+		if *childBirthYear == 0 {
+			sets = append(sets, "child_birth_year=NULL")
+		} else {
+			sets = append(sets, fmt.Sprintf("child_birth_year=$%d", n))
+			args = append(args, *childBirthYear)
+			n++
+		}
 	}
 	if params != nil {
 		b, _ := json.Marshal(params)

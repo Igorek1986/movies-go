@@ -302,7 +302,7 @@ func handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if err := store.UpdateProfile(r.Context(), d.ID, profileID, req.Name, req.Icon, req.Child, req.Params); err != nil {
+	if err := store.UpdateProfile(r.Context(), d.ID, profileID, req.Name, req.Icon, req.Child, nil, req.Params); err != nil {
 		Error(w, http.StatusInternalServerError, "update error")
 		return
 	}
