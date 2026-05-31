@@ -6,14 +6,34 @@ import styles from './AdminSettingsPage.module.scss'
 type KWResult = { id: number; name: string }
 
 function ChildKeywords() {
-  const [list, setList] = useState<number[]>([])
+  const [items, setItems] = useState<KWResult[]>([])
   const [search, setSearch] = useState('')
   const [suggestions, setSuggestions] = useState<KWResult[]>([])
   const [searching, setSearching] = useState(false)
+  const [resolving, setResolving] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
+  async function loadAndResolve() {
+    setResolving(true)
+    try {
+      const r = await fetch('/api/admin/child-keywords/resolve')
+      if (r.ok) setItems(await r.json())
+    } finally { setResolving(false) }
+  }
+
+  useEffect(() => { loadAndResolve() }, [])
+
+  // Close dropdown on outside click
   useEffect(() => {
-    fetch('/api/admin/child-keywords').then(r => r.json()).then(setList).catch(() => {})
+    function onOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setSuggestions([])
+        setSearch('')
+      }
+    }
+    document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
   }, [])
 
   function handleSearchChange(val: string) {
@@ -38,7 +58,7 @@ function ChildKeywords() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: String(kw.id) }),
     })
-    if (r.ok) setList(await r.json())
+    if (r.ok) loadAndResolve()
   }
 
   async function handleDelete(id: number) {
@@ -47,16 +67,16 @@ function ChildKeywords() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    if (r.ok) setList(await r.json())
+    if (r.ok) loadAndResolve()
   }
 
   async function handleReset() {
     if (!confirm('Сбросить к значениям по умолчанию?')) return
-    const r = await fetch('/api/admin/child-keywords/reset', { method: 'POST' })
-    if (r.ok) setList(await r.json())
+    await fetch('/api/admin/child-keywords/reset', { method: 'POST' })
+    loadAndResolve()
   }
 
-  const listIds = new Set(list)
+  const listIds = new Set(items.map(i => i.id))
 
   return (
     <details>
@@ -69,58 +89,65 @@ function ChildKeywords() {
           <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
             Карточки с этими TMDB-тегами скрываются в детских профилях. Введите слово на английском для поиска.
           </div>
-          <div style={{ position: 'relative' }}>
+          <div ref={dropdownRef} style={{ position: 'relative' }}>
             <input
               type="text"
               className={styles.rowInput}
-              placeholder="Поиск TMDB keyword: nudity, violence, sex…"
+              placeholder="Поиск: nudity, violence, drug use…"
               value={search}
               onChange={e => handleSearchChange(e.target.value)}
               autoComplete="off"
             />
             {(suggestions.length > 0 || searching) && (
               <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
                 background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                borderRadius: '6px', marginTop: '4px', overflow: 'hidden',
+                borderRadius: '6px', marginTop: '4px',
+                maxHeight: '240px', overflowY: 'auto',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
               }}>
                 {searching && <div style={{ padding: '8px 12px', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Поиск…</div>}
-                {suggestions.map(kw => (
-                  <button
-                    key={kw.id}
-                    type="button"
-                    onClick={() => handleAdd(kw)}
-                    disabled={listIds.has(kw.id)}
-                    style={{
-                      display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '8px 12px', background: 'none', border: 'none', cursor: listIds.has(kw.id) ? 'default' : 'pointer',
-                      color: listIds.has(kw.id) ? 'var(--color-text-muted)' : 'var(--color-text)',
-                      fontSize: '0.85rem', textAlign: 'left',
-                    }}
-                  >
-                    <span>{kw.name}</span>
-                    <span style={{ color: 'var(--color-text-muted)', marginLeft: '8px' }}>
-                      {listIds.has(kw.id) ? '✓ добавлен' : `ID ${kw.id} — добавить`}
-                    </span>
-                  </button>
-                ))}
+                {suggestions.map(kw => {
+                  const added = listIds.has(kw.id)
+                  return (
+                    <button
+                      key={kw.id}
+                      type="button"
+                      onClick={() => !added && handleAdd(kw)}
+                      style={{
+                        display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '8px 12px', background: 'none', border: 'none',
+                        cursor: added ? 'default' : 'pointer',
+                        color: added ? 'var(--color-text-muted)' : 'var(--color-text)',
+                        fontSize: '0.85rem', textAlign: 'left', gap: '12px',
+                      }}
+                    >
+                      <span>{kw.name}</span>
+                      <span style={{ color: 'var(--color-text-muted)', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
+                        {added ? '✓ в списке' : `+ добавить`}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
-          {list.length === 0 ? (
+          {resolving ? (
+            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Загрузка…</div>
+          ) : items.length === 0 ? (
             <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Список пуст</div>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {list.map(id => (
-                <span key={id} style={{
+              {items.map(kw => (
+                <span key={kw.id} style={{
                   display: 'inline-flex', alignItems: 'center', gap: '4px',
                   background: 'var(--color-warning, #e67e22)', color: '#fff',
-                  borderRadius: '4px', padding: '3px 8px', fontSize: '0.82rem',
+                  borderRadius: '4px', padding: '3px 10px', fontSize: '0.82rem',
                 }}>
-                  ID {id}
+                  {kw.name || `ID ${kw.id}`}
                   <button
                     type="button"
-                    onClick={() => handleDelete(id)}
+                    onClick={() => handleDelete(kw.id)}
                     style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
                   >×</button>
                 </span>

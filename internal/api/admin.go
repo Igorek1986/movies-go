@@ -1711,6 +1711,38 @@ func handleAPIAdminChildKeywordsDelete(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, filtered)
 }
 
+// GET /api/admin/child-keywords/resolve — fetch names for current blocked keyword IDs from TMDB
+func handleAPIAdminChildKeywordsResolve(w http.ResponseWriter, r *http.Request) {
+	ids := loadChildKeywordList(r.Context())
+	token := tmdb.TMDBAuthKey
+	type kw struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	out := make([]kw, 0, len(ids))
+	for _, id := range ids {
+		name := ""
+		if token != "" {
+			url := fmt.Sprintf("https://api.themoviedb.org/3/keyword/%d", id)
+			if req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil); err == nil {
+				req.Header.Set("Authorization", token)
+				req.Header.Set("Accept", "application/json")
+				if resp, err := tmdb.HTTPClient().Do(req); err == nil && resp.StatusCode == http.StatusOK {
+					var res struct {
+						Name string `json:"name"`
+					}
+					if json.NewDecoder(resp.Body).Decode(&res) == nil {
+						name = res.Name
+					}
+					resp.Body.Close()
+				}
+			}
+		}
+		out = append(out, kw{ID: id, Name: name})
+	}
+	JSON(w, http.StatusOK, out)
+}
+
 // GET /api/admin/child-keywords/search?q=nudity — search TMDB keywords by name
 func handleAPIAdminChildKeywordsSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
