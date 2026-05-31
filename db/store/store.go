@@ -631,9 +631,9 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 			args = append(args, f.ChildBlockedKeywords)
 			n++
 		}
-		if f.HideUnrated {
-			where = append(where, "(m.certification_ru != '' OR m.certification_us != '')")
-		}
+	}
+	if f.HideUnrated {
+		where = append(where, "(COALESCE(m.certification_ru,'') != '' OR COALESCE(m.certification_us,'') != '')")
 	}
 	// Text keyword filter applies to both child and adult profiles (set by applyChildFilter or applyAdultTextFilter)
 	if len(f.ChildTextKeywords) > 0 {

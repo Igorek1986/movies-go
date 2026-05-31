@@ -193,6 +193,9 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 	if searchQ != "" {
 		f.Search = searchQ
 	}
+	if q.Get("hide_unrated") == "1" {
+		f.HideUnrated = true
+	}
 	applyHideWatched(r, &f, profileID)
 	applyChildFilter(r, &f, profileID)
 	applyAdultTextFilter(r, &f, profileID)
@@ -217,9 +220,6 @@ func applyChildFilter(r *http.Request, f *store.CategoryFilter, profileID string
 	d := deviceFromRequest(r)
 	if d == nil || profileID == "" {
 		return
-	}
-	if r.URL.Query().Get("hide_unrated") == "1" {
-		f.HideUnrated = true
 	}
 	child, birthYear := store.GetProfileChildInfo(r.Context(), d.ID, profileID)
 	if !child {
