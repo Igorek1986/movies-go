@@ -86,8 +86,18 @@ function getItemYear(item: MediaItem): string {
   return (item.release_date || item.first_air_date || '').slice(0, 4)
 }
 
+const US_TO_RU: Record<string, string> = {
+  'G': '0+', 'TV-G': '0+', 'TV-Y': '0+',
+  'PG': '6+', 'TV-Y7': '6+', 'TV-PG': '6+',
+  'PG-13': '12+', 'TV-14': '12+',
+  'R': '16+',
+  'NC-17': '18+', 'TV-MA': '18+',
+}
+
 function getCertification(item: MediaItem): string {
-  return item.certification_ru || item.certification_us || ''
+  if (item.certification_ru) return item.certification_ru
+  if (item.certification_us) return US_TO_RU[item.certification_us] || ''
+  return ''
 }
 
 function shuffleArray<T>(arr: T[]): T[] {
