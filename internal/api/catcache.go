@@ -161,9 +161,16 @@ func cachedTrackers() string {
 }
 
 // DefaultChildBlockedKeywords are TMDB keyword IDs blocked for child profiles by default.
-// Source: SURS plugin without_keywords list.
 var DefaultChildBlockedKeywords = []int{
-	346488, 158718, 41278, 13141, 345822, 315535, 290667, 323477, 290609,
+	281741, // nudity
+	354470, // sex scene
+	329280, // sexual content
+	570,    // rape
+	312898, // violence
+	10292,  // gore
+	13006,  // torture
+	11494,  // drug use
+	158718, // lgbt
 }
 
 // cachedChildKeywords returns the list of TMDB keyword IDs to block for child profiles.

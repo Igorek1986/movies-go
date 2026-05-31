@@ -6,22 +6,18 @@ import styles from './AdminSettingsPage.module.scss'
 type KWResult = { id: number; name: string }
 
 const SUGGESTED_KEYWORDS: KWResult[] = [
-  { id: 41278,  name: 'nudity' },
-  { id: 13141,  name: 'sex' },
-  { id: 4438,   name: 'drug use' },
-  { id: 155477, name: 'profanity' },
-  { id: 9748,   name: 'violence' },
-  { id: 10083,  name: 'rape' },
-  { id: 6263,   name: 'alcohol' },
-  { id: 10051,  name: 'smoking' },
-  { id: 282,    name: 'murder' },
-  { id: 346488, name: 'explicit sexual content' },
-  { id: 158718, name: 'sex scene' },
-  { id: 345822, name: 'sexual violence' },
-  { id: 315535, name: 'sexual abuse' },
-  { id: 290667, name: 'sexual content' },
-  { id: 323477, name: 'sexual humor' },
-  { id: 290609, name: 'sexual exploitation' },
+  { id: 281741, name: 'nudity' },
+  { id: 354470, name: 'sex scene' },
+  { id: 329280, name: 'sexual content' },
+  { id: 570,    name: 'rape' },
+  { id: 312898, name: 'violence' },
+  { id: 10292,  name: 'gore' },
+  { id: 13006,  name: 'torture' },
+  { id: 11494,  name: 'drug use' },
+  { id: 919,    name: 'smoking' },
+  { id: 567,    name: 'alcohol' },
+  { id: 9826,   name: 'murder' },
+  { id: 158718, name: 'lgbt' },
 ]
 
 function ChildKeywords() {
