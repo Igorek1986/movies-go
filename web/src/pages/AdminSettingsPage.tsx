@@ -3,25 +3,42 @@ import { Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import styles from './AdminSettingsPage.module.scss'
 
+type KWResult = { id: number; name: string }
+
 function ChildKeywords() {
   const [list, setList] = useState<number[]>([])
-  const [input, setInput] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [search, setSearch] = useState('')
+  const [suggestions, setSuggestions] = useState<KWResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     fetch('/api/admin/child-keywords').then(r => r.json()).then(setList).catch(() => {})
   }, [])
 
-  async function handleAdd() {
-    const val = input.trim()
-    if (!val) return
+  function handleSearchChange(val: string) {
+    setSearch(val)
+    setSuggestions([])
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (val.trim().length < 2) return
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const r = await fetch(`/api/admin/child-keywords/search?q=${encodeURIComponent(val.trim())}`)
+        if (r.ok) setSuggestions(await r.json())
+      } finally { setSearching(false) }
+    }, 400)
+  }
+
+  async function handleAdd(kw: KWResult) {
+    setSearch('')
+    setSuggestions([])
     const r = await fetch('/api/admin/child-keywords', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: val }),
+      body: JSON.stringify({ ids: String(kw.id) }),
     })
-    if (r.ok) { setList(await r.json()); setInput('') }
-    inputRef.current?.focus()
+    if (r.ok) setList(await r.json())
   }
 
   async function handleDelete(id: number) {
@@ -39,6 +56,8 @@ function ChildKeywords() {
     if (r.ok) setList(await r.json())
   }
 
+  const listIds = new Set(list)
+
   return (
     <details>
       <summary className={styles.groupSummary}>
@@ -48,23 +67,45 @@ function ChildKeywords() {
       <div className={styles.groupBody} style={{ gridColumn: '1 / -1' }}>
         <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
-            TMDB keyword ID — числовые идентификаторы тематик. Карточки с этими ключевыми словами скрываются в детских профилях.
-            Узнать ID: <code>api.themoviedb.org/3/keyword/&lt;id&gt;</code>
+            Карточки с этими TMDB-тегами скрываются в детских профилях. Введите слово на английском для поиска.
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ position: 'relative' }}>
             <input
-              ref={inputRef}
               type="text"
               className={styles.rowInput}
-              placeholder="ID через пробел или запятую, например: 41278 13141"
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAdd())}
+              placeholder="Поиск TMDB keyword: nudity, violence, sex…"
+              value={search}
+              onChange={e => handleSearchChange(e.target.value)}
               autoComplete="off"
             />
-            <button type="button" className={styles.btnSave} style={{ whiteSpace: 'nowrap' }} onClick={handleAdd}>
-              Добавить
-            </button>
+            {(suggestions.length > 0 || searching) && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                borderRadius: '6px', marginTop: '4px', overflow: 'hidden',
+              }}>
+                {searching && <div style={{ padding: '8px 12px', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Поиск…</div>}
+                {suggestions.map(kw => (
+                  <button
+                    key={kw.id}
+                    type="button"
+                    onClick={() => handleAdd(kw)}
+                    disabled={listIds.has(kw.id)}
+                    style={{
+                      display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '8px 12px', background: 'none', border: 'none', cursor: listIds.has(kw.id) ? 'default' : 'pointer',
+                      color: listIds.has(kw.id) ? 'var(--color-text-muted)' : 'var(--color-text)',
+                      fontSize: '0.85rem', textAlign: 'left',
+                    }}
+                  >
+                    <span>{kw.name}</span>
+                    <span style={{ color: 'var(--color-text-muted)', marginLeft: '8px' }}>
+                      {listIds.has(kw.id) ? '✓ добавлен' : `ID ${kw.id} — добавить`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           {list.length === 0 ? (
             <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Список пуст</div>
@@ -76,7 +117,7 @@ function ChildKeywords() {
                   background: 'var(--color-warning, #e67e22)', color: '#fff',
                   borderRadius: '4px', padding: '3px 8px', fontSize: '0.82rem',
                 }}>
-                  {id}
+                  ID {id}
                   <button
                     type="button"
                     onClick={() => handleDelete(id)}
@@ -86,7 +127,7 @@ function ChildKeywords() {
               ))}
             </div>
           )}
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div>
             <button type="button" className={styles.btnReset} onClick={handleReset}>
               Сбросить к умолчаниям
             </button>

@@ -1711,6 +1711,53 @@ func handleAPIAdminChildKeywordsDelete(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, filtered)
 }
 
+// GET /api/admin/child-keywords/search?q=nudity — search TMDB keywords by name
+func handleAPIAdminChildKeywordsSearch(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		JSON(w, http.StatusOK, []any{})
+		return
+	}
+	token := tmdb.TMDBAuthKey
+	if token == "" {
+		Error(w, http.StatusServiceUnavailable, "TMDB not configured")
+		return
+	}
+	url := "https://api.themoviedb.org/3/search/keyword?query=" + strings.ReplaceAll(q, " ", "+")
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "request error")
+		return
+	}
+	req.Header.Set("Authorization", token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := tmdb.HTTPClient().Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		Error(w, http.StatusBadGateway, "TMDB error")
+		return
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Results []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		Error(w, http.StatusInternalServerError, "parse error")
+		return
+	}
+	type kw struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	out := make([]kw, 0, len(result.Results))
+	for _, r := range result.Results {
+		out = append(out, kw{ID: r.ID, Name: r.Name})
+	}
+	JSON(w, http.StatusOK, out)
+}
+
 // POST /api/admin/child-keywords/reset — restore defaults
 func handleAPIAdminChildKeywordsReset(w http.ResponseWriter, r *http.Request) {
 	store.SetSetting(r.Context(), "child_blocked_keywords", "")

@@ -134,6 +134,7 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Post("/admin/child-keywords", handleAPIAdminChildKeywordsAdd)
 			r.With(requireAdmin).Delete("/admin/child-keywords", handleAPIAdminChildKeywordsDelete)
 			r.With(requireAdmin).Post("/admin/child-keywords/reset", handleAPIAdminChildKeywordsReset)
+			r.With(requireAdmin).Get("/admin/child-keywords/search", handleAPIAdminChildKeywordsSearch)
 
 			r.With(requireAdmin).Post("/admin/refresh-card/{card_id}", handleAPIAdminRefreshCard)
 			r.With(requireAdmin).Get("/admin/logs", handleAPIAdminLogsStream)
@@ -200,6 +201,7 @@ func NewRouter(mode string) http.Handler {
 			r.Post("/child-keywords", handleAPIAdminChildKeywordsAdd)
 			r.Delete("/child-keywords", handleAPIAdminChildKeywordsDelete)
 			r.Post("/child-keywords/reset", handleAPIAdminChildKeywordsReset)
+			r.Get("/child-keywords/search", handleAPIAdminChildKeywordsSearch)
 		})
 		r.Get("/admin", handleParserModeAdmin)
 		r.Get("/admin/", handleParserModeAdmin)
