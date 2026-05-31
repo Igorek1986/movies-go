@@ -683,3 +683,33 @@
   flex-wrap: wrap;
   margin-top: $spacing-sm;
 }
+
+.tgCode {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: $radius-sm;
+  font-family: monospace;
+  font-size: $font-size-sm;
+  color: $color-text;
+  user-select: all;
+}
+
+.tgBtn {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+  height: 36px;
+  padding: 0 $spacing-lg;
+  border-radius: $radius-sm;
+  background: $color-primary;
+  color: #fff;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background $transition-fast;
+  &:hover { background: $color-primary-hover; }
+}

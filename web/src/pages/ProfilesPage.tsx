@@ -1110,8 +1110,10 @@ export default function ProfilesPage() {
                   <p className={styles.hint}>Telegram не привязан. Привяжите, чтобы получать уведомления и сбрасывать пароль через бота.</p>
                   {tgCode ? (
                     <div style={{ marginTop: 8 }}>
-                      <p>Отправьте боту команду или перейдите по ссылке:</p>
-                      <a href={tgCode.link} target="_blank" rel="noreferrer" className={styles.btnPrimary} style={{ display: 'inline-block', marginTop: 6 }}>
+                      <p className={styles.hint}>Отправьте боту команду:</p>
+                      <code className={styles.tgCode}>/start {tgCode.code}</code>
+                      <p className={styles.hint} style={{ marginTop: 8 }}>Или откройте ссылку:</p>
+                      <a href={tgCode.link} target="_blank" rel="noreferrer" className={styles.tgBtn}>
                         Открыть @{tgCode.link.split('t.me/')[1]?.split('?')[0]}
                       </a>
                       <p className={styles.hint} style={{ marginTop: 6 }}>
