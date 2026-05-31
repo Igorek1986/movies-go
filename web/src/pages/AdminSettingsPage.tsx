@@ -100,6 +100,11 @@ function ChildKeywords() {
   }
 
   const listIds = new Set(items.map(i => i.id))
+  const suggestedById = Object.fromEntries(SUGGESTED_KEYWORDS.map(k => [k.id, k.name]))
+  const displayItems = items.map(i => ({
+    ...i,
+    name: i.name || suggestedById[i.id] || '',
+  }))
 
   return (
     <details open>
@@ -190,7 +195,7 @@ function ChildKeywords() {
             <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Список пуст</div>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {items.map(kw => (
+              {displayItems.map(kw => (
                 <span key={kw.id} style={{
                   display: 'inline-flex', alignItems: 'center', gap: '4px',
                   background: 'var(--color-warning, #e67e22)', color: '#fff',
