@@ -222,6 +222,7 @@ func applyChildFilter(r *http.Request, f *store.CategoryFilter, profileID string
 		return
 	}
 	f.Child = true
+	f.ChildAge = -1 // no birth year: use age_rating fallback
 	if birthYear != nil && *birthYear > 0 {
 		age := time.Now().Year() - *birthYear
 		switch {

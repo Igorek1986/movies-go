@@ -507,7 +507,7 @@ type CategoryFilter struct {
 	RandomOrder     bool     // ORDER BY RANDOM()
 	Genres          []string // genre names (OR logic), e.g. ["боевик", "Боевик и Приключения"]
 	Child           bool
-	ChildAge        int // computed from birth year; 0 = child but no age set
+	ChildAge        int // computed from birth year; -1 = child but no age set, >=0 = cert-based filter
 	Year            int      // exact release year filter
 	TrackerFilter   []string // if non-empty, only show cards linked to at least one of these trackers
 	NewOnly         bool     // only items released within last YearDelta years AND quality >= 200
@@ -590,7 +590,7 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 	}
 	if f.Child {
 		where = append(where, "m.adult = false")
-		if f.ChildAge > 0 {
+		if f.ChildAge >= 0 {
 			// cert_level: RU cert → numeric; US cert → numeric (fallback)
 			certLevel := `
 				CASE
@@ -616,7 +616,7 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 			// No birth year — fallback to old age_rating based filter
 			where = append(where, "(m.age_rating IS NULL OR m.age_rating <= 12)")
 		}
-		if f.ChildAge == 0 || f.ChildAge < 12 {
+		if f.ChildAge < 12 { // includes -1 (no age) and 0, 6
 			where = append(where, "NOT (m.genres @> '[{\"id\":27}]' OR m.genres @> '[{\"id\":53}]' OR m.genres @> '[{\"id\":80}]')")
 		}
 	}

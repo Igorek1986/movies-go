@@ -879,11 +879,13 @@ export default function CatalogPage() {
     setActiveProfile(firstProfile)
     saveDevice(d)
     saveProfile(firstProfile)
+    _cache.rows = {}
   }
 
   function selectProfile(p: Profile) {
     setActiveProfile(p)
     saveProfile(p)
+    _cache.rows = {}
   }
 
   const visibleProfiles = profiles.filter(p => p.device_id === activeDevice?.id)
@@ -1103,7 +1105,7 @@ export default function CatalogPage() {
           <div className={styles.rows}>
             {categories.map(cat => (
               <CategoryRow
-                key={cat.id}
+                key={`${cat.id}_${token}_${profileId}`}
                 category={cat}
                 token={token}
                 profileId={profileId}
