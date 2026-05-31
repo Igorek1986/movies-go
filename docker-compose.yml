@@ -27,9 +27,6 @@ services:
       - PORT=${PORT:-8888}
     ports:
       - "${PORT:-8888}:${PORT:-8888}"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
     volumes:
       - ./plugins:/app/plugins
       - logs_data:/app/logs
