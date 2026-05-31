@@ -7,22 +7,22 @@ type KWResult = { id: number; name: string }
 
 function ChildKeywords() {
   const [items, setItems] = useState<KWResult[]>([])
+  const [initialLoading, setInitialLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [suggestions, setSuggestions] = useState<KWResult[]>([])
   const [searching, setSearching] = useState(false)
-  const [resolving, setResolving] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  async function loadAndResolve() {
-    setResolving(true)
+  async function loadAndResolve(showLoading = false) {
+    if (showLoading) setInitialLoading(true)
     try {
       const r = await fetch('/api/admin/child-keywords/resolve')
       if (r.ok) setItems(await r.json())
-    } finally { setResolving(false) }
+    } finally { setInitialLoading(false) }
   }
 
-  useEffect(() => { loadAndResolve() }, [])
+  useEffect(() => { loadAndResolve(true) }, [])
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -53,6 +53,8 @@ function ChildKeywords() {
   async function handleAdd(kw: KWResult) {
     setSearch('')
     setSuggestions([])
+    // Optimistic update — add immediately, resolve names in background
+    setItems(prev => prev.some(i => i.id === kw.id) ? prev : [...prev, kw])
     const r = await fetch('/api/admin/child-keywords', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -62,6 +64,8 @@ function ChildKeywords() {
   }
 
   async function handleDelete(id: number) {
+    // Optimistic update — remove immediately
+    setItems(prev => prev.filter(i => i.id !== id))
     const r = await fetch('/api/admin/child-keywords', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -73,13 +77,13 @@ function ChildKeywords() {
   async function handleReset() {
     if (!confirm('Сбросить к значениям по умолчанию?')) return
     await fetch('/api/admin/child-keywords/reset', { method: 'POST' })
-    loadAndResolve()
+    loadAndResolve(true)
   }
 
   const listIds = new Set(items.map(i => i.id))
 
   return (
-    <details>
+    <details open>
       <summary className={styles.groupSummary}>
         <span className={styles.groupName}>Детский режим — заблокированные TMDB ключевые слова</span>
         <span className={styles.groupArrow}>▶</span>
@@ -136,7 +140,7 @@ function ChildKeywords() {
               </div>
             )}
           </div>
-          {resolving ? (
+          {initialLoading ? (
             <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Загрузка…</div>
           ) : items.length === 0 ? (
             <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Список пуст</div>
