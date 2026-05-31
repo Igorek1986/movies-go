@@ -100,13 +100,16 @@ function ChildKeywords() {
             />
             {(suggestions.length > 0 || searching) && (
               <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-                background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+                background: '#1a1d27',
+                border: '1px solid rgba(255,255,255,0.1)',
                 borderRadius: '6px', marginTop: '4px',
-                maxHeight: '240px', overflowY: 'auto',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                maxHeight: '260px', overflowY: 'auto',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.7)',
               }}>
-                {searching && <div style={{ padding: '8px 12px', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Поиск…</div>}
+                {searching && (
+                  <div style={{ padding: '10px 14px', color: '#888', fontSize: '0.85rem' }}>Поиск…</div>
+                )}
                 {suggestions.map(kw => {
                   const added = listIds.has(kw.id)
                   return (
@@ -116,15 +119,16 @@ function ChildKeywords() {
                       onClick={() => !added && handleAdd(kw)}
                       style={{
                         display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '8px 12px', background: 'none', border: 'none',
+                        padding: '9px 14px', background: 'none', border: 'none',
+                        borderBottom: '1px solid rgba(255,255,255,0.05)',
                         cursor: added ? 'default' : 'pointer',
-                        color: added ? 'var(--color-text-muted)' : 'var(--color-text)',
+                        color: added ? '#666' : '#e0e0e0',
                         fontSize: '0.85rem', textAlign: 'left', gap: '12px',
                       }}
                     >
                       <span>{kw.name}</span>
-                      <span style={{ color: 'var(--color-text-muted)', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
-                        {added ? '✓ в списке' : `+ добавить`}
+                      <span style={{ color: added ? '#555' : '#7c8cf8', whiteSpace: 'nowrap', fontSize: '0.78rem', fontWeight: 500 }}>
+                        {added ? '✓ в списке' : '+ добавить'}
                       </span>
                     </button>
                   )
