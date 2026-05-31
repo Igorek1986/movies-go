@@ -218,6 +218,125 @@ function ChildKeywords() {
   )
 }
 
+const AGE_GROUPS = [
+  { age: 0,  label: '0–5 лет' },
+  { age: 6,  label: '6–11 лет' },
+  { age: 12, label: '12–15 лет' },
+  { age: 16, label: '16+ лет' },
+]
+
+function ChildTextKeywords() {
+  const [list, setList] = useState<string[]>([])
+  const [ages, setAges] = useState<number[]>([0])
+  const [input, setInput] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/child-text-keywords').then(r => r.json()).then(setList).catch(() => {})
+    fetch('/api/admin/child-text-keyword-ages').then(r => r.json()).then(setAges).catch(() => {})
+  }, [])
+
+  async function handleAdd() {
+    const val = input.trim()
+    if (!val) return
+    const r = await fetch('/api/admin/child-text-keywords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ words: val }),
+    })
+    if (r.ok) { setList(await r.json()); setInput('') }
+    inputRef.current?.focus()
+  }
+
+  async function handleDelete(word: string) {
+    setList(prev => prev.filter(w => w !== word))
+    const r = await fetch('/api/admin/child-text-keywords', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word }),
+    })
+    if (r.ok) setList(await r.json())
+  }
+
+  async function toggleAge(age: number) {
+    const next = ages.includes(age) ? ages.filter(a => a !== age) : [...ages, age]
+    setAges(next)
+    await fetch('/api/admin/child-text-keyword-ages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ages: next }),
+    })
+  }
+
+  return (
+    <details open>
+      <summary className={styles.groupSummary}>
+        <span className={styles.groupName}>Детский режим — блокировка по словам в названии/описании</span>
+        <span className={styles.groupArrow}>▶</span>
+      </summary>
+      <div className={styles.groupBody} style={{ gridColumn: '1 / -1' }}>
+        <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+            Карточки, в названии или описании которых встречается слово, скрываются. Слова на русском — названия у нас переведены.
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '6px' }}>
+              Применять для возрастных групп:
+            </div>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              {AGE_GROUPS.map(g => (
+                <label key={g.age} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={ages.includes(g.age)}
+                    onChange={() => toggleAge(g.age)}
+                  />
+                  {g.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              ref={inputRef}
+              type="text"
+              className={styles.rowInput}
+              placeholder="Слово или фраза, например: секс, наркотик — через запятую"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAdd())}
+              autoComplete="off"
+            />
+            <button type="button" className={styles.btnSave} style={{ whiteSpace: 'nowrap' }} onClick={handleAdd}>
+              Добавить
+            </button>
+          </div>
+          {list.length === 0 ? (
+            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Список пуст</div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {list.map(w => (
+                <span key={w} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                  background: 'rgba(192,57,43,0.8)', color: '#fff',
+                  borderRadius: '4px', padding: '3px 8px', fontSize: '0.82rem',
+                }}>
+                  {w}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(w)}
+                    style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </details>
+  )
+}
+
 function BannedPatterns() {
   const [list, setList] = useState<string[]>([])
   const [input, setInput] = useState('')
@@ -709,6 +828,7 @@ export default function AdminSettingsPage() {
 
             <BannedPatterns />
             <ChildKeywords />
+            <ChildTextKeywords />
 
             <div className={styles.footer}>
               <button type="button" className={styles.btnReset} onClick={handleReset}>

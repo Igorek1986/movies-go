@@ -43,6 +43,16 @@ func InvalidateCategoryCache() {
 	childKeywordsLoaded = false
 	childKeywordsMu.Unlock()
 
+	childTextKwMu.Lock()
+	childTextKwCached = nil
+	childTextKwLoaded = false
+	childTextKwMu.Unlock()
+
+	childTextAgesMu.Lock()
+	childTextAgesCached = nil
+	childTextAgesLoaded = false
+	childTextAgesMu.Unlock()
+
 	log.Println("catcache: invalidated")
 }
 
@@ -112,6 +122,14 @@ var (
 	childKeywordsMu     sync.RWMutex
 	childKeywordsCached []int
 	childKeywordsLoaded bool
+
+	childTextKwMu     sync.RWMutex
+	childTextKwCached []string
+	childTextKwLoaded bool
+
+	childTextAgesMu     sync.RWMutex
+	childTextAgesCached []int
+	childTextAgesLoaded bool
 )
 
 // cachedRequirePoster returns true if cards without a poster should be excluded.
@@ -208,4 +226,65 @@ func cachedChildKeywords() []int {
 	}
 	childKeywordsCached = ids
 	return childKeywordsCached
+}
+
+// cachedChildTextKeywords returns text words to block in title/overview for child profiles.
+func cachedChildTextKeywords() []string {
+	childTextKwMu.RLock()
+	if childTextKwLoaded {
+		v := childTextKwCached
+		childTextKwMu.RUnlock()
+		return v
+	}
+	childTextKwMu.RUnlock()
+
+	childTextKwMu.Lock()
+	defer childTextKwMu.Unlock()
+	if childTextKwLoaded {
+		return childTextKwCached
+	}
+	childTextKwLoaded = true
+	val, _ := store.GetSetting(context.Background(), "child_text_keywords")
+	var words []string
+	for _, s := range strings.Split(val, "\n") {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			words = append(words, s)
+		}
+	}
+	childTextKwCached = words
+	return childTextKwCached
+}
+
+// cachedChildTextAges returns ChildAge levels for which text keyword filtering is active.
+// Default: [0] (ages 0-5 only).
+func cachedChildTextAges() []int {
+	childTextAgesMu.RLock()
+	if childTextAgesLoaded {
+		v := childTextAgesCached
+		childTextAgesMu.RUnlock()
+		return v
+	}
+	childTextAgesMu.RUnlock()
+
+	childTextAgesMu.Lock()
+	defer childTextAgesMu.Unlock()
+	if childTextAgesLoaded {
+		return childTextAgesCached
+	}
+	childTextAgesLoaded = true
+	val, ok := store.GetSetting(context.Background(), "child_text_keyword_ages")
+	if !ok || strings.TrimSpace(val) == "" {
+		childTextAgesCached = []int{0}
+		return childTextAgesCached
+	}
+	var ages []int
+	for _, s := range strings.Split(val, ",") {
+		s = strings.TrimSpace(s)
+		if age, err := strconv.Atoi(s); err == nil {
+			ages = append(ages, age)
+		}
+	}
+	childTextAgesCached = ages
+	return childTextAgesCached
 }

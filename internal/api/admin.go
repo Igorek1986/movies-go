@@ -1797,6 +1797,100 @@ func handleAPIAdminChildKeywordsReset(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, DefaultChildBlockedKeywords)
 }
 
+// ─── Child text keywords ──────────────────────────────────────────────────────
+
+// GET /api/admin/child-text-keywords
+func handleAPIAdminChildTextKwGet(w http.ResponseWriter, r *http.Request) {
+	val, _ := store.GetSetting(r.Context(), "child_text_keywords")
+	var list []string
+	for _, s := range strings.Split(val, "\n") {
+		if s = strings.TrimSpace(s); s != "" {
+			list = append(list, s)
+		}
+	}
+	if list == nil {
+		list = []string{}
+	}
+	JSON(w, http.StatusOK, list)
+}
+
+// POST /api/admin/child-text-keywords  {"words": "секс насилие"}
+func handleAPIAdminChildTextKwAdd(w http.ResponseWriter, r *http.Request) {
+	var body struct{ Words string `json:"words"` }
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Words == "" {
+		Error(w, http.StatusBadRequest, "words required")
+		return
+	}
+	val, _ := store.GetSetting(r.Context(), "child_text_keywords")
+	set := map[string]struct{}{}
+	var list []string
+	for _, s := range strings.Split(val, "\n") {
+		if s = strings.TrimSpace(strings.ToLower(s)); s != "" {
+			if _, dup := set[s]; !dup {
+				list = append(list, s)
+				set[s] = struct{}{}
+			}
+		}
+	}
+	for _, s := range strings.FieldsFunc(body.Words, func(c rune) bool {
+		return c == ',' || c == ';' || c == '\n' || c == '\t'
+	}) {
+		if s = strings.TrimSpace(strings.ToLower(s)); s != "" {
+			if _, dup := set[s]; !dup {
+				list = append(list, s)
+				set[s] = struct{}{}
+			}
+		}
+	}
+	store.SetSetting(r.Context(), "child_text_keywords", strings.Join(list, "\n"))
+	InvalidateCategoryCache()
+	JSON(w, http.StatusOK, list)
+}
+
+// DELETE /api/admin/child-text-keywords  {"word": "секс"}
+func handleAPIAdminChildTextKwDelete(w http.ResponseWriter, r *http.Request) {
+	var body struct{ Word string `json:"word"` }
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Word == "" {
+		Error(w, http.StatusBadRequest, "word required")
+		return
+	}
+	val, _ := store.GetSetting(r.Context(), "child_text_keywords")
+	var list []string
+	for _, s := range strings.Split(val, "\n") {
+		if s = strings.TrimSpace(s); s != "" && s != strings.ToLower(body.Word) {
+			list = append(list, s)
+		}
+	}
+	store.SetSetting(r.Context(), "child_text_keywords", strings.Join(list, "\n"))
+	InvalidateCategoryCache()
+	if list == nil {
+		list = []string{}
+	}
+	JSON(w, http.StatusOK, list)
+}
+
+// GET /api/admin/child-text-keyword-ages
+func handleAPIAdminChildTextAgesGet(w http.ResponseWriter, r *http.Request) {
+	ages := cachedChildTextAges()
+	JSON(w, http.StatusOK, ages)
+}
+
+// POST /api/admin/child-text-keyword-ages  {"ages": [0, 6]}
+func handleAPIAdminChildTextAgesSave(w http.ResponseWriter, r *http.Request) {
+	var body struct{ Ages []int `json:"ages"` }
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	parts := make([]string, len(body.Ages))
+	for i, a := range body.Ages {
+		parts[i] = strconv.Itoa(a)
+	}
+	store.SetSetting(r.Context(), "child_text_keyword_ages", strings.Join(parts, ","))
+	InvalidateCategoryCache()
+	JSON(w, http.StatusOK, body.Ages)
+}
+
 func handleAPIAdminSystemStats(w http.ResponseWriter, _ *http.Request) {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)

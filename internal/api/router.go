@@ -136,6 +136,11 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Post("/admin/child-keywords/reset", handleAPIAdminChildKeywordsReset)
 			r.With(requireAdmin).Get("/admin/child-keywords/search", handleAPIAdminChildKeywordsSearch)
 			r.With(requireAdmin).Get("/admin/child-keywords/resolve", handleAPIAdminChildKeywordsResolve)
+			r.With(requireAdmin).Get("/admin/child-text-keywords", handleAPIAdminChildTextKwGet)
+			r.With(requireAdmin).Post("/admin/child-text-keywords", handleAPIAdminChildTextKwAdd)
+			r.With(requireAdmin).Delete("/admin/child-text-keywords", handleAPIAdminChildTextKwDelete)
+			r.With(requireAdmin).Get("/admin/child-text-keyword-ages", handleAPIAdminChildTextAgesGet)
+			r.With(requireAdmin).Post("/admin/child-text-keyword-ages", handleAPIAdminChildTextAgesSave)
 
 			r.With(requireAdmin).Post("/admin/refresh-card/{card_id}", handleAPIAdminRefreshCard)
 			r.With(requireAdmin).Get("/admin/logs", handleAPIAdminLogsStream)

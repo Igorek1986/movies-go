@@ -237,6 +237,15 @@ func applyChildFilter(r *http.Request, f *store.CategoryFilter, profileID string
 			f.ChildAge = 16
 		}
 	}
+	// Apply text keyword filter only for configured age levels
+	if words := cachedChildTextKeywords(); len(words) > 0 {
+		for _, age := range cachedChildTextAges() {
+			if f.ChildAge == age {
+				f.ChildTextKeywords = words
+				break
+			}
+		}
+	}
 }
 
 func applyHideWatched(r *http.Request, f *store.CategoryFilter, profileID string) {

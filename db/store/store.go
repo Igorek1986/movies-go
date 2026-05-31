@@ -511,8 +511,9 @@ type CategoryFilter struct {
 	RandomOrder     bool     // ORDER BY RANDOM()
 	Genres          []string // genre names (OR logic), e.g. ["боевик", "Боевик и Приключения"]
 	Child                bool
-	ChildAge             int   // computed from birth year; -1 = child but no age set, >=0 = cert-based filter
-	ChildBlockedKeywords []int // TMDB keyword IDs to exclude for child profiles
+	ChildAge             int      // computed from birth year; -1 = child but no age set, >=0 = cert-based filter
+	ChildBlockedKeywords []int    // TMDB keyword IDs to exclude for child profiles
+	ChildTextKeywords    []string // text words to block in title/overview
 	Year            int      // exact release year filter
 	TrackerFilter   []string // if non-empty, only show cards linked to at least one of these trackers
 	NewOnly         bool     // only items released within last YearDelta years AND quality >= 200
@@ -628,6 +629,15 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 			where = append(where, fmt.Sprintf("(m.keyword_ids IS NULL OR NOT m.keyword_ids && $%d)", n))
 			args = append(args, f.ChildBlockedKeywords)
 			n++
+		}
+		if len(f.ChildTextKeywords) > 0 {
+			clauses := make([]string, len(f.ChildTextKeywords))
+			for i, word := range f.ChildTextKeywords {
+				clauses[i] = fmt.Sprintf("(m.title ILIKE $%d OR COALESCE(m.overview,'') ILIKE $%d)", n, n+1)
+				args = append(args, "%"+word+"%", "%"+word+"%")
+				n += 2
+			}
+			where = append(where, "NOT ("+strings.Join(clauses, " OR ")+")")
 		}
 	}
 	if f.Year > 0 {
