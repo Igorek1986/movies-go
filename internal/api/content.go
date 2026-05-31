@@ -216,31 +216,55 @@ func applyCatalogTrackers(f *store.CategoryFilter) {
 	f.RequirePoster = cachedRequirePoster()
 }
 
+// lampaAgeToChildAge maps Lampa's "до N лет" age to our cert level.
+func lampaAgeToChildAge(maxAge int) int {
+	switch {
+	case maxAge <= 6:
+		return 0  // only 0+
+	case maxAge <= 12:
+		return 6  // up to 6+
+	case maxAge <= 16:
+		return 12 // up to 12+
+	default:
+		return 16 // up to 16+
+	}
+}
+
 func applyChildFilter(r *http.Request, f *store.CategoryFilter, profileID string) {
-	d := deviceFromRequest(r)
-	if d == nil || profileID == "" {
-		return
-	}
-	child, birthYear := store.GetProfileChildInfo(r.Context(), d.ID, profileID)
-	if !child {
-		return
-	}
-	f.Child = true
-	f.ChildAge = -1 // no birth year: use age_rating fallback
-	f.ChildBlockedKeywords = cachedChildKeywords()
-	if birthYear != nil && *birthYear > 0 {
-		age := time.Now().Year() - *birthYear
-		switch {
-		case age < 6:
-			f.ChildAge = 0
-		case age < 12:
-			f.ChildAge = 6
-		case age < 16:
-			f.ChildAge = 12
-		default:
-			f.ChildAge = 16
+	q := r.URL.Query()
+
+	// Priority: query params sent by plugin (works for all profile types: Lampa, np_profiles)
+	if childAge, err := strconv.Atoi(q.Get("child_age")); err == nil && childAge > 0 {
+		f.Child = true
+		f.ChildAge = lampaAgeToChildAge(childAge)
+	} else {
+		// Fallback: DB lookup via token+profile_id (our server profiles)
+		d := deviceFromRequest(r)
+		if d == nil || profileID == "" {
+			return
+		}
+		child, birthYear := store.GetProfileChildInfo(r.Context(), d.ID, profileID)
+		if !child {
+			return
+		}
+		f.Child = true
+		f.ChildAge = -1
+		if birthYear != nil && *birthYear > 0 {
+			age := time.Now().Year() - *birthYear
+			switch {
+			case age < 6:
+				f.ChildAge = 0
+			case age < 12:
+				f.ChildAge = 6
+			case age < 16:
+				f.ChildAge = 12
+			default:
+				f.ChildAge = 16
+			}
 		}
 	}
+
+	f.ChildBlockedKeywords = cachedChildKeywords()
 	// Apply text keyword filter only for configured age levels
 	if words := cachedChildTextKeywords(); len(words) > 0 {
 		for _, age := range cachedChildTextAges() {
