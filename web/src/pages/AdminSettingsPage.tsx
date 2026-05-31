@@ -5,6 +5,25 @@ import styles from './AdminSettingsPage.module.scss'
 
 type KWResult = { id: number; name: string }
 
+const SUGGESTED_KEYWORDS: KWResult[] = [
+  { id: 41278,  name: 'nudity' },
+  { id: 13141,  name: 'sex' },
+  { id: 4438,   name: 'drug use' },
+  { id: 155477, name: 'profanity' },
+  { id: 9748,   name: 'violence' },
+  { id: 10083,  name: 'rape' },
+  { id: 6263,   name: 'alcohol' },
+  { id: 10051,  name: 'smoking' },
+  { id: 282,    name: 'murder' },
+  { id: 346488, name: 'explicit sexual content' },
+  { id: 158718, name: 'sex scene' },
+  { id: 345822, name: 'sexual violence' },
+  { id: 315535, name: 'sexual abuse' },
+  { id: 290667, name: 'sexual content' },
+  { id: 323477, name: 'sexual humor' },
+  { id: 290609, name: 'sexual exploitation' },
+]
+
 function ChildKeywords() {
   const [items, setItems] = useState<KWResult[]>([])
   const [initialLoading, setInitialLoading] = useState(true)
@@ -91,13 +110,38 @@ function ChildKeywords() {
       <div className={styles.groupBody} style={{ gridColumn: '1 / -1' }}>
         <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
-            Карточки с этими TMDB-тегами скрываются в детских профилях. Введите слово на английском для поиска.
+            Каждое TMDB-слово имеет уникальный ID. Карточки с этими тегами скрываются в детских профилях.
+            Поиск только на английском — TMDB не поддерживает другие языки для ключевых слов.
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '6px' }}>Быстрое добавление:</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+              {SUGGESTED_KEYWORDS.map(kw => {
+                const added = listIds.has(kw.id)
+                return (
+                  <button
+                    key={kw.id}
+                    type="button"
+                    onClick={() => !added && handleAdd(kw)}
+                    disabled={added}
+                    style={{
+                      padding: '3px 10px', borderRadius: '4px', fontSize: '0.8rem', border: 'none',
+                      cursor: added ? 'default' : 'pointer',
+                      background: added ? 'rgba(255,255,255,0.07)' : 'rgba(124,140,248,0.15)',
+                      color: added ? 'var(--color-text-muted)' : '#7c8cf8',
+                    }}
+                  >
+                    {added ? `✓ ${kw.name}` : `+ ${kw.name}`}
+                  </button>
+                )
+              })}
+            </div>
           </div>
           <div ref={dropdownRef} style={{ position: 'relative' }}>
             <input
               type="text"
               className={styles.rowInput}
-              placeholder="Поиск: nudity, violence, drug use…"
+              placeholder="Поиск на английском: nudity, violence, drug use…"
               value={search}
               onChange={e => handleSearchChange(e.target.value)}
               autoComplete="off"
