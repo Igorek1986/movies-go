@@ -110,6 +110,7 @@ export default function ProfilesPage() {
   const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null)
   const [tgCode, setTgCode] = useState<{ code: string; link: string; ttl_min: number } | null>(null)
   const [tgLoading, setTgLoading] = useState(false)
+  const [tgCodeCopied, setTgCodeCopied] = useState(false)
   // Notifications
   const [notifSettings, setNotifSettings] = useState<NotificationSettings | null>(null)
   const [notifSaving, setNotifSaving] = useState(false)
@@ -1125,11 +1126,22 @@ export default function ProfilesPage() {
                   <p className={styles.hint}>Telegram не привязан. Привяжите, чтобы получать уведомления и сбрасывать пароль через бота.</p>
                   {tgCode ? (
                     <div style={{ marginTop: 8 }}>
-                      <p className={styles.hint}>Отправьте боту команду:</p>
-                      <code className={styles.tgCode}>/start {tgCode.code}</code>
+                      <p className={styles.hint}>Отправьте @{tgCode.link.split('t.me/')[1]?.split('?')[0]} команду:</p>
+                      <code
+                        className={styles.tgCode}
+                        title="Нажмите чтобы скопировать"
+                        onClick={() => {
+                          navigator.clipboard.writeText(`/start ${tgCode.code}`).catch(() => {})
+                          setTgCodeCopied(true)
+                          setTimeout(() => setTgCodeCopied(false), 1500)
+                        }}
+                      >
+                        /start {tgCode.code}
+                        {tgCodeCopied && <span className={styles.copiedHint}> Скопировано!</span>}
+                      </code>
                       <p className={styles.hint} style={{ marginTop: 8 }}>Или откройте ссылку:</p>
                       <a href={tgCode.link} target="_blank" rel="noreferrer" className={styles.tgBtn}>
-                        Открыть @{tgCode.link.split('t.me/')[1]?.split('?')[0]}
+                        Открыть в Telegram
                       </a>
                       <p className={styles.hint} style={{ marginTop: 6 }}>
                         Код действителен {tgCode.ttl_min} минут

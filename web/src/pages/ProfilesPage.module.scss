@@ -694,7 +694,10 @@
   font-family: monospace;
   font-size: $font-size-sm;
   color: $color-text;
-  user-select: all;
+  cursor: pointer;
+  user-select: none;
+  transition: background $transition-fast;
+  &:hover { background: rgba(255, 255, 255, 0.12); }
 }
 
 .tgBtn {
