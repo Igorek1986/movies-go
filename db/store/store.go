@@ -240,8 +240,9 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			 myshows_id, kinopoisk_id,
 			 category, best_video_quality, latest_torrent_date,
 			 last_ep_season, last_ep_number, episode_run_time,
+			 certification_ru, certification_us,
 			 tmdb_updated_at, updated_at, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,now(),now(),now())
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,now(),now(),now())
 		ON CONFLICT (card_id) DO UPDATE SET
 			title              = EXCLUDED.title,
 			original_title     = EXCLUDED.original_title,
@@ -276,6 +277,8 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			last_ep_season     = COALESCE(EXCLUDED.last_ep_season, media_cards.last_ep_season),
 			last_ep_number     = COALESCE(EXCLUDED.last_ep_number, media_cards.last_ep_number),
 			episode_run_time   = COALESCE(EXCLUDED.episode_run_time, media_cards.episode_run_time),
+			certification_ru   = COALESCE(EXCLUDED.certification_ru, media_cards.certification_ru),
+			certification_us   = COALESCE(EXCLUDED.certification_us, media_cards.certification_us),
 			tmdb_updated_at    = now(),
 			updated_at         = now()`,
 		cardID, e.ID, e.MediaType, e.Title, e.OriginalTitle, e.Overview,
@@ -285,6 +288,7 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 		nilInt(e.MyShowsID), nilInt64(e.KinopoiskID),
 		nilStr(category), t.VideoQuality, nilTime(torrentDate),
 		lastEpSeason, lastEpNumber, episodeRunTime,
+		nilStr(e.CertificationRU), nilStr(e.CertificationUS),
 	)
 	if err != nil {
 		log.Printf("store: upsert media_card tmdb=%d %s: %v", e.ID, e.MediaType, err)
@@ -330,15 +334,18 @@ func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
 			last_ep_number     = COALESCE($14, last_ep_number),
 			episode_run_time   = COALESCE($15, episode_run_time),
 			runtime            = COALESCE($16, runtime),
+			certification_ru   = COALESCE($17, certification_ru),
+			certification_us   = COALESCE($18, certification_us),
 			tmdb_updated_at    = now(),
 			updated_at         = now()
-		WHERE card_id = $17`,
+		WHERE card_id = $19`,
 		e.Title, e.OriginalTitle, e.Overview, e.PosterPath, e.BackdropPath,
 		e.VoteAverage, e.VoteCount, e.Status,
 		genresJSON,
 		nilIntFromInt(e.NumberOfSeasons), nilIntFromInt(e.NumberOfEpisodes), seasonsJSON,
 		lastEpSeason, lastEpNumber, episodeRunTime,
 		runtimeArg,
+		nilStr(e.CertificationRU), nilStr(e.CertificationUS),
 		cardID,
 	)
 	if err != nil {
@@ -484,6 +491,8 @@ type MediaRow struct {
 	VideoQuality      int
 	AudioQuality      int
 	LatestTorrentDate *time.Time
+	CertificationRU   *string
+	CertificationUS   *string
 }
 
 // CategoryFilter defines how to filter and sort a category listing.
@@ -691,7 +700,8 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 			m.release_date::text, m.first_air_date::text, m.last_air_date::text,
 			m.vote_average, m.vote_count, m.original_language, m.adult, m.status,
 			m.number_of_seasons, m.seasons, m.last_ep_season, m.last_ep_number, m.updated_at,
-			m.best_video_quality, m.latest_torrent_date
+			m.best_video_quality, m.latest_torrent_date,
+			m.certification_ru, m.certification_us
 		FROM media_cards m
 		%s
 		ORDER BY %s
@@ -713,6 +723,7 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 			&r.VoteAverage, &r.VoteCount, &r.OriginalLanguage, &r.Adult, &r.Status,
 			&r.NumberOfSeasons, &r.Seasons, &r.LastEpSeason, &r.LastEpNumber, &r.UpdatedAt,
 			&r.VideoQuality, &r.LatestTorrentDate,
+			&r.CertificationRU, &r.CertificationUS,
 		); err != nil {
 			log.Printf("store: scan row: %v", err)
 			continue
@@ -737,7 +748,8 @@ func SearchMedia(query string, limit, offset int) []MediaRow {
 			m.release_date::text, m.first_air_date::text, m.last_air_date::text,
 			m.vote_average, m.vote_count, m.original_language, m.adult, m.status,
 			m.number_of_seasons, m.seasons, m.last_ep_season, m.last_ep_number, m.updated_at,
-			m.best_video_quality, m.latest_torrent_date
+			m.best_video_quality, m.latest_torrent_date,
+			m.certification_ru, m.certification_us
 		FROM media_cards m
 		WHERE REGEXP_REPLACE(LOWER(m.title), '[-''.,;:!?()\[\]]', ' ', 'g') ILIKE $1
 		   OR REGEXP_REPLACE(LOWER(m.original_title), '[-''.,;:!?()\[\]]', ' ', 'g') ILIKE $1
@@ -761,6 +773,7 @@ func SearchMedia(query string, limit, offset int) []MediaRow {
 			&r.VoteAverage, &r.VoteCount, &r.OriginalLanguage, &r.Adult, &r.Status,
 			&r.NumberOfSeasons, &r.Seasons, &r.LastEpSeason, &r.LastEpNumber, &r.UpdatedAt,
 			&r.VideoQuality, &r.LatestTorrentDate,
+			&r.CertificationRU, &r.CertificationUS,
 		); err != nil {
 			continue
 		}

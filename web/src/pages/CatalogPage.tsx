@@ -15,6 +15,8 @@ interface MediaItem {
   release_date: string
   first_air_date: string
   release_quality: string
+  certification_ru?: string
+  certification_us?: string
   category_name?: string
   year?: string
 }
@@ -84,6 +86,10 @@ function getItemYear(item: MediaItem): string {
   return (item.release_date || item.first_air_date || '').slice(0, 4)
 }
 
+function getCertification(item: MediaItem): string {
+  return item.certification_ru || item.certification_us || ''
+}
+
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr]
   for (let i = a.length - 1; i > 0; i--) {
@@ -147,6 +153,7 @@ function MediaCard({ item, onClick }: CardProps) {
   const url = posterUrl(item.poster_path)
   const title = getItemTitle(item)
   const year = getItemYear(item)
+  const cert = getCertification(item)
   return (
     <div className={styles.card} onClick={onClick} tabIndex={0} data-card onKeyDown={e => { if (e.key === 'Enter') onClick() }}>
       {url
@@ -159,6 +166,7 @@ function MediaCard({ item, onClick }: CardProps) {
         <div className={styles.cardMeta}>
           {year && <span>{year}</span>}
           {item.vote_average > 0 && <span>★ {item.vote_average.toFixed(1)}</span>}
+          {cert && <span className={`${styles.cert} ${styles[`cert_${cert.replace(/[^a-zA-Z0-9]/g, '_')}`] || ''}`}>{cert}</span>}
         </div>
         {item.release_quality && <span className={styles.quality}>{item.release_quality}</span>}
       </div>

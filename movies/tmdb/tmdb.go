@@ -68,20 +68,17 @@ func GetVideoDetails(isMovie bool, id int64) *models.Entity {
 		}
 	}
 
-	params := map[string]string{}
-	//params["api_key"] = apiKey
-
-	if _, ok := params["language"]; !ok {
-		params["language"] = "ru"
-	}
+	params := map[string]string{"language": "ru"}
 
 	ids := strconv.FormatInt(id, 10)
 
 	endpoint := ""
 	if isMovie {
 		endpoint = "movie/" + ids
+		params["append_to_response"] = "release_dates"
 	} else {
 		endpoint = "tv/" + ids
+		params["append_to_response"] = "content_ratings"
 	}
 
 	var ent *models.Entity

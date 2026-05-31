@@ -398,6 +398,15 @@ func toMediaItem(row store.MediaRow) map[string]any {
 		createDate = row.LatestTorrentDate.Format(time.RFC3339)
 	}
 
+	certRU := ""
+	if row.CertificationRU != nil {
+		certRU = *row.CertificationRU
+	}
+	certUS := ""
+	if row.CertificationUS != nil {
+		certUS = *row.CertificationUS
+	}
+
 	return map[string]any{
 		"id":                  row.TmdbID,
 		"media_type":          row.MediaType,
@@ -421,6 +430,8 @@ func toMediaItem(row store.MediaRow) map[string]any {
 		"last_episode_to_air": lastEp,
 		"release_quality":     qualityText(row.VideoQuality),
 		"create_date":         createDate,
+		"certification_ru":    certRU,
+		"certification_us":    certUS,
 		"source":              "Movies API",
 	}
 }

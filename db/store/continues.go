@@ -246,7 +246,8 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 			m.release_date::text, m.first_air_date::text, m.last_air_date::text,
 			m.vote_average, m.vote_count, m.original_language, m.adult, m.status,
 			m.number_of_seasons, m.seasons, m.last_ep_season, m.last_ep_number, m.updated_at,
-			m.best_video_quality, m.latest_torrent_date
+			m.best_video_quality, m.latest_torrent_date,
+			m.certification_ru, m.certification_us
 			FROM media_cards m WHERE m.card_id IN (%s)`, strings.Join(placeholders, ",")),
 		mcArgs...,
 	)
@@ -265,6 +266,7 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 			&r.VoteAverage, &r.VoteCount, &r.OriginalLanguage, &r.Adult, &r.Status,
 			&r.NumberOfSeasons, &r.Seasons, &r.LastEpSeason, &r.LastEpNumber, &r.UpdatedAt,
 			&r.VideoQuality, &r.LatestTorrentDate,
+			&r.CertificationRU, &r.CertificationUS,
 		); err == nil {
 			mcMap[fmt.Sprintf("%d_%s", r.TmdbID, r.MediaType)] = r
 		}

@@ -60,6 +60,30 @@ type Entity struct {
 	MyShowsID   int       `json:"myshows_id,omitempty"`
 	KinopoiskID int64     `json:"kinopoisk_id,omitempty"`
 	torrent     *TorrentDetails
+
+	// Derived certifications (populated from ReleaseDates / ContentRatings)
+	CertificationRU string `json:"-"`
+	CertificationUS string `json:"-"`
+
+	// append_to_response sub-objects
+	ReleaseDates   *ReleaseDatesResult   `json:"release_dates,omitempty"`
+	ContentRatings *ContentRatingsResult `json:"content_ratings,omitempty"`
+}
+
+type ReleaseDatesResult struct {
+	Results []struct {
+		Iso31661     string `json:"iso_3166_1"`
+		ReleaseDates []struct {
+			Certification string `json:"certification"`
+		} `json:"release_dates"`
+	} `json:"results"`
+}
+
+type ContentRatingsResult struct {
+	Results []struct {
+		Iso31661 string `json:"iso_3166_1"`
+		Rating   string `json:"rating"`
+	} `json:"results"`
 }
 
 func (e *Entity) GetTorrent() *TorrentDetails {

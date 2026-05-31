@@ -126,4 +126,47 @@ func fixEntity(ent *models.Entity) {
 			ent.GenresIds = append(ent.GenresIds, g.ID)
 		}
 	}
+
+	extractCertifications(ent)
+}
+
+func extractCertifications(e *models.Entity) {
+	// Movies: release_dates.results[].release_dates[].certification
+	if e.ReleaseDates != nil {
+		for _, r := range e.ReleaseDates.Results {
+			for _, rd := range r.ReleaseDates {
+				if rd.Certification == "" {
+					continue
+				}
+				switch r.Iso31661 {
+				case "RU":
+					if e.CertificationRU == "" {
+						e.CertificationRU = rd.Certification
+					}
+				case "US":
+					if e.CertificationUS == "" {
+						e.CertificationUS = rd.Certification
+					}
+				}
+			}
+		}
+	}
+	// TV: content_ratings.results[].rating
+	if e.ContentRatings != nil {
+		for _, r := range e.ContentRatings.Results {
+			if r.Rating == "" {
+				continue
+			}
+			switch r.Iso31661 {
+			case "RU":
+				if e.CertificationRU == "" {
+					e.CertificationRU = r.Rating
+				}
+			case "US":
+				if e.CertificationUS == "" {
+					e.CertificationUS = r.Rating
+				}
+			}
+		}
+	}
 }

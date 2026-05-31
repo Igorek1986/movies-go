@@ -412,6 +412,22 @@
   color: $color-warning;
 }
 
+.cert {
+  font-size: $font-size-xs;
+  font-weight: 600;
+  color: $color-text-muted;
+}
+// G / 0+
+.cert_G, .cert_0_ { color: #4caf50; }
+// PG / 6+
+.cert_PG, .cert_6_ { color: #8bc34a; }
+// PG-13 / 12+
+.cert_PG_13, .cert_12_ { color: #ff9800; }
+// R / 16+
+.cert_R, .cert_16_ { color: #f44336; }
+// NC-17 / 18+
+.cert_NC_17, .cert_18_ { color: #b71c1c; }
+
 // ── Category view ─────────────────────────────────────────────────────────────
 
 .categoryView {
