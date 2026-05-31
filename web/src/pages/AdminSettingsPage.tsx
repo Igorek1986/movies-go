@@ -222,7 +222,8 @@ const AGE_GROUPS = [
   { age: 0,  label: '0–5 лет' },
   { age: 6,  label: '6–11 лет' },
   { age: 12, label: '12–15 лет' },
-  { age: 16, label: '16+ лет' },
+  { age: 16, label: '16+ лет (дети)' },
+  { age: 99, label: 'Взрослые профили' },
 ]
 
 function ChildTextKeywords() {

@@ -195,6 +195,7 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	applyHideWatched(r, &f, profileID)
 	applyChildFilter(r, &f, profileID)
+	applyAdultTextFilter(r, &f, profileID)
 	applyCatalogTrackers(&f)
 
 	rows, total := store.ListCategory(f)
@@ -245,6 +246,43 @@ func applyChildFilter(r *http.Request, f *store.CategoryFilter, profileID string
 				break
 			}
 		}
+	}
+}
+
+// applyAdultTextFilter applies text keyword filtering for non-child profiles
+// when age group 99 ("Взрослые профили") is enabled in settings.
+func applyAdultTextFilter(r *http.Request, f *store.CategoryFilter, profileID string) {
+	words := cachedChildTextKeywords()
+	if len(words) == 0 {
+		return
+	}
+	adultEnabled := false
+	for _, age := range cachedChildTextAges() {
+		if age == 99 {
+			adultEnabled = true
+			break
+		}
+	}
+	if !adultEnabled {
+		return
+	}
+	// Only apply for non-child profiles (skip if already set by child filter)
+	if f.Child {
+		return
+	}
+	d := deviceFromRequest(r)
+	if d == nil {
+		// No token — apply to anonymous requests too
+		f.ChildTextKeywords = words
+		return
+	}
+	if profileID == "" {
+		f.ChildTextKeywords = words
+		return
+	}
+	child, _ := store.GetProfileChildInfo(r.Context(), d.ID, profileID)
+	if !child {
+		f.ChildTextKeywords = words
 	}
 }
 
