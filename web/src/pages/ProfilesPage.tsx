@@ -206,6 +206,21 @@ export default function ProfilesPage() {
     fetchNotifSettings()
   }, [fetchDevices, fetchTgStatus, fetchNotifSettings])
 
+  // Poll telegram status while linking code is active
+  useEffect(() => {
+    if (!tgCode) return
+    const id = setInterval(async () => {
+      const res = await fetch('/api/telegram/status')
+      if (!res.ok) return
+      const status = await res.json()
+      if (status.linked) {
+        setTgStatus(status)
+        setTgCode(null)
+      }
+    }, 3000)
+    return () => clearInterval(id)
+  }, [tgCode])
+
   useEffect(() => {
     if (syncDeviceProfiles.length > 0 && (syncProfileId === '' || syncProfileId === 'new'))
       setSyncProfileId(syncDeviceProfiles[0].profile_id)
