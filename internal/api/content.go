@@ -223,6 +223,7 @@ func applyChildFilter(r *http.Request, f *store.CategoryFilter, profileID string
 	}
 	f.Child = true
 	f.ChildAge = -1 // no birth year: use age_rating fallback
+	f.ChildBlockedKeywords = cachedChildKeywords()
 	if birthYear != nil && *birthYear > 0 {
 		age := time.Now().Year() - *birthYear
 		switch {

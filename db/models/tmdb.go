@@ -65,9 +65,23 @@ type Entity struct {
 	CertificationRU string `json:"-"`
 	CertificationUS string `json:"-"`
 
+	// Derived keyword IDs (from Keywords field)
+	KeywordIDs []int `json:"-"`
+
 	// append_to_response sub-objects
 	ReleaseDates   *ReleaseDatesResult   `json:"release_dates,omitempty"`
 	ContentRatings *ContentRatingsResult `json:"content_ratings,omitempty"`
+	Keywords       *KeywordsResult       `json:"keywords,omitempty"`
+}
+
+type KeywordsResult struct {
+	// movies: keywords field; TV: results field
+	Keywords []struct {
+		ID int `json:"id"`
+	} `json:"keywords"`
+	Results []struct {
+		ID int `json:"id"`
+	} `json:"results"`
 }
 
 type ReleaseDatesResult struct {

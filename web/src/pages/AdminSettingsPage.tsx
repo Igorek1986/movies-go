@@ -3,6 +3,100 @@ import { Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import styles from './AdminSettingsPage.module.scss'
 
+function ChildKeywords() {
+  const [list, setList] = useState<number[]>([])
+  const [input, setInput] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/child-keywords').then(r => r.json()).then(setList).catch(() => {})
+  }, [])
+
+  async function handleAdd() {
+    const val = input.trim()
+    if (!val) return
+    const r = await fetch('/api/admin/child-keywords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: val }),
+    })
+    if (r.ok) { setList(await r.json()); setInput('') }
+    inputRef.current?.focus()
+  }
+
+  async function handleDelete(id: number) {
+    const r = await fetch('/api/admin/child-keywords', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (r.ok) setList(await r.json())
+  }
+
+  async function handleReset() {
+    if (!confirm('Сбросить к значениям по умолчанию?')) return
+    const r = await fetch('/api/admin/child-keywords/reset', { method: 'POST' })
+    if (r.ok) setList(await r.json())
+  }
+
+  return (
+    <details>
+      <summary className={styles.groupSummary}>
+        <span className={styles.groupName}>Детский режим — заблокированные TMDB ключевые слова</span>
+        <span className={styles.groupArrow}>▶</span>
+      </summary>
+      <div className={styles.groupBody} style={{ gridColumn: '1 / -1' }}>
+        <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+            TMDB keyword ID — числовые идентификаторы тематик. Карточки с этими ключевыми словами скрываются в детских профилях.
+            Узнать ID: <code>api.themoviedb.org/3/keyword/&lt;id&gt;</code>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              ref={inputRef}
+              type="text"
+              className={styles.rowInput}
+              placeholder="ID через пробел или запятую, например: 41278 13141"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAdd())}
+              autoComplete="off"
+            />
+            <button type="button" className={styles.btnSave} style={{ whiteSpace: 'nowrap' }} onClick={handleAdd}>
+              Добавить
+            </button>
+          </div>
+          {list.length === 0 ? (
+            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Список пуст</div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {list.map(id => (
+                <span key={id} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                  background: 'var(--color-warning, #e67e22)', color: '#fff',
+                  borderRadius: '4px', padding: '3px 8px', fontSize: '0.82rem',
+                }}>
+                  {id}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(id)}
+                    style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button type="button" className={styles.btnReset} onClick={handleReset}>
+              Сбросить к умолчаниям
+            </button>
+          </div>
+        </div>
+      </div>
+    </details>
+  )
+}
+
 function BannedPatterns() {
   const [list, setList] = useState<string[]>([])
   const [input, setInput] = useState('')
@@ -493,6 +587,7 @@ export default function AdminSettingsPage() {
             ))}
 
             <BannedPatterns />
+            <ChildKeywords />
 
             <div className={styles.footer}>
               <button type="button" className={styles.btnReset} onClick={handleReset}>

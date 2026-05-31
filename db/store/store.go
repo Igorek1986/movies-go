@@ -240,9 +240,9 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			 myshows_id, kinopoisk_id,
 			 category, best_video_quality, latest_torrent_date,
 			 last_ep_season, last_ep_number, episode_run_time,
-			 certification_ru, certification_us,
+			 certification_ru, certification_us, keyword_ids,
 			 tmdb_updated_at, updated_at, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,now(),now(),now())
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,now(),now(),now())
 		ON CONFLICT (card_id) DO UPDATE SET
 			title              = EXCLUDED.title,
 			original_title     = EXCLUDED.original_title,
@@ -279,6 +279,7 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			episode_run_time   = COALESCE(EXCLUDED.episode_run_time, media_cards.episode_run_time),
 			certification_ru   = COALESCE(EXCLUDED.certification_ru, media_cards.certification_ru),
 			certification_us   = COALESCE(EXCLUDED.certification_us, media_cards.certification_us),
+			keyword_ids        = COALESCE(EXCLUDED.keyword_ids, media_cards.keyword_ids),
 			tmdb_updated_at    = now(),
 			updated_at         = now()`,
 		cardID, e.ID, e.MediaType, e.Title, e.OriginalTitle, e.Overview,
@@ -289,6 +290,7 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 		nilStr(category), t.VideoQuality, nilTime(torrentDate),
 		lastEpSeason, lastEpNumber, episodeRunTime,
 		nilStr(e.CertificationRU), nilStr(e.CertificationUS),
+		nilIntSlice(e.KeywordIDs),
 	)
 	if err != nil {
 		log.Printf("store: upsert media_card tmdb=%d %s: %v", e.ID, e.MediaType, err)
@@ -336,9 +338,10 @@ func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
 			runtime            = COALESCE($16, runtime),
 			certification_ru   = COALESCE($17, certification_ru),
 			certification_us   = COALESCE($18, certification_us),
+			keyword_ids        = COALESCE($19, keyword_ids),
 			tmdb_updated_at    = now(),
 			updated_at         = now()
-		WHERE card_id = $19`,
+		WHERE card_id = $20`,
 		e.Title, e.OriginalTitle, e.Overview, e.PosterPath, e.BackdropPath,
 		e.VoteAverage, e.VoteCount, e.Status,
 		genresJSON,
@@ -346,6 +349,7 @@ func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
 		lastEpSeason, lastEpNumber, episodeRunTime,
 		runtimeArg,
 		nilStr(e.CertificationRU), nilStr(e.CertificationUS),
+		nilIntSlice(e.KeywordIDs),
 		cardID,
 	)
 	if err != nil {
@@ -506,8 +510,9 @@ type CategoryFilter struct {
 	OrderByRating   bool
 	RandomOrder     bool     // ORDER BY RANDOM()
 	Genres          []string // genre names (OR logic), e.g. ["боевик", "Боевик и Приключения"]
-	Child           bool
-	ChildAge        int // computed from birth year; -1 = child but no age set, >=0 = cert-based filter
+	Child                bool
+	ChildAge             int   // computed from birth year; -1 = child but no age set, >=0 = cert-based filter
+	ChildBlockedKeywords []int // TMDB keyword IDs to exclude for child profiles
 	Year            int      // exact release year filter
 	TrackerFilter   []string // if non-empty, only show cards linked to at least one of these trackers
 	NewOnly         bool     // only items released within last YearDelta years AND quality >= 200
@@ -618,6 +623,11 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		}
 		if f.ChildAge < 12 { // includes -1 (no age) and 0, 6
 			where = append(where, "NOT (m.genres @> '[{\"id\":27}]' OR m.genres @> '[{\"id\":53}]' OR m.genres @> '[{\"id\":80}]')")
+		}
+		if len(f.ChildBlockedKeywords) > 0 {
+			where = append(where, fmt.Sprintf("(m.keyword_ids IS NULL OR NOT m.keyword_ids && $%d)", n))
+			args = append(args, f.ChildBlockedKeywords)
+			n++
 		}
 	}
 	if f.Year > 0 {
@@ -920,4 +930,11 @@ func nilTime(t time.Time) interface{} {
 		return nil
 	}
 	return t
+}
+
+func nilIntSlice(s []int) interface{} {
+	if len(s) == 0 {
+		return nil
+	}
+	return s
 }

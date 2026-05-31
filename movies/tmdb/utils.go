@@ -128,6 +128,26 @@ func fixEntity(ent *models.Entity) {
 	}
 
 	extractCertifications(ent)
+	extractKeywords(ent)
+}
+
+func extractKeywords(e *models.Entity) {
+	if e.Keywords == nil {
+		return
+	}
+	seen := map[int]bool{}
+	for _, kw := range e.Keywords.Keywords {
+		if kw.ID > 0 && !seen[kw.ID] {
+			e.KeywordIDs = append(e.KeywordIDs, kw.ID)
+			seen[kw.ID] = true
+		}
+	}
+	for _, kw := range e.Keywords.Results {
+		if kw.ID > 0 && !seen[kw.ID] {
+			e.KeywordIDs = append(e.KeywordIDs, kw.ID)
+			seen[kw.ID] = true
+		}
+	}
 }
 
 func extractCertifications(e *models.Entity) {

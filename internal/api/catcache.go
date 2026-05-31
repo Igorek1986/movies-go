@@ -6,6 +6,8 @@ import (
 	"log"
 	"movies-api/db/store"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -35,6 +37,11 @@ func InvalidateCategoryCache() {
 	requirePosterMu.Lock()
 	requirePosterCached = nil
 	requirePosterMu.Unlock()
+
+	childKeywordsMu.Lock()
+	childKeywordsCached = nil
+	childKeywordsLoaded = false
+	childKeywordsMu.Unlock()
 
 	log.Println("catcache: invalidated")
 }
@@ -101,6 +108,10 @@ var (
 
 	requirePosterMu     sync.RWMutex
 	requirePosterCached *bool
+
+	childKeywordsMu     sync.RWMutex
+	childKeywordsCached []int
+	childKeywordsLoaded bool
 )
 
 // cachedRequirePoster returns true if cards without a poster should be excluded.
@@ -147,4 +158,47 @@ func cachedTrackers() string {
 		trackerCached = "rutor"
 	}
 	return trackerCached
+}
+
+// DefaultChildBlockedKeywords are TMDB keyword IDs blocked for child profiles by default.
+// Source: SURS plugin without_keywords list.
+var DefaultChildBlockedKeywords = []int{
+	346488, 158718, 41278, 13141, 345822, 315535, 290667, 323477, 290609,
+}
+
+// cachedChildKeywords returns the list of TMDB keyword IDs to block for child profiles.
+// Loaded once from app_settings, reset by InvalidateCategoryCache.
+func cachedChildKeywords() []int {
+	childKeywordsMu.RLock()
+	if childKeywordsLoaded {
+		v := childKeywordsCached
+		childKeywordsMu.RUnlock()
+		return v
+	}
+	childKeywordsMu.RUnlock()
+
+	childKeywordsMu.Lock()
+	defer childKeywordsMu.Unlock()
+	if childKeywordsLoaded {
+		return childKeywordsCached
+	}
+	childKeywordsLoaded = true
+
+	val, ok := store.GetSetting(context.Background(), "child_blocked_keywords")
+	if !ok || strings.TrimSpace(val) == "" {
+		childKeywordsCached = DefaultChildBlockedKeywords
+		return childKeywordsCached
+	}
+	var ids []int
+	for _, s := range strings.Split(val, "\n") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if id, err := strconv.Atoi(s); err == nil && id > 0 {
+			ids = append(ids, id)
+		}
+	}
+	childKeywordsCached = ids
+	return childKeywordsCached
 }

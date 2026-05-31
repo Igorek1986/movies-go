@@ -1625,6 +1625,99 @@ func handleAPIAdminBannedDelete(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, filtered)
 }
 
+// ─── Child blocked keywords ───────────────────────────────────────────────────
+
+func loadChildKeywordList(ctx context.Context) []int {
+	val, _ := store.GetSetting(ctx, "child_blocked_keywords")
+	if strings.TrimSpace(val) == "" {
+		return append([]int{}, DefaultChildBlockedKeywords...)
+	}
+	var ids []int
+	for _, line := range strings.Split(val, "\n") {
+		line = strings.TrimSpace(line)
+		if id, err := strconv.Atoi(line); err == nil && id > 0 {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func saveChildKeywordList(ctx context.Context, ids []int) {
+	lines := make([]string, len(ids))
+	for i, id := range ids {
+		lines[i] = strconv.Itoa(id)
+	}
+	store.SetSetting(ctx, "child_blocked_keywords", strings.Join(lines, "\n"))
+	InvalidateCategoryCache()
+}
+
+// GET /api/admin/child-keywords
+func handleAPIAdminChildKeywordsGet(w http.ResponseWriter, r *http.Request) {
+	ids := loadChildKeywordList(r.Context())
+	if ids == nil {
+		ids = []int{}
+	}
+	JSON(w, http.StatusOK, ids)
+}
+
+// POST /api/admin/child-keywords  {"ids": "41278 13141"}
+func handleAPIAdminChildKeywordsAdd(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.IDs == "" {
+		Error(w, http.StatusBadRequest, "ids required")
+		return
+	}
+	existing := loadChildKeywordList(r.Context())
+	set := make(map[int]struct{}, len(existing))
+	for _, id := range existing {
+		set[id] = struct{}{}
+	}
+	for _, s := range strings.FieldsFunc(body.IDs, func(c rune) bool {
+		return c == ' ' || c == ',' || c == ';' || c == '\n' || c == '\t'
+	}) {
+		if id, err := strconv.Atoi(strings.TrimSpace(s)); err == nil && id > 0 {
+			if _, dup := set[id]; !dup {
+				existing = append(existing, id)
+				set[id] = struct{}{}
+			}
+		}
+	}
+	saveChildKeywordList(r.Context(), existing)
+	JSON(w, http.StatusOK, existing)
+}
+
+// DELETE /api/admin/child-keywords  {"id": 41278}
+func handleAPIAdminChildKeywordsDelete(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID int `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == 0 {
+		Error(w, http.StatusBadRequest, "id required")
+		return
+	}
+	list := loadChildKeywordList(r.Context())
+	filtered := list[:0]
+	for _, id := range list {
+		if id != body.ID {
+			filtered = append(filtered, id)
+		}
+	}
+	saveChildKeywordList(r.Context(), filtered)
+	if filtered == nil {
+		filtered = []int{}
+	}
+	JSON(w, http.StatusOK, filtered)
+}
+
+// POST /api/admin/child-keywords/reset — restore defaults
+func handleAPIAdminChildKeywordsReset(w http.ResponseWriter, r *http.Request) {
+	store.SetSetting(r.Context(), "child_blocked_keywords", "")
+	InvalidateCategoryCache()
+	JSON(w, http.StatusOK, DefaultChildBlockedKeywords)
+}
+
 func handleAPIAdminSystemStats(w http.ResponseWriter, _ *http.Request) {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
