@@ -514,6 +514,7 @@ type CategoryFilter struct {
 	ChildAge             int      // computed from birth year; -1 = child but no age set, >=0 = cert-based filter
 	ChildBlockedKeywords []int    // TMDB keyword IDs to exclude for child profiles
 	ChildTextKeywords    []string // text words to block in title/overview
+	HideUnrated          bool     // exclude cards with no certification (plugin hide_unrated=1)
 	Year            int      // exact release year filter
 	TrackerFilter   []string // if non-empty, only show cards linked to at least one of these trackers
 	NewOnly         bool     // only items released within last YearDelta years AND quality >= 200
@@ -630,15 +631,19 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 			args = append(args, f.ChildBlockedKeywords)
 			n++
 		}
-		if len(f.ChildTextKeywords) > 0 {
-			clauses := make([]string, len(f.ChildTextKeywords))
-			for i, word := range f.ChildTextKeywords {
-				clauses[i] = fmt.Sprintf("(m.title ILIKE $%d OR COALESCE(m.overview,'') ILIKE $%d)", n, n+1)
-				args = append(args, "%"+word+"%", "%"+word+"%")
-				n += 2
-			}
-			where = append(where, "NOT ("+strings.Join(clauses, " OR ")+")")
+		if f.HideUnrated {
+			where = append(where, "(m.certification_ru != '' OR m.certification_us != '')")
 		}
+	}
+	// Text keyword filter applies to both child and adult profiles (set by applyChildFilter or applyAdultTextFilter)
+	if len(f.ChildTextKeywords) > 0 {
+		clauses := make([]string, len(f.ChildTextKeywords))
+		for i, word := range f.ChildTextKeywords {
+			clauses[i] = fmt.Sprintf("(m.title ILIKE $%d OR COALESCE(m.overview,'') ILIKE $%d)", n, n+1)
+			args = append(args, "%"+word+"%", "%"+word+"%")
+			n += 2
+		}
+		where = append(where, "NOT ("+strings.Join(clauses, " OR ")+")")
 	}
 	if f.Year > 0 {
 		where = append(where, fmt.Sprintf("LEFT(COALESCE(m.release_date::text, m.first_air_date::text, ''), 4) = $%d", n))

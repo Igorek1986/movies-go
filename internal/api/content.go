@@ -218,6 +218,9 @@ func applyChildFilter(r *http.Request, f *store.CategoryFilter, profileID string
 	if d == nil || profileID == "" {
 		return
 	}
+	if r.URL.Query().Get("hide_unrated") == "1" {
+		f.HideUnrated = true
+	}
 	child, birthYear := store.GetProfileChildInfo(r.Context(), d.ID, profileID)
 	if !child {
 		return
