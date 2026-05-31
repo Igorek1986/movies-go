@@ -84,6 +84,23 @@ function getItemYear(item: MediaItem): string {
   return (item.release_date || item.first_air_date || '').slice(0, 4)
 }
 
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
+// Shuffle genre_* rows in place; keep other categories in their original positions.
+function randomizeGenres(categories: Category[]): Category[] {
+  const genreIds = new Set(categories.filter(c => c.id.startsWith('genre_')).map(c => c.id))
+  const shuffled = shuffleArray(categories.filter(c => genreIds.has(c.id)))
+  let gi = 0
+  return categories.map(c => (genreIds.has(c.id) ? shuffled[gi++] : c))
+}
+
 function applyRowOrder(categories: Category[]): Category[] {
   try {
     const saved: string[] = JSON.parse(localStorage.getItem(LS_ROW_ORDER) || '[]')
@@ -745,8 +762,9 @@ export default function CatalogPage() {
         const res = await fetch('/api/categories')
         if (!res.ok) return
         const cats: Category[] = await res.json()
-        _cache.categories = cats
-        setCategories(applyRowOrder(cats))
+        const randomized = randomizeGenres(cats)
+        _cache.categories = randomized
+        setCategories(applyRowOrder(randomized))
       } catch {}
     }
     loadCategories()

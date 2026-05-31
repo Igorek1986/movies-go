@@ -33,7 +33,11 @@ func NewRouter(mode string) http.Handler {
 
 	cached := withCategoryCache(handleCategory)
 	for route := range categoryRoutes {
-		r.Get("/"+route, cached)
+		if strings.HasPrefix(route, "genre_") {
+			r.Get("/"+route, handleCategory)
+		} else {
+			r.Get("/"+route, cached)
+		}
 	}
 	r.Get("/movies_id_{year:[0-9]+}", cached)
 	r.Get("/continues", cached)
