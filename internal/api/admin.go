@@ -787,19 +787,53 @@ type personListItem struct {
 	AvgRating   float64 `json:"avg_rating"`
 }
 
-func handleAPIAdminActorList(w http.ResponseWriter, r *http.Request) {
+func handleAPIAdminPersonList(table, jobFilter string, w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	rows, err := postgres.Pool.Query(ctx, `
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	const perPage = 50
+	offset := (page - 1) * perPage
+
+	orderBy := "cnt DESC, MAX(mc.popularity) DESC"
+	if q.Get("sort") == "rating" {
+		orderBy = "avg_r DESC, cnt DESC"
+	}
+
+	var whereClause string
+	var args []any
+	if jobFilter != "" {
+		whereClause = "WHERE mc.job = $3"
+		args = []any{perPage, offset, jobFilter}
+	} else {
+		args = []any{perPage, offset}
+	}
+
+	var totalArg []any
+	totalCountSQL := fmt.Sprintf(`SELECT COUNT(DISTINCT mc.person_id) FROM %s mc %s`, table, whereClause)
+	if jobFilter != "" {
+		totalArg = []any{jobFilter}
+		totalCountSQL = fmt.Sprintf(`SELECT COUNT(DISTINCT mc.person_id) FROM %s mc WHERE mc.job = $1`, table)
+	}
+	var total int
+	postgres.Pool.QueryRow(ctx, totalCountSQL, totalArg...).Scan(&total) //nolint:errcheck
+
+	dataSQL := fmt.Sprintf(`
 		SELECT mc.person_id, mc.person_name, COALESCE(mc.profile_path,''),
 		       COUNT(DISTINCT mc.card_id) as cnt,
-		       ROUND(AVG(m.vote_average)::numeric, 1)
-		FROM media_card_cast mc
+		       ROUND(AVG(m.vote_average)::numeric, 1) as avg_r
+		FROM %s mc
 		JOIN media_cards m ON mc.card_id = m.card_id
+		%s
 		GROUP BY mc.person_id, mc.person_name, mc.profile_path
-		ORDER BY cnt DESC, MAX(mc.popularity) DESC
-		LIMIT 200`)
+		ORDER BY %s
+		LIMIT $1 OFFSET $2`, table, whereClause, orderBy)
+
+	rows, err := postgres.Pool.Query(ctx, dataSQL, args...)
 	if err != nil {
-		JSON(w, http.StatusOK, []any{})
+		JSON(w, http.StatusOK, map[string]any{"items": []any{}, "total": 0, "page": page})
 		return
 	}
 	defer rows.Close()
@@ -813,37 +847,20 @@ func handleAPIAdminActorList(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []personListItem{}
 	}
-	JSON(w, http.StatusOK, list)
+	JSON(w, http.StatusOK, map[string]any{
+		"items":    list,
+		"total":    total,
+		"page":     page,
+		"per_page": perPage,
+	})
+}
+
+func handleAPIAdminActorList(w http.ResponseWriter, r *http.Request) {
+	handleAPIAdminPersonList("media_card_cast", "", w, r)
 }
 
 func handleAPIAdminDirectorList(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	rows, err := postgres.Pool.Query(ctx, `
-		SELECT mc.person_id, mc.person_name, COALESCE(mc.profile_path,''),
-		       COUNT(DISTINCT mc.card_id) as cnt,
-		       ROUND(AVG(m.vote_average)::numeric, 1)
-		FROM media_card_crew mc
-		JOIN media_cards m ON mc.card_id = m.card_id
-		WHERE mc.job = 'Director'
-		GROUP BY mc.person_id, mc.person_name, mc.profile_path
-		ORDER BY cnt DESC, MAX(mc.popularity) DESC
-		LIMIT 200`)
-	if err != nil {
-		JSON(w, http.StatusOK, []any{})
-		return
-	}
-	defer rows.Close()
-	var list []personListItem
-	for rows.Next() {
-		var p personListItem
-		if rows.Scan(&p.PersonID, &p.PersonName, &p.ProfilePath, &p.CardCount, &p.AvgRating) == nil {
-			list = append(list, p)
-		}
-	}
-	if list == nil {
-		list = []personListItem{}
-	}
-	JSON(w, http.StatusOK, list)
+	handleAPIAdminPersonList("media_card_crew", "Director", w, r)
 }
 
 func handleAPIAdminBackfillCast(w http.ResponseWriter, r *http.Request) {
