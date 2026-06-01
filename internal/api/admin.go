@@ -797,9 +797,26 @@ func handleAPIAdminPersonList(table, jobFilter string, w http.ResponseWriter, r 
 	const perPage = 50
 	offset := (page - 1) * perPage
 
-	orderBy := "cnt DESC, MAX(mc.popularity) DESC"
-	if q.Get("sort") == "rating" {
-		orderBy = "avg_r DESC, cnt DESC"
+	// Build ORDER BY from sort param: "cards_desc,rating_asc"
+	orderBy := "cnt DESC, MAX(mc.popularity) DESC" // default
+	if sortParam := q.Get("sort"); sortParam != "" {
+		var parts []string
+		for _, token := range strings.Split(sortParam, ",") {
+			token = strings.TrimSpace(token)
+			switch token {
+			case "cards_desc":
+				parts = append(parts, "cnt DESC")
+			case "cards_asc":
+				parts = append(parts, "cnt ASC")
+			case "rating_desc":
+				parts = append(parts, "avg_r DESC")
+			case "rating_asc":
+				parts = append(parts, "avg_r ASC")
+			}
+		}
+		if len(parts) > 0 {
+			orderBy = strings.Join(parts, ", ")
+		}
 	}
 
 	var whereClause string

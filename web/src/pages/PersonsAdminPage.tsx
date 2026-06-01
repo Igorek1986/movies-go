@@ -1,10 +1,12 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { tmdbUrl } from '@/utils/poster'
 import styles from './NewCardsPage.module.scss'
 
 type SortKey = 'cards' | 'rating'
+type SortDir = 'desc' | 'asc'
+type SortEntry = { key: SortKey; dir: SortDir }
 
 interface PersonItem {
   person_id: number
@@ -21,8 +23,15 @@ interface PageResponse {
   per_page: number
 }
 
+function sortArrow(entry: SortEntry | undefined, priority: number, total: number): string {
+  if (!entry) return ''
+  const arrow = entry.dir === 'desc' ? '↓' : '↑'
+  return total > 1 ? `${arrow}${priority}` : arrow
+}
+
 export default function PersonsAdminPage() {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const isDirectors = pathname.includes('directors')
   const title = isDirectors ? 'Режиссёры' : 'Актёры'
   const endpoint = isDirectors ? '/api/admin/directors' : '/api/admin/actors'
@@ -31,17 +40,23 @@ export default function PersonsAdminPage() {
   const [items, setItems] = useState<PersonItem[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [sortKey, setSortKey] = useState<SortKey>('cards')
+  // Array keeps priority order: first = primary sort
+  const [sorts, setSorts] = useState<SortEntry[]>([{ key: 'cards', dir: 'desc' }])
   const pageRef = useRef(1)
   const hasMoreRef = useRef(true)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const loadingRef = useRef(false)
 
-  const loadPage = useCallback(async (page: number, sort: SortKey, reset: boolean) => {
-    if (loading) return
+  function buildSortParam(s: SortEntry[]) {
+    return s.map(e => `${e.key}_${e.dir}`).join(',')
+  }
+
+  const loadPage = useCallback(async (page: number, sortParam: string, reset: boolean) => {
+    if (loadingRef.current) return
+    loadingRef.current = true
     setLoading(true)
     try {
-      const sortParam = sort === 'rating' ? 'rating' : 'cards'
-      const res = await fetch(`${endpoint}?page=${page}&sort=${sortParam}`)
+      const res = await fetch(`${endpoint}?page=${page}&sort=${encodeURIComponent(sortParam)}`)
       if (!res.ok) return
       const data: PageResponse = await res.json()
       setTotal(data.total)
@@ -49,33 +64,61 @@ export default function PersonsAdminPage() {
       hasMoreRef.current = data.items.length === data.per_page
       pageRef.current = page
     } finally {
+      loadingRef.current = false
       setLoading(false)
     }
-  }, [endpoint, loading])
+  }, [endpoint])
 
-  // Reset and reload on sort or endpoint change
   useEffect(() => {
     pageRef.current = 1
     hasMoreRef.current = true
     setItems([])
-    loadPage(1, sortKey, true)
-  }, [sortKey, endpoint]) // eslint-disable-line react-hooks/exhaustive-deps
+    loadPage(1, buildSortParam(sorts), true)
+  }, [sorts, endpoint]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Infinite scroll
   useEffect(() => {
     const sentinel = sentinelRef.current
     if (!sentinel) return
     const observer = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && !loading && hasMoreRef.current) {
-        loadPage(pageRef.current + 1, sortKey, false)
+      if (entries[0].isIntersecting && !loadingRef.current && hasMoreRef.current) {
+        loadPage(pageRef.current + 1, buildSortParam(sorts), false)
       }
     }, { rootMargin: '200px' })
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [loading, sortKey, loadPage])
+  }, [sorts, loadPage])
 
-  function toggleSort(key: SortKey) {
-    if (key !== sortKey) setSortKey(key)
+  function handleSortClick(key: SortKey) {
+    setSorts(prev => {
+      const idx = prev.findIndex(s => s.key === key)
+      if (idx === -1) {
+        // Not active → add as primary (unshift)
+        return [{ key, dir: 'desc' }, ...prev]
+      }
+      const entry = prev[idx]
+      if (entry.dir === 'desc') {
+        // desc → asc
+        const next = [...prev]
+        next[idx] = { key, dir: 'asc' }
+        return next
+      }
+      // asc → remove
+      return prev.filter(s => s.key !== key)
+    })
+  }
+
+  function colHeader(key: SortKey, label: string) {
+    const entry = sorts.find(s => s.key === key)
+    const priority = sorts.findIndex(s => s.key === key) + 1
+    const arrow = sortArrow(entry, priority, sorts.length)
+    return (
+      <th
+        style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+        onClick={() => handleSortClick(key)}
+      >
+        {label}{arrow && <span style={{ marginLeft: 4, color: '#4a90e2', fontSize: '0.85em' }}>{arrow}</span>}
+      </th>
+    )
   }
 
   return (
@@ -84,19 +127,6 @@ export default function PersonsAdminPage() {
         <div className={styles.header}>
           <h1 className={styles.title}>{title} ({total.toLocaleString()})</h1>
           <Link to="/admin" className={styles.backLink}>Админ</Link>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          {(['cards', 'rating'] as SortKey[]).map(key => (
-            <button key={key} onClick={() => toggleSort(key)} style={{
-              padding: '4px 12px', borderRadius: 6, border: '1px solid', cursor: 'pointer',
-              background: sortKey === key ? '#4a90e2' : 'transparent',
-              borderColor: sortKey === key ? '#4a90e2' : '#444',
-              color: sortKey === key ? '#fff' : '#aaa', fontSize: '0.82rem',
-            }}>
-              {key === 'cards' ? 'По карточкам' : 'По рейтингу'}
-            </button>
-          ))}
         </div>
 
         {items.length === 0 && !loading && (
@@ -109,38 +139,37 @@ export default function PersonsAdminPage() {
               <tr>
                 <th>#</th>
                 <th>Имя</th>
-                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('cards')}>
-                  Карточек {sortKey === 'cards' ? '↓' : ''}
-                </th>
-                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('rating')}>
-                  Рейтинг {sortKey === 'rating' ? '↓' : ''}
-                </th>
-                <th>Категория</th>
+                {colHeader('cards', 'Карточек')}
+                {colHeader('rating', 'Рейтинг')}
+                <th>Каталог</th>
               </tr>
             </thead>
             <tbody>
               {items.map((p, i) => {
                 const photo = p.profile_path ? tmdbUrl(p.profile_path, 'w45') : null
                 return (
-                  <tr key={p.person_id} className={styles.row}>
+                  <tr
+                    key={p.person_id}
+                    className={styles.row}
+                    onClick={() => navigate(`/actor/${p.person_id}`)}
+                  >
                     <td data-label="#">{i + 1}</td>
                     <td data-label="Имя">
-                      <Link
-                        to={isDirectors ? `/actor/${p.person_id}` : `/actor/${p.person_id}`}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', color: 'inherit' }}
-                      >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         {photo
                           ? <img src={photo} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                           : <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#333', flexShrink: 0 }} />
                         }
-                        <span style={{ borderBottom: '1px solid #444' }}>{p.person_name}</span>
-                      </Link>
+                        {p.person_name}
+                      </div>
                     </td>
                     <td data-label="Карточек">{p.card_count}</td>
                     <td data-label="Рейтинг">{p.avg_rating > 0 ? `★ ${p.avg_rating.toFixed(1)}` : '—'}</td>
-                    <td data-label="Категория">
-                      <Link to={`/catalog?cat=${catPrefix}_${p.person_id}`}
-                        style={{ fontSize: '0.8rem', color: 'var(--color-primary, #4a90e2)' }}>
+                    <td data-label="Каталог" onClick={e => e.stopPropagation()}>
+                      <Link
+                        to={`/catalog?cat=${catPrefix}_${p.person_id}`}
+                        style={{ fontSize: '0.8rem', color: '#4a90e2' }}
+                      >
                         Открыть →
                       </Link>
                     </td>
