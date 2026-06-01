@@ -415,17 +415,19 @@ func GetTMDBMissingCards(ctx context.Context) []TMDBMissingCard {
 }
 
 type NewTodayCard struct {
-	CardID        string  `json:"card_id"`
-	TmdbID        int64   `json:"tmdb_id"`
-	MediaType     string  `json:"media_type"`
-	Title         string  `json:"title"`
-	OriginalTitle string  `json:"original_title"`
-	Year          string  `json:"year"`
-	VoteAverage   float64 `json:"vote_average"`
-	VoteCount     int     `json:"vote_count"`
-	CreatedAt     string  `json:"created_at"`
-	Trackers      string  `json:"trackers"`
-	Language      string  `json:"language"`
+	CardID          string  `json:"card_id"`
+	TmdbID          int64   `json:"tmdb_id"`
+	MediaType       string  `json:"media_type"`
+	Title           string  `json:"title"`
+	OriginalTitle   string  `json:"original_title"`
+	Year            string  `json:"year"`
+	VoteAverage     float64 `json:"vote_average"`
+	VoteCount       int     `json:"vote_count"`
+	CreatedAt       string  `json:"created_at"`
+	Trackers        string  `json:"trackers"`
+	Language        string  `json:"language"`
+	Runtime         int     `json:"runtime"`
+	EpisodeRunTime  int     `json:"episode_run_time"`
 }
 
 func GetNewTodayCards(ctx context.Context) []NewTodayCard {
@@ -434,13 +436,14 @@ func GetNewTodayCards(ctx context.Context) []NewTodayCard {
 		       COALESCE(LEFT(COALESCE(mc.release_date::text, mc.first_air_date::text, ''), 4), '') AS year,
 		       mc.vote_average, mc.vote_count, mc.created_at,
 		       COALESCE(STRING_AGG(DISTINCT t.tracker, ',' ORDER BY t.tracker), '') AS trackers,
-		       COALESCE(mc.original_language, '') AS language
+		       COALESCE(mc.original_language, '') AS language,
+		       COALESCE(mc.runtime, 0), COALESCE(mc.episode_run_time, 0)
 		FROM media_cards mc
 		LEFT JOIN torrents t ON t.card_id = mc.card_id
 		WHERE mc.created_at::date = CURRENT_DATE
 		GROUP BY mc.card_id, mc.tmdb_id, mc.media_type, mc.title, mc.original_title,
 		         mc.release_date, mc.first_air_date, mc.vote_average, mc.vote_count, mc.created_at,
-		         mc.original_language
+		         mc.original_language, mc.runtime, mc.episode_run_time
 		ORDER BY mc.created_at DESC`)
 	if err != nil {
 		return nil
@@ -451,7 +454,8 @@ func GetNewTodayCards(ctx context.Context) []NewTodayCard {
 		var c NewTodayCard
 		var createdAt time.Time
 		if rows.Scan(&c.CardID, &c.TmdbID, &c.MediaType, &c.Title, &c.OriginalTitle,
-			&c.Year, &c.VoteAverage, &c.VoteCount, &createdAt, &c.Trackers, &c.Language) == nil {
+			&c.Year, &c.VoteAverage, &c.VoteCount, &createdAt, &c.Trackers, &c.Language,
+			&c.Runtime, &c.EpisodeRunTime) == nil {
 			c.CreatedAt = createdAt.Format("15:04")
 			out = append(out, c)
 		}

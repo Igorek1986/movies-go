@@ -15,6 +15,16 @@ interface NewCard {
   created_at: string
   trackers: string
   language: string
+  runtime: number
+  episode_run_time: number
+}
+
+function fmtRuntime(c: NewCard): string {
+  const min = c.media_type === 'movie' ? c.runtime : c.episode_run_time
+  if (!min) return '—'
+  if (min < 60) return `${min} мин`
+  const h = Math.floor(min / 60), m = min % 60
+  return m ? `${h}ч ${m}м` : `${h}ч`
 }
 
 type FilterKey = 'media_type' | 'year' | 'language' | 'trackers'
@@ -187,6 +197,7 @@ export default function NewCardsPage() {
                 <th>Оригинал</th>
                 <FilterHeader col={FILTER_COLS[1]} />
                 <th>Рейтинг</th>
+                <th>Длит.</th>
                 <FilterHeader col={FILTER_COLS[2]} />
                 <FilterHeader col={FILTER_COLS[3]} />
               </tr>
@@ -203,6 +214,7 @@ export default function NewCardsPage() {
                   <td data-label="Рейтинг" className={styles.rating}>
                     {c.vote_count > 0 ? `${c.vote_average.toFixed(1)} (${c.vote_count})` : '—'}
                   </td>
+                  <td data-label="Длит." className={styles.muted}>{fmtRuntime(c)}</td>
                   <td data-label="Язык"   className={styles.muted}>{c.language ? c.language.toUpperCase() : '—'}</td>
                   <td data-label="Трекер" className={styles.muted}>{c.trackers || '—'}</td>
                 </tr>
