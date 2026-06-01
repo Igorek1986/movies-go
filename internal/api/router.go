@@ -41,6 +41,7 @@ func NewRouter(mode string) http.Handler {
 	}
 	r.Get("/movies_id_{year:[0-9]+}", cached)
 	r.Get("/actor_{person_id:[0-9]+}", cached)
+	r.Get("/director_{person_id:[0-9]+}", cached)
 	r.Get("/continues", cached)
 	r.Get("/continues_movie", cached)
 	r.Get("/continues_tv", cached)

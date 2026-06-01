@@ -15,8 +15,9 @@
     (function() {
         var req = new Lampa.Reguest();
         req.silent(BASE_URL + '/api/categories', function(cats) {
-            actorPool = (cats || []).filter(function(c) { return c.id && c.id.indexOf('actor_') === 0; })
-                .map(function(c) { return { key: c.id, title: c.name }; });
+            actorPool = (cats || []).filter(function(c) {
+                return c.id && (c.id.indexOf('actor_') === 0 || c.id.indexOf('director_') === 0);
+            }).map(function(c) { return { key: c.id, title: c.name }; });
         }, function() {});
     })();
 

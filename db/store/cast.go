@@ -223,3 +223,136 @@ func ListActorCategory(ctx context.Context, personID int64, page, perPage int) (
 	}
 	return rows, total
 }
+
+// ─── Crew (directors) ─────────────────────────────────────────────────────────
+
+// UpsertCrew saves directors for a card, replacing any existing entries.
+func UpsertCrew(ctx context.Context, cardID string, crew []models.CrewEntry) {
+	var directors []models.CrewEntry
+	for _, c := range crew {
+		if c.Job == "Director" {
+			directors = append(directors, c)
+		}
+	}
+	if len(directors) == 0 {
+		return
+	}
+	if _, err := postgres.Pool.Exec(ctx,
+		`DELETE FROM media_card_crew WHERE card_id = $1`, cardID); err != nil {
+		log.Printf("store: delete crew %s: %v", cardID, err)
+		return
+	}
+	for _, d := range directors {
+		var pp *string
+		if d.ProfilePath != "" {
+			pp = &d.ProfilePath
+		}
+		if _, err := postgres.Pool.Exec(ctx, `
+			INSERT INTO media_card_crew (card_id, person_id, person_name, profile_path, job, popularity)
+			VALUES ($1,$2,$3,$4,$5,$6)
+			ON CONFLICT (card_id, person_id, job) DO UPDATE SET
+				person_name  = EXCLUDED.person_name,
+				profile_path = EXCLUDED.profile_path,
+				popularity   = EXCLUDED.popularity`,
+			cardID, d.ID, d.Name, pp, d.Job, d.Popularity,
+		); err != nil {
+			log.Printf("store: insert crew %s person %d: %v", cardID, d.ID, err)
+		}
+	}
+}
+
+// GetPopularDirectors returns top directors by popularity from the DB.
+func GetPopularDirectors(ctx context.Context, limit int) []PopularActor {
+	if limit <= 0 {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	pool := limit * 5
+	if pool < 10 {
+		pool = 10
+	}
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT person_id, person_name, COALESCE(profile_path,'')
+		FROM media_card_crew
+		WHERE job = 'Director'
+		GROUP BY person_id, person_name, profile_path
+		ORDER BY MAX(popularity) DESC
+		LIMIT $1`, pool)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []PopularActor
+	for rows.Next() {
+		var a PopularActor
+		if err := rows.Scan(&a.PersonID, &a.PersonName, &a.ProfilePath); err != nil {
+			continue
+		}
+		result = append(result, a)
+	}
+	return result
+}
+
+// ListDirectorCategory returns paginated cards directed by the given person.
+func ListDirectorCategory(ctx context.Context, personID int64, page, perPage int) ([]MediaRow, int) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 20
+	}
+	offset := (page - 1) * perPage
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var total int
+	if err := postgres.Pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM media_cards m
+		JOIN media_card_crew mc ON m.card_id = mc.card_id
+		WHERE mc.person_id = $1 AND mc.job = 'Director'
+		  AND m.poster_path IS NOT NULL AND m.poster_path <> ''`,
+		personID).Scan(&total); err != nil {
+		return nil, 0
+	}
+
+	qrows, err := postgres.Pool.Query(ctx, `
+		SELECT m.tmdb_id, m.media_type, m.title, m.original_title,
+			m.overview, m.poster_path, m.backdrop_path,
+			m.release_date::text, m.first_air_date::text, m.last_air_date::text,
+			m.vote_average, m.vote_count, m.original_language, m.adult, m.status,
+			m.number_of_seasons, m.seasons, m.last_ep_season, m.last_ep_number, m.updated_at,
+			m.best_video_quality, m.latest_torrent_date,
+			m.certification_ru, m.certification_us
+		FROM media_cards m
+		JOIN media_card_crew mc ON m.card_id = mc.card_id
+		WHERE mc.person_id = $1 AND mc.job = 'Director'
+		  AND m.poster_path IS NOT NULL AND m.poster_path <> ''
+		ORDER BY m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST
+		LIMIT $2 OFFSET $3`,
+		personID, perPage, offset)
+	if err != nil {
+		return nil, 0
+	}
+	defer qrows.Close()
+
+	var rows []MediaRow
+	for qrows.Next() {
+		var r MediaRow
+		if err := qrows.Scan(
+			&r.TmdbID, &r.MediaType, &r.Title, &r.OriginalTitle,
+			&r.Overview, &r.PosterPath, &r.BackdropPath,
+			&r.ReleaseDate, &r.FirstAirDate, &r.LastAirDate,
+			&r.VoteAverage, &r.VoteCount, &r.OriginalLanguage, &r.Adult, &r.Status,
+			&r.NumberOfSeasons, &r.Seasons, &r.LastEpSeason, &r.LastEpNumber, &r.UpdatedAt,
+			&r.VideoQuality, &r.LatestTorrentDate,
+			&r.CertificationRU, &r.CertificationUS,
+		); err != nil {
+			log.Printf("store: scan director row: %v", err)
+			continue
+		}
+		rows = append(rows, r)
+	}
+	return rows, total
+}

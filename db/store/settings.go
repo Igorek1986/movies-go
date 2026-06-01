@@ -78,6 +78,7 @@ var SettingDefaults = map[string]string{
 	"catalog_require_poster":   "1",
 	"catalog_actor_count":      "2",
 	"catalog_actor_ru_count":   "1",
+	"catalog_director_count":   "1",
 	// Parser
 	"parser_order":           "rutor,kinozal,nnmclub",
 	"catalog_trackers":       "rutor,kinozal,nnmclub",

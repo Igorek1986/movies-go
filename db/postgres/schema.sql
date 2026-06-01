@@ -400,3 +400,15 @@ CREATE TABLE IF NOT EXISTS media_card_cast (
 );
 CREATE INDEX IF NOT EXISTS idx_mcc_person_id   ON media_card_cast(person_id);
 CREATE INDEX IF NOT EXISTS idx_mcc_popularity  ON media_card_cast(popularity DESC);
+
+-- Director crew for catalog collections
+CREATE TABLE IF NOT EXISTS media_card_crew (
+    card_id      TEXT   NOT NULL REFERENCES media_cards(card_id) ON DELETE CASCADE,
+    person_id    BIGINT NOT NULL,
+    person_name  TEXT   NOT NULL,
+    profile_path TEXT,
+    job          TEXT   NOT NULL DEFAULT 'Director',
+    popularity   REAL   NOT NULL DEFAULT 0,
+    PRIMARY KEY (card_id, person_id, job)
+);
+CREATE INDEX IF NOT EXISTS idx_mcc_crew_person_id ON media_card_crew(person_id);

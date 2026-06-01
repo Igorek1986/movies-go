@@ -297,6 +297,7 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 	}
 	if e.Credits != nil {
 		go UpsertCast(context.Background(), cardID, e.Credits.Cast)
+		go UpsertCrew(context.Background(), cardID, e.Credits.Crew)
 	}
 }
 
@@ -360,6 +361,7 @@ func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
 	}
 	if e.Credits != nil {
 		UpsertCast(ctx, cardID, e.Credits.Cast)
+		UpsertCrew(ctx, cardID, e.Credits.Crew)
 	}
 }
 

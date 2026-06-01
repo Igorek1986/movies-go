@@ -118,6 +118,7 @@ func RunBackfillCast(parentCtx context.Context) {
 				md := tmdb.FetchVideoDetails(isMovie, c.TmdbID)
 				if md != nil && md.Credits != nil {
 					store.UpsertCast(ctx, c.CardID, md.Credits.Cast)
+					store.UpsertCrew(ctx, c.CardID, md.Credits.Crew)
 					backfillCastUpdated.Add(1)
 				}
 				cur := backfillCastCurrent.Add(1)

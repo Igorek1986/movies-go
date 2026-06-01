@@ -77,6 +77,7 @@ type Entity struct {
 
 type CreditsResult struct {
 	Cast []CastEntry `json:"cast"`
+	Crew []CrewEntry `json:"crew"`
 }
 
 type CastEntry struct {
@@ -85,6 +86,14 @@ type CastEntry struct {
 	Character   string  `json:"character"`
 	ProfilePath string  `json:"profile_path"`
 	Order       int     `json:"order"`
+	Popularity  float64 `json:"popularity"`
+}
+
+type CrewEntry struct {
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	Job         string  `json:"job"`
+	ProfilePath string  `json:"profile_path"`
 	Popularity  float64 `json:"popularity"`
 }
 

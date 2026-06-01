@@ -111,7 +111,7 @@ function shuffleArray<T>(arr: T[]): T[] {
 
 // Shuffle genre_* and actor_* rows in place; keep other categories in their original positions.
 function randomizeGenres(categories: Category[]): Category[] {
-  const shuffleIds = new Set(categories.filter(c => c.id.startsWith('genre_') || c.id.startsWith('actor_')).map(c => c.id))
+  const shuffleIds = new Set(categories.filter(c => c.id.startsWith('genre_') || c.id.startsWith('actor_') || c.id.startsWith('director_')).map(c => c.id))
   const shuffled = shuffleArray(categories.filter(c => shuffleIds.has(c.id)))
   let gi = 0
   return categories.map(c => (shuffleIds.has(c.id) ? shuffled[gi++] : c))
