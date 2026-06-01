@@ -858,6 +858,11 @@ export default function CatalogPage() {
   }
 
   function handleBack() {
+    // If we came from outside the catalog (e.g. admin), use browser history
+    if (stateName) {
+      navigate(-1)
+      return
+    }
     setExpandedCategory(null)
     const scrollY = savedScrollRef.current
     requestAnimationFrame(() => {
