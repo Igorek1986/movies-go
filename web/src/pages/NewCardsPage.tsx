@@ -211,6 +211,9 @@ export default function NewCardsPage() {
   const [deleting, setDeleting] = useState(false)
   const [confirm, setConfirm]   = useState(false)
   const [page, setPage]         = useState(1)
+  const [searchInput, setSearchInput] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const PAGE_SIZE = 100
 
   useEffect(() => {
@@ -220,7 +223,17 @@ export default function NewCardsPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  function handleSearch(val: string) {
+    setSearchInput(val)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => {
+      setSearchQuery(val.length >= 3 ? val.trim().toLowerCase() : '')
+    }, 300)
+  }
+
   const filtered = useMemo(() => cards.filter(c => {
+    if (searchQuery && !c.title.toLowerCase().includes(searchQuery) &&
+        !c.original_title.toLowerCase().includes(searchQuery)) return false
     if (!FILTER_COLS.every(({ key }) => {
       const active = filters[key]
       return !active || active.size === 0 || active.has(getVal(c, key))
@@ -233,7 +246,7 @@ export default function NewCardsPage() {
       if (max !== null && rt > max) return false
     }
     return true
-  }), [cards, filters, runtimeRange])
+  }), [cards, filters, runtimeRange, searchQuery])
 
   const distinctValues = useMemo(() => {
     const result: Partial<Record<FilterKey, [string, number][]>> = {}
@@ -269,8 +282,8 @@ export default function NewCardsPage() {
     setFilters(prev => ({ ...prev, [key]: new Set() }))
   }
 
-  // Reset page when filter changes
-  useEffect(() => { setPage(1) }, [filters, runtimeRange])
+  // Reset page when filter or search changes
+  useEffect(() => { setPage(1) }, [filters, runtimeRange, searchQuery])
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -307,7 +320,7 @@ export default function NewCardsPage() {
   }
 
   const hasFilters = FILTER_COLS.some(c => (filters[c.key]?.size ?? 0) > 0) ||
-    runtimeRange.min !== '' || runtimeRange.max !== ''
+    runtimeRange.min !== '' || runtimeRange.max !== '' || searchQuery !== ''
 
   const selectedCount = [...selected].filter(id => cards.some(c => c.card_id === id)).length
 
@@ -317,9 +330,26 @@ export default function NewCardsPage() {
         <div className={styles.header}>
           <h1 className={styles.title}>
             Добавлено сегодня
-            {hasFilters ? ` (${filtered.length} / ${cards.length})` : cards.length > 0 ? ` (${cards.length})` : ''}
+            {(hasFilters || searchQuery) ? ` (${filtered.length} / ${cards.length})` : cards.length > 0 ? ` (${cards.length})` : ''}
           </h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative' }}>
+              <input
+                placeholder="Поиск по названию…"
+                value={searchInput}
+                onChange={e => handleSearch(e.target.value)}
+                style={{ background: '#111', border: '1px solid #444', borderRadius: 6,
+                  color: '#fff', padding: '4px 28px 4px 10px', fontSize: '0.85rem',
+                  outline: 'none', width: 200,
+                  borderColor: searchQuery ? '#4a90e2' : '#444' }}
+              />
+              {searchInput && (
+                <button onClick={() => { setSearchInput(''); setSearchQuery('') }}
+                  style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', color: '#888', cursor: 'pointer',
+                    fontSize: '0.9rem', padding: 0, lineHeight: 1 }}>✕</button>
+              )}
+            </div>
             {selectedCount > 0 && !confirm && (
               <button onClick={() => setConfirm(true)} style={{
                 padding: '4px 12px', borderRadius: 6, border: '1px solid #e05555',
@@ -346,7 +376,7 @@ export default function NewCardsPage() {
               </>
             )}
             {hasFilters && (
-              <button onClick={() => { setFilters({}); setRuntimeRange({ min: '', max: '' }) }} style={{
+              <button onClick={() => { setFilters({}); setRuntimeRange({ min: '', max: '' }); setSearchInput(''); setSearchQuery('') }} style={{
                 padding: '4px 10px', borderRadius: 6, border: '1px solid #555',
                 background: 'none', color: '#aaa', fontSize: '0.8rem', cursor: 'pointer',
               }}>Сбросить фильтры</button>
