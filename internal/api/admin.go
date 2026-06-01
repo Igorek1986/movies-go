@@ -726,6 +726,23 @@ func handleAPIAdminCardsToday(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, store.GetNewTodayCards(r.Context()))
 }
 
+func handleAPIAdminDeleteCards(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		CardIDs []string `json:"card_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.CardIDs) == 0 {
+		Error(w, http.StatusBadRequest, "card_ids required")
+		return
+	}
+	deleted := 0
+	for _, id := range body.CardIDs {
+		if store.DeleteCard(r.Context(), id) == nil {
+			deleted++
+		}
+	}
+	JSON(w, http.StatusOK, map[string]any{"deleted": deleted})
+}
+
 func handleAPIAdminTMDBMissing(w http.ResponseWriter, r *http.Request) {
 	cards := store.GetTMDBMissingCards(r.Context())
 	if cards == nil {

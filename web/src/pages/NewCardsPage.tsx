@@ -34,12 +34,6 @@ function getVal(c: NewCard, key: FilterKey): string {
   return (c[key] as string) || '—'
 }
 
-interface RuntimeRange { min: string; max: string }
-
-function getRuntimeMin(c: NewCard): number {
-  return c.media_type === 'movie' ? c.runtime : c.episode_run_time
-}
-
 function fmtRuntime(c: NewCard): string {
   const min = c.media_type === 'movie' ? c.runtime : c.episode_run_time
   if (!min) return '—'
@@ -48,7 +42,13 @@ function fmtRuntime(c: NewCard): string {
   return m ? `${h}ч ${m}м` : `${h}ч`
 }
 
-// ── FilterHeader — outside parent to avoid remount on state change ──────────
+interface RuntimeRange { min: string; max: string }
+
+function getRuntimeMin(c: NewCard): number {
+  return c.media_type === 'movie' ? c.runtime : c.episode_run_time
+}
+
+// ── FilterHeader ──────────────────────────────────────────────────────────────
 
 interface FilterHeaderProps {
   col: typeof FILTER_COLS[number]
@@ -76,19 +76,15 @@ function FilterHeader({ col, active, openCol, values, onToggleOpen, onToggleValu
 
   return (
     <th style={{ position: 'relative', userSelect: 'none' }}>
-      <span
-        onClick={() => onToggleOpen(col.key)}
-        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
-          color: count > 0 ? '#4a90e2' : undefined }}
-      >
+      <span onClick={() => onToggleOpen(col.key)} style={{
+        cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
+        color: count > 0 ? '#4a90e2' : undefined,
+      }}>
         {col.label}
-        {count > 0 && (
-          <span style={{ fontSize: '0.75em', background: '#4a90e2', color: '#fff',
-            borderRadius: 8, padding: '0 5px', lineHeight: '1.6' }}>{count}</span>
-        )}
+        {count > 0 && <span style={{ fontSize: '0.75em', background: '#4a90e2', color: '#fff',
+          borderRadius: 8, padding: '0 5px', lineHeight: '1.6' }}>{count}</span>}
         <span style={{ fontSize: '0.7em', opacity: 0.6 }}>{isOpen ? '▲' : '▼'}</span>
       </span>
-
       {isOpen && (
         <div ref={ref} style={{
           position: 'absolute', top: '100%', left: 0, zIndex: 100,
@@ -102,9 +98,7 @@ function FilterHeader({ col, active, openCol, values, onToggleOpen, onToggleValu
               padding: '6px 12px', background: 'none', border: 'none',
               color: '#e05555', fontSize: '0.8rem', cursor: 'pointer',
               borderBottom: '1px solid #2a2a2a',
-            }}>
-              Сбросить
-            </button>
+            }}>Сбросить</button>
           )}
           {values.map(([val, cnt]) => {
             const checked = active?.has(val) ?? false
@@ -140,7 +134,7 @@ interface RuntimeFilterHeaderProps {
 
 function RuntimeFilterHeader({ range, isOpen, onToggleOpen, onChange, onClear }: RuntimeFilterHeaderProps) {
   const active = range.min !== '' || range.max !== ''
-  const ref = useRef<HTMLDivElement>(null)
+  const ref    = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -152,10 +146,15 @@ function RuntimeFilterHeader({ range, isOpen, onToggleOpen, onChange, onClear }:
   }, [isOpen, onToggleOpen])
 
   const label = active
-    ? range.min && range.max ? `${range.min}–${range.max} мин`
-    : range.min ? `>${range.min} мин`
-    : `<${range.max} мин`
+    ? range.min && range.max ? `${range.min}–${range.max}м`
+      : range.min ? `≥${range.min}м` : `≤${range.max}м`
     : 'Длит.'
+
+  const inputStyle: React.CSSProperties = {
+    flex: 1, background: '#111', border: '1px solid #444', borderRadius: 4,
+    color: '#fff', padding: '4px 8px', fontSize: '0.85rem', width: '100%',
+    outline: 'none', appearance: 'textfield' as const,
+  }
 
   return (
     <th style={{ position: 'relative', userSelect: 'none' }}>
@@ -166,35 +165,31 @@ function RuntimeFilterHeader({ range, isOpen, onToggleOpen, onChange, onClear }:
         {label}
         <span style={{ fontSize: '0.7em', opacity: 0.6 }}>{isOpen ? '▲' : '▼'}</span>
       </span>
-
       {isOpen && (
         <div ref={ref} style={{
           position: 'absolute', top: '100%', left: 0, zIndex: 100,
           background: '#1a1a1a', border: '1px solid #333', borderRadius: 6,
-          width: 200, boxShadow: '0 4px 16px rgba(0,0,0,.6)', padding: '10px 12px',
-          display: 'flex', flexDirection: 'column', gap: 8,
+          width: 170, boxShadow: '0 4px 16px rgba(0,0,0,.6)',
+          padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-            <span style={{ color: '#888', width: 24 }}>от</span>
-            <input type="number" min={0} placeholder="мин" value={range.min}
-              onChange={e => onChange({ ...range, min: e.target.value })}
-              style={{ flex: 1, background: '#111', border: '1px solid #333', borderRadius: 4,
-                color: '#fff', padding: '4px 8px', fontSize: '0.85rem' }} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-            <span style={{ color: '#888', width: 24 }}>до</span>
-            <input type="number" min={0} placeholder="мин" value={range.max}
-              onChange={e => onChange({ ...range, max: e.target.value })}
-              style={{ flex: 1, background: '#111', border: '1px solid #333', borderRadius: 4,
-                color: '#fff', padding: '4px 8px', fontSize: '0.85rem' }} />
-          </div>
+          {(['min', 'max'] as const).map(k => (
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: '#888', fontSize: '0.82rem', width: 20 }}>
+                {k === 'min' ? 'от' : 'до'}
+              </span>
+              <input
+                type="number" min={0} placeholder="мин"
+                value={range[k]}
+                onChange={e => onChange({ ...range, [k]: e.target.value })}
+                style={inputStyle}
+              />
+            </div>
+          ))}
           {active && (
             <button onClick={onClear} style={{
               background: 'none', border: '1px solid #e05555', borderRadius: 4,
               color: '#e05555', fontSize: '0.8rem', cursor: 'pointer', padding: '3px 0',
-            }}>
-              Сбросить
-            </button>
+            }}>Сбросить</button>
           )}
         </div>
       )}
@@ -206,12 +201,15 @@ function RuntimeFilterHeader({ range, isOpen, onToggleOpen, onChange, onClear }:
 
 export default function NewCardsPage() {
   const navigate = useNavigate()
-  const [cards, setCards]     = useState<NewCard[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filters, setFilters] = useState<Partial<Record<FilterKey, Set<string>>>>({})
-  const [openCol, setOpenCol] = useState<FilterKey | null>(null)
+  const [cards, setCards]       = useState<NewCard[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [filters, setFilters]   = useState<Partial<Record<FilterKey, Set<string>>>>({})
+  const [openCol, setOpenCol]   = useState<FilterKey | null>(null)
   const [runtimeRange, setRuntimeRange] = useState<RuntimeRange>({ min: '', max: '' })
-  const [runtimeOpen, setRuntimeOpen] = useState(false)
+  const [runtimeOpen, setRuntimeOpen]   = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
+  const [confirm, setConfirm]   = useState(false)
 
   useEffect(() => {
     fetch('/api/admin/cards-today')
@@ -223,8 +221,7 @@ export default function NewCardsPage() {
   const filtered = useMemo(() => cards.filter(c => {
     if (!FILTER_COLS.every(({ key }) => {
       const active = filters[key]
-      if (!active || active.size === 0) return true
-      return active.has(getVal(c, key))
+      return !active || active.size === 0 || active.has(getVal(c, key))
     })) return false
     const min = runtimeRange.min !== '' ? Number(runtimeRange.min) : null
     const max = runtimeRange.max !== '' ? Number(runtimeRange.max) : null
@@ -244,8 +241,7 @@ export default function NewCardsPage() {
       const entries = Array.from(vals.entries())
       if (key === 'year') {
         entries.sort(([a], [b]) => {
-          if (a === '—') return -1
-          if (b === '—') return 1
+          if (a === '—') return -1; if (b === '—') return 1
           return Number(b) - Number(a)
         })
       } else {
@@ -260,7 +256,6 @@ export default function NewCardsPage() {
     setOpenCol(prev => prev === key ? null : key)
     setRuntimeOpen(false)
   }
-
   function toggleValue(key: FilterKey, value: string) {
     setFilters(prev => {
       const set = new Set(prev[key] ?? [])
@@ -268,13 +263,45 @@ export default function NewCardsPage() {
       return { ...prev, [key]: set }
     })
   }
-
   function clearCol(key: FilterKey) {
     setFilters(prev => ({ ...prev, [key]: new Set() }))
   }
 
+  const filteredIds = useMemo(() => new Set(filtered.map(c => c.card_id)), [filtered])
+  const allFilteredSelected = filtered.length > 0 && filtered.every(c => selected.has(c.card_id))
+
+  function toggleSelectAll() {
+    if (allFilteredSelected) {
+      setSelected(prev => { const s = new Set(prev); filteredIds.forEach(id => s.delete(id)); return s })
+    } else {
+      setSelected(prev => new Set([...prev, ...filteredIds]))
+    }
+  }
+  function toggleSelect(id: string) {
+    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  }
+
+  async function deleteSelected() {
+    setDeleting(true)
+    setConfirm(false)
+    try {
+      const ids = [...selected].filter(id => cards.some(c => c.card_id === id))
+      await fetch('/api/admin/cards', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ card_ids: ids }),
+      })
+      setCards(prev => prev.filter(c => !selected.has(c.card_id)))
+      setSelected(new Set())
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const hasFilters = FILTER_COLS.some(c => (filters[c.key]?.size ?? 0) > 0) ||
     runtimeRange.min !== '' || runtimeRange.max !== ''
+
+  const selectedCount = [...selected].filter(id => cards.some(c => c.card_id === id)).length
 
   return (
     <Layout wide>
@@ -282,18 +309,39 @@ export default function NewCardsPage() {
         <div className={styles.header}>
           <h1 className={styles.title}>
             Добавлено сегодня
-            {hasFilters
-              ? ` (${filtered.length} / ${cards.length})`
-              : cards.length > 0 ? ` (${cards.length})` : ''}
+            {hasFilters ? ` (${filtered.length} / ${cards.length})` : cards.length > 0 ? ` (${cards.length})` : ''}
           </h1>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {selectedCount > 0 && !confirm && (
+              <button onClick={() => setConfirm(true)} style={{
+                padding: '4px 12px', borderRadius: 6, border: '1px solid #e05555',
+                background: 'none', color: '#e05555', fontSize: '0.82rem', cursor: 'pointer',
+              }}>
+                Удалить выбранные ({selectedCount})
+              </button>
+            )}
+            {confirm && (
+              <>
+                <span style={{ fontSize: '0.82rem', color: '#e05555' }}>
+                  Удалить {selectedCount} карточек?
+                </span>
+                <button onClick={deleteSelected} disabled={deleting} style={{
+                  padding: '4px 12px', borderRadius: 6, border: 'none',
+                  background: '#e05555', color: '#fff', fontSize: '0.82rem', cursor: 'pointer',
+                }}>
+                  {deleting ? 'Удаление…' : 'Да, удалить'}
+                </button>
+                <button onClick={() => setConfirm(false)} style={{
+                  padding: '4px 12px', borderRadius: 6, border: '1px solid #444',
+                  background: 'none', color: '#aaa', fontSize: '0.82rem', cursor: 'pointer',
+                }}>Отмена</button>
+              </>
+            )}
             {hasFilters && (
               <button onClick={() => { setFilters({}); setRuntimeRange({ min: '', max: '' }) }} style={{
-                padding: '4px 10px', borderRadius: 6, border: '1px solid #e05555',
-                background: 'none', color: '#e05555', fontSize: '0.8rem', cursor: 'pointer',
-              }}>
-                Сбросить всё
-              </button>
+                padding: '4px 10px', borderRadius: 6, border: '1px solid #555',
+                background: 'none', color: '#aaa', fontSize: '0.8rem', cursor: 'pointer',
+              }}>Сбросить фильтры</button>
             )}
             <Link to="/admin" className={styles.backLink}>Админ</Link>
           </div>
@@ -313,6 +361,10 @@ export default function NewCardsPage() {
           <table className={styles.table}>
             <thead>
               <tr>
+                <th style={{ width: 32 }}>
+                  <input type="checkbox" checked={allFilteredSelected}
+                    onChange={toggleSelectAll} style={{ accentColor: '#4a90e2', cursor: 'pointer' }} />
+                </th>
                 <th>Время</th>
                 <FilterHeader col={FILTER_COLS[0]} active={filters.media_type} openCol={openCol}
                   values={distinctValues.media_type ?? []} onToggleOpen={toggleOpen}
@@ -338,8 +390,16 @@ export default function NewCardsPage() {
             </thead>
             <tbody>
               {filtered.map(c => (
-                <tr key={c.card_id} className={styles.row}
+                <tr key={c.card_id}
+                  className={styles.row}
+                  style={selected.has(c.card_id) ? { background: 'rgba(74,144,226,0.08)' } : undefined}
                   onClick={() => navigate(`/card/${c.card_id}`, { state: { backUrl: '/admin/cards-today' } })}>
+                  <td onClick={e => { e.stopPropagation(); toggleSelect(c.card_id) }}
+                    style={{ textAlign: 'center' }}>
+                    <input type="checkbox" checked={selected.has(c.card_id)}
+                      onChange={() => toggleSelect(c.card_id)}
+                      style={{ accentColor: '#4a90e2', cursor: 'pointer' }} />
+                  </td>
                   <td data-label="Время"    className={styles.time}>{c.created_at}</td>
                   <td data-label="Тип"      className={styles.type}>{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
                   <td data-label="Название" className={styles.cardTitle}>{c.title}</td>
