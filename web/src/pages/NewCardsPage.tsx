@@ -342,7 +342,7 @@ export default function NewCardsPage() {
   const [torrentDateOpen, setTorrentDateOpen]   = useState(false)
   const [releaseDateRange, setReleaseDateRange] = useState({ from: '', to: '' })
   const [releaseDateOpen, setReleaseDateOpen]   = useState(false)
-  const [dateSort, setDateSort] = useState<{ key: 'latest_torrent_date' | 'release_date'; dir: 'asc' | 'desc' } | null>(null)
+  const [dateSort, setDateSort] = useState<{ key: 'latest_torrent_date' | 'release_date'; dir: 'asc' | 'desc' } | null>({ key: 'latest_torrent_date', dir: 'desc' })
   const [filterDrawer, setFilterDrawer] = useState(false)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
 
@@ -352,14 +352,21 @@ export default function NewCardsPage() {
     return () => window.removeEventListener('resize', handler)
   }, [])
 
-  // Lock body scroll when drawer is open
+  // Lock body scroll when drawer is open (same technique as Layout nav menu)
   useEffect(() => {
-    if (filterDrawer) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
+    if (!filterDrawer) return
+    const scrollY = window.scrollY
+    document.body.style.position = 'fixed'
+    document.body.style.top = `-${scrollY}px`
+    document.body.style.width = '100%'
+    document.body.style.overflowY = 'scroll'
+    return () => {
+      document.body.style.position = ''
+      document.body.style.top = ''
+      document.body.style.width = ''
+      document.body.style.overflowY = ''
+      window.scrollTo(0, scrollY)
     }
-    return () => { document.body.style.overflow = '' }
   }, [filterDrawer])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
@@ -597,7 +604,6 @@ export default function NewCardsPage() {
                   <input type="checkbox" checked={allFilteredSelected}
                     onChange={toggleSelectAll} style={{ accentColor: '#4a90e2', cursor: 'pointer' }} />
                 </th>
-                <th>Время</th>
                 <FilterHeader col={FILTER_COLS[0]} active={filters.media_type} openCol={openCol}
                   values={distinctValues.media_type ?? []} onToggleOpen={toggleOpen}
                   onToggleValue={toggleValue} onClear={clearCol} />
@@ -636,6 +642,7 @@ export default function NewCardsPage() {
                 <FilterHeader col={FILTER_COLS[3]} active={filters.trackers} openCol={openCol}
                   values={distinctValues.trackers ?? []} onToggleOpen={toggleOpen}
                   onToggleValue={toggleValue} onClear={clearCol} />
+                <th>Время</th>
                 <DateRangeFilterHeader label="Дата торрента"
                   range={torrentDateRange} isOpen={torrentDateOpen}
                   sortDir={dateSort?.key === 'latest_torrent_date' ? dateSort.dir : null}
@@ -665,7 +672,6 @@ export default function NewCardsPage() {
                         style={{ accentColor: '#4a90e2', cursor: 'pointer' }} />
                     </label>
                   </td>
-                  <td data-label="Время"    className={styles.time}>{c.created_at}</td>
                   <td data-label="Тип"      className={styles.type}>{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
                   <td data-label="Название" className={styles.cardTitle}>{c.title}</td>
                   <td data-label="Оригинал" className={styles.muted}>{c.original_title !== c.title ? c.original_title : '—'}</td>
@@ -676,6 +682,7 @@ export default function NewCardsPage() {
                   <td data-label="Длит."    className={styles.muted}>{fmtRuntime(c)}</td>
                   <td data-label="Язык"     className={styles.muted}>{c.language ? c.language.toUpperCase() : '—'}</td>
                   <td data-label="Трекер"   className={styles.muted}>{c.trackers || '—'}</td>
+                  <td data-label="Время"    className={styles.time}>{c.created_at}</td>
                   <td data-label="Дата торрента">
                     <EditableDate cardId={c.card_id} field="latest_torrent_date"
                       value={c.latest_torrent_date} onSaved={handleDateSaved} />
@@ -727,6 +734,7 @@ export default function NewCardsPage() {
             position: 'absolute', bottom: 0, left: 0, right: 0,
             background: '#1a1a1a', borderRadius: '12px 12px 0 0',
             padding: '16px 16px 32px', maxHeight: '80vh', overflowY: 'auto',
+            overflowX: 'hidden',
             display: 'flex', flexDirection: 'column', gap: 20,
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -738,9 +746,18 @@ export default function NewCardsPage() {
             {/* Поиск */}
             <div>
               <div style={{ fontSize: '0.82rem', color: '#888', marginBottom: 6 }}>Название</div>
-              <input placeholder="Поиск…" value={searchInput} onChange={e => handleSearch(e.target.value)}
-                style={{ width: '100%', background: '#111', border: '1px solid #444', borderRadius: 6,
-                  color: '#fff', padding: '8px 12px', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }} />
+              <div style={{ position: 'relative' }}>
+                <input placeholder="Поиск…" value={searchInput} onChange={e => handleSearch(e.target.value)}
+                  style={{ width: '100%', background: '#111', border: '1px solid #444', borderRadius: 6,
+                    color: '#fff', padding: '8px 36px 8px 12px', fontSize: '0.9rem', outline: 'none',
+                    boxSizing: 'border-box' }} />
+                {searchInput && (
+                  <button onClick={() => { setSearchInput(''); setSearchQuery('') }}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', color: '#888', cursor: 'pointer',
+                      fontSize: '1rem', padding: 0, lineHeight: 1 }}>✕</button>
+                )}
+              </div>
             </div>
 
             {/* Чекбокс-фильтры */}
@@ -769,15 +786,17 @@ export default function NewCardsPage() {
             <div>
               <div style={{ fontSize: '0.82rem', color: '#888', marginBottom: 6 }}>Длительность (мин)</div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input type="number" placeholder="от" value={runtimeRange.min}
-                  onChange={e => setRuntimeRange(r => ({ ...r, min: e.target.value }))}
-                  style={{ flex: 1, background: '#111', border: '1px solid #444', borderRadius: 6,
-                    color: '#fff', padding: '8px 10px', fontSize: '0.9rem', outline: 'none' }} />
-                <span style={{ color: '#666' }}>—</span>
-                <input type="number" placeholder="до" value={runtimeRange.max}
-                  onChange={e => setRuntimeRange(r => ({ ...r, max: e.target.value }))}
-                  style={{ flex: 1, background: '#111', border: '1px solid #444', borderRadius: 6,
-                    color: '#fff', padding: '8px 10px', fontSize: '0.9rem', outline: 'none' }} />
+                {(['min', 'max'] as const).map((k, i) => (
+                  <>
+                    {i === 1 && <span key="sep" style={{ color: '#666', flexShrink: 0 }}>—</span>}
+                    <input key={k} type="number" placeholder={k === 'min' ? 'от' : 'до'}
+                      value={runtimeRange[k]}
+                      onChange={e => setRuntimeRange(r => ({ ...r, [k]: e.target.value }))}
+                      style={{ flex: 1, minWidth: 0, background: '#111', border: '1px solid #444',
+                        borderRadius: 6, color: '#fff', padding: '8px 10px', fontSize: '0.9rem',
+                        outline: 'none', boxSizing: 'border-box' }} />
+                  </>
+                ))}
               </div>
             </div>
 
@@ -790,12 +809,14 @@ export default function NewCardsPage() {
                 <div style={{ fontSize: '0.82rem', color: '#888', marginBottom: 6 }}>{label}</div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input type="date" value={range.from} onChange={e => set(r => ({ ...r, from: e.target.value }))}
-                    style={{ flex: 1, background: '#111', border: '1px solid #444', borderRadius: 6,
-                      color: '#fff', padding: '6px 8px', fontSize: '0.85rem', outline: 'none' }} />
-                  <span style={{ color: '#666' }}>—</span>
+                    style={{ flex: 1, minWidth: 0, background: '#111', border: '1px solid #444',
+                      borderRadius: 6, color: '#fff', padding: '6px 8px', fontSize: '0.85rem',
+                      outline: 'none', boxSizing: 'border-box' }} />
+                  <span style={{ color: '#666', flexShrink: 0 }}>—</span>
                   <input type="date" value={range.to} onChange={e => set(r => ({ ...r, to: e.target.value }))}
-                    style={{ flex: 1, background: '#111', border: '1px solid #444', borderRadius: 6,
-                      color: '#fff', padding: '6px 8px', fontSize: '0.85rem', outline: 'none' }} />
+                    style={{ flex: 1, minWidth: 0, background: '#111', border: '1px solid #444',
+                      borderRadius: 6, color: '#fff', padding: '6px 8px', fontSize: '0.85rem',
+                      outline: 'none', boxSizing: 'border-box' }} />
                 </div>
               </div>
             ))}
