@@ -435,9 +435,11 @@ export default function AdminPage() {
                 <p className={styles.statLabel}>Устройств сегодня</p>
               </div>
             )}
-            <div className={styles.statCard}>
-              <p className={styles.statValue}>{stats.media_cards.toLocaleString()}</p>
-              <p className={styles.statLabel}>Медиакарточек</p>
+            <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+              <Link to="/admin/all-cards" className={styles.statLink}>
+                <p className={styles.statValue}>{stats.media_cards.toLocaleString()}</p>
+                <p className={styles.statLabel}>Медиакарточек</p>
+              </Link>
             </div>
             {stats.media_cards_today > 0 && (
               <div className={`${styles.statCard} ${styles.statCardClickable}`}>

@@ -477,6 +477,272 @@ func GetNewTodayCards(ctx context.Context) []NewTodayCard {
 	return out
 }
 
+// AllCardsParams holds server-side filter/sort/page params for GetAllCards.
+type AllCardsParams struct {
+	Page            int
+	PerPage         int
+	Search          string
+	MediaType       []string // display: "Фильм" / "Сериал"
+	Year            []string
+	Language        []string // display: uppercase e.g. "RU"; "—" means empty
+	Trackers        []string
+	RuntimeMin      *int
+	RuntimeMax      *int
+	TorrentDateFrom string
+	TorrentDateTo   string
+	ReleaseDateFrom string
+	ReleaseDateTo   string
+	SortBy          string
+	SortDir         string
+}
+
+// AllCardsResult is the paginated response for GetAllCards.
+type AllCardsResult struct {
+	Cards []NewTodayCard `json:"cards"`
+	Total int            `json:"total"`
+}
+
+// AllCardsDistinct holds distinct filter values for the all-cards page.
+type AllCardsDistinct struct {
+	MediaType [][]any `json:"media_type"`
+	Year      [][]any `json:"year"`
+	Language  [][]any `json:"language"`
+	Trackers  [][]any `json:"trackers"`
+}
+
+func GetAllCards(ctx context.Context, p AllCardsParams) AllCardsResult {
+	if p.PerPage <= 0 {
+		p.PerPage = 100
+	}
+	if p.Page <= 0 {
+		p.Page = 1
+	}
+	sortColMap := map[string]string{
+		"latest_torrent_date": "mc.latest_torrent_date",
+		"release_date":        "mc.release_date",
+		"created_at":          "mc.created_at",
+	}
+	sortCol := sortColMap[p.SortBy]
+	if sortCol == "" {
+		sortCol = "mc.latest_torrent_date"
+	}
+	if p.SortDir != "asc" {
+		p.SortDir = "desc"
+	}
+
+	var args []any
+	var conds []string
+	arg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+
+	if p.Search != "" {
+		ph := arg("%" + strings.ToLower(p.Search) + "%")
+		conds = append(conds, fmt.Sprintf("(LOWER(mc.title) LIKE %s OR LOWER(mc.original_title) LIKE %s)", ph, ph))
+	}
+
+	if len(p.MediaType) > 0 {
+		dbTypes := make([]string, 0, len(p.MediaType))
+		for _, t := range p.MediaType {
+			switch t {
+			case "Фильм":
+				dbTypes = append(dbTypes, "movie")
+			case "Сериал":
+				dbTypes = append(dbTypes, "tv")
+			}
+		}
+		if len(dbTypes) > 0 {
+			conds = append(conds, fmt.Sprintf("mc.media_type = ANY(%s)", arg(dbTypes)))
+		}
+	}
+
+	if len(p.Year) > 0 {
+		var parts []string
+		var nonDash []string
+		for _, y := range p.Year {
+			if y == "—" {
+				parts = append(parts, "COALESCE(mc.release_date::text, mc.first_air_date::text, '') = ''")
+			} else {
+				nonDash = append(nonDash, y)
+			}
+		}
+		if len(nonDash) > 0 {
+			parts = append(parts, fmt.Sprintf(
+				"LEFT(COALESCE(mc.release_date::text, mc.first_air_date::text, ''), 4) = ANY(%s)", arg(nonDash)))
+		}
+		if len(parts) > 0 {
+			conds = append(conds, "("+strings.Join(parts, " OR ")+")")
+		}
+	}
+
+	if len(p.Language) > 0 {
+		var parts []string
+		var langs []string
+		for _, l := range p.Language {
+			if l == "—" {
+				parts = append(parts, "COALESCE(mc.original_language, '') = ''")
+			} else {
+				langs = append(langs, strings.ToLower(l))
+			}
+		}
+		if len(langs) > 0 {
+			parts = append(parts, fmt.Sprintf("LOWER(COALESCE(mc.original_language, '')) = ANY(%s)", arg(langs)))
+		}
+		if len(parts) > 0 {
+			conds = append(conds, "("+strings.Join(parts, " OR ")+")")
+		}
+	}
+
+	if len(p.Trackers) > 0 {
+		conds = append(conds, fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM torrents t2 WHERE t2.card_id = mc.card_id AND t2.tracker = ANY(%s))", arg(p.Trackers)))
+	}
+
+	if p.RuntimeMin != nil {
+		conds = append(conds, fmt.Sprintf(
+			"CASE WHEN mc.media_type='movie' THEN COALESCE(mc.runtime,0) ELSE COALESCE(mc.episode_run_time,0) END >= %s", arg(*p.RuntimeMin)))
+	}
+	if p.RuntimeMax != nil {
+		conds = append(conds, fmt.Sprintf(
+			"CASE WHEN mc.media_type='movie' THEN COALESCE(mc.runtime,0) ELSE COALESCE(mc.episode_run_time,0) END <= %s", arg(*p.RuntimeMax)))
+	}
+
+	if p.TorrentDateFrom != "" {
+		conds = append(conds, fmt.Sprintf("mc.latest_torrent_date >= %s", arg(p.TorrentDateFrom)))
+	}
+	if p.TorrentDateTo != "" {
+		conds = append(conds, fmt.Sprintf("mc.latest_torrent_date <= %s", arg(p.TorrentDateTo)))
+	}
+	if p.ReleaseDateFrom != "" {
+		conds = append(conds, fmt.Sprintf("COALESCE(mc.release_date, mc.first_air_date) >= %s", arg(p.ReleaseDateFrom)))
+	}
+	if p.ReleaseDateTo != "" {
+		conds = append(conds, fmt.Sprintf("COALESCE(mc.release_date, mc.first_air_date) <= %s", arg(p.ReleaseDateTo)))
+	}
+
+	whereSQL := ""
+	if len(conds) > 0 {
+		whereSQL = "WHERE " + strings.Join(conds, " AND ")
+	}
+
+	var total int
+	postgres.Pool.QueryRow(ctx, //nolint:errcheck
+		fmt.Sprintf("SELECT COUNT(*) FROM media_cards mc %s", whereSQL), args...).Scan(&total)
+
+	if total == 0 {
+		return AllCardsResult{Cards: []NewTodayCard{}, Total: 0}
+	}
+
+	offset := (p.Page - 1) * p.PerPage
+	limitPh := arg(p.PerPage)
+	offsetPh := arg(offset)
+
+	mainSQL := fmt.Sprintf(`
+		SELECT mc.card_id, mc.tmdb_id, mc.media_type, mc.title, mc.original_title,
+		       COALESCE(LEFT(COALESCE(mc.release_date::text, mc.first_air_date::text, ''), 4), '') AS year,
+		       mc.vote_average, mc.vote_count, mc.created_at,
+		       COALESCE(STRING_AGG(DISTINCT t.tracker, ',' ORDER BY t.tracker), '') AS trackers,
+		       COALESCE(mc.original_language, '') AS language,
+		       COALESCE(mc.runtime, 0), COALESCE(mc.episode_run_time, 0),
+		       COALESCE(mc.best_video_quality, 0), COALESCE(mc.category, ''),
+		       COALESCE(mc.latest_torrent_date::text, ''),
+		       COALESCE(COALESCE(mc.release_date::text, mc.first_air_date::text), '')
+		FROM media_cards mc
+		LEFT JOIN torrents t ON t.card_id = mc.card_id
+		%s
+		GROUP BY mc.card_id, mc.tmdb_id, mc.media_type, mc.title, mc.original_title,
+		         mc.release_date, mc.first_air_date, mc.vote_average, mc.vote_count, mc.created_at,
+		         mc.original_language, mc.runtime, mc.episode_run_time, mc.best_video_quality,
+		         mc.category, mc.latest_torrent_date
+		ORDER BY %s %s NULLS LAST, mc.created_at DESC
+		LIMIT %s OFFSET %s`,
+		whereSQL, sortCol, p.SortDir, limitPh, offsetPh)
+
+	rows, err := postgres.Pool.Query(ctx, mainSQL, args...)
+	if err != nil {
+		return AllCardsResult{Cards: []NewTodayCard{}, Total: total}
+	}
+	defer rows.Close()
+
+	var out []NewTodayCard
+	for rows.Next() {
+		var c NewTodayCard
+		var createdAt time.Time
+		if rows.Scan(&c.CardID, &c.TmdbID, &c.MediaType, &c.Title, &c.OriginalTitle,
+			&c.Year, &c.VoteAverage, &c.VoteCount, &createdAt, &c.Trackers, &c.Language,
+			&c.Runtime, &c.EpisodeRunTime, &c.BestVideoQuality, &c.Category,
+			&c.LatestTorrentDate, &c.ReleaseDate) == nil {
+			c.CreatedAt = createdAt.Format("2006-01-02")
+			c.Categories = cardCategories(c)
+			out = append(out, c)
+		}
+	}
+	if out == nil {
+		out = []NewTodayCard{}
+	}
+	return AllCardsResult{Cards: out, Total: total}
+}
+
+func GetAllCardsDistinct(ctx context.Context) AllCardsDistinct {
+	var d AllCardsDistinct
+
+	if rows, err := postgres.Pool.Query(ctx, `
+		SELECT CASE WHEN media_type='movie' THEN 'Фильм' ELSE 'Сериал' END, COUNT(*)
+		FROM media_cards GROUP BY 1 ORDER BY 2 DESC`); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var v string; var cnt int
+			if rows.Scan(&v, &cnt) == nil {
+				d.MediaType = append(d.MediaType, []any{v, cnt})
+			}
+		}
+	}
+
+	if rows, err := postgres.Pool.Query(ctx, `
+		SELECT CASE WHEN COALESCE(LEFT(COALESCE(release_date::text, first_air_date::text,''),4),'')='' THEN '—'
+		            ELSE LEFT(COALESCE(release_date::text, first_air_date::text),4) END AS yr,
+		       COUNT(*) FROM media_cards GROUP BY 1 ORDER BY yr DESC NULLS LAST`); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var v string; var cnt int
+			if rows.Scan(&v, &cnt) == nil {
+				d.Year = append(d.Year, []any{v, cnt})
+			}
+		}
+	}
+
+	if rows, err := postgres.Pool.Query(ctx, `
+		SELECT CASE WHEN COALESCE(original_language,'')='' THEN '—' ELSE UPPER(original_language) END AS lang,
+		       COUNT(*) FROM media_cards GROUP BY 1 ORDER BY 2 DESC`); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var v string; var cnt int
+			if rows.Scan(&v, &cnt) == nil {
+				d.Language = append(d.Language, []any{v, cnt})
+			}
+		}
+	}
+
+	if rows, err := postgres.Pool.Query(ctx, `
+		SELECT tracker, COUNT(DISTINCT card_id) FROM torrents
+		WHERE tracker != '' GROUP BY tracker ORDER BY 2 DESC`); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var v string; var cnt int
+			if rows.Scan(&v, &cnt) == nil {
+				d.Trackers = append(d.Trackers, []any{v, cnt})
+			}
+		}
+	}
+
+	if d.MediaType == nil { d.MediaType = [][]any{} }
+	if d.Year == nil { d.Year = [][]any{} }
+	if d.Language == nil { d.Language = [][]any{} }
+	if d.Trackers == nil { d.Trackers = [][]any{} }
+	return d
+}
+
 // cardCategories returns human-readable category names a card belongs to.
 func cardCategories(c NewTodayCard) []string {
 	currentYear := time.Now().Year()

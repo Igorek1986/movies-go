@@ -187,8 +187,10 @@ func NewRouter(mode string) http.Handler {
 		r.Delete("/{cardID}", handleAPIAdminTMDBMissingDelete)
 	})
 
-	// ── Cards added today (admin, both modes) ────────────────────────────────────
+	// ── Cards (admin, both modes) ─────────────────────────────────────────────────
 	r.With(requireAnyAdmin(mode)).Get("/api/admin/cards-today", handleAPIAdminCardsToday)
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/all-cards", handleAPIAdminAllCards)
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/all-cards/meta", handleAPIAdminAllCardsMeta)
 	r.With(requireAnyAdmin(mode)).Delete("/api/admin/cards", handleAPIAdminDeleteCards)
 	r.With(requireAnyAdmin(mode)).Patch("/api/admin/cards/{card_id}/dates", handleAPIAdminPatchCardDates)
 

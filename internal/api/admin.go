@@ -726,6 +726,44 @@ func handleAPIAdminCardsToday(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, store.GetNewTodayCards(r.Context()))
 }
 
+func handleAPIAdminAllCards(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	p := store.AllCardsParams{
+		Search:          q.Get("search"),
+		SortBy:          q.Get("sort_by"),
+		SortDir:         q.Get("sort_dir"),
+		MediaType:       q["media_type"],
+		Year:            q["year"],
+		Language:        q["language"],
+		Trackers:        q["trackers"],
+		TorrentDateFrom: q.Get("torrent_date_from"),
+		TorrentDateTo:   q.Get("torrent_date_to"),
+		ReleaseDateFrom: q.Get("release_date_from"),
+		ReleaseDateTo:   q.Get("release_date_to"),
+	}
+	if v, err := strconv.Atoi(q.Get("page")); err == nil && v > 0 {
+		p.Page = v
+	}
+	if v, err := strconv.Atoi(q.Get("per_page")); err == nil && v > 0 {
+		p.PerPage = v
+	}
+	if s := q.Get("runtime_min"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil {
+			p.RuntimeMin = &v
+		}
+	}
+	if s := q.Get("runtime_max"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil {
+			p.RuntimeMax = &v
+		}
+	}
+	JSON(w, http.StatusOK, store.GetAllCards(r.Context(), p))
+}
+
+func handleAPIAdminAllCardsMeta(w http.ResponseWriter, r *http.Request) {
+	JSON(w, http.StatusOK, store.GetAllCardsDistinct(r.Context()))
+}
+
 func handleAPIAdminPatchCardDates(w http.ResponseWriter, r *http.Request) {
 	cardID := chi.URLParam(r, "card_id")
 	var body struct {
