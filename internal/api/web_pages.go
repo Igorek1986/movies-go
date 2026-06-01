@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"movies-api/db/store"
 	"movies-api/internal/auth"
 	botpkg "movies-api/internal/bot"
@@ -305,24 +306,25 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
-	order := []string{
-		"movies_ru_new", "movies_new", "tv_shows", "tv_shows_ru",
-		"genre_comedy", "genre_action", "genre_thriller", "genre_crime",
-		"genre_horror", "genre_romance", "genre_adventure", "genre_scifi",
-		"genre_fantasy", "genre_detective", "genre_history", "genre_war",
-		"genre_documentary", "genre_western", "genre_random",
-		"movies_4k_new", "legends_id", "movies_4k", "movies", "movies_ru",
-		"cartoon_movies", "cartoon_series", "anime",
-	}
-	result := make([]cat, 0, len(order)+20)
-	if getPopularSourceURL(r.Context()) != "" || store.HasPopularData(r.Context(), 30) {
-		result = append(result, cat{ID: "np_popular", Name: "Популярное"})
-	}
-	for _, id := range order {
-		result = append(result, cat{ID: id, Name: categoryDisplayName(id)})
+	// Build genre pool + actor categories, shuffle together
+	genres := []cat{
+		{ID: "genre_comedy", Name: categoryDisplayName("genre_comedy")},
+		{ID: "genre_action", Name: categoryDisplayName("genre_action")},
+		{ID: "genre_thriller", Name: categoryDisplayName("genre_thriller")},
+		{ID: "genre_crime", Name: categoryDisplayName("genre_crime")},
+		{ID: "genre_horror", Name: categoryDisplayName("genre_horror")},
+		{ID: "genre_romance", Name: categoryDisplayName("genre_romance")},
+		{ID: "genre_adventure", Name: categoryDisplayName("genre_adventure")},
+		{ID: "genre_scifi", Name: categoryDisplayName("genre_scifi")},
+		{ID: "genre_fantasy", Name: categoryDisplayName("genre_fantasy")},
+		{ID: "genre_detective", Name: categoryDisplayName("genre_detective")},
+		{ID: "genre_history", Name: categoryDisplayName("genre_history")},
+		{ID: "genre_war", Name: categoryDisplayName("genre_war")},
+		{ID: "genre_documentary", Name: categoryDisplayName("genre_documentary")},
+		{ID: "genre_western", Name: categoryDisplayName("genre_western")},
+		{ID: "genre_random", Name: categoryDisplayName("genre_random")},
 	}
 
-	// Actor collections
 	actorCount := store.GetSettingInt(r.Context(), "catalog_actor_count")
 	actorRuCount := store.GetSettingInt(r.Context(), "catalog_actor_ru_count")
 	seen := map[int64]bool{}
@@ -330,7 +332,7 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 		pool := store.GetPopularActors(r.Context(), actorCount, false)
 		for _, a := range store.PickRandomActors(pool, actorCount) {
 			seen[a.PersonID] = true
-			result = append(result, cat{
+			genres = append(genres, cat{
 				ID:   fmt.Sprintf("actor_%d", a.PersonID),
 				Name: "С участием " + genitiveRuName(a.PersonName),
 			})
@@ -342,11 +344,36 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 			if seen[a.PersonID] {
 				continue
 			}
-			result = append(result, cat{
+			genres = append(genres, cat{
 				ID:   fmt.Sprintf("actor_%d", a.PersonID),
 				Name: "С участием " + genitiveRuName(a.PersonName),
 			})
 		}
+	}
+
+	// Shuffle genres + actors together
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := len(genres) - 1; i > 0; i-- {
+		j := rng.Intn(i + 1)
+		genres[i], genres[j] = genres[j], genres[i]
+	}
+
+	pre := []string{"movies_ru_new", "movies_new", "tv_shows", "tv_shows_ru"}
+	post := []string{
+		"movies_4k_new", "legends_id", "movies_4k", "movies", "movies_ru",
+		"cartoon_movies", "cartoon_series", "anime",
+	}
+
+	result := make([]cat, 0, len(pre)+len(genres)+len(post)+20)
+	if getPopularSourceURL(r.Context()) != "" || store.HasPopularData(r.Context(), 30) {
+		result = append(result, cat{ID: "np_popular", Name: "Популярное"})
+	}
+	for _, id := range pre {
+		result = append(result, cat{ID: id, Name: categoryDisplayName(id)})
+	}
+	result = append(result, genres...)
+	for _, id := range post {
+		result = append(result, cat{ID: id, Name: categoryDisplayName(id)})
 	}
 
 	currentYear := time.Now().Year()
