@@ -343,6 +343,14 @@ export default function NewCardsPage() {
   const [releaseDateRange, setReleaseDateRange] = useState({ from: '', to: '' })
   const [releaseDateOpen, setReleaseDateOpen]   = useState(false)
   const [dateSort, setDateSort] = useState<{ key: 'latest_torrent_date' | 'release_date'; dir: 'asc' | 'desc' } | null>(null)
+  const [filterDrawer, setFilterDrawer] = useState(false)
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [confirm, setConfirm]   = useState(false)
@@ -485,6 +493,16 @@ export default function NewCardsPage() {
     torrentDateRange.from !== '' || torrentDateRange.to !== '' ||
     releaseDateRange.from !== '' || releaseDateRange.to !== ''
 
+  const activeFilterCount = FILTER_COLS.reduce((n, c) => n + (filters[c.key]?.size ?? 0), 0) +
+    (runtimeRange.min !== '' || runtimeRange.max !== '' ? 1 : 0) +
+    (torrentDateRange.from !== '' || torrentDateRange.to !== '' ? 1 : 0) +
+    (releaseDateRange.from !== '' || releaseDateRange.to !== '' ? 1 : 0)
+
+  function resetAll() {
+    setFilters({}); setRuntimeRange({ min: '', max: '' }); setSearchInput(''); setSearchQuery('')
+    setTorrentDateRange({ from: '', to: '' }); setReleaseDateRange({ from: '', to: '' })
+  }
+
   const selectedCount = [...selected].filter(id => cards.some(c => c.card_id === id)).length
 
   return (
@@ -522,10 +540,30 @@ export default function NewCardsPage() {
               </>
             )}
             {hasFilters && (
-              <button onClick={() => { setFilters({}); setRuntimeRange({ min: '', max: '' }); setSearchInput(''); setSearchQuery(''); setTorrentDateRange({ from: '', to: '' }); setReleaseDateRange({ from: '', to: '' }) }} style={{
+              <button onClick={resetAll} style={{
                 padding: '4px 10px', borderRadius: 6, border: '1px solid #555',
                 background: 'none', color: '#aaa', fontSize: '0.8rem', cursor: 'pointer',
               }}>Сбросить фильтры</button>
+            )}
+            {isMobile && (
+              <button onClick={() => setFilterDrawer(true)} style={{
+                padding: '4px 10px', borderRadius: 6, border: '1px solid #555',
+                background: activeFilterCount > 0 ? 'rgba(74,144,226,0.15)' : 'none',
+                borderColor: activeFilterCount > 0 ? '#4a90e2' : '#555',
+                color: activeFilterCount > 0 ? '#7ab4f5' : '#aaa', fontSize: '0.8rem', cursor: 'pointer',
+              }}>
+                Фильтры{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+              </button>
+            )}
+            {isMobile && sorted.length > 0 && (
+              <button onClick={toggleSelectAll} style={{
+                padding: '4px 10px', borderRadius: 6, border: '1px solid #555',
+                background: allFilteredSelected ? 'rgba(74,144,226,0.15)' : 'none',
+                borderColor: allFilteredSelected ? '#4a90e2' : '#555',
+                color: allFilteredSelected ? '#7ab4f5' : '#aaa', fontSize: '0.8rem', cursor: 'pointer',
+              }}>
+                {allFilteredSelected ? 'Снять выбор' : `Выбрать все (${sorted.length})`}
+              </button>
             )}
             <Link to="/admin" className={styles.backLink}>Админ</Link>
           </div>
@@ -669,6 +707,104 @@ export default function NewCardsPage() {
           </div>
         )}
       </div>
+
+      {/* ── Mobile filter drawer ── */}
+      {filterDrawer && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
+          <div onClick={() => setFilterDrawer(false)}
+            style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            background: '#1a1a1a', borderRadius: '12px 12px 0 0',
+            padding: '16px 16px 32px', maxHeight: '80vh', overflowY: 'auto',
+            display: 'flex', flexDirection: 'column', gap: 20,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, fontSize: '1rem' }}>Фильтры</span>
+              <button onClick={() => setFilterDrawer(false)}
+                style={{ background: 'none', border: 'none', color: '#aaa', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+            </div>
+
+            {/* Поиск */}
+            <div>
+              <div style={{ fontSize: '0.82rem', color: '#888', marginBottom: 6 }}>Название</div>
+              <input placeholder="Поиск…" value={searchInput} onChange={e => handleSearch(e.target.value)}
+                style={{ width: '100%', background: '#111', border: '1px solid #444', borderRadius: 6,
+                  color: '#fff', padding: '8px 12px', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+
+            {/* Чекбокс-фильтры */}
+            {FILTER_COLS.map(col => (
+              <div key={col.key}>
+                <div style={{ fontSize: '0.82rem', color: '#888', marginBottom: 6 }}>{col.label}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(distinctValues[col.key] ?? []).map(([val, cnt]) => {
+                    const checked = filters[col.key]?.has(val) ?? false
+                    return (
+                      <button key={val} onClick={() => toggleValue(col.key, val)} style={{
+                        padding: '4px 10px', borderRadius: 20, border: '1px solid',
+                        borderColor: checked ? '#4a90e2' : '#444',
+                        background: checked ? 'rgba(74,144,226,0.2)' : 'none',
+                        color: checked ? '#7ab4f5' : '#ccc', fontSize: '0.82rem', cursor: 'pointer',
+                      }}>
+                        {val} <span style={{ opacity: 0.6, fontSize: '0.75em' }}>{cnt}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* Runtime */}
+            <div>
+              <div style={{ fontSize: '0.82rem', color: '#888', marginBottom: 6 }}>Длительность (мин)</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input type="number" placeholder="от" value={runtimeRange.min}
+                  onChange={e => setRuntimeRange(r => ({ ...r, min: e.target.value }))}
+                  style={{ flex: 1, background: '#111', border: '1px solid #444', borderRadius: 6,
+                    color: '#fff', padding: '8px 10px', fontSize: '0.9rem', outline: 'none' }} />
+                <span style={{ color: '#666' }}>—</span>
+                <input type="number" placeholder="до" value={runtimeRange.max}
+                  onChange={e => setRuntimeRange(r => ({ ...r, max: e.target.value }))}
+                  style={{ flex: 1, background: '#111', border: '1px solid #444', borderRadius: 6,
+                    color: '#fff', padding: '8px 10px', fontSize: '0.9rem', outline: 'none' }} />
+              </div>
+            </div>
+
+            {/* Date ranges */}
+            {([
+              { label: 'Дата торрента', range: torrentDateRange, set: setTorrentDateRange },
+              { label: 'Дата релиза',   range: releaseDateRange, set: setReleaseDateRange },
+            ] as const).map(({ label, range, set }) => (
+              <div key={label}>
+                <div style={{ fontSize: '0.82rem', color: '#888', marginBottom: 6 }}>{label}</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type="date" value={range.from} onChange={e => set(r => ({ ...r, from: e.target.value }))}
+                    style={{ flex: 1, background: '#111', border: '1px solid #444', borderRadius: 6,
+                      color: '#fff', padding: '6px 8px', fontSize: '0.85rem', outline: 'none' }} />
+                  <span style={{ color: '#666' }}>—</span>
+                  <input type="date" value={range.to} onChange={e => set(r => ({ ...r, to: e.target.value }))}
+                    style={{ flex: 1, background: '#111', border: '1px solid #444', borderRadius: 6,
+                      color: '#fff', padding: '6px 8px', fontSize: '0.85rem', outline: 'none' }} />
+                </div>
+              </div>
+            ))}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              {hasFilters && (
+                <button onClick={() => { resetAll(); setFilterDrawer(false) }} style={{
+                  flex: 1, padding: '10px', borderRadius: 8, border: '1px solid #555',
+                  background: 'none', color: '#aaa', fontSize: '0.9rem', cursor: 'pointer',
+                }}>Сбросить</button>
+              )}
+              <button onClick={() => setFilterDrawer(false)} style={{
+                flex: 1, padding: '10px', borderRadius: 8, border: 'none',
+                background: '#4a90e2', color: '#fff', fontSize: '0.9rem', cursor: 'pointer',
+              }}>Применить</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }
