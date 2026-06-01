@@ -168,6 +168,7 @@ export default function PersonsAdminPage() {
                     <td data-label="Каталог" onClick={e => e.stopPropagation()}>
                       <Link
                         to={`/catalog?cat=${catPrefix}_${p.person_id}`}
+                        state={{ catName: (isDirectors ? 'Режиссёр: ' : 'В ролях: ') + p.person_name }}
                         style={{ fontSize: '0.8rem', color: '#4a90e2' }}
                       >
                         Открыть →

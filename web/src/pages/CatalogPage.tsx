@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
 import { scrollV, getGridCols } from '@/utils/scrollNav'
@@ -606,6 +606,7 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
 
 export default function CatalogPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [categories, setCategories] = useState<Category[]>(() => applyRowOrder(_cache.categories))
   const [hasCustomOrder, setHasCustomOrder] = useState(() => !!localStorage.getItem(LS_ROW_ORDER))
   const [expandedCategory, setExpandedCategory] = useState<string | null>(() => {
@@ -619,7 +620,6 @@ export default function CatalogPage() {
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchHasMore, setSearchHasMore] = useState(false)
   const searchSentinelRef = useRef<HTMLDivElement>(null)
-  const [syntheticCatName, setSyntheticCatName] = useState<string | null>(null)
   const searchPageRef = useRef(1)
 
   const [devices, setDevices] = useState<Device[]>([])
@@ -1009,28 +1009,10 @@ export default function CatalogPage() {
     return () => window.removeEventListener('catalog:back', onCatalogBack)
   }, [expandedCategory]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const foundInList = categories.find(c => c.id === expandedCategory) ?? null
-  const isSyntheticPerson = !foundInList && !!expandedCategory &&
-    (expandedCategory.startsWith('actor_') || expandedCategory.startsWith('director_'))
-
-  useEffect(() => {
-    if (!isSyntheticPerson || !expandedCategory) return
-    setSyntheticCatName(null)
-    const personId = expandedCategory.replace(/^(actor|director)_/, '')
-    fetch(`/api/actor/${personId}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d?.name) {
-          const prefix = expandedCategory.startsWith('director_') ? 'Режиссёр: ' : 'В ролях: '
-          setSyntheticCatName(prefix + d.name)
-        }
-      })
-      .catch(() => {})
-  }, [expandedCategory, isSyntheticPerson])
-
-  const expandedCat = foundInList ?? (
-    isSyntheticPerson
-      ? { id: expandedCategory!, name: syntheticCatName ?? expandedCategory! }
+  const stateName = (location.state as { catName?: string } | null)?.catName ?? null
+  const expandedCat = categories.find(c => c.id === expandedCategory) ?? (
+    expandedCategory && (expandedCategory.startsWith('actor_') || expandedCategory.startsWith('director_'))
+      ? { id: expandedCategory, name: stateName ?? expandedCategory }
       : null
   )
 
