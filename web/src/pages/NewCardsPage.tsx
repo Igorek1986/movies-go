@@ -34,6 +34,12 @@ function getVal(c: NewCard, key: FilterKey): string {
   return (c[key] as string) || '—'
 }
 
+interface RuntimeRange { min: string; max: string }
+
+function getRuntimeMin(c: NewCard): number {
+  return c.media_type === 'movie' ? c.runtime : c.episode_run_time
+}
+
 function fmtRuntime(c: NewCard): string {
   const min = c.media_type === 'movie' ? c.runtime : c.episode_run_time
   if (!min) return '—'
@@ -122,6 +128,80 @@ function FilterHeader({ col, active, openCol, values, onToggleOpen, onToggleValu
   )
 }
 
+// ── RuntimeFilterHeader ───────────────────────────────────────────────────────
+
+interface RuntimeFilterHeaderProps {
+  range: RuntimeRange
+  isOpen: boolean
+  onToggleOpen: () => void
+  onChange: (r: RuntimeRange) => void
+  onClear: () => void
+}
+
+function RuntimeFilterHeader({ range, isOpen, onToggleOpen, onChange, onClear }: RuntimeFilterHeaderProps) {
+  const active = range.min !== '' || range.max !== ''
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onToggleOpen()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [isOpen, onToggleOpen])
+
+  const label = active
+    ? range.min && range.max ? `${range.min}–${range.max} мин`
+    : range.min ? `>${range.min} мин`
+    : `<${range.max} мин`
+    : 'Длит.'
+
+  return (
+    <th style={{ position: 'relative', userSelect: 'none' }}>
+      <span onClick={onToggleOpen} style={{
+        cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
+        color: active ? '#4a90e2' : undefined, whiteSpace: 'nowrap',
+      }}>
+        {label}
+        <span style={{ fontSize: '0.7em', opacity: 0.6 }}>{isOpen ? '▲' : '▼'}</span>
+      </span>
+
+      {isOpen && (
+        <div ref={ref} style={{
+          position: 'absolute', top: '100%', left: 0, zIndex: 100,
+          background: '#1a1a1a', border: '1px solid #333', borderRadius: 6,
+          width: 200, boxShadow: '0 4px 16px rgba(0,0,0,.6)', padding: '10px 12px',
+          display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
+            <span style={{ color: '#888', width: 24 }}>от</span>
+            <input type="number" min={0} placeholder="мин" value={range.min}
+              onChange={e => onChange({ ...range, min: e.target.value })}
+              style={{ flex: 1, background: '#111', border: '1px solid #333', borderRadius: 4,
+                color: '#fff', padding: '4px 8px', fontSize: '0.85rem' }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
+            <span style={{ color: '#888', width: 24 }}>до</span>
+            <input type="number" min={0} placeholder="мин" value={range.max}
+              onChange={e => onChange({ ...range, max: e.target.value })}
+              style={{ flex: 1, background: '#111', border: '1px solid #333', borderRadius: 4,
+                color: '#fff', padding: '4px 8px', fontSize: '0.85rem' }} />
+          </div>
+          {active && (
+            <button onClick={onClear} style={{
+              background: 'none', border: '1px solid #e05555', borderRadius: 4,
+              color: '#e05555', fontSize: '0.8rem', cursor: 'pointer', padding: '3px 0',
+            }}>
+              Сбросить
+            </button>
+          )}
+        </div>
+      )}
+    </th>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function NewCardsPage() {
@@ -130,6 +210,8 @@ export default function NewCardsPage() {
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<Partial<Record<FilterKey, Set<string>>>>({})
   const [openCol, setOpenCol] = useState<FilterKey | null>(null)
+  const [runtimeRange, setRuntimeRange] = useState<RuntimeRange>({ min: '', max: '' })
+  const [runtimeOpen, setRuntimeOpen] = useState(false)
 
   useEffect(() => {
     fetch('/api/admin/cards-today')
@@ -138,13 +220,21 @@ export default function NewCardsPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const filtered = useMemo(() => cards.filter(c =>
-    FILTER_COLS.every(({ key }) => {
+  const filtered = useMemo(() => cards.filter(c => {
+    if (!FILTER_COLS.every(({ key }) => {
       const active = filters[key]
       if (!active || active.size === 0) return true
       return active.has(getVal(c, key))
-    })
-  ), [cards, filters])
+    })) return false
+    const min = runtimeRange.min !== '' ? Number(runtimeRange.min) : null
+    const max = runtimeRange.max !== '' ? Number(runtimeRange.max) : null
+    if (min !== null || max !== null) {
+      const rt = getRuntimeMin(c)
+      if (min !== null && rt < min) return false
+      if (max !== null && rt > max) return false
+    }
+    return true
+  }), [cards, filters, runtimeRange])
 
   const distinctValues = useMemo(() => {
     const result: Partial<Record<FilterKey, [string, number][]>> = {}
@@ -168,6 +258,7 @@ export default function NewCardsPage() {
 
   function toggleOpen(key: FilterKey) {
     setOpenCol(prev => prev === key ? null : key)
+    setRuntimeOpen(false)
   }
 
   function toggleValue(key: FilterKey, value: string) {
@@ -182,7 +273,8 @@ export default function NewCardsPage() {
     setFilters(prev => ({ ...prev, [key]: new Set() }))
   }
 
-  const hasFilters = FILTER_COLS.some(c => (filters[c.key]?.size ?? 0) > 0)
+  const hasFilters = FILTER_COLS.some(c => (filters[c.key]?.size ?? 0) > 0) ||
+    runtimeRange.min !== '' || runtimeRange.max !== ''
 
   return (
     <Layout wide>
@@ -196,7 +288,7 @@ export default function NewCardsPage() {
           </h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {hasFilters && (
-              <button onClick={() => setFilters({})} style={{
+              <button onClick={() => { setFilters({}); setRuntimeRange({ min: '', max: '' }) }} style={{
                 padding: '4px 10px', borderRadius: 6, border: '1px solid #e05555',
                 background: 'none', color: '#e05555', fontSize: '0.8rem', cursor: 'pointer',
               }}>
@@ -231,7 +323,11 @@ export default function NewCardsPage() {
                   values={distinctValues.year ?? []} onToggleOpen={toggleOpen}
                   onToggleValue={toggleValue} onClear={clearCol} />
                 <th>Рейтинг</th>
-                <th>Длит.</th>
+                <RuntimeFilterHeader
+                  range={runtimeRange} isOpen={runtimeOpen}
+                  onToggleOpen={() => { setRuntimeOpen(o => !o); setOpenCol(null) }}
+                  onChange={setRuntimeRange}
+                  onClear={() => setRuntimeRange({ min: '', max: '' })} />
                 <FilterHeader col={FILTER_COLS[2]} active={filters.language} openCol={openCol}
                   values={distinctValues.language ?? []} onToggleOpen={toggleOpen}
                   onToggleValue={toggleValue} onClear={clearCol} />
