@@ -129,6 +129,8 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Post("/admin/backfill-cast", handleAPIAdminBackfillCast)
 			r.With(requireAdmin).Post("/admin/backfill-cast/stop", handleAPIAdminBackfillCastStop)
 			r.With(requireAdmin).Get("/admin/backfill-cast/status", handleAPIAdminBackfillCastStatus)
+			r.With(requireAdmin).Get("/admin/actors", handleAPIAdminActorList)
+			r.With(requireAdmin).Get("/admin/directors", handleAPIAdminDirectorList)
 			r.With(requireAdmin).Post("/admin/restart", handleAPIAdminRestart)
 			r.With(requireAdmin).Get("/admin/bot/status", handleAPIAdminBotStatus)
 			r.With(requireAdmin).Post("/admin/bot/restart", handleAPIAdminBotRestart)

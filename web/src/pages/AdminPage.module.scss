@@ -373,6 +373,19 @@
   &:hover .statValue { opacity: 0.8; }
 }
 
+.statCardClickable {
+  border-bottom: 2px solid $color-primary;
+  cursor: pointer;
+  transition: box-shadow $transition-fast, transform $transition-fast;
+  &:hover { box-shadow: 0 4px 16px rgba($color-primary, 0.18); transform: translateY(-1px); }
+  .statArrow {
+    font-size: $font-size-xs;
+    color: $color-primary;
+    margin-top: 4px;
+    opacity: 0.8;
+  }
+}
+
 // ── System stats bar ──────────────────────────────────────────────────────────
 
 .sysBar {

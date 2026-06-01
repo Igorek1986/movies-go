@@ -90,6 +90,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	var users, usersToday, devices, devicesToday, cards, cardsToday, timecodes, timecodesToday int
 	var noRuntimeMovies, noRuntimeTV int
 	var tmdbRefreshedToday, tmdbNotFound int
+	var actorCount, directorCount int
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&users)                                                    //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE created_at::date = CURRENT_DATE`).Scan(&usersToday)         //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&devices)                                                //nolint:errcheck
@@ -102,6 +103,8 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='tv' AND (episode_run_time IS NULL OR episode_run_time=0)`).Scan(&noRuntimeTV)    //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_updated_at::date = CURRENT_DATE AND tmdb_not_found_at IS NULL`).Scan(&tmdbRefreshedToday) //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_not_found_at IS NOT NULL`).Scan(&tmdbNotFound)                                            //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_cast`).Scan(&actorCount)     //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_crew WHERE job='Director'`).Scan(&directorCount) //nolint:errcheck
 
 	type newUser struct {
 		Username  string `json:"username"`
@@ -173,6 +176,8 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"myshows_total":          myshowsTotal,
 		"tmdb_refreshed_today": tmdbRefreshedToday,
 		"tmdb_not_found":       tmdbNotFound,
+		"actor_count":          actorCount,
+		"director_count":       directorCount,
 	})
 }
 
@@ -772,6 +777,66 @@ func handleAPIAdminFixRuntimeStop(w http.ResponseWriter, r *http.Request) {
 
 func handleAPIAdminFixRuntimeStatus(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, tasks.GetFixRuntimeStatus())
+}
+
+type personListItem struct {
+	PersonID    int64  `json:"person_id"`
+	PersonName  string `json:"person_name"`
+	ProfilePath string `json:"profile_path"`
+	CardCount   int    `json:"card_count"`
+}
+
+func handleAPIAdminActorList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT person_id, person_name, COALESCE(profile_path,''), COUNT(DISTINCT card_id) as cnt
+		FROM media_card_cast
+		GROUP BY person_id, person_name, profile_path
+		ORDER BY cnt DESC, MAX(popularity) DESC
+		LIMIT 200`)
+	if err != nil {
+		JSON(w, http.StatusOK, []any{})
+		return
+	}
+	defer rows.Close()
+	var list []personListItem
+	for rows.Next() {
+		var p personListItem
+		if rows.Scan(&p.PersonID, &p.PersonName, &p.ProfilePath, &p.CardCount) == nil {
+			list = append(list, p)
+		}
+	}
+	if list == nil {
+		list = []personListItem{}
+	}
+	JSON(w, http.StatusOK, list)
+}
+
+func handleAPIAdminDirectorList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT person_id, person_name, COALESCE(profile_path,''), COUNT(DISTINCT card_id) as cnt
+		FROM media_card_crew
+		WHERE job = 'Director'
+		GROUP BY person_id, person_name, profile_path
+		ORDER BY cnt DESC, MAX(popularity) DESC
+		LIMIT 200`)
+	if err != nil {
+		JSON(w, http.StatusOK, []any{})
+		return
+	}
+	defer rows.Close()
+	var list []personListItem
+	for rows.Next() {
+		var p personListItem
+		if rows.Scan(&p.PersonID, &p.PersonName, &p.ProfilePath, &p.CardCount) == nil {
+			list = append(list, p)
+		}
+	}
+	if list == nil {
+		list = []personListItem{}
+	}
+	JSON(w, http.StatusOK, list)
 }
 
 func handleAPIAdminBackfillCast(w http.ResponseWriter, r *http.Request) {

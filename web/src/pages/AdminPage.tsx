@@ -28,6 +28,8 @@ interface Stats {
   no_runtime_tv: number
   tmdb_refreshed_today: number
   tmdb_not_found: number
+  actor_count: number
+  director_count: number
 }
 
 interface SystemStats {
@@ -438,10 +440,11 @@ export default function AdminPage() {
               <p className={styles.statLabel}>Медиакарточек</p>
             </div>
             {stats.media_cards_today > 0 && (
-              <div className={styles.statCard}>
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
                 <Link to="/admin/cards-today" className={styles.statLink}>
                   <p className={styles.statValue}>+{stats.media_cards_today.toLocaleString()}</p>
                   <p className={styles.statLabel}>Карточек сегодня</p>
+                  <p className={styles.statArrow}>Смотреть →</p>
                 </Link>
               </div>
             )}
@@ -474,10 +477,29 @@ export default function AdminPage() {
               </div>
             )}
             {stats.tmdb_not_found > 0 && (
-              <div className={styles.statCard}>
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
                 <Link to="/admin/tmdb-missing" className={styles.statLink}>
                   <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.tmdb_not_found.toLocaleString()}</p>
                   <p className={styles.statLabel}>Не найдено в TMDB</p>
+                  <p className={styles.statArrow}>Смотреть →</p>
+                </Link>
+              </div>
+            )}
+            {stats.actor_count > 0 && (
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/actors" className={styles.statLink}>
+                  <p className={styles.statValue}>{stats.actor_count.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Актёров</p>
+                  <p className={styles.statArrow}>Смотреть →</p>
+                </Link>
+              </div>
+            )}
+            {stats.director_count > 0 && (
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/directors" className={styles.statLink}>
+                  <p className={styles.statValue}>{stats.director_count.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Режиссёров</p>
+                  <p className={styles.statArrow}>Смотреть →</p>
                 </Link>
               </div>
             )}

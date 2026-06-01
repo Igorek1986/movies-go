@@ -33,6 +33,7 @@ import LogsPage from '@/pages/LogsPage'
 import BotPage from '@/pages/BotPage'
 import TMDBMissingPage from '@/pages/TMDBMissingPage'
 import NewCardsPage from '@/pages/NewCardsPage'
+import PersonsAdminPage from '@/pages/PersonsAdminPage'
 import StaticPage from '@/pages/StaticPage'
 import TgMiniAppPage from '@/pages/TgMiniAppPage'
 
@@ -112,6 +113,8 @@ export default function App() {
       <Route path="/admin/bot" element={<PrivateRoute><BotPage /></PrivateRoute>} />
       <Route path="/admin/tmdb-missing" element={<PrivateRoute><TMDBMissingPage /></PrivateRoute>} />
       <Route path="/admin/cards-today" element={<PrivateRoute><NewCardsPage /></PrivateRoute>} />
+      <Route path="/admin/actors" element={<PrivateRoute><PersonsAdminPage /></PrivateRoute>} />
+      <Route path="/admin/directors" element={<PrivateRoute><PersonsAdminPage /></PrivateRoute>} />
 
       <Route path="*" element={<NotFoundPage />} />
       </Routes>
