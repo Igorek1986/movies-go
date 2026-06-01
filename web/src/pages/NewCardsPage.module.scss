@@ -77,7 +77,11 @@
 // ── Mobile: table rows → cards ─────────────────────────────────────────────────
 
 @media (max-width: $bp-sm) {
+  .page { overflow-x: hidden; }
+
   .table {
+    width: 100%;
+    overflow-x: hidden;
     thead { display: none; }
 
     tbody tr {

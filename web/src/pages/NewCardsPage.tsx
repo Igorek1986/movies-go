@@ -351,6 +351,16 @@ export default function NewCardsPage() {
     window.addEventListener('resize', handler)
     return () => window.removeEventListener('resize', handler)
   }, [])
+
+  // Lock body scroll when drawer is open
+  useEffect(() => {
+    if (filterDrawer) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [filterDrawer])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [confirm, setConfirm]   = useState(false)
