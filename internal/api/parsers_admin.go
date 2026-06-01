@@ -66,7 +66,7 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 	kinozalPassword, _ := store.GetSetting(ctx, "kinozal_password")
 	catalogTrackers, _ := store.GetSetting(ctx, "catalog_trackers")
 	if catalogTrackers == "" {
-		catalogTrackers = "rutor"
+		catalogTrackers = "rutor,kinozal,nnmclub"
 	}
 
 	nextRunAt := ""

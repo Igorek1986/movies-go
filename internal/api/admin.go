@@ -1068,6 +1068,14 @@ input[type=number]{flex:none}
 .tag button{background:none;border:none;color:#fff;cursor:pointer;padding:0 2px;line-height:1;font-size:.9rem}
 .empty{color:#555;font-size:.82rem}
 #status{font-size:.82rem;color:#4a90e2;min-height:1.2em}
+.hint{font-size:.82rem;color:#888;margin:0}
+.status-line{font-size:.82rem;color:#4a90e2;min-height:1.2em}
+.kw-dropdown{display:none;position:absolute;top:100%;left:0;right:0;z-index:100;
+  background:#1a1a1a;border:1px solid #333;border-radius:4px;margin-top:2px;
+  max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.6)}
+.kw-dropdown button{display:flex;width:100%;justify-content:space-between;padding:8px 12px;
+  background:none;border:none;border-bottom:1px solid #222;font-size:.85rem;text-align:left;gap:12px}
+.kw-dropdown button:hover:not([disabled]){background:#222}
 </style>
 </head>
 <body>
@@ -1099,6 +1107,37 @@ input[type=number]{flex:none}
     <div id="clearWrap" style="display:none">
       <button class="btn btn-ghost" onclick="clearAll()">Очистить список</button>
     </div>
+  </section>
+
+  <section>
+    <h2>Коды TMDB (детский режим)</h2>
+    <p class="hint">Карточки с этими TMDB-тегами скрываются в детских профилях. Поиск только на английском.</p>
+    <div>
+      <div style="font-size:.8rem;color:#aaa;margin-bottom:.4rem">Быстрое добавление:</div>
+      <div id="kwSuggested" style="display:flex;flex-wrap:wrap;gap:.4rem"></div>
+    </div>
+    <div style="position:relative">
+      <input type="text" id="kwSearch" placeholder="Поиск: nudity, violence, drug use…" oninput="kwOnInput(this.value)" autocomplete="off">
+      <div class="kw-dropdown" id="kwDropdown"></div>
+    </div>
+    <div id="kwTags" class="tags"><span class="empty">Загрузка…</span></div>
+    <div class="status-line" id="kwStatus"></div>
+    <button class="btn btn-ghost" onclick="kwReset()">Сбросить к умолчаниям</button>
+  </section>
+
+  <section>
+    <h2>Слова в названии (детский режим)</h2>
+    <p class="hint">Карточки, в названии или описании которых встречается слово, скрываются.</p>
+    <div>
+      <div style="font-size:.8rem;color:#aaa;margin-bottom:.4rem">Применять для возрастных групп:</div>
+      <div id="ageGroups" style="display:flex;flex-wrap:wrap;gap:.6rem"></div>
+    </div>
+    <div class="row">
+      <input type="text" id="twInput" placeholder="Слово или фраза — через запятую" onkeydown="if(event.key==='Enter'){event.preventDefault();twAdd()}">
+      <button class="btn btn-primary" onclick="twAdd()">Добавить</button>
+    </div>
+    <div id="twTags" class="tags"><span class="empty">Загрузка…</span></div>
+    <div class="status-line" id="twStatus"></div>
   </section>
 
   <section>
@@ -1311,6 +1350,147 @@ function saveParserHosts(){
     .then(function(r){if(!r.ok)throw new Error();s.style.color='#4a90e2';s.textContent='Сохранено';setTimeout(function(){s.textContent=''},2000);})
     .catch(function(){s.style.color='#e74c3c';s.textContent='Ошибка';});
 }
+
+// ── TMDB child keywords ───────────────────────────────────────────────────────
+var SUGGESTED_KW=[
+  {id:281741,name:'nudity'},{id:354470,name:'sex scene'},{id:329280,name:'sexual content'},
+  {id:570,name:'rape'},{id:312898,name:'violence'},{id:10292,name:'gore'},
+  {id:13006,name:'torture'},{id:11494,name:'drug use'},{id:919,name:'smoking'},
+  {id:567,name:'alcohol'},{id:9826,name:'murder'},{id:158718,name:'lgbt'}
+];
+var kwList=[],kwTimer=null;
+
+function kwSetStatus(msg,err){
+  var s=document.getElementById('kwStatus');
+  s.style.color=err?'#e74c3c':'#4a90e2';s.textContent=msg;
+  if(!err)setTimeout(function(){s.textContent=''},2000);
+}
+
+function kwLoad(){
+  fetch('/api/admin/child-keywords/resolve').then(function(r){return r.json();}).then(function(d){
+    kwList=d||[];kwRender();
+  }).catch(function(){kwSetStatus('Ошибка загрузки',true);});
+}
+
+function kwRender(){
+  var ids=new Set(kwList.map(function(k){return k.id;}));
+  // tags
+  var t=document.getElementById('kwTags');
+  t.innerHTML=kwList.length?kwList.map(function(kw){
+    return '<span class="tag" style="background:#c07d00">'+(kw.name||'ID '+kw.id)+
+      '<button onclick="kwDel('+kw.id+')">×</button></span>';
+  }).join(''):'<span class="empty">Список пуст</span>';
+  // suggested chips
+  document.getElementById('kwSuggested').innerHTML=SUGGESTED_KW.map(function(kw){
+    var a=ids.has(kw.id);
+    return '<button class="btn '+(a?'btn-ghost':'btn-primary')+'" style="padding:3px 10px;font-size:.8rem"'
+      +(a?' disabled':' onclick="kwAdd({id:'+kw.id+',name:\\\''+kw.name+'\\\'})"')+'>'
+      +(a?'✓ ':'+ ')+kw.name+'</button>';
+  }).join('');
+}
+
+function kwAdd(kw){
+  fetch('/api/admin/child-keywords',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:String(kw.id)})})
+    .then(function(){
+      document.getElementById('kwSearch').value='';
+      document.getElementById('kwDropdown').style.display='none';
+      kwLoad();
+    }).catch(function(){kwSetStatus('Ошибка',true);});
+}
+
+function kwDel(id){
+  if(!confirm('Удалить?'))return;
+  fetch('/api/admin/child-keywords',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
+    .then(function(){kwLoad();}).catch(function(){kwSetStatus('Ошибка',true);});
+}
+
+function kwReset(){
+  if(!confirm('Сбросить к значениям по умолчанию?'))return;
+  fetch('/api/admin/child-keywords/reset',{method:'POST'}).then(function(){kwLoad();}).catch(function(){kwSetStatus('Ошибка',true);});
+}
+
+function kwOnInput(v){
+  clearTimeout(kwTimer);
+  var dd=document.getElementById('kwDropdown');
+  if(!v||v.trim().length<2){dd.style.display='none';return;}
+  kwTimer=setTimeout(function(){
+    dd.innerHTML='<div style="padding:8px 12px;font-size:.82rem;color:#888">Поиск…</div>';
+    dd.style.display='';
+    fetch('/api/admin/child-keywords/search?q='+encodeURIComponent(v.trim()))
+      .then(function(r){return r.json();})
+      .then(function(results){
+        var ids=new Set(kwList.map(function(k){return k.id;}));
+        if(!results.length){dd.innerHTML='<div style="padding:8px 12px;font-size:.82rem;color:#555">Ничего не найдено</div>';return;}
+        dd.innerHTML=results.map(function(kw){
+          var a=ids.has(kw.id);
+          var n=kw.name.replace(/'/g,"\\'").replace(/</g,'&lt;');
+          return '<button style="color:'+(a?'#555':'#eee')+';cursor:'+(a?'default':'pointer')+'"'
+            +(a?'':' onclick="kwAdd({id:'+kw.id+',name:\\\''+n+'\\\'})"')+'>'
+            +'<span>'+kw.name+'</span>'
+            +'<span style="color:'+(a?'#555':'#7c8cf8')+';font-size:.78rem">'+(a?'✓ в списке':'+ добавить')+'</span>'
+            +'</button>';
+        }).join('');
+      }).catch(function(){dd.style.display='none';});
+  },400);
+}
+
+document.addEventListener('click',function(e){
+  var dd=document.getElementById('kwDropdown');
+  var sr=document.getElementById('kwSearch');
+  if(dd&&sr&&!dd.contains(e.target)&&e.target!==sr)dd.style.display='none';
+});
+
+kwLoad();
+
+// ── Text keywords (adult content) ─────────────────────────────────────────────
+var AGE_GROUPS=[
+  {age:0,label:'0–5 лет'},{age:6,label:'6–11 лет'},
+  {age:12,label:'12–15 лет'},{age:16,label:'16+ (дети)'},{age:99,label:'Взрослые'}
+];
+var twList=[],twAges=[];
+
+function twLoad(){
+  fetch('/api/admin/child-text-keywords').then(function(r){return r.json();}).then(function(d){twList=d||[];twRender();}).catch(function(){});
+  fetch('/api/admin/child-text-keyword-ages').then(function(r){return r.json();}).then(function(d){twAges=d||[];twRenderAges();}).catch(function(){});
+}
+
+function twRender(){
+  var t=document.getElementById('twTags');
+  t.innerHTML=twList.length?twList.map(function(w){
+    var esc=w.replace(/'/g,"\\'").replace(/</g,'&lt;');
+    return '<span class="tag">'+w+'<button onclick="twDel(\''+esc+'\')">×</button></span>';
+  }).join(''):'<span class="empty">Список пуст</span>';
+}
+
+function twRenderAges(){
+  document.getElementById('ageGroups').innerHTML=AGE_GROUPS.map(function(g){
+    var chk=twAges.indexOf(g.age)>=0?' checked':'';
+    return '<label style="display:flex;align-items:center;gap:4px;font-size:.85rem;cursor:pointer">'
+      +'<input type="checkbox"'+chk+' onchange="twToggleAge('+g.age+',this.checked)"> '+g.label+'</label>';
+  }).join('');
+}
+
+function twAdd(){
+  var v=document.getElementById('twInput').value.trim();
+  if(!v)return;
+  fetch('/api/admin/child-text-keywords',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({words:v})})
+    .then(function(r){return r.json();}).then(function(d){twList=d||[];twRender();document.getElementById('twInput').value='';})
+    .catch(function(){});
+}
+
+function twDel(w){
+  twList=twList.filter(function(x){return x!==w;});twRender();
+  fetch('/api/admin/child-text-keywords',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({word:w})})
+    .then(function(r){return r.json();}).then(function(d){twList=d||[];twRender();}).catch(function(){twLoad();});
+}
+
+function twToggleAge(age,checked){
+  twAges=checked?twAges.concat([age]):twAges.filter(function(a){return a!==age;});
+  fetch('/api/admin/child-text-keyword-ages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ages:twAges})})
+    .catch(function(){twLoad();});
+}
+
+twLoad();
 
 loadParsers();
 loadPats();

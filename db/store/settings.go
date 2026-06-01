@@ -74,11 +74,14 @@ var SettingDefaults = map[string]string{
 	"tmdb_refresh_new_year_delta": "2",
 	"tmdb_refresh_old_batch":      "10000",
 	"tmdb_refresh_age_days":       "30",
+	// Catalog
+	"catalog_require_poster": "1",
 	// Parser
-	"parser_order":           "kinozal,nnmclub,rutor",
+	"parser_order":           "rutor,kinozal,nnmclub",
+	"catalog_trackers":       "rutor,kinozal,nnmclub",
 	"parser_kinozal_enabled": "1",
 	"parser_nnmclub_enabled": "1",
-	"parser_rutor_enabled":   "0",
+	"parser_rutor_enabled":   "1",
 	"parser_overlap_days":    "2",
 	// Retry / backoff (listing fetches for Kinozal and NNMClub)
 	"parser_retry_attempts":      "10",

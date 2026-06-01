@@ -39,7 +39,7 @@ interface Stats { total_users: number; total_devices: number; total_timecodes: n
 interface SettingItem { key: string; value: string; default: string }
 interface SettingsGroup { name: string; items: SettingItem[] }
 
-type TabId = 'me' | 'users' | 'msgs' | 'stats' | 'cfg'
+type TabId = 'me' | 'users' | 'msgs' | 'stats' | 'cfg' | 'parsers' | 'logs'
 
 // ── Me tab ────────────────────────────────────────────────────────────────────
 
@@ -465,6 +465,216 @@ function CfgTab() {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+// ── Parsers tab ───────────────────────────────────────────────────────────────
+
+interface TrackerInfo {
+  name: string
+  enabled: boolean
+  last_parsed_at: string
+}
+
+interface ParsersResp {
+  parsers: TrackerInfo[]
+  order: string
+  running: boolean
+  stop_requested: boolean
+  current_tracker: string
+  next_run_at: string
+  tracker_cards: Record<string, number>
+}
+
+const TRACKER_LABELS: Record<string, string> = {
+  kinozal: 'Kinozal.tv',
+  nnmclub: 'NNMClub.to',
+  rutor: 'Rutor.info',
+}
+
+function fmtTrackerDate(iso: string) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function fmtNextRun(iso: string) {
+  if (!iso) return ''
+  const diff = new Date(iso).getTime() - Date.now()
+  if (diff <= 0) return 'скоро'
+  const m = Math.floor(diff / 60000)
+  const h = Math.floor(m / 60)
+  return h > 0 ? `через ${h} ч ${m % 60} мин` : `через ${m} мин`
+}
+
+function ParsersTab() {
+  const [data, setData] = useState<ParsersResp | null>(null)
+  const pollRef = useRef<number | undefined>(undefined)
+
+  const load = useCallback(async () => {
+    try { setData(await api('GET', '/parsers')) } catch {}
+  }, [])
+
+  useEffect(() => {
+    load()
+    pollRef.current = window.setInterval(load, 3000)
+    return () => clearInterval(pollRef.current)
+  }, [load])
+
+  async function runAll() {
+    try { await api('POST', '/parsers/run'); await load() } catch (e) { alert('Ошибка: ' + e) }
+  }
+
+  async function stopAll() {
+    if (!confirm('Остановить парсер?')) return
+    try { await api('POST', '/parsers/stop'); await load() } catch (e) { alert('Ошибка: ' + e) }
+  }
+
+  async function runTracker(name: string) {
+    try { await api('POST', '/parsers/' + name + '/run'); await load() } catch (e) { alert('Ошибка: ' + e) }
+  }
+
+  async function resetTracker(name: string) {
+    if (!confirm('Сбросить дату парсинга для ' + (TRACKER_LABELS[name] ?? name) + '?\nСледующий запуск выполнит полное сканирование.')) return
+    try { await api('POST', '/parsers/' + name + '/reset'); await load() } catch (e) { alert('Ошибка: ' + e) }
+  }
+
+  if (!data) return <div className={s.loading}>Загрузка…</div>
+
+  const order = data.order.split(',').map(t => t.trim()).filter(Boolean)
+  const infoMap: Record<string, TrackerInfo> = {}
+  for (const p of data.parsers) infoMap[p.name] = p
+
+  return (
+    <div className={s.section}>
+      <h2 className={s.h2}>Парсеры</h2>
+
+      <div className={s.card}>
+        <div className={s.row}>
+          <span>
+            <span className={`${s.statusDot} ${data.running ? s.statusDotOn : s.statusDotOff}`} />
+            {data.running
+              ? data.stop_requested
+                ? 'Остановка…'
+                : `Парсится: ${TRACKER_LABELS[data.current_tracker] ?? data.current_tracker}`
+              : data.next_run_at
+                ? `Ожидает (${fmtNextRun(data.next_run_at)})`
+                : 'Ожидает'}
+          </span>
+          {data.running
+            ? <button className={`${s.btn} ${s.btnSm} ${s.btnDanger}`} onClick={stopAll} disabled={data.stop_requested}>Стоп</button>
+            : <button className={`${s.btn} ${s.btnSm}`} onClick={runAll}>▶ Запустить</button>
+          }
+        </div>
+      </div>
+
+      <div className={s.card}>
+        {order.map(name => {
+          const info = infoMap[name]
+          const isRunning = data.running && data.current_tracker === name
+          return (
+            <div key={name} className={s.parserTrackerRow}>
+              <div>
+                <div>
+                  <strong>{TRACKER_LABELS[name] ?? name}</strong>
+                  {isRunning && <span className={`${s.badge} ${s.badgeRunning}`} style={{ marginLeft: 6 }}>▶ идёт</span>}
+                </div>
+                <div className={s.muted}>
+                  {fmtTrackerDate(info?.last_parsed_at ?? '')}
+                  {' · '}{(data.tracker_cards?.[name] ?? 0).toLocaleString('ru-RU')} карточек
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  className={`${s.btn} ${s.btnSm} ${s.btnSecondary}`}
+                  onClick={() => runTracker(name)}
+                  disabled={data.running}
+                  title="Запустить только этот трекер"
+                >▶</button>
+                <button
+                  className={`${s.btn} ${s.btnSm} ${s.btnSecondary}`}
+                  onClick={() => resetTracker(name)}
+                  title="Сбросить дату — следующий запуск полный"
+                >↺</button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Logs tab ─────────────────────────────────────────────────────────────────
+
+type LogLevel = 'all' | 'success' | 'skip' | 'error' | 'info'
+
+interface LogLine {
+  t: string
+  text: string
+  level: 'success' | 'skip' | 'error' | 'info'
+}
+
+const LOG_LEVEL_LABELS: Record<LogLevel, string> = {
+  all: 'Все',
+  success: 'Добавлено',
+  skip: 'Пропущено',
+  error: 'Ошибки',
+  info: 'Инфо',
+}
+
+function LogsTab() {
+  const [lines, setLines] = useState<LogLine[]>([])
+  const [level, setLevel] = useState<LogLevel>('all')
+  const [loading, setLoading] = useState(true)
+  const pollRef = useRef<number | undefined>(undefined)
+
+  const load = useCallback(async () => {
+    try {
+      const d = await api('GET', '/logs?limit=150')
+      setLines(d.lines ?? [])
+    } catch {}
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    load()
+    pollRef.current = window.setInterval(load, 5000)
+    return () => clearInterval(pollRef.current)
+  }, [load])
+
+  const counts: Record<LogLevel, number> = { all: lines.length, success: 0, skip: 0, error: 0, info: 0 }
+  for (const l of lines) counts[l.level as LogLevel] = (counts[l.level as LogLevel] ?? 0) + 1
+
+  const filtered = level === 'all' ? lines : lines.filter(l => l.level === level)
+
+  return (
+    <div className={s.section}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <h2 className={s.h2} style={{ margin: 0 }}>Логи парсера</h2>
+        <button className={`${s.btn} ${s.btnSm} ${s.btnSecondary}`} onClick={load}>↻ Обновить</button>
+      </div>
+
+      <div className={s.logLevelTabs}>
+        {(Object.keys(LOG_LEVEL_LABELS) as LogLevel[]).map(lv => (
+          <button
+            key={lv}
+            className={`${s.logLevelTab} ${level === lv ? s.logLevelTabActive : ''} ${lv !== 'all' ? s['logLevelTab_' + lv] : ''}`}
+            onClick={() => setLevel(lv)}
+          >
+            {LOG_LEVEL_LABELS[lv]}
+            {counts[lv] > 0 && <span className={s.logLevelCount}>{counts[lv]}</span>}
+          </button>
+        ))}
+      </div>
+
+      <div className={s.logTerminal}>
+        {loading && <span className={s.muted}>Загрузка…</span>}
+        {!loading && filtered.length === 0 && <span className={s.muted}>Нет записей</span>}
+        {!loading && filtered.map((l, i) => (
+          <div key={i} className={`${s.logLine} ${s['logLine_' + l.level]}`}>{l.text}</div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function TgMiniAppPage() {
   const [sdkReady, setSdkReady] = useState(false)
   const [auth, setAuth] = useState<AuthResp | null>(null)
@@ -504,6 +714,8 @@ export default function TgMiniAppPage() {
       { id: 'users' as TabId, label: '👥 Пользователи' },
       { id: 'msgs' as TabId, label: '💬 Сообщения' },
       { id: 'stats' as TabId, label: '📊 Статистика' },
+      { id: 'parsers' as TabId, label: '🔧 Парсеры' },
+      { id: 'logs' as TabId, label: '📋 Логи' },
       { id: 'cfg' as TabId, label: '⚙️ Настройки' },
     ] : []),
   ]
@@ -517,11 +729,13 @@ export default function TgMiniAppPage() {
           </button>
         ))}
       </div>
-      {tab === 'me'    && <MeTab auth={auth} />}
-      {tab === 'users' && <UsersTab />}
-      {tab === 'msgs'  && <MsgsTab />}
-      {tab === 'stats' && <StatsTab />}
-      {tab === 'cfg'   && <CfgTab />}
+      {tab === 'me'      && <MeTab auth={auth} />}
+      {tab === 'users'   && <UsersTab />}
+      {tab === 'msgs'    && <MsgsTab />}
+      {tab === 'stats'   && <StatsTab />}
+      {tab === 'parsers' && <ParsersTab />}
+      {tab === 'logs'    && <LogsTab />}
+      {tab === 'cfg'     && <CfgTab />}
     </div>
   )
 }

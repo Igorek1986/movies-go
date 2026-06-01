@@ -291,3 +291,96 @@
   gap: 8px;
   align-items: center;
 }
+
+// ── Parsers tab ───────────────────────────────────────────────────────────────
+
+.statusDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.statusDotOn  { background: #34c759; }
+.statusDotOff { background: rgba(128, 128, 128, 0.5); }
+
+.badgeRunning {
+  background: rgba(52, 199, 89, 0.15);
+  color: #1a8c3b;
+}
+
+.parserTrackerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+
+  &:last-child { border-bottom: none; padding-bottom: 0; }
+  &:first-child { padding-top: 0; }
+}
+
+// ── Logs tab ─────────────────────────────────────────────────────────────────
+
+.logLevelTabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.logLevelTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  background: rgba(128, 128, 128, 0.12);
+  color: var(--tg-theme-hint-color, #8e8e93);
+}
+
+.logLevelTabActive {
+  background: rgba(0, 122, 255, 0.15);
+  color: var(--tg-theme-button-color, #007aff);
+  font-weight: 600;
+}
+
+.logLevelTab_success { color: #1a8c3b; }
+.logLevelTab_skip    { color: var(--tg-theme-hint-color, #8e8e93); }
+.logLevelTab_error   { color: #ff3b30; }
+.logLevelTab_info    { color: var(--tg-theme-hint-color, #8e8e93); }
+
+.logLevelCount {
+  background: rgba(128, 128, 128, 0.15);
+  border-radius: 8px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+
+.logTerminal {
+  background: #111;
+  border-radius: 10px;
+  padding: 10px 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.logLine {
+  color: #ccc;
+  word-break: break-word;
+  padding: 1px 0;
+}
+
+.logLine_success { color: #4cd964; }
+.logLine_skip    { color: #888; }
+.logLine_error   { color: #ff6b6b; }
+.logLine_info    { color: #ccc; }

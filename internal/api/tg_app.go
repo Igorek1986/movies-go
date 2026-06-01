@@ -20,7 +20,9 @@ import (
 	"movies-api/db/postgres"
 	"movies-api/db/store"
 	botpkg "movies-api/internal/bot"
+	"movies-api/internal/logbuf"
 	"movies-api/internal/tasks"
+	"movies-api/parser"
 )
 
 // ─── initData validation ──────────────────────────────────────────────────────
@@ -170,6 +172,12 @@ func registerTgAppRoutes(r chi.Router) {
 				r.Post("/messages/{tg_id}/read", handleTgAppMarkRead)
 				r.Get("/settings", handleTgAppGetSettings)
 				r.Post("/settings", handleTgAppUpdateSetting)
+				r.Get("/parsers", handleTgAppParsers)
+				r.Post("/parsers/run", handleTgAppParsersRun)
+				r.Post("/parsers/stop", handleTgAppParsersStop)
+				r.Post("/parsers/{name}/run", handleTgAppParserTrackerRun)
+				r.Post("/parsers/{name}/reset", handleTgAppParserTrackerReset)
+				r.Get("/logs", handleTgAppLogs)
 			})
 		})
 	})
@@ -783,6 +791,134 @@ func handleTgAppUpdateSetting(w http.ResponseWriter, r *http.Request) {
 	store.SetSetting(r.Context(), body.Key, strings.TrimSpace(body.Value))
 	store.InvalidateLimitsCache()
 	JSON(w, http.StatusOK, map[string]any{"ok": true, "key": body.Key, "value": body.Value})
+}
+
+// ─── Admin: Parsers ───────────────────────────────────────────────────────────
+
+func handleTgAppParsers(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	trackers := []string{"rutor", "kinozal", "nnmclub"}
+	orderVal, _ := store.GetSetting(ctx, "parser_order")
+	if orderVal == "" {
+		orderVal = "rutor,kinozal,nnmclub"
+	}
+	defaultEnabled := map[string]bool{"rutor": true, "kinozal": false, "nnmclub": false}
+	type trackerStatus struct {
+		Name       string `json:"name"`
+		Enabled    bool   `json:"enabled"`
+		LastParsed string `json:"last_parsed_at"`
+	}
+	var statuses []trackerStatus
+	for _, name := range trackers {
+		enabled := defaultEnabled[name]
+		if v, ok := store.GetSetting(ctx, "parser_"+name+"_enabled"); ok {
+			enabled = v == "1"
+		}
+		last := store.LastParsedAtFor(name)
+		lastStr := ""
+		if !last.IsZero() {
+			lastStr = last.Format("2006-01-02T15:04:05Z")
+		}
+		statuses = append(statuses, trackerStatus{Name: name, Enabled: enabled, LastParsed: lastStr})
+	}
+	nextRunAt := ""
+	if t := parser.NextRunAt(); !t.IsZero() {
+		nextRunAt = t.UTC().Format("2006-01-02T15:04:05Z")
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"parsers":         statuses,
+		"order":           orderVal,
+		"running":         parser.IsRunning(),
+		"stop_requested":  parser.IsStopRequested(),
+		"current_tracker": parser.CurrentTracker(),
+		"next_run_at":     nextRunAt,
+		"tracker_cards":   store.CountCardsByTracker(),
+	})
+}
+
+func handleTgAppParsersRun(w http.ResponseWriter, r *http.Request) {
+	if parser.IsRunning() {
+		JSON(w, http.StatusOK, map[string]string{"status": "already_running"})
+		return
+	}
+	go parser.RunAll()
+	JSON(w, http.StatusOK, map[string]string{"status": "started"})
+}
+
+func handleTgAppParsersStop(w http.ResponseWriter, r *http.Request) {
+	if !parser.IsRunning() {
+		JSON(w, http.StatusOK, map[string]string{"status": "not_running"})
+		return
+	}
+	parser.RequestStop()
+	JSON(w, http.StatusOK, map[string]string{"status": "stop_requested"})
+}
+
+func handleTgAppParserTrackerRun(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	switch name {
+	case "kinozal", "nnmclub", "rutor":
+	default:
+		Error(w, http.StatusBadRequest, "unknown tracker")
+		return
+	}
+	if !parser.StartOne(name) {
+		JSON(w, http.StatusOK, map[string]string{"status": "already_running"})
+		return
+	}
+	JSON(w, http.StatusOK, map[string]string{"status": "started"})
+}
+
+func handleTgAppParserTrackerReset(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	switch name {
+	case "kinozal", "nnmclub", "rutor":
+	default:
+		Error(w, http.StatusBadRequest, "unknown tracker")
+		return
+	}
+	store.ResetLastParsedAtFor(name)
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// ─── Admin: Logs ──────────────────────────────────────────────────────────────
+
+func handleTgAppLogs(w http.ResponseWriter, r *http.Request) {
+	date := r.URL.Query().Get("date")
+	level := r.URL.Query().Get("level")
+	limit := 150
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 && n <= 1000 {
+		limit = n
+	}
+
+	var lines []logbuf.Line
+	today := time.Now().Format("2006-01-02")
+	if date != "" && reDate.MatchString(date) && date != today {
+		dir := logbuf.Default.LogDir()
+		if dir != "" {
+			lines, _ = logbuf.ReadDay(dir, date)
+		}
+	} else {
+		lines = logbuf.Default.History()
+	}
+
+	if level != "" && level != "all" {
+		filtered := lines[:0:0]
+		for _, l := range lines {
+			if l.Level == level {
+				filtered = append(filtered, l)
+			}
+		}
+		lines = filtered
+	}
+
+	if len(lines) > limit {
+		lines = lines[len(lines)-limit:]
+	}
+	if lines == nil {
+		lines = []logbuf.Line{}
+	}
+	JSON(w, http.StatusOK, map[string]any{"lines": lines})
 }
 
 // buildTgSettingsGroups groups settings by category for the UI.

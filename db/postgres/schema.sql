@@ -241,9 +241,6 @@ CREATE INDEX IF NOT EXISTS idx_media_cards_language       ON media_cards (origin
 -- Sort indexes for category queries (eliminates seq scan + disk sort)
 CREATE INDEX IF NOT EXISTS idx_mc_latest_torrent  ON media_cards (latest_torrent_date DESC NULLS LAST);
 CREATE INDEX IF NOT EXISTS idx_mc_release_date    ON media_cards ((COALESCE(release_date, first_air_date)) DESC NULLS LAST);
--- Tracker filter: avoids full seq scan on 389K-row torrents table
-CREATE INDEX IF NOT EXISTS idx_torrents_tracker_card ON torrents (tracker, card_id);
-
 -- ─── Episodes ─────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS episodes (
     tmdb_show_id  INT         NOT NULL,
@@ -357,6 +354,8 @@ ALTER TABLE media_cards DROP CONSTRAINT IF EXISTS uq_media_card_tmdb;
 ALTER TABLE timecodes   ADD COLUMN IF NOT EXISTS created_at             TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE UNIQUE INDEX IF NOT EXISTS uq_devices_user_name ON devices (user_id, lower(name));
 ALTER TABLE torrents     ADD COLUMN IF NOT EXISTS tracker               VARCHAR(20);
+-- Tracker filter: avoids full seq scan on torrents table (tracker added above)
+CREATE INDEX IF NOT EXISTS idx_torrents_tracker_card ON torrents (tracker, card_id);
 
 -- ─── Proxy configuration ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS proxy_configs (
