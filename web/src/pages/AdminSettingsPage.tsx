@@ -590,6 +590,8 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   ], requiresRestart: true },
   { name: 'Настройки каталога', keys: [
     'catalog_require_poster',
+    'catalog_actor_count',
+    'catalog_actor_ru_count',
   ]},
   { name: 'Режим работы', keys: ['app_mode'], requiresRestart: true },
 ]
