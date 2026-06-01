@@ -507,7 +507,7 @@ export default function AdminPage() {
             }
             {backfillCastStatus.running
               ? <button className={`${styles.actionBtn} ${styles.danger}`} onClick={stopBackfillCast}>Остановить актёров</button>
-              : <button className={styles.actionBtn} title="Заполнить актёров из TMDB для карточек без каста" onClick={runBackfillCast}>Заполнить актёров</button>
+              : <button className={styles.actionBtn} title="Заполнить актёров и режиссёров из TMDB для карточек без каста" onClick={runBackfillCast}>Заполнить актёров и режиссёров</button>
             }
           </div>
           {fixRtStatus.running && fixRtStatus.total > 0 && (
