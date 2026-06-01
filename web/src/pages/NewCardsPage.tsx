@@ -402,11 +402,14 @@ export default function NewCardsPage() {
                   className={styles.row}
                   style={selected.has(c.card_id) ? { background: 'rgba(74,144,226,0.08)' } : undefined}
                   onClick={() => navigate(`/card/${c.card_id}`, { state: { backUrl: '/admin/cards-today' } })}>
-                  <td onClick={e => { e.stopPropagation(); toggleSelect(c.card_id) }}
-                    style={{ textAlign: 'center' }}>
-                    <input type="checkbox" checked={selected.has(c.card_id)}
-                      onChange={() => toggleSelect(c.card_id)}
-                      style={{ accentColor: '#4a90e2', cursor: 'pointer' }} />
+                  <td style={{ padding: 0 }}>
+                    <label onClick={e => e.stopPropagation()}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: '8px 6px', cursor: 'pointer', height: '100%' }}>
+                      <input type="checkbox" checked={selected.has(c.card_id)}
+                        onChange={() => toggleSelect(c.card_id)}
+                        style={{ accentColor: '#4a90e2', cursor: 'pointer' }} />
+                    </label>
                   </td>
                   <td data-label="Время"    className={styles.time}>{c.created_at}</td>
                   <td data-label="Тип"      className={styles.type}>{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
