@@ -780,19 +780,23 @@ func handleAPIAdminFixRuntimeStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 type personListItem struct {
-	PersonID    int64  `json:"person_id"`
-	PersonName  string `json:"person_name"`
-	ProfilePath string `json:"profile_path"`
-	CardCount   int    `json:"card_count"`
+	PersonID    int64   `json:"person_id"`
+	PersonName  string  `json:"person_name"`
+	ProfilePath string  `json:"profile_path"`
+	CardCount   int     `json:"card_count"`
+	AvgRating   float64 `json:"avg_rating"`
 }
 
 func handleAPIAdminActorList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT person_id, person_name, COALESCE(profile_path,''), COUNT(DISTINCT card_id) as cnt
-		FROM media_card_cast
-		GROUP BY person_id, person_name, profile_path
-		ORDER BY cnt DESC, MAX(popularity) DESC
+		SELECT mc.person_id, mc.person_name, COALESCE(mc.profile_path,''),
+		       COUNT(DISTINCT mc.card_id) as cnt,
+		       ROUND(AVG(m.vote_average)::numeric, 1)
+		FROM media_card_cast mc
+		JOIN media_cards m ON mc.card_id = m.card_id
+		GROUP BY mc.person_id, mc.person_name, mc.profile_path
+		ORDER BY cnt DESC, MAX(mc.popularity) DESC
 		LIMIT 200`)
 	if err != nil {
 		JSON(w, http.StatusOK, []any{})
@@ -802,7 +806,7 @@ func handleAPIAdminActorList(w http.ResponseWriter, r *http.Request) {
 	var list []personListItem
 	for rows.Next() {
 		var p personListItem
-		if rows.Scan(&p.PersonID, &p.PersonName, &p.ProfilePath, &p.CardCount) == nil {
+		if rows.Scan(&p.PersonID, &p.PersonName, &p.ProfilePath, &p.CardCount, &p.AvgRating) == nil {
 			list = append(list, p)
 		}
 	}
@@ -815,11 +819,14 @@ func handleAPIAdminActorList(w http.ResponseWriter, r *http.Request) {
 func handleAPIAdminDirectorList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT person_id, person_name, COALESCE(profile_path,''), COUNT(DISTINCT card_id) as cnt
-		FROM media_card_crew
-		WHERE job = 'Director'
-		GROUP BY person_id, person_name, profile_path
-		ORDER BY cnt DESC, MAX(popularity) DESC
+		SELECT mc.person_id, mc.person_name, COALESCE(mc.profile_path,''),
+		       COUNT(DISTINCT mc.card_id) as cnt,
+		       ROUND(AVG(m.vote_average)::numeric, 1)
+		FROM media_card_crew mc
+		JOIN media_cards m ON mc.card_id = m.card_id
+		WHERE mc.job = 'Director'
+		GROUP BY mc.person_id, mc.person_name, mc.profile_path
+		ORDER BY cnt DESC, MAX(mc.popularity) DESC
 		LIMIT 200`)
 	if err != nil {
 		JSON(w, http.StatusOK, []any{})
@@ -829,7 +836,7 @@ func handleAPIAdminDirectorList(w http.ResponseWriter, r *http.Request) {
 	var list []personListItem
 	for rows.Next() {
 		var p personListItem
-		if rows.Scan(&p.PersonID, &p.PersonName, &p.ProfilePath, &p.CardCount) == nil {
+		if rows.Scan(&p.PersonID, &p.PersonName, &p.ProfilePath, &p.CardCount, &p.AvgRating) == nil {
 			list = append(list, p)
 		}
 	}

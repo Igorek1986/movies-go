@@ -444,7 +444,7 @@ export default function AdminPage() {
                 <Link to="/admin/cards-today" className={styles.statLink}>
                   <p className={styles.statValue}>+{stats.media_cards_today.toLocaleString()}</p>
                   <p className={styles.statLabel}>Карточек сегодня</p>
-                  <p className={styles.statArrow}>Смотреть →</p>
+
                 </Link>
               </div>
             )}
@@ -481,7 +481,7 @@ export default function AdminPage() {
                 <Link to="/admin/tmdb-missing" className={styles.statLink}>
                   <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.tmdb_not_found.toLocaleString()}</p>
                   <p className={styles.statLabel}>Не найдено в TMDB</p>
-                  <p className={styles.statArrow}>Смотреть →</p>
+
                 </Link>
               </div>
             )}
@@ -490,7 +490,7 @@ export default function AdminPage() {
                 <Link to="/admin/actors" className={styles.statLink}>
                   <p className={styles.statValue}>{stats.actor_count.toLocaleString()}</p>
                   <p className={styles.statLabel}>Актёров</p>
-                  <p className={styles.statArrow}>Смотреть →</p>
+
                 </Link>
               </div>
             )}
@@ -499,7 +499,7 @@ export default function AdminPage() {
                 <Link to="/admin/directors" className={styles.statLink}>
                   <p className={styles.statValue}>{stats.director_count.toLocaleString()}</p>
                   <p className={styles.statLabel}>Режиссёров</p>
-                  <p className={styles.statArrow}>Смотреть →</p>
+
                 </Link>
               </div>
             )}
