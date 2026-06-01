@@ -204,6 +204,101 @@ func categoryDisplayName(id string) string {
 	return id
 }
 
+// genitiveRuName converts a Russian full name to genitive case (word by word).
+// Handles the most common patterns; leaves foreign/unrecognised words unchanged.
+func genitiveRuName(name string) string {
+	parts := strings.Fields(name)
+	for i, p := range parts {
+		parts[i] = genitiveWord(p)
+	}
+	return strings.Join(parts, " ")
+}
+
+func genitiveWord(w string) string {
+	runes := []rune(w)
+	n := len(runes)
+	if n < 3 {
+		return w
+	}
+
+	// Check the word has Cyrillic; leave Latin-based names unchanged.
+	cyrillic := false
+	for _, c := range runes {
+		if (c >= 'А' && c <= 'я') || c == 'ё' || c == 'Ё' {
+			cyrillic = true
+			break
+		}
+	}
+	if !cyrillic {
+		return w
+	}
+
+	lower := strings.ToLower(w)
+
+	// Feminine adjectival surnames: -ская/-цкая → -ской/-цкой
+	for _, suf := range []string{"ская", "цкая", "дская", "зская", "тская", "нская"} {
+		if strings.HasSuffix(lower, suf) {
+			return string(runes[:n-2]) + "ой"
+		}
+	}
+	// Masculine adjectival surnames: -ский/-цкий → -ского/-цкого
+	for _, suf := range []string{"ский", "цкий", "дский", "зский", "тский", "нский"} {
+		if strings.HasSuffix(lower, suf) {
+			return string(runes[:n-2]) + "ого"
+		}
+	}
+
+	last := runes[n-1]
+	prev := runes[n-2]
+
+	// -ья → -ьи (Наталья, Дарья)
+	if last == 'я' && prev == 'ь' {
+		return string(runes[:n-1]) + "и"
+	}
+	// -ия → -ии (Мария, Валерия)
+	if last == 'я' && (prev == 'и' || prev == 'И') {
+		return string(runes[:n-1]) + "и"
+	}
+	// -я → -и (Таня, Соня, Катя)
+	if last == 'я' {
+		return string(runes[:n-1]) + "и"
+	}
+
+	// Feminine surnames -ова/-ева/-ёва/-ина/-ына → -овой/-евой/-иной (Водянова→Водяновой)
+	for _, suf := range []string{"ова", "ева", "ёва", "ина", "ына"} {
+		if strings.HasSuffix(lower, suf) {
+			return string(runes[:n-1]) + "ой"
+		}
+	}
+
+	// -а: after sibilant (ж/ш/ч/щ/ц) → -и, otherwise → -ы
+	if last == 'а' {
+		switch prev {
+		case 'ж', 'ш', 'ч', 'щ', 'ц', 'Ж', 'Ш', 'Ч', 'Щ', 'Ц':
+			return string(runes[:n-1]) + "и"
+		default:
+			return string(runes[:n-1]) + "ы"
+		}
+	}
+
+	// -й → -я (Сергей, Андрей, Николай)
+	if last == 'й' {
+		return string(runes[:n-1]) + "я"
+	}
+	// -ь → -я (Игорь; female Любовь→Любви is rare, accept small error)
+	if last == 'ь' {
+		return string(runes[:n-1]) + "я"
+	}
+
+	// Consonant → add -а (Иван→Ивана, Иванов→Иванова, Хэнкс→Хэнкса)
+	vowels := "аеёиоуыэюяАЕЁИОУЫЭЮЯ"
+	if !strings.ContainsRune(vowels, last) {
+		return w + "а"
+	}
+
+	return w
+}
+
 // GET /api/categories
 func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 	type cat struct {
@@ -237,7 +332,7 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 			seen[a.PersonID] = true
 			result = append(result, cat{
 				ID:   fmt.Sprintf("actor_%d", a.PersonID),
-				Name: "С участием: " + a.PersonName,
+				Name: "С участием " + genitiveRuName(a.PersonName),
 			})
 		}
 	}
@@ -249,7 +344,7 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 			}
 			result = append(result, cat{
 				ID:   fmt.Sprintf("actor_%d", a.PersonID),
-				Name: "С участием: " + a.PersonName,
+				Name: "С участием " + genitiveRuName(a.PersonName),
 			})
 		}
 	}

@@ -59,6 +59,10 @@ export default function AdminPage() {
     running: false, current: 0, total: 0, updated: 0,
   })
   const refreshCardsPoll = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [backfillCastStatus, setBackfillCastStatus] = useState<{ running: boolean; current: number; total: number; updated: number }>({
+    running: false, current: 0, total: 0, updated: 0,
+  })
+  const backfillCastPoll = useRef<ReturnType<typeof setInterval> | null>(null)
   const meId = useRef<number | null>(null)
 
   function toast(text: string, ok = true) {
@@ -152,9 +156,52 @@ export default function AdminPage() {
     }
   }
 
+  async function fetchBackfillCastStatus() {
+    const res = await fetch('/api/admin/backfill-cast/status')
+    if (!res.ok) return
+    const data = await res.json()
+    setBackfillCastStatus(data)
+    return data
+  }
+
+  function startBackfillCastPoll() {
+    if (backfillCastPoll.current) return
+    backfillCastPoll.current = setInterval(async () => {
+      const data = await fetchBackfillCastStatus()
+      if (data && !data.running) {
+        clearInterval(backfillCastPoll.current!)
+        backfillCastPoll.current = null
+      }
+    }, 3000)
+  }
+
+  async function runBackfillCast() {
+    try {
+      const res = await api('/api/admin/backfill-cast', 'POST')
+      if (res.status === 'already_running') {
+        toast('Задача уже запущена')
+      } else {
+        toast('Заполнение актёров запущено в фоне')
+        await fetchBackfillCastStatus()
+      }
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
+  async function stopBackfillCast() {
+    try {
+      await api('/api/admin/backfill-cast/stop', 'POST')
+      toast('Задача остановлена')
+      await fetchBackfillCastStatus()
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
   useEffect(() => {
     setLoading(true)
-    Promise.all([refresh(), fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchSysStats()]).finally(() => setLoading(false))
+    Promise.all([refresh(), fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchSysStats()]).finally(() => setLoading(false))
     const sysInterval = setInterval(fetchSysStats, 5000)
     return () => clearInterval(sysInterval)
   }, [refresh, fetchSysStats]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -166,6 +213,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (refreshCardsStatus.running) startRefreshCardsPoll()
   }, [refreshCardsStatus.running]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (backfillCastStatus.running) startBackfillCastPoll()
+  }, [backfillCastStatus.running]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function runFixRuntime() {
     try {
@@ -454,6 +505,10 @@ export default function AdminPage() {
               ? <button className={`${styles.actionBtn} ${styles.danger}`} title="Остановить обновление карточек из TMDB" onClick={stopRefreshCards}>Остановить TMDB</button>
               : <button className={styles.actionBtn} title="Обновить метаданные карточек из TMDB (пакетно, по tmdb_refresh_batch карточек)" onClick={runRefreshCards}>Обновить TMDB</button>
             }
+            {backfillCastStatus.running
+              ? <button className={`${styles.actionBtn} ${styles.danger}`} onClick={stopBackfillCast}>Остановить актёров</button>
+              : <button className={styles.actionBtn} title="Заполнить актёров из TMDB для карточек без каста" onClick={runBackfillCast}>Заполнить актёров</button>
+            }
           </div>
           {fixRtStatus.running && fixRtStatus.total > 0 && (
             <div className={styles.fixRtProgress}>
@@ -476,6 +531,18 @@ export default function AdminPage() {
               </div>
               <div className={styles.fixRtBar}>
                 <div className={styles.fixRtBarFill} style={{ width: `${Math.round(refreshCardsStatus.current / refreshCardsStatus.total * 100)}%` }} />
+              </div>
+            </div>
+          )}
+          {backfillCastStatus.running && backfillCastStatus.total > 0 && (
+            <div className={styles.fixRtProgress}>
+              <div className={styles.fixRtLabel}>
+                <span>Актёры: {backfillCastStatus.current} / {backfillCastStatus.total}</span>
+                <span>Заполнено: {backfillCastStatus.updated}</span>
+                <span>{Math.round(backfillCastStatus.current / backfillCastStatus.total * 100)}%</span>
+              </div>
+              <div className={styles.fixRtBar}>
+                <div className={styles.fixRtBarFill} style={{ width: `${Math.round(backfillCastStatus.current / backfillCastStatus.total * 100)}%` }} />
               </div>
             </div>
           )}
