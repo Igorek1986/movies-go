@@ -72,6 +72,20 @@ type Entity struct {
 	ReleaseDates   *ReleaseDatesResult   `json:"release_dates,omitempty"`
 	ContentRatings *ContentRatingsResult `json:"content_ratings,omitempty"`
 	Keywords       *KeywordsResult       `json:"keywords,omitempty"`
+	Credits        *CreditsResult        `json:"credits,omitempty"`
+}
+
+type CreditsResult struct {
+	Cast []CastEntry `json:"cast"`
+}
+
+type CastEntry struct {
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	Character   string  `json:"character"`
+	ProfilePath string  `json:"profile_path"`
+	Order       int     `json:"order"`
+	Popularity  float64 `json:"popularity"`
 }
 
 type KeywordsResult struct {

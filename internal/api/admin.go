@@ -774,6 +774,24 @@ func handleAPIAdminFixRuntimeStatus(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, tasks.GetFixRuntimeStatus())
 }
 
+func handleAPIAdminBackfillCast(w http.ResponseWriter, r *http.Request) {
+	if tasks.GetBackfillCastStatus().Running {
+		JSON(w, http.StatusOK, map[string]any{"status": "already_running"})
+		return
+	}
+	go tasks.RunBackfillCast(tasks.AppCtx())
+	JSON(w, http.StatusOK, map[string]any{"status": "started"})
+}
+
+func handleAPIAdminBackfillCastStop(w http.ResponseWriter, r *http.Request) {
+	tasks.StopBackfillCast()
+	JSON(w, http.StatusOK, map[string]any{"status": "stopped"})
+}
+
+func handleAPIAdminBackfillCastStatus(w http.ResponseWriter, r *http.Request) {
+	JSON(w, http.StatusOK, tasks.GetBackfillCastStatus())
+}
+
 func handleAPIAdminRefreshCard(w http.ResponseWriter, r *http.Request) {
 	cardID := chi.URLParam(r, "card_id")
 	m := cardIDRe.FindStringSubmatch(cardID)

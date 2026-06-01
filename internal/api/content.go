@@ -156,6 +156,18 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ── actor_{person_id} ────────────────────────────────────────────────────
+	if strings.HasPrefix(category, "actor_") {
+		personID, err := strconv.ParseInt(strings.TrimPrefix(category, "actor_"), 10, 64)
+		if err != nil || personID <= 0 {
+			http.NotFound(w, r)
+			return
+		}
+		rows, total := store.ListActorCategory(r.Context(), personID, page, perPage)
+		sendCategoryResponse(w, rows, total, page, perPage)
+		return
+	}
+
 	// ── movies_id_{year} ─────────────────────────────────────────────────────
 	if strings.HasPrefix(category, "movies_id_") {
 		yearStr := chi.URLParam(r, "year")

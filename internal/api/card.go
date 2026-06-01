@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"movies-api/db/postgres"
+	"movies-api/db/store"
 	"movies-api/movies/tmdb"
 	"net/http"
 	"strconv"
@@ -218,31 +219,45 @@ func handleMediaCardFromTMDB(w http.ResponseWriter, cardID string) {
 }
 
 // GET /api/media-card/{card_id}/credits
-// Fetches cast+crew from TMDB API (proxied to avoid exposing the token to the frontend).
+// Returns cast from DB if available; falls back to TMDB API proxy for cards not yet backfilled.
 func handleMediaCardCredits(w http.ResponseWriter, r *http.Request) {
 	cardID := chi.URLParam(r, "card_id")
 
-	var tmdbID int64
-	var mediaType string
-	err := postgres.Pool.QueryRow(r.Context(),
-		`SELECT tmdb_id, media_type FROM media_cards WHERE card_id = $1`, cardID,
-	).Scan(&tmdbID, &mediaType)
-	if err != nil {
-		JSON(w, http.StatusOK, map[string]any{"cast": []any{}})
+	// Serve from DB first
+	dbCast := store.GetCardCast(r.Context(), cardID)
+	if len(dbCast) > 0 {
+		type item struct {
+			ID          int64  `json:"id"`
+			Name        string `json:"name"`
+			Character   string `json:"character"`
+			ProfilePath string `json:"profile_path"`
+		}
+		out := make([]item, len(dbCast))
+		for i, c := range dbCast {
+			out[i] = item{ID: c.PersonID, Name: c.PersonName, Character: c.Character, ProfilePath: c.ProfilePath}
+		}
+		JSON(w, http.StatusOK, map[string]any{"cast": out})
 		return
 	}
 
+	// Fallback: proxy to TMDB (cards not yet backfilled)
+	var tmdbID int64
+	var mediaType string
+	if err := postgres.Pool.QueryRow(r.Context(),
+		`SELECT tmdb_id, media_type FROM media_cards WHERE card_id = $1`, cardID,
+	).Scan(&tmdbID, &mediaType); err != nil {
+		JSON(w, http.StatusOK, map[string]any{"cast": []any{}})
+		return
+	}
 	token := tmdb.TMDBAuthKey
 	if token == "" {
 		JSON(w, http.StatusOK, map[string]any{"cast": []any{}})
 		return
 	}
-
 	url := fmt.Sprintf("https://api.themoviedb.org/3/%s/%d/credits?language=ru", mediaType, tmdbID)
 	req, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
 	req.Header.Set("Authorization", token)
 	req.Header.Set("Accept", "application/json")
-
 	resp, err := tmdb.HTTPClient().Do(req)
 	if err != nil || resp.StatusCode != 200 {
 		JSON(w, http.StatusOK, map[string]any{"cast": []any{}})
@@ -250,14 +265,11 @@ func handleMediaCardCredits(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-
 	var result map[string]any
 	if json.Unmarshal(body, &result) != nil {
 		JSON(w, http.StatusOK, map[string]any{"cast": []any{}})
 		return
 	}
-
-	// Return only cast (first 20) to keep payload small
 	cast, _ := result["cast"].([]any)
 	if len(cast) > 20 {
 		cast = cast[:20]

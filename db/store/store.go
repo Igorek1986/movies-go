@@ -295,6 +295,9 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 	if err != nil {
 		log.Printf("store: upsert media_card tmdb=%d %s: %v", e.ID, e.MediaType, err)
 	}
+	if e.Credits != nil {
+		go UpsertCast(context.Background(), cardID, e.Credits.Cast)
+	}
 }
 
 // RefreshCardTMDB обновляет только TMDB-поля карточки, не трогая торрент-данные.
@@ -354,6 +357,9 @@ func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
 	)
 	if err != nil {
 		log.Printf("store: refresh card tmdb %s: %v", cardID, err)
+	}
+	if e.Credits != nil {
+		UpsertCast(ctx, cardID, e.Credits.Cast)
 	}
 }
 

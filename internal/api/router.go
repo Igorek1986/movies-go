@@ -40,6 +40,7 @@ func NewRouter(mode string) http.Handler {
 		}
 	}
 	r.Get("/movies_id_{year:[0-9]+}", cached)
+	r.Get("/actor_{person_id:[0-9]+}", cached)
 	r.Get("/continues", cached)
 	r.Get("/continues_movie", cached)
 	r.Get("/continues_tv", cached)
@@ -124,6 +125,9 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Post("/admin/fix-runtime", handleAPIAdminFixRuntime)
 			r.With(requireAdmin).Post("/admin/fix-runtime/stop", handleAPIAdminFixRuntimeStop)
 			r.With(requireAdmin).Get("/admin/fix-runtime/status", handleAPIAdminFixRuntimeStatus)
+			r.With(requireAdmin).Post("/admin/backfill-cast", handleAPIAdminBackfillCast)
+			r.With(requireAdmin).Post("/admin/backfill-cast/stop", handleAPIAdminBackfillCastStop)
+			r.With(requireAdmin).Get("/admin/backfill-cast/status", handleAPIAdminBackfillCastStatus)
 			r.With(requireAdmin).Post("/admin/restart", handleAPIAdminRestart)
 			r.With(requireAdmin).Get("/admin/bot/status", handleAPIAdminBotStatus)
 			r.With(requireAdmin).Post("/admin/bot/restart", handleAPIAdminBotRestart)

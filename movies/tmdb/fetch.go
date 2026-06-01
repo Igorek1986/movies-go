@@ -15,9 +15,9 @@ func FetchVideoDetails(isMovie bool, id int64) *models.Entity {
 	ids := strconv.FormatInt(id, 10)
 	endpoint := mediaType + "/" + ids
 
-	appendKey := "content_ratings,keywords"
+	appendKey := "content_ratings,keywords,credits"
 	if isMovie {
-		appendKey = "release_dates,keywords"
+		appendKey = "release_dates,keywords,credits"
 	}
 	var ent *models.Entity
 	if err := readPageTmdb(endpoint, map[string]string{"language": "ru", "append_to_response": appendKey}, &ent); err != nil || ent == nil {

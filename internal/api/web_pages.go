@@ -219,13 +219,41 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 		"movies_4k_new", "legends_id", "movies_4k", "movies", "movies_ru",
 		"cartoon_movies", "cartoon_series", "anime",
 	}
-	result := make([]cat, 0, len(order)+16)
+	result := make([]cat, 0, len(order)+20)
 	if getPopularSourceURL(r.Context()) != "" || store.HasPopularData(r.Context(), 30) {
 		result = append(result, cat{ID: "np_popular", Name: "Популярное"})
 	}
 	for _, id := range order {
 		result = append(result, cat{ID: id, Name: categoryDisplayName(id)})
 	}
+
+	// Actor collections
+	actorCount := store.GetSettingInt(r.Context(), "catalog_actor_count")
+	actorRuCount := store.GetSettingInt(r.Context(), "catalog_actor_ru_count")
+	seen := map[int64]bool{}
+	if actorCount > 0 {
+		pool := store.GetPopularActors(r.Context(), actorCount, false)
+		for _, a := range store.PickRandomActors(pool, actorCount) {
+			seen[a.PersonID] = true
+			result = append(result, cat{
+				ID:   fmt.Sprintf("actor_%d", a.PersonID),
+				Name: "С участием: " + a.PersonName,
+			})
+		}
+	}
+	if actorRuCount > 0 {
+		pool := store.GetPopularActors(r.Context(), actorRuCount, true)
+		for _, a := range store.PickRandomActors(pool, actorRuCount) {
+			if seen[a.PersonID] {
+				continue
+			}
+			result = append(result, cat{
+				ID:   fmt.Sprintf("actor_%d", a.PersonID),
+				Name: "С участием: " + a.PersonName,
+			})
+		}
+	}
+
 	currentYear := time.Now().Year()
 	for y := currentYear; y >= 1980; y-- {
 		id := fmt.Sprintf("movies_id_%d", y)

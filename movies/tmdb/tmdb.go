@@ -75,10 +75,10 @@ func GetVideoDetails(isMovie bool, id int64) *models.Entity {
 	endpoint := ""
 	if isMovie {
 		endpoint = "movie/" + ids
-		params["append_to_response"] = "release_dates,keywords"
+		params["append_to_response"] = "release_dates,keywords,credits"
 	} else {
 		endpoint = "tv/" + ids
-		params["append_to_response"] = "content_ratings,keywords"
+		params["append_to_response"] = "content_ratings,keywords,credits"
 	}
 
 	var ent *models.Entity

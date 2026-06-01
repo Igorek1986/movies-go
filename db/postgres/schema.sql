@@ -386,3 +386,17 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS child_birth_year SMALLINT;
 
 -- Migration: TMDB keyword IDs for child content filtering
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS keyword_ids INTEGER[];
+
+-- Actor cast for catalog collections
+CREATE TABLE IF NOT EXISTS media_card_cast (
+    card_id      TEXT     NOT NULL REFERENCES media_cards(card_id) ON DELETE CASCADE,
+    person_id    BIGINT   NOT NULL,
+    person_name  TEXT     NOT NULL,
+    character    TEXT,
+    profile_path TEXT,
+    popularity   REAL     NOT NULL DEFAULT 0,
+    "order"      SMALLINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (card_id, person_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mcc_person_id   ON media_card_cast(person_id);
+CREATE INDEX IF NOT EXISTS idx_mcc_popularity  ON media_card_cast(popularity DESC);
