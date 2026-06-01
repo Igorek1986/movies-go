@@ -894,6 +894,8 @@ var settingsGroupDefs = []struct {
 	}},
 	{"Настройки каталога", []string{
 		"catalog_require_poster",
+		"catalog_actor_count",
+		"catalog_actor_ru_count",
 	}},
 	{"Режим работы (требует перезапуска)", []string{
 		"app_mode",

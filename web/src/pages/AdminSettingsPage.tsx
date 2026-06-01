@@ -526,6 +526,8 @@ const LABELS: Record<string, string> = {
   movies_4k_year_delta:    'Новые 4K фильмы — за сколько лет (YearDelta)',
   movies_new_min_quality:  'Новые фильмы — мин. качество (0=любое, 100=720p+, 200=1080p+, 300=4K+)',
   catalog_require_poster:  'Скрывать карточки без постера',
+  catalog_actor_count:     'Актёры в каталоге — глобальных (0 = выкл)',
+  catalog_actor_ru_count:  'Актёры в каталоге — русскоязычных (0 = выкл)',
   yandex_metrika_enabled:   'Яндекс.Метрика — включена',
   yandex_metrika_id:        'Яндекс.Метрика ID',
   google_analytics_enabled: 'Google Analytics — включена',
