@@ -1008,7 +1008,11 @@ export default function CatalogPage() {
     return () => window.removeEventListener('catalog:back', onCatalogBack)
   }, [expandedCategory]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const expandedCat = categories.find(c => c.id === expandedCategory) ?? null
+  const expandedCat = categories.find(c => c.id === expandedCategory) ?? (
+    expandedCategory && (expandedCategory.startsWith('actor_') || expandedCategory.startsWith('director_'))
+      ? { id: expandedCategory, name: expandedCategory }
+      : null
+  )
 
   const showSearch = searchQuery.length >= 3 && !expandedCategory
 
