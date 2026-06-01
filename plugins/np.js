@@ -275,6 +275,18 @@
 
         self.category = function (params, onSuccess, onError) {
             params = params || {};
+
+            // Сначала получаем актёрские категории с сервера, затем строим partsData
+            var actorPool = [];
+            self.network.silent(BASE_URL + '/api/categories', function(cats) {
+                actorPool = (cats || []).filter(function(c) { return c.id && c.id.indexOf('actor_') === 0; })
+                    .map(function(c) { return { key: c.id, title: c.name }; });
+                buildCategory();
+            }, function() {
+                buildCategory();
+            });
+
+            function buildCategory() {
             var partsData = [];
 
             var allCategories = getAllCategories();
@@ -361,34 +373,16 @@
                 }
                 if (!cat) continue;
 
-                // collections_block — жанровые подборки + подборки с актёрами
+                // collections_block — жанровые подборки + актёры, всё перемешано
                 if (key === 'collections_block') {
-                    var shuffled = shuffleArray(GENRE_POOL);
-                    for (var gi = 0; gi < shuffled.length; gi++) {
+                    var combined = shuffleArray(GENRE_POOL.concat(actorPool));
+                    for (var gi = 0; gi < combined.length; gi++) {
                         (function(g) {
                             partsData.push(function(callback) {
                                 makeRequest(g.key, g.title, callback);
                             });
-                        })(shuffled[gi]);
+                        })(combined[gi]);
                     }
-                    // Актёры: фетчим с сервера, добавляем динамически в partsData
-                    (function(pd) {
-                        pd.push(function(callback) {
-                            self.network.silent(BASE_URL + '/api/categories', function(cats) {
-                                var actors = (cats || []).filter(function(c) { return c.id && c.id.indexOf('actor_') === 0; });
-                                for (var ai = 0; ai < actors.length; ai++) {
-                                    (function(a) {
-                                        pd.push(function(cb) {
-                                            makeRequest(a.id, a.name, cb);
-                                        });
-                                    })(actors[ai]);
-                                }
-                                callback({ skip: true });
-                            }, function() {
-                                callback({ skip: true });
-                            });
-                        });
-                    })(partsData);
                     continue;
                 }
 
@@ -594,6 +588,7 @@
 
             loadPart(onSuccess, onError);
             return loadPart;
+            } // end buildCategory
         };
     }
 
