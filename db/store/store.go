@@ -415,19 +415,22 @@ func GetTMDBMissingCards(ctx context.Context) []TMDBMissingCard {
 }
 
 type NewTodayCard struct {
-	CardID          string  `json:"card_id"`
-	TmdbID          int64   `json:"tmdb_id"`
-	MediaType       string  `json:"media_type"`
-	Title           string  `json:"title"`
-	OriginalTitle   string  `json:"original_title"`
-	Year            string  `json:"year"`
-	VoteAverage     float64 `json:"vote_average"`
-	VoteCount       int     `json:"vote_count"`
-	CreatedAt       string  `json:"created_at"`
-	Trackers        string  `json:"trackers"`
-	Language        string  `json:"language"`
-	Runtime         int     `json:"runtime"`
-	EpisodeRunTime  int     `json:"episode_run_time"`
+	CardID          string   `json:"card_id"`
+	TmdbID          int64    `json:"tmdb_id"`
+	MediaType       string   `json:"media_type"`
+	Title           string   `json:"title"`
+	OriginalTitle   string   `json:"original_title"`
+	Year            string   `json:"year"`
+	VoteAverage     float64  `json:"vote_average"`
+	VoteCount       int      `json:"vote_count"`
+	CreatedAt       string   `json:"created_at"`
+	Trackers        string   `json:"trackers"`
+	Language        string   `json:"language"`
+	Runtime         int      `json:"runtime"`
+	EpisodeRunTime  int      `json:"episode_run_time"`
+	BestVideoQuality int     `json:"best_video_quality"`
+	Category        string   `json:"category"`
+	Categories      []string `json:"categories"`
 }
 
 func GetNewTodayCards(ctx context.Context) []NewTodayCard {
@@ -437,13 +440,14 @@ func GetNewTodayCards(ctx context.Context) []NewTodayCard {
 		       mc.vote_average, mc.vote_count, mc.created_at,
 		       COALESCE(STRING_AGG(DISTINCT t.tracker, ',' ORDER BY t.tracker), '') AS trackers,
 		       COALESCE(mc.original_language, '') AS language,
-		       COALESCE(mc.runtime, 0), COALESCE(mc.episode_run_time, 0)
+		       COALESCE(mc.runtime, 0), COALESCE(mc.episode_run_time, 0),
+		       COALESCE(mc.best_video_quality, 0), COALESCE(mc.category, '')
 		FROM media_cards mc
 		LEFT JOIN torrents t ON t.card_id = mc.card_id
 		WHERE mc.created_at::date = CURRENT_DATE
 		GROUP BY mc.card_id, mc.tmdb_id, mc.media_type, mc.title, mc.original_title,
 		         mc.release_date, mc.first_air_date, mc.vote_average, mc.vote_count, mc.created_at,
-		         mc.original_language, mc.runtime, mc.episode_run_time
+		         mc.original_language, mc.runtime, mc.episode_run_time, mc.best_video_quality, mc.category
 		ORDER BY mc.created_at DESC`)
 	if err != nil {
 		return nil
@@ -455,8 +459,9 @@ func GetNewTodayCards(ctx context.Context) []NewTodayCard {
 		var createdAt time.Time
 		if rows.Scan(&c.CardID, &c.TmdbID, &c.MediaType, &c.Title, &c.OriginalTitle,
 			&c.Year, &c.VoteAverage, &c.VoteCount, &createdAt, &c.Trackers, &c.Language,
-			&c.Runtime, &c.EpisodeRunTime) == nil {
+			&c.Runtime, &c.EpisodeRunTime, &c.BestVideoQuality, &c.Category) == nil {
 			c.CreatedAt = createdAt.Format("15:04")
+			c.Categories = cardCategories(c)
 			out = append(out, c)
 		}
 	}
@@ -464,6 +469,65 @@ func GetNewTodayCards(ctx context.Context) []NewTodayCard {
 		out = []NewTodayCard{}
 	}
 	return out
+}
+
+// cardCategories returns human-readable category names a card belongs to.
+func cardCategories(c NewTodayCard) []string {
+	currentYear := time.Now().Year()
+	yearInt := 0
+	if len(c.Year) == 4 {
+		fmt.Sscan(c.Year, &yearInt) //nolint:errcheck
+	}
+	isNew2 := yearInt >= currentYear-2+1
+	isNew4 := yearInt >= currentYear-4+1
+	isRu   := c.Language == "ru"
+	q      := c.BestVideoQuality
+
+	var cats []string
+	switch c.Category {
+	case models.CatCartoonMovie:
+		cats = append(cats, "Мультфильмы")
+	case models.CatCartoonSeries:
+		cats = append(cats, "Мультсериалы")
+	case models.CatAnime:
+		cats = append(cats, "Аниме")
+	default:
+		if c.MediaType == "movie" {
+			if q >= 300 {
+				if isNew4 {
+					cats = append(cats, "4K новые")
+				} else {
+					cats = append(cats, "4K")
+				}
+			}
+			if isNew2 && q >= 200 {
+				if isRu {
+					cats = append(cats, "Рус. новые")
+				} else {
+					cats = append(cats, "Новые фильмы")
+				}
+			} else if !isNew2 {
+				if isRu {
+					cats = append(cats, "Рус. фильмы")
+				} else {
+					cats = append(cats, "Фильмы")
+				}
+			}
+			if c.VoteCount >= 1000 {
+				cats = append(cats, "Топ фильмы")
+			}
+		} else {
+			if isRu {
+				cats = append(cats, "Рус. сериалы")
+			} else {
+				cats = append(cats, "Сериалы")
+			}
+		}
+	}
+	if yearInt > 0 {
+		cats = append(cats, fmt.Sprintf("%d", yearInt))
+	}
+	return cats
 }
 
 func DeleteCard(ctx context.Context, cardID string) error {

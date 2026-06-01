@@ -17,6 +17,9 @@ interface NewCard {
   language: string
   runtime: number
   episode_run_time: number
+  best_video_quality: number
+  category: string
+  categories: string[]
 }
 
 type FilterKey = 'media_type' | 'year' | 'language' | 'trackers'
@@ -425,6 +428,7 @@ export default function NewCardsPage() {
                 <FilterHeader col={FILTER_COLS[3]} active={filters.trackers} openCol={openCol}
                   values={distinctValues.trackers ?? []} onToggleOpen={toggleOpen}
                   onToggleValue={toggleValue} onClear={clearCol} />
+                <th>Категории</th>
               </tr>
             </thead>
             <tbody>
@@ -453,6 +457,15 @@ export default function NewCardsPage() {
                   <td data-label="Длит."    className={styles.muted}>{fmtRuntime(c)}</td>
                   <td data-label="Язык"     className={styles.muted}>{c.language ? c.language.toUpperCase() : '—'}</td>
                   <td data-label="Трекер"   className={styles.muted}>{c.trackers || '—'}</td>
+                  <td data-label="Категории">
+                    {(c.categories ?? []).map(cat => (
+                      <span key={cat} style={{ display: 'inline-block', marginRight: 4, marginBottom: 2,
+                        padding: '1px 6px', borderRadius: 4, fontSize: '0.75rem',
+                        background: 'rgba(74,144,226,0.15)', color: '#7ab4f5', whiteSpace: 'nowrap' }}>
+                        {cat}
+                      </span>
+                    ))}
+                  </td>
                 </tr>
               ))}
             </tbody>
