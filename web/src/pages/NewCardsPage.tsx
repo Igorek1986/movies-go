@@ -210,6 +210,8 @@ export default function NewCardsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [confirm, setConfirm]   = useState(false)
+  const [page, setPage]         = useState(1)
+  const PAGE_SIZE = 100
 
   useEffect(() => {
     fetch('/api/admin/cards-today')
@@ -267,6 +269,12 @@ export default function NewCardsPage() {
     setFilters(prev => ({ ...prev, [key]: new Set() }))
   }
 
+  // Reset page when filter changes
+  useEffect(() => { setPage(1) }, [filters, runtimeRange])
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
   const filteredIds = useMemo(() => new Set(filtered.map(c => c.card_id)), [filtered])
   const allFilteredSelected = filtered.length > 0 && filtered.every(c => selected.has(c.card_id))
 
@@ -317,13 +325,13 @@ export default function NewCardsPage() {
                 padding: '4px 12px', borderRadius: 6, border: '1px solid #e05555',
                 background: 'none', color: '#e05555', fontSize: '0.82rem', cursor: 'pointer',
               }}>
-                Удалить выбранные ({selectedCount})
+                Удалить ({selectedCount})
               </button>
             )}
             {confirm && (
               <>
                 <span style={{ fontSize: '0.82rem', color: '#e05555' }}>
-                  Удалить {selectedCount} карточек?
+                  Удалить {selectedCount} карточек? Парсер их не восстановит.
                 </span>
                 <button onClick={deleteSelected} disabled={deleting} style={{
                   padding: '4px 12px', borderRadius: 6, border: 'none',
@@ -389,7 +397,7 @@ export default function NewCardsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(c => (
+              {paginated.map(c => (
                 <tr key={c.card_id}
                   className={styles.row}
                   style={selected.has(c.card_id) ? { background: 'rgba(74,144,226,0.08)' } : undefined}
@@ -416,7 +424,46 @@ export default function NewCardsPage() {
             </tbody>
           </table>
         )}
+
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+            <button onClick={() => setPage(1)} disabled={page === 1}
+              style={pgBtn(page === 1)}>«</button>
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+              style={pgBtn(page === 1)}>‹</button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+              .reduce<(number | '…')[]>((acc, p, i, arr) => {
+                if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('…')
+                acc.push(p)
+                return acc
+              }, [])
+              .map((p, i) => p === '…'
+                ? <span key={`e${i}`} style={{ color: '#666', padding: '0 4px' }}>…</span>
+                : <button key={p} onClick={() => setPage(p as number)}
+                    style={pgBtn(false, p === page)}>{p}</button>
+              )}
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+              style={pgBtn(page === totalPages)}>›</button>
+            <button onClick={() => setPage(totalPages)} disabled={page === totalPages}
+              style={pgBtn(page === totalPages)}>»</button>
+            <span style={{ color: '#888', fontSize: '0.82rem', marginLeft: 4 }}>
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} из {filtered.length}
+            </span>
+          </div>
+        )}
       </div>
     </Layout>
   )
+}
+
+function pgBtn(disabled: boolean, active = false): React.CSSProperties {
+  return {
+    padding: '3px 8px', borderRadius: 4, border: '1px solid',
+    borderColor: active ? '#4a90e2' : '#444',
+    background: active ? '#4a90e2' : 'none',
+    color: disabled ? '#555' : active ? '#fff' : '#ccc',
+    cursor: disabled ? 'default' : 'pointer',
+    fontSize: '0.82rem', minWidth: 28,
+  }
 }
