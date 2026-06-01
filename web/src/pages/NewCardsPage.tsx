@@ -151,7 +151,17 @@ export default function NewCardsPage() {
     for (const { key } of FILTER_COLS) {
       const vals = new Map<string, number>()
       cards.forEach(c => { const v = getVal(c, key); vals.set(v, (vals.get(v) ?? 0) + 1) })
-      result[key] = Array.from(vals.entries()).sort((a, b) => b[1] - a[1])
+      const entries = Array.from(vals.entries())
+      if (key === 'year') {
+        entries.sort(([a], [b]) => {
+          if (a === '—') return 1
+          if (b === '—') return -1
+          return Number(b) - Number(a)
+        })
+      } else {
+        entries.sort((a, b) => b[1] - a[1])
+      }
+      result[key] = entries
     }
     return result
   }, [cards])
