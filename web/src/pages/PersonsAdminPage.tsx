@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { tmdbUrl } from '@/utils/poster'
 import styles from './NewCardsPage.module.scss'
+
+type SortKey = 'card_count' | 'avg_rating'
 
 interface PersonItem {
   person_id: number
@@ -21,6 +23,7 @@ export default function PersonsAdminPage() {
 
   const [items, setItems] = useState<PersonItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [sortKey, setSortKey] = useState<SortKey>('card_count')
 
   useEffect(() => {
     setLoading(true)
@@ -30,6 +33,11 @@ export default function PersonsAdminPage() {
       .finally(() => setLoading(false))
   }, [endpoint])
 
+  const sorted = useMemo(() =>
+    [...items].sort((a, b) => b[sortKey] - a[sortKey]),
+    [items, sortKey]
+  )
+
   return (
     <Layout wide>
       <div className={styles.page}>
@@ -37,7 +45,26 @@ export default function PersonsAdminPage() {
           <h1 className={styles.title}>{title} ({items.length})</h1>
           <Link to="/admin" className={styles.backLink}>Админ</Link>
         </div>
-        <p className={styles.desc}>Отсортировано по количеству карточек в базе.</p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button
+            onClick={() => setSortKey('card_count')}
+            style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid', cursor: 'pointer',
+              background: sortKey === 'card_count' ? '#4a90e2' : 'transparent',
+              borderColor: sortKey === 'card_count' ? '#4a90e2' : '#444',
+              color: sortKey === 'card_count' ? '#fff' : '#aaa', fontSize: '0.82rem' }}
+          >
+            По карточкам
+          </button>
+          <button
+            onClick={() => setSortKey('avg_rating')}
+            style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid', cursor: 'pointer',
+              background: sortKey === 'avg_rating' ? '#4a90e2' : 'transparent',
+              borderColor: sortKey === 'avg_rating' ? '#4a90e2' : '#444',
+              color: sortKey === 'avg_rating' ? '#fff' : '#aaa', fontSize: '0.82rem' }}
+          >
+            По рейтингу
+          </button>
+        </div>
 
         {loading && <div className={styles.empty}>Загрузка…</div>}
         {!loading && items.length === 0 && (
@@ -50,13 +77,17 @@ export default function PersonsAdminPage() {
               <tr>
                 <th>#</th>
                 <th>Имя</th>
-                <th>Карточек</th>
-                <th>Рейтинг</th>
+                <th style={{ cursor: 'pointer' }} onClick={() => setSortKey('card_count')}>
+                  Карточек {sortKey === 'card_count' ? '↓' : ''}
+                </th>
+                <th style={{ cursor: 'pointer' }} onClick={() => setSortKey('avg_rating')}>
+                  Рейтинг {sortKey === 'avg_rating' ? '↓' : ''}
+                </th>
                 <th>Категория</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((p, i) => {
+              {sorted.map((p, i) => {
                 const photo = p.profile_path ? tmdbUrl(p.profile_path, 'w45') : null
                 const catId = `${catPrefix}_${p.person_id}`
                 return (
