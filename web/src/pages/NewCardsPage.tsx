@@ -333,23 +333,6 @@ export default function NewCardsPage() {
             {(hasFilters || searchQuery) ? ` (${filtered.length} / ${cards.length})` : cards.length > 0 ? ` (${cards.length})` : ''}
           </h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative' }}>
-              <input
-                placeholder="Поиск по названию…"
-                value={searchInput}
-                onChange={e => handleSearch(e.target.value)}
-                style={{ background: '#111', border: '1px solid #444', borderRadius: 6,
-                  color: '#fff', padding: '4px 28px 4px 10px', fontSize: '0.85rem',
-                  outline: 'none', width: 200,
-                  borderColor: searchQuery ? '#4a90e2' : '#444' }}
-              />
-              {searchInput && (
-                <button onClick={() => { setSearchInput(''); setSearchQuery('') }}
-                  style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', color: '#888', cursor: 'pointer',
-                    fontSize: '0.9rem', padding: 0, lineHeight: 1 }}>✕</button>
-              )}
-            </div>
             {selectedCount > 0 && !confirm && (
               <button onClick={() => setConfirm(true)} style={{
                 padding: '4px 12px', borderRadius: 6, border: '1px solid #e05555',
@@ -407,7 +390,25 @@ export default function NewCardsPage() {
                 <FilterHeader col={FILTER_COLS[0]} active={filters.media_type} openCol={openCol}
                   values={distinctValues.media_type ?? []} onToggleOpen={toggleOpen}
                   onToggleValue={toggleValue} onClear={clearCol} />
-                <th>Название</th>
+                <th>
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                    <input
+                      placeholder="Название…"
+                      value={searchInput}
+                      onChange={e => handleSearch(e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                      style={{ background: 'transparent', border: 'none', borderBottom: `1px solid ${searchQuery ? '#4a90e2' : '#555'}`,
+                        color: '#fff', padding: '2px 20px 2px 0', fontSize: '0.82rem',
+                        outline: 'none', width: 130, fontWeight: 400 }}
+                    />
+                    {searchInput
+                      ? <button onClick={e => { e.stopPropagation(); setSearchInput(''); setSearchQuery('') }}
+                          style={{ position: 'absolute', right: 0, background: 'none', border: 'none',
+                            color: '#888', cursor: 'pointer', fontSize: '0.85rem', padding: 0, lineHeight: 1 }}>✕</button>
+                      : <span style={{ position: 'absolute', right: 0, color: '#555', fontSize: '0.75rem', pointerEvents: 'none' }}>🔍</span>
+                    }
+                  </div>
+                </th>
                 <th>Оригинал</th>
                 <FilterHeader col={FILTER_COLS[1]} active={filters.year} openCol={openCol}
                   values={distinctValues.year ?? []} onToggleOpen={toggleOpen}
