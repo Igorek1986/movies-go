@@ -202,6 +202,77 @@ function RuntimeFilterHeader({ range, isOpen, onToggleOpen, onChange, onClear }:
   )
 }
 
+// ── DateRangeFilterHeader ─────────────────────────────────────────────────────
+
+interface DateRange { from: string; to: string }
+
+function DateRangeFilterHeader({ label, range, isOpen, sortDir, onToggleOpen, onChange, onClear, onSort }: {
+  label: string
+  range: DateRange
+  isOpen: boolean
+  sortDir: 'asc' | 'desc' | null
+  onToggleOpen: () => void
+  onChange: (r: DateRange) => void
+  onClear: () => void
+  onSort: () => void
+}) {
+  const active = range.from !== '' || range.to !== ''
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onToggleOpen()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [isOpen, onToggleOpen])
+
+  const inputStyle: React.CSSProperties = {
+    flex: 1, background: '#111', border: '1px solid #444', borderRadius: 4,
+    color: '#fff', padding: '4px 6px', fontSize: '0.82rem', outline: 'none',
+  }
+
+  return (
+    <th style={{ position: 'relative', userSelect: 'none', whiteSpace: 'nowrap' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span onClick={onSort} style={{ cursor: 'pointer', color: sortDir ? '#4a90e2' : undefined }}>
+          {label}{sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : ''}
+        </span>
+        <span onClick={onToggleOpen} style={{ cursor: 'pointer', fontSize: '0.7em', opacity: 0.6,
+          color: active ? '#4a90e2' : undefined }}>
+          {active ? '●' : '▼'}
+        </span>
+      </span>
+      {isOpen && (
+        <div ref={ref} style={{
+          position: 'absolute', top: '100%', right: 0, zIndex: 100,
+          background: '#1a1a1a', border: '1px solid #333', borderRadius: 6,
+          width: 190, boxShadow: '0 4px 16px rgba(0,0,0,.6)',
+          padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+          {(['from', 'to'] as const).map(k => (
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: '#888', fontSize: '0.82rem', width: 20 }}>
+                {k === 'from' ? 'от' : 'до'}
+              </span>
+              <input type="date" value={range[k]}
+                onChange={e => onChange({ ...range, [k]: e.target.value })}
+                style={inputStyle} />
+            </div>
+          ))}
+          {active && (
+            <button onClick={onClear} style={{
+              background: 'none', border: '1px solid #e05555', borderRadius: 4,
+              color: '#e05555', fontSize: '0.8rem', cursor: 'pointer', padding: '3px 0',
+            }}>Сбросить</button>
+          )}
+        </div>
+      )}
+    </th>
+  )
+}
+
 // ── EditableDate ─────────────────────────────────────────────────────────────
 
 function EditableDate({ cardId, field, value, onSaved }: {
@@ -267,6 +338,11 @@ export default function NewCardsPage() {
   const [openCol, setOpenCol]   = useState<FilterKey | null>(null)
   const [runtimeRange, setRuntimeRange] = useState<RuntimeRange>({ min: '', max: '' })
   const [runtimeOpen, setRuntimeOpen]   = useState(false)
+  const [torrentDateRange, setTorrentDateRange] = useState({ from: '', to: '' })
+  const [torrentDateOpen, setTorrentDateOpen]   = useState(false)
+  const [releaseDateRange, setReleaseDateRange] = useState({ from: '', to: '' })
+  const [releaseDateOpen, setReleaseDateOpen]   = useState(false)
+  const [dateSort, setDateSort] = useState<{ key: 'latest_torrent_date' | 'release_date'; dir: 'asc' | 'desc' } | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [confirm, setConfirm]   = useState(false)
@@ -305,8 +381,12 @@ export default function NewCardsPage() {
       if (min !== null && rt < min) return false
       if (max !== null && rt > max) return false
     }
+    if (torrentDateRange.from && c.latest_torrent_date < torrentDateRange.from) return false
+    if (torrentDateRange.to   && c.latest_torrent_date > torrentDateRange.to)   return false
+    if (releaseDateRange.from && c.release_date < releaseDateRange.from) return false
+    if (releaseDateRange.to   && c.release_date > releaseDateRange.to)   return false
     return true
-  }), [cards, filters, runtimeRange, searchQuery])
+  }), [cards, filters, runtimeRange, searchQuery, torrentDateRange, releaseDateRange])
 
   const distinctValues = useMemo(() => {
     const result: Partial<Record<FilterKey, [string, number][]>> = {}
@@ -343,10 +423,19 @@ export default function NewCardsPage() {
   }
 
   // Reset page when filter or search changes
-  useEffect(() => { setPage(1) }, [filters, runtimeRange, searchQuery])
+  useEffect(() => { setPage(1) }, [filters, runtimeRange, searchQuery, torrentDateRange, releaseDateRange])
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
-  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const sorted = useMemo(() => {
+    if (!dateSort) return filtered
+    return [...filtered].sort((a, b) => {
+      const av = a[dateSort.key] || ''
+      const bv = b[dateSort.key] || ''
+      return dateSort.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
+    })
+  }, [filtered, dateSort])
+
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE)
+  const paginated  = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const filteredIds = useMemo(() => new Set(filtered.map(c => c.card_id)), [filtered])
   const allFilteredSelected = filtered.length > 0 && filtered.every(c => selected.has(c.card_id))
@@ -383,8 +472,18 @@ export default function NewCardsPage() {
     }
   }
 
+  function toggleDateSort(key: 'latest_torrent_date' | 'release_date') {
+    setDateSort(prev => {
+      if (!prev || prev.key !== key) return { key, dir: 'desc' }
+      if (prev.dir === 'desc') return { key, dir: 'asc' }
+      return null
+    })
+  }
+
   const hasFilters = FILTER_COLS.some(c => (filters[c.key]?.size ?? 0) > 0) ||
-    runtimeRange.min !== '' || runtimeRange.max !== '' || searchQuery !== ''
+    runtimeRange.min !== '' || runtimeRange.max !== '' || searchQuery !== '' ||
+    torrentDateRange.from !== '' || torrentDateRange.to !== '' ||
+    releaseDateRange.from !== '' || releaseDateRange.to !== ''
 
   const selectedCount = [...selected].filter(id => cards.some(c => c.card_id === id)).length
 
@@ -423,7 +522,7 @@ export default function NewCardsPage() {
               </>
             )}
             {hasFilters && (
-              <button onClick={() => { setFilters({}); setRuntimeRange({ min: '', max: '' }); setSearchInput(''); setSearchQuery('') }} style={{
+              <button onClick={() => { setFilters({}); setRuntimeRange({ min: '', max: '' }); setSearchInput(''); setSearchQuery(''); setTorrentDateRange({ from: '', to: '' }); setReleaseDateRange({ from: '', to: '' }) }} style={{
                 padding: '4px 10px', borderRadius: 6, border: '1px solid #555',
                 background: 'none', color: '#aaa', fontSize: '0.8rem', cursor: 'pointer',
               }}>Сбросить фильтры</button>
@@ -489,8 +588,18 @@ export default function NewCardsPage() {
                 <FilterHeader col={FILTER_COLS[3]} active={filters.trackers} openCol={openCol}
                   values={distinctValues.trackers ?? []} onToggleOpen={toggleOpen}
                   onToggleValue={toggleValue} onClear={clearCol} />
-                <th>Дата торрента</th>
-                <th>Дата релиза</th>
+                <DateRangeFilterHeader label="Дата торрента"
+                  range={torrentDateRange} isOpen={torrentDateOpen}
+                  sortDir={dateSort?.key === 'latest_torrent_date' ? dateSort.dir : null}
+                  onToggleOpen={() => { setTorrentDateOpen(o => !o); setReleaseDateOpen(false); setOpenCol(null); setRuntimeOpen(false) }}
+                  onChange={setTorrentDateRange} onClear={() => setTorrentDateRange({ from: '', to: '' })}
+                  onSort={() => toggleDateSort('latest_torrent_date')} />
+                <DateRangeFilterHeader label="Дата релиза"
+                  range={releaseDateRange} isOpen={releaseDateOpen}
+                  sortDir={dateSort?.key === 'release_date' ? dateSort.dir : null}
+                  onToggleOpen={() => { setReleaseDateOpen(o => !o); setTorrentDateOpen(false); setOpenCol(null); setRuntimeOpen(false) }}
+                  onChange={setReleaseDateRange} onClear={() => setReleaseDateRange({ from: '', to: '' })}
+                  onSort={() => toggleDateSort('release_date')} />
               </tr>
             </thead>
             <tbody>
@@ -523,9 +632,8 @@ export default function NewCardsPage() {
                     <EditableDate cardId={c.card_id} field="latest_torrent_date"
                       value={c.latest_torrent_date} onSaved={handleDateSaved} />
                   </td>
-                  <td data-label="Дата релиза">
-                    <EditableDate cardId={c.card_id} field="release_date"
-                      value={c.release_date} onSaved={handleDateSaved} />
+                  <td data-label="Дата релиза" className={styles.muted}>
+                    {c.release_date ? c.release_date.slice(0, 10) : '—'}
                   </td>
                 </tr>
               ))}
@@ -556,7 +664,7 @@ export default function NewCardsPage() {
             <button onClick={() => setPage(totalPages)} disabled={page === totalPages}
               style={pgBtn(page === totalPages)}>»</button>
             <span style={{ color: '#888', fontSize: '0.82rem', marginLeft: 4 }}>
-              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} из {filtered.length}
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, sorted.length)} из {sorted.length}
             </span>
           </div>
         )}
