@@ -125,13 +125,16 @@ export default function PersonsAdminPage() {
                   <tr key={p.person_id} className={styles.row}>
                     <td data-label="#">{i + 1}</td>
                     <td data-label="Имя">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Link
+                        to={isDirectors ? `/actor/${p.person_id}` : `/actor/${p.person_id}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', color: 'inherit' }}
+                      >
                         {photo
                           ? <img src={photo} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                           : <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#333', flexShrink: 0 }} />
                         }
-                        {p.person_name}
-                      </div>
+                        <span style={{ borderBottom: '1px solid #444' }}>{p.person_name}</span>
+                      </Link>
                     </td>
                     <td data-label="Карточек">{p.card_count}</td>
                     <td data-label="Рейтинг">{p.avg_rating > 0 ? `★ ${p.avg_rating.toFixed(1)}` : '—'}</td>
