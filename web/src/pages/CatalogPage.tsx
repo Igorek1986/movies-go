@@ -619,6 +619,7 @@ export default function CatalogPage() {
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchHasMore, setSearchHasMore] = useState(false)
   const searchSentinelRef = useRef<HTMLDivElement>(null)
+  const [syntheticCatName, setSyntheticCatName] = useState<string | null>(null)
   const searchPageRef = useRef(1)
 
   const [devices, setDevices] = useState<Device[]>([])
@@ -1008,9 +1009,28 @@ export default function CatalogPage() {
     return () => window.removeEventListener('catalog:back', onCatalogBack)
   }, [expandedCategory]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const expandedCat = categories.find(c => c.id === expandedCategory) ?? (
-    expandedCategory && (expandedCategory.startsWith('actor_') || expandedCategory.startsWith('director_'))
-      ? { id: expandedCategory, name: expandedCategory }
+  const foundInList = categories.find(c => c.id === expandedCategory) ?? null
+  const isSyntheticPerson = !foundInList && !!expandedCategory &&
+    (expandedCategory.startsWith('actor_') || expandedCategory.startsWith('director_'))
+
+  useEffect(() => {
+    if (!isSyntheticPerson || !expandedCategory) return
+    setSyntheticCatName(null)
+    const personId = expandedCategory.replace(/^(actor|director)_/, '')
+    fetch(`/api/actor/${personId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.name) {
+          const prefix = expandedCategory.startsWith('director_') ? 'Режиссёр: ' : 'В ролях: '
+          setSyntheticCatName(prefix + d.name)
+        }
+      })
+      .catch(() => {})
+  }, [expandedCategory, isSyntheticPerson])
+
+  const expandedCat = foundInList ?? (
+    isSyntheticPerson
+      ? { id: expandedCategory!, name: syntheticCatName ?? expandedCategory! }
       : null
   )
 
