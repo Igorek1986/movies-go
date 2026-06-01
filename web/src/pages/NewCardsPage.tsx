@@ -154,8 +154,8 @@ export default function NewCardsPage() {
       const entries = Array.from(vals.entries())
       if (key === 'year') {
         entries.sort(([a], [b]) => {
-          if (a === '—') return 1
-          if (b === '—') return -1
+          if (a === '—') return -1
+          if (b === '—') return 1
           return Number(b) - Number(a)
         })
       } else {
