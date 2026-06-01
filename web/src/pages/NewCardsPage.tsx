@@ -20,6 +20,8 @@ interface NewCard {
   best_video_quality: number
   category: string
   categories: string[]
+  latest_torrent_date: string
+  release_date: string
 }
 
 type FilterKey = 'media_type' | 'year' | 'language' | 'trackers'
@@ -200,6 +202,61 @@ function RuntimeFilterHeader({ range, isOpen, onToggleOpen, onChange, onClear }:
   )
 }
 
+// ── EditableDate ─────────────────────────────────────────────────────────────
+
+function EditableDate({ cardId, field, value, onSaved }: {
+  cardId: string
+  field: 'latest_torrent_date' | 'release_date'
+  value: string
+  onSaved: (cardId: string, field: string, newVal: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(value.slice(0, 10))
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!val) { setEditing(false); return }
+    setSaving(true)
+    await fetch(`/api/admin/cards/${cardId}/dates`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: val }),
+    })
+    setSaving(false)
+    setEditing(false)
+    onSaved(cardId, field, val)
+  }
+
+  if (editing) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
+        <input type="date" value={val} onChange={e => setVal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false) }}
+          autoFocus
+          style={{ background: '#111', border: '1px solid #4a90e2', borderRadius: 4,
+            color: '#fff', padding: '2px 6px', fontSize: '0.8rem', outline: 'none' }} />
+        <button onClick={save} disabled={saving}
+          style={{ background: '#4a90e2', border: 'none', borderRadius: 4, color: '#fff',
+            padding: '2px 6px', fontSize: '0.75rem', cursor: 'pointer' }}>
+          {saving ? '…' : '✓'}
+        </button>
+        <button onClick={() => setEditing(false)}
+          style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '2px' }}>✕</button>
+      </span>
+    )
+  }
+
+  const display = val || '—'
+  return (
+    <span onClick={e => { e.stopPropagation(); setEditing(true) }}
+      style={{ cursor: 'pointer', borderBottom: '1px dashed #555', fontSize: '0.82rem',
+        color: val ? '#ccc' : '#555' }}
+      title="Нажмите чтобы изменить">
+      {display}
+    </span>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function NewCardsPage() {
@@ -303,6 +360,10 @@ export default function NewCardsPage() {
   }
   function toggleSelect(id: string) {
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  }
+
+  function handleDateSaved(cardId: string, field: string, newVal: string) {
+    setCards(prev => prev.map(c => c.card_id === cardId ? { ...c, [field]: newVal } : c))
   }
 
   async function deleteSelected() {
@@ -428,7 +489,8 @@ export default function NewCardsPage() {
                 <FilterHeader col={FILTER_COLS[3]} active={filters.trackers} openCol={openCol}
                   values={distinctValues.trackers ?? []} onToggleOpen={toggleOpen}
                   onToggleValue={toggleValue} onClear={clearCol} />
-                <th>Категории</th>
+                <th>Дата торрента</th>
+                <th>Дата релиза</th>
               </tr>
             </thead>
             <tbody>
@@ -457,14 +519,13 @@ export default function NewCardsPage() {
                   <td data-label="Длит."    className={styles.muted}>{fmtRuntime(c)}</td>
                   <td data-label="Язык"     className={styles.muted}>{c.language ? c.language.toUpperCase() : '—'}</td>
                   <td data-label="Трекер"   className={styles.muted}>{c.trackers || '—'}</td>
-                  <td data-label="Категории">
-                    {(c.categories ?? []).map(cat => (
-                      <span key={cat} style={{ display: 'inline-block', marginRight: 4, marginBottom: 2,
-                        padding: '1px 6px', borderRadius: 4, fontSize: '0.75rem',
-                        background: 'rgba(74,144,226,0.15)', color: '#7ab4f5', whiteSpace: 'nowrap' }}>
-                        {cat}
-                      </span>
-                    ))}
+                  <td data-label="Дата торрента">
+                    <EditableDate cardId={c.card_id} field="latest_torrent_date"
+                      value={c.latest_torrent_date} onSaved={handleDateSaved} />
+                  </td>
+                  <td data-label="Дата релиза">
+                    <EditableDate cardId={c.card_id} field="release_date"
+                      value={c.release_date} onSaved={handleDateSaved} />
                   </td>
                 </tr>
               ))}

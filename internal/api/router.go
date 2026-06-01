@@ -190,6 +190,7 @@ func NewRouter(mode string) http.Handler {
 	// ── Cards added today (admin, both modes) ────────────────────────────────────
 	r.With(requireAnyAdmin(mode)).Get("/api/admin/cards-today", handleAPIAdminCardsToday)
 	r.With(requireAnyAdmin(mode)).Delete("/api/admin/cards", handleAPIAdminDeleteCards)
+	r.With(requireAnyAdmin(mode)).Patch("/api/admin/cards/{card_id}/dates", handleAPIAdminPatchCardDates)
 
 	// ── System stats (admin, both modes) ─────────────────────────────────────────
 	r.With(requireAnyAdmin(mode)).Get("/api/admin/system-stats", handleAPIAdminSystemStats)

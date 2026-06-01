@@ -726,6 +726,30 @@ func handleAPIAdminCardsToday(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, store.GetNewTodayCards(r.Context()))
 }
 
+func handleAPIAdminPatchCardDates(w http.ResponseWriter, r *http.Request) {
+	cardID := chi.URLParam(r, "card_id")
+	var body struct {
+		LatestTorrentDate string `json:"latest_torrent_date"`
+		ReleaseDate       string `json:"release_date"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	ctx := r.Context()
+	if body.LatestTorrentDate != "" {
+		postgres.Pool.Exec(ctx, //nolint:errcheck
+			`UPDATE media_cards SET latest_torrent_date = $2 WHERE card_id = $1`,
+			cardID, body.LatestTorrentDate)
+	}
+	if body.ReleaseDate != "" {
+		postgres.Pool.Exec(ctx, //nolint:errcheck
+			`UPDATE media_cards SET release_date = $2, first_air_date = CASE WHEN media_type = 'tv' THEN $2 ELSE first_air_date END WHERE card_id = $1`,
+			cardID, body.ReleaseDate)
+	}
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func handleAPIAdminDeleteCards(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		CardIDs []string `json:"card_ids"`
