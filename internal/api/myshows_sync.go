@@ -21,8 +21,9 @@ import (
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 
 var (
-	syncMu    sync.Mutex
-	syncState = map[int64]syncDay{} // userID → daily counter
+	syncMu      sync.Mutex
+	syncState   = map[int64]syncDay{} // userID → daily counter
+	syncRunning = map[int64]bool{}    // userID → sync currently in progress
 )
 
 type syncDay struct {
@@ -34,6 +35,26 @@ type syncDay struct {
 func ResetUserSyncCounter(userID int64) {
 	syncMu.Lock()
 	delete(syncState, userID)
+	syncMu.Unlock()
+}
+
+// tryAcquireSync marks the user's sync as active. Returns false if one is
+// already running — prevents a user from launching parallel syncs (double
+// click, two tabs, SSE retry) that would double the load on MyShows/TMDB.
+func tryAcquireSync(userID int64) bool {
+	syncMu.Lock()
+	defer syncMu.Unlock()
+	if syncRunning[userID] {
+		return false
+	}
+	syncRunning[userID] = true
+	return true
+}
+
+// releaseSync clears the in-progress flag for a user.
+func releaseSync(userID int64) {
+	syncMu.Lock()
+	delete(syncRunning, userID)
 	syncMu.Unlock()
 }
 
@@ -349,6 +370,14 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusForbidden, "forbidden")
 		return
 	}
+
+	// Reject a second concurrent sync for the same user (before consuming the
+	// daily quota). defer guarantees the flag is cleared on any exit.
+	if !tryAcquireSync(u.ID) {
+		Error(w, http.StatusConflict, "Синхронизация уже выполняется")
+		return
+	}
+	defer releaseSync(u.ID)
 
 	go store.TrackMyShowsUser(login)
 
