@@ -115,6 +115,8 @@ export default function App() {
       <Route path="/admin/tmdb-missing" element={<PrivateRoute><TMDBMissingPage /></PrivateRoute>} />
       <Route path="/admin/cards-today" element={<PrivateRoute><NewCardsPage /></PrivateRoute>} />
       <Route path="/admin/all-cards" element={<PrivateRoute><AllCardsPage /></PrivateRoute>} />
+      <Route path="/admin/no-runtime-movies" element={<PrivateRoute><AllCardsPage noRuntime="movie" /></PrivateRoute>} />
+      <Route path="/admin/no-runtime-tv" element={<PrivateRoute><AllCardsPage noRuntime="tv" /></PrivateRoute>} />
       <Route path="/admin/actors" element={<PrivateRoute><PersonsAdminPage /></PrivateRoute>} />
       <Route path="/admin/directors" element={<PrivateRoute><PersonsAdminPage /></PrivateRoute>} />
 

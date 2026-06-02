@@ -488,6 +488,7 @@ type AllCardsParams struct {
 	Trackers        []string
 	RuntimeMin      *int
 	RuntimeMax      *int
+	NoRuntime       string // "movie" or "tv": cards missing runtime / episode_run_time
 	TorrentDateFrom string
 	TorrentDateTo   string
 	ReleaseDateFrom string
@@ -606,6 +607,13 @@ func GetAllCards(ctx context.Context, p AllCardsParams) AllCardsResult {
 	if p.RuntimeMax != nil {
 		conds = append(conds, fmt.Sprintf(
 			"CASE WHEN mc.media_type='movie' THEN COALESCE(mc.runtime,0) ELSE COALESCE(mc.episode_run_time,0) END <= %s", arg(*p.RuntimeMax)))
+	}
+
+	switch p.NoRuntime {
+	case "movie":
+		conds = append(conds, "mc.media_type='movie' AND (mc.runtime IS NULL OR mc.runtime=0)")
+	case "tv":
+		conds = append(conds, "mc.media_type='tv' AND (mc.episode_run_time IS NULL OR mc.episode_run_time=0)")
 	}
 
 	if p.TorrentDateFrom != "" {

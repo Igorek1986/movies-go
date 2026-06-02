@@ -461,15 +461,19 @@ export default function AdminPage() {
               </div>
             )}
             {stats.no_runtime_movies > 0 && (
-              <div className={styles.statCard}>
-                <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.no_runtime_movies.toLocaleString()}</p>
-                <p className={styles.statLabel}>Фильмов без runtime</p>
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/no-runtime-movies" className={styles.statLink}>
+                  <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.no_runtime_movies.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Фильмов без runtime</p>
+                </Link>
               </div>
             )}
             {stats.no_runtime_tv > 0 && (
-              <div className={styles.statCard}>
-                <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.no_runtime_tv.toLocaleString()}</p>
-                <p className={styles.statLabel}>Сериалов без runtime</p>
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/no-runtime-tv" className={styles.statLink}>
+                  <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.no_runtime_tv.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Сериалов без runtime</p>
+                </Link>
               </div>
             )}
             {stats.tmdb_refreshed_today > 0 && (

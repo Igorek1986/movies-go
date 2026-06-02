@@ -316,8 +316,14 @@ function EditableDate({ cardId, field, value, onSaved }: {
 
 const PAGE_SIZE = 100
 
-export default function AllCardsPage() {
+export default function AllCardsPage({ noRuntime }: { noRuntime?: 'movie' | 'tv' } = {}) {
   const navigate = useNavigate()
+  const basePath = noRuntime === 'movie' ? '/admin/no-runtime-movies'
+    : noRuntime === 'tv' ? '/admin/no-runtime-tv'
+    : '/admin/all-cards'
+  const pageTitle = noRuntime === 'movie' ? 'Фильмы без runtime'
+    : noRuntime === 'tv' ? 'Сериалы без runtime'
+    : 'Все карточки'
   const [cards, setCards]       = useState<Card[]>([])
   const [total, setTotal]       = useState(0)
   const [loading, setLoading]   = useState(true)
@@ -397,6 +403,7 @@ export default function AllCardsPage() {
     if (torrentDateRange.to)   q.set('torrent_date_to', torrentDateRange.to)
     if (releaseDateRange.from) q.set('release_date_from', releaseDateRange.from)
     if (releaseDateRange.to)   q.set('release_date_to', releaseDateRange.to)
+    if (noRuntime) q.set('no_runtime', noRuntime)
 
     setLoading(true)
     fetch('/api/admin/all-cards?' + q, { signal: ctrl.signal })
@@ -406,7 +413,7 @@ export default function AllCardsPage() {
       .finally(() => setLoading(false))
 
     return () => ctrl.abort()
-  }, [page, searchQuery, filters, runtimeRange, torrentDateRange, releaseDateRange, dateSort, refreshKey])
+  }, [page, searchQuery, filters, runtimeRange, torrentDateRange, releaseDateRange, dateSort, refreshKey, noRuntime])
 
   function handleSearch(val: string) {
     setSearchInput(val)
@@ -495,7 +502,7 @@ export default function AllCardsPage() {
       <div className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>
-            Все карточки
+            {pageTitle}
             {total > 0 ? ` (${total.toLocaleString()})` : ''}
           </h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -625,7 +632,7 @@ export default function AllCardsPage() {
                 <tr key={c.card_id}
                   className={styles.row}
                   style={selected.has(c.card_id) ? { background: 'rgba(74,144,226,0.08)' } : undefined}
-                  onClick={() => navigate(`/card/${c.card_id}`, { state: { backUrl: '/admin/all-cards' } })}>
+                  onClick={() => navigate(`/card/${c.card_id}`, { state: { backUrl: basePath } })}>
                   <td style={{ padding: 0 }}>
                     <label onClick={e => e.stopPropagation()}
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
