@@ -65,16 +65,35 @@ JS-плагины для клиента Lampa отдаются из `./plugins/`
 Нужны **Docker** и **Docker Compose**.
 
 ```bash
-git clone git@github.com:Igorek1986/movies-go.git
+git clone https://github.com/Igorek1986/movies-go.git
 cd movies-go
-cp .env.example .env
-nano .env                       # укажи TMDB_TOKEN и SUPERUSER_*
-docker compose up -d --build
+./scripts/install.sh
 ```
+
+`install.sh` проверит зависимости, **интерактивно** спросит логин/пароль администратора и TMDB-токен, по желанию зальёт готовый дамп карточек, соберёт и запустит сервис, а в конце покажет адрес и режим. Если сервис уже установлен — предложит **обновить** или **удалить**.
 
 Сервис поднимется на `http://localhost:8888` (вместе с PostgreSQL).
 
-> Либо одной командой через установочный скрипт: `./scripts/install.sh` — проверит зависимости, создаст `.env`, по желанию зальёт дамп карточек и поднимет сервис.
+<details>
+<summary>Запуск вручную, без скрипта</summary>
+
+```bash
+cp .env.example .env
+nano .env                       # TMDB_TOKEN, SUPERUSER_*
+```
+
+**С готовым дампом** — быстро, без парсинга каталога с нуля:
+```bash
+curl -L -O https://github.com/Igorek1986/movies-go/releases/latest/download/cards-dump.sql.gz
+./scripts/restore.sh            # схема → восстановление дампа → сборка → запуск
+```
+
+**Без дампа** — каталог наполнится парсером сам:
+```bash
+docker compose up -d --build
+```
+
+</details>
 
 ## Бутстрап базы из дампа
 
@@ -108,7 +127,7 @@ scp -r plugins user@new-server:/path/to/movies-go/
 На новом сервере:
 
 ```bash
-git clone git@github.com:Igorek1986/movies-go.git
+git clone https://github.com/Igorek1986/movies-go.git
 cd movies-go
 # положи сюда .env, plugins/ и full-backup.sql.gz
 docker compose up -d db
@@ -162,6 +181,10 @@ docker compose up -d --build app
 | `DB_USER` / `DB_PASSWORD` / `DB_NAME` | параметры PostgreSQL (по умолчанию `movies_api`) |
 
 > Токен Telegram-бота, доступ к kinozal, параметры трекеров, лимиты и тексты указываются **в настройках админки** (раздел «Настройки»), а не в `.env`.
+
+### «Популярное» из внешнего источника
+
+В админке (Настройки → `popular_source_url`) можно указать URL публичного/общего парсера — тогда категория «Популярное» (`/np_popular`) будет читаться оттуда, а не из локального рейтинга. Удобно, если свой каталог небольшой, а популярное хочется брать с большого общего сервиса.
 
 ## Reverse proxy
 
