@@ -16,7 +16,6 @@ import (
 	"movies-api/internal/tasks"
 	"movies-api/movies/tmdb"
 	"movies-api/parser"
-	"movies-api/version"
 	"log"
 	"net/http"
 	"os"
@@ -64,7 +63,7 @@ func main() {
 		cancel()
 	}
 
-	fmt.Printf("lm_%s, %s, CPU: %d, mode: %s\n", version.Version, runtime.Version(), runtime.NumCPU(), mode)
+	fmt.Printf("%s, CPU: %d, mode: %s\n", runtime.Version(), runtime.NumCPU(), mode)
 
 	if mode == "all" {
 		ensureSuperuser(cfg)
