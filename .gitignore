@@ -29,4 +29,5 @@ internal/web/dist/
 lampa-api-linux
 dump.sql.gz
 cards-dump.sql.gz
+full-backup.sql.gz
 plugins/
