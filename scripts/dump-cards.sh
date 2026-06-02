@@ -29,9 +29,11 @@ echo "Dumping cards (media_cards, torrents, episodes) + parser timestamps → $O
   # Только метки парсинга из app_settings — как идемпотентные upsert'ы.
   echo ""
   echo "-- parser timestamps (non-private) — so a restored DB continues instead of re-scanning"
+  # NB: pg_dump --data-only sets search_path='' at the top, so unqualified table
+  # names won't resolve — use public.app_settings.
   docker exec "$DB_CONTAINER" psql -U "$DB_USER" "$DB_NAME" -tAc \
     "SELECT format(
-       'INSERT INTO app_settings(key,value,updated_at) VALUES (%L,%L,%L) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=EXCLUDED.updated_at;',
+       'INSERT INTO public.app_settings(key,value,updated_at) VALUES (%L,%L,%L) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=EXCLUDED.updated_at;',
        key, value, updated_at)
      FROM app_settings WHERE key LIKE '%last_parsed_at';"
 } | gzip > "$OUT"

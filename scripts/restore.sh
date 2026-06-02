@@ -48,7 +48,11 @@ if [ -n "$DUMP_FILE" ]; then
     echo "Restoring $DUMP_FILE ($(du -h "$DUMP_FILE" | cut -f1))..."
     # Strip \restrict/\unrestrict lines added by newer pg_dump versions —
     # they break psql when running non-interactively via docker exec.
-    gunzip -c "$DUMP_FILE" | grep -v '^\\\(restrict\|unrestrict\)' \
+    # Strip the search_path reset so unqualified table names in trailing INSERTs
+    # (parser timestamps) resolve to public — robust for older dumps too.
+    gunzip -c "$DUMP_FILE" \
+      | grep -v '^\\\(restrict\|unrestrict\)' \
+      | grep -v "set_config('search_path', '', false)" \
       | docker compose exec -T db psql -U "$DB_USER" "$DB_NAME" -q
     echo "Restore complete."
   else
