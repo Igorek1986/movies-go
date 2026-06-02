@@ -131,6 +131,7 @@ export default function AdminPage() {
         clearInterval(refreshCardsPoll.current!)
         refreshCardsPoll.current = null
       }
+      refresh()
     }, 3000)
   }
 
@@ -174,6 +175,7 @@ export default function AdminPage() {
         clearInterval(backfillCastPoll.current!)
         backfillCastPoll.current = null
       }
+      refresh()
     }, 3000)
   }
 
