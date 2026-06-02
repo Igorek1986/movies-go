@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -423,6 +424,57 @@ func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 
 	log.Printf("myshows: synced %d episodes for %s", len(rows), mc.CardID)
 	return nil
+}
+
+// ─── Episode runtime ───────────────────────────────────────────────────────────
+
+// FetchEpisodeRuntime returns the median runtime (minutes) of regular episodes
+// from MyShows for the show, or 0 if unavailable. Requires mc.MyshowsID to be set.
+// Used as a fallback for episode_run_time when TMDB has no value.
+func FetchEpisodeRuntime(ctx context.Context, mc *store.MediaCardEpInfo) int {
+	if mc.MyshowsID == nil {
+		return 0
+	}
+	res, err := rpc(ctx, "shows.GetById", map[string]any{
+		"showId":       *mc.MyshowsID,
+		"withEpisodes": true,
+	})
+	if err != nil {
+		return 0
+	}
+	var show struct {
+		Episodes []struct {
+			SeasonNumber  *int `json:"seasonNumber"`
+			EpisodeNumber *int `json:"episodeNumber"`
+			Runtime       *int `json:"runtime"`
+			IsSpecial     bool `json:"isSpecial"`
+		} `json:"episodes"`
+	}
+	if err := json.Unmarshal(res, &show); err != nil {
+		return 0
+	}
+	var runtimes []int
+	for _, ep := range show.Episodes {
+		if ep.IsSpecial || ep.Runtime == nil || *ep.Runtime <= 0 {
+			continue
+		}
+		if ep.SeasonNumber == nil || *ep.SeasonNumber <= 0 {
+			continue
+		}
+		if ep.EpisodeNumber == nil || *ep.EpisodeNumber <= 0 {
+			continue
+		}
+		runtimes = append(runtimes, *ep.Runtime)
+	}
+	if len(runtimes) == 0 {
+		return 0
+	}
+	sort.Ints(runtimes)
+	n := len(runtimes)
+	if n%2 == 0 {
+		return (runtimes[n/2-1] + runtimes[n/2]) / 2
+	}
+	return runtimes[n/2]
 }
 
 // ─── Hash helpers ─────────────────────────────────────────────────────────────
