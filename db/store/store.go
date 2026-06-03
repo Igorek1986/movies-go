@@ -67,9 +67,9 @@ func TorrentStatus(hash string) (cached bool, cardID string) {
 	return true, *id
 }
 
-// CacheTorrent records a processed torrent hash with its linked card and tracker.
-// On conflict: only upgrades card_id/tracker from NULL → real value, never clears them.
-func CacheTorrent(hash, cardID, tracker string) {
+// CacheTorrent records a processed torrent hash with its linked card, tracker and tracker date.
+// On conflict: only upgrades card_id/tracker from NULL → real value; created_at is never changed.
+func CacheTorrent(hash, cardID, tracker string, createDate time.Time) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	var id *string
@@ -80,12 +80,17 @@ func CacheTorrent(hash, cardID, tracker string) {
 	if tracker != "" {
 		tr = &tracker
 	}
+	var cd *time.Time
+	if !createDate.IsZero() {
+		cd = &createDate
+	}
 	postgres.Pool.Exec(ctx, //nolint:errcheck
-		`INSERT INTO torrents (hash, card_id, tracker) VALUES ($1, $2, $3)
+		`INSERT INTO torrents (hash, card_id, tracker, created_at) VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (hash) DO UPDATE SET
-		   card_id = COALESCE(torrents.card_id, EXCLUDED.card_id),
-		   tracker = COALESCE(torrents.tracker, EXCLUDED.tracker)`,
-		hash, id, tr,
+		   card_id    = COALESCE(torrents.card_id, EXCLUDED.card_id),
+		   tracker    = COALESCE(torrents.tracker, EXCLUDED.tracker),
+		   created_at = COALESCE(torrents.created_at, EXCLUDED.created_at)`,
+		hash, id, tr, cd,
 	)
 }
 
@@ -864,6 +869,7 @@ type CategoryFilter struct {
 	MaxVideoQuality int
 	MinVoteCount    int
 	OrderByRating   bool
+	OrderByCreatedAt bool    // ORDER BY created_at DESC (recently added to tracker)
 	RandomOrder     bool     // ORDER BY RANDOM()
 	Genres          []string // genre names (OR logic), e.g. ["боевик", "Боевик и Приключения"]
 	Child                bool
@@ -884,6 +890,7 @@ type CategoryFilter struct {
 	ProfileID       string
 	WatchedPercent  int
 	RequirePoster   bool // exclude cards with empty/null poster_path
+	RecentDays      int  // if > 0, only cards that have a torrent added to tracker within last N days
 }
 
 // ListCategory returns a page of media_cards matching the filter.
@@ -1048,6 +1055,12 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 	if f.RequirePoster {
 		where = append(where, "m.poster_path IS NOT NULL AND m.poster_path <> ''")
 	}
+	if f.RecentDays > 0 {
+		where = append(where, fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM torrents t_rd WHERE t_rd.card_id = m.card_id AND t_rd.created_at >= NOW() - INTERVAL '%d days')",
+			f.RecentDays,
+		))
+	}
 	if f.HideWatched && f.DeviceID > 0 {
 		where = append(where, fmt.Sprintf(`NOT (
 			CASE m.media_type
@@ -1092,6 +1105,8 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		orderBy = "RANDOM()"
 	} else if f.OrderByRating {
 		orderBy = "m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST, m.created_at DESC"
+	} else if f.OrderByCreatedAt {
+		orderBy = "m.created_at DESC NULLS LAST"
 	} else if f.OldOnly || f.Year > 0 {
 		// Archive / year categories: sort by release/air date descending
 		orderBy = "COALESCE(m.release_date, m.first_air_date) DESC NULLS LAST, m.created_at DESC"

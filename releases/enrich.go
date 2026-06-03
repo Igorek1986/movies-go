@@ -19,7 +19,7 @@ func Enrich(label string, isMovie bool, t *models.TorrentDetails) bool {
 		}
 	}
 	if md == nil {
-		store.CacheTorrent(t.Hash, "", t.Tracker)
+		store.CacheTorrent(t.Hash, "", t.Tracker, t.CreateDate)
 		log.Printf("%s: not found in TMDB: %s", label, t.Title)
 		return false
 	}
@@ -29,7 +29,7 @@ func Enrich(label string, isMovie bool, t *models.TorrentDetails) bool {
 	if isMovie && !t.CreateDate.IsZero() && md.ReleaseDate != "" {
 		if releaseDate, err := time.Parse("02.01.2006", md.ReleaseDate); err == nil {
 			if t.CreateDate.Before(releaseDate) {
-				store.CacheTorrent(t.Hash, "", t.Tracker)
+				store.CacheTorrent(t.Hash, "", t.Tracker, t.CreateDate)
 				log.Printf("%s: skip (torrent %s before release %s): %s",
 					label, t.CreateDate.Format("2006-01-02"), releaseDate.Format("2006-01-02"), t.Title)
 				return false
@@ -40,7 +40,7 @@ func Enrich(label string, isMovie bool, t *models.TorrentDetails) bool {
 	md.SetTorrent(t)
 	store.UpsertMediaCard(md, t)
 	cardID := fmt.Sprintf("%d_%s", md.ID, md.MediaType)
-	store.CacheTorrent(t.Hash, cardID, t.Tracker)
+	store.CacheTorrent(t.Hash, cardID, t.Tracker, t.CreateDate)
 	log.Printf("%s: enriched: %s", label, t.Title)
 	return true
 }

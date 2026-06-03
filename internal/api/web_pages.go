@@ -193,6 +193,7 @@ var categoryTitles = map[string]string{
 	"genre_documentary": "Документальные",
 	"genre_western":     "Вестерны",
 	"genre_random":      "Случайное",
+	"tracker_new":       "Последние поступления",
 }
 
 func categoryDisplayName(id string) string {
@@ -230,6 +231,7 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 		{ID: "genre_documentary", Name: categoryDisplayName("genre_documentary")},
 		{ID: "genre_western", Name: categoryDisplayName("genre_western")},
 		{ID: "genre_random", Name: categoryDisplayName("genre_random")},
+		{ID: "tracker_new", Name: categoryDisplayName("tracker_new")},
 	}
 
 	actorCount := store.GetSettingInt(r.Context(), "catalog_actor_count")

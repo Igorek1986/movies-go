@@ -143,7 +143,7 @@ func (k *KinozalParser) parseCategory(catID string, catInfo kzCatInfo, fullScan 
 				processed.Add(1)
 				d := k.buildDetails(item, catInfo)
 				if d.Categories == models.CatTVShow {
-					store.CacheTorrent(d.Hash, "", "kinozal")
+					store.CacheTorrent(d.Hash, "", "kinozal", d.CreateDate)
 					continue
 				}
 				isMovie := isMovieCat(d.Categories)

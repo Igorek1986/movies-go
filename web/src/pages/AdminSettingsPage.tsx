@@ -529,6 +529,7 @@ const LABELS: Record<string, string> = {
   catalog_actor_count:      'Актёры в каталоге — глобальных (0 = выкл)',
   catalog_actor_ru_count:   'Актёры в каталоге — русскоязычных (0 = выкл)',
   catalog_director_count:   'Режиссёры в каталоге (0 = выкл)',
+  tracker_new_days:         'Последние поступления — глубина (дней)',
   yandex_metrika_enabled:   'Яндекс.Метрика — включена',
   yandex_metrika_id:        'Яндекс.Метрика ID',
   google_analytics_enabled: 'Google Analytics — включена',
@@ -594,6 +595,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'catalog_actor_count',
     'catalog_actor_ru_count',
     'catalog_director_count',
+    'tracker_new_days',
   ]},
   { name: 'Режим работы', keys: ['app_mode'], requiresRestart: true },
 ]

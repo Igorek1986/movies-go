@@ -101,6 +101,9 @@ var categoryRoutes = map[string]store.CategoryFilter{
 	// Anime
 	"anime": {MediaTypes: []string{"tv"}, Categories: []string{models.CatAnime}},
 
+	// Последние поступления — контент за N дней (tracker_new_days), рандом при каждом запросе
+	"tracker_new": {RandomOrder: true, RequirePoster: true},
+
 	// Genre collections — random order, all media types
 	"genre_comedy":      {Genres: []string{"комедия"}, RandomOrder: true},
 	"genre_action":      {Genres: []string{"боевик", "Боевик и Приключения"}, RandomOrder: true},
@@ -212,6 +215,9 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	f := preset
+	if category == "tracker_new" {
+		f.RecentDays = store.GetSettingInt(r.Context(), "tracker_new_days")
+	}
 	f.Page = page
 	f.PerPage = perPage
 	if searchQ != "" {

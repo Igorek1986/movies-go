@@ -116,7 +116,7 @@ func (self *RutorParser) Parse() {
 					}
 					processed.Add(1)
 					if d.Categories == models.CatTVShow {
-						store.CacheTorrent(d.Hash, "", "rutor")
+						store.CacheTorrent(d.Hash, "", "rutor", d.CreateDate)
 						continue
 					}
 					cached, cardID := store.TorrentStatus(d.Hash)

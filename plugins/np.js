@@ -36,7 +36,8 @@
         { key: 'genre_war',         title: 'Военное' },
         { key: 'genre_documentary', title: 'Документальные' },
         { key: 'genre_western',     title: 'Вестерны' },
-        { key: 'genre_random',      title: 'Случайное' }
+        { key: 'genre_random',      title: 'Случайное' },
+        { key: 'tracker_new',       title: 'Последние поступления' }
     ];
 
     function shuffleArray(arr) {
