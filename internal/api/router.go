@@ -288,7 +288,11 @@ func NewRouter(mode string) http.Handler {
 
 	r.Post("/bot/webhook", handleTelegramWebhook)
 
-	r.NotFound(serveSPA)
+	if mode == "all" {
+		r.NotFound(serveSPA)
+	} else {
+		r.NotFound(serveParserStub)
+	}
 
 	return r
 }
@@ -318,6 +322,13 @@ func servePlugins(next http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		http.ServeFile(w, r, fullPath)
 	})
+}
+
+// serveParserStub отдаёт заглушку в режиме парсера (веб-интерфейс недоступен).
+func serveParserStub(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Сервис работает</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0f1117;color:#e8eaf6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}.card{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:32px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:16px;text-align:center}h1{font-size:1.5rem;font-weight:600}p{color:#8a8fa8;font-size:14px;line-height:1.5}</style></head><body><div class="card"><h1>Сервис работает</h1><p>Веб-интерфейс недоступен в режиме парсера.<br>Для доступа к панели управления переключитесь в режим <strong>all</strong>.</p></div></body></html>`)) //nolint:errcheck
 }
 
 // serveSPA отдаёт React-приложение; неизвестные пути → index.html.

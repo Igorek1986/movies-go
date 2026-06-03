@@ -1258,7 +1258,9 @@ h1{margin:0;font-size:1.1rem;color:#ccc}
 section{background:#1a1a1a;border-radius:8px;padding:1.5rem;display:flex;flex-direction:column;gap:1rem}
 h2{margin:0;font-size:.95rem;color:#bbb;border-bottom:1px solid #2a2a2a;padding-bottom:.5rem}
 label{font-size:.82rem;color:#aaa}
-.row{display:flex;gap:.5rem;align-items:center}
+.row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+.row .btn{flex-shrink:0}
+@media(max-width:480px){.row .btn{width:100%}}
 select,input:not([type=checkbox]){flex:1;padding:.45rem .6rem;border-radius:4px;border:1px solid #333;
   background:#222;color:#eee;font-size:.9rem}
 input[type=number]{flex:none}
