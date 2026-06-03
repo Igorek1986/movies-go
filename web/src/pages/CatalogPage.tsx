@@ -776,6 +776,10 @@ export default function CatalogPage() {
   }, [])
 
   useEffect(() => {
+    if (_cache.categories.length > 0) {
+      setCategories(applyRowOrder(_cache.categories))
+      return
+    }
     async function loadCategories() {
       try {
         const res = await fetch('/api/categories')
