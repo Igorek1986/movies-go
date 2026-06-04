@@ -1080,7 +1080,7 @@
             param: {
                 name: 'numparser_hide_unrated',
                 type: 'trigger',
-                default: getProfileSetting('numparser_hide_unrated', false),
+                default: false,
             },
             field: {
                 name: 'Скрыть без рейтинга',
@@ -1346,14 +1346,15 @@
         s.id = 'num-act-styles';
         s.textContent = [
             '.num-act-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.92);z-index:9999;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center}',
-            '.num-act-box{background:#1e1e2e;border-radius:1.8rem;padding:4rem 6rem;text-align:center;max-width:900px;width:85%;border:2px solid #ffffff15}',
+            '.num-act-box{background:#1e1e2e;border-radius:1.8rem;padding:4rem 6rem;text-align:center;max-width:900px;width:85%;border:2px solid #ffffff15;box-sizing:border-box}',
             '.num-act-title{font-size:2.4rem;font-weight:700;margin-bottom:1.8rem}',
             '.num-act-url{color:#60a5fa;font-size:1.5rem;font-weight:600;margin-bottom:1.2rem;word-break:break-all}',
             '.num-act-hint{color:#aaa;font-size:1.3rem;margin-bottom:.6rem}',
-            '.num-act-code{font-size:5rem;font-weight:800;letter-spacing:1rem;color:#4ade80;font-family:monospace;border:3px solid #4ade80;border-radius:1rem;padding:.8rem 2.5rem;display:inline-block;margin:1.5rem 0}',
+            '.num-act-code{font-size:5rem;font-weight:800;letter-spacing:1rem;color:#4ade80;font-family:monospace;border:3px solid #4ade80;border-radius:1rem;padding:.8rem 2.5rem;display:inline-block;margin:1.5rem 0;max-width:100%;box-sizing:border-box}',
             '.num-act-timer{color:#888;font-size:1.1rem;margin-bottom:1rem}',
             '.num-act-status{font-size:1.3rem;min-height:2rem}',
             '.num-act-close{color:#555;font-size:1rem;margin-top:1.8rem}',
+            '@media(max-width:600px){.num-act-box{padding:2.5rem 1.5rem;width:92%}.num-act-code{font-size:3rem;letter-spacing:.5rem;padding:.6rem 1.2rem}}',
         ].join('');
         document.head.appendChild(s);
     })();
@@ -1660,14 +1661,14 @@
     var style = document.createElement('style');
     style.textContent = [
         '.np-cert-badge {',
-        '    position: absolute; right: 0.4em; bottom: 0.4em;',
-        '    padding: 0.15em 0.5em;',
-        '    font-size: 0.85em; font-weight: bold;',
-        '    border-radius: 0.4em;',
+        '    position: absolute; right: 0.4em; bottom: 3em;',
+        '    padding: 0.4em 0.4em;',
+        '    font-size: 0.8em; font-weight: bold;',
+        '    border-radius: 0.3em;',
         '    z-index: 2; color: #fff;',
         '    line-height: 1.2;',
+        '    text-transform: uppercase;',
         '    text-shadow: 0 1px 2px rgba(0,0,0,0.4);',
-        '    box-shadow: 0 1px 4px rgba(0,0,0,0.3);',
         '}',
     ].join('\n');
     document.head.appendChild(style);
