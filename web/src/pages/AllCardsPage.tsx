@@ -71,7 +71,7 @@ function FilterHeader({ col, active, openCol, values, onToggleOpen, onToggleValu
   }, [isOpen, col.key, onToggleOpen])
 
   return (
-    <th style={{ position: 'relative', userSelect: 'none' }}>
+    <th style={{ userSelect: 'none' }}>
       <span onClick={() => onToggleOpen(col.key)} style={{
         cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
         color: count > 0 ? '#4a90e2' : undefined,
@@ -150,7 +150,7 @@ function RuntimeFilterHeader({ range, isOpen, onToggleOpen, onChange, onClear }:
   }
 
   return (
-    <th style={{ position: 'relative', userSelect: 'none' }}>
+    <th style={{ userSelect: 'none' }}>
       <span onClick={onToggleOpen} style={{
         cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
         color: active ? '#4a90e2' : undefined, whiteSpace: 'nowrap',
@@ -218,7 +218,7 @@ function DateRangeFilterHeader({ label, range, isOpen, sortDir, onToggleOpen, on
   }
 
   return (
-    <th style={{ position: 'relative', userSelect: 'none', whiteSpace: 'nowrap' }}>
+    <th style={{ userSelect: 'none', whiteSpace: 'nowrap' }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <span onClick={onSort} style={{ cursor: 'pointer', color: sortDir ? '#4a90e2' : undefined }}>
           {label}{sortDir === 'asc' ? ' ↑' : sortDir === 'desc' ? ' ↓' : ''}
