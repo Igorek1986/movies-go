@@ -121,7 +121,11 @@ ensure_docker() {
 }
 
 # ── .env helpers ──────────────────────────────────────────────────────────────
-env_val()  { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d ' '; }
+# Значение для .env в одинарных кавычках. Для Docker Compose '...' — литерал:
+# $ внутри НЕ интерполируется (иначе $ в пароле/токене обрезает значение).
+env_q()    { printf "'%s'" "$1"; }
+env_val()  { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- \
+             | sed -E "s/^[[:space:]]+//; s/[[:space:]]+$//; s/^'(.*)'$/\1/; s/^\"(.*)\"$/\1/"; }
 db_user()  { local v; v="$(env_val DB_USER)"; echo "${v:-movies_api}"; }
 db_name()  { local v; v="$(env_val DB_NAME)"; echo "${v:-movies_api}"; }
 http_port() { local v; v="$(env_val PORT)"; echo "${v:-8888}"; }
@@ -167,17 +171,18 @@ do_install() {
     [ -n "$TMDB" ] && [[ "$TMDB" != Bearer* ]] && TMDB="Bearer $TMDB"
 
     umask 077
-    cat > .env <<EOF
-# Создано scripts/install.sh
-SUPERUSER_USERNAME=$SU_USER
-SUPERUSER_PASSWORD=$SU_PASS
-TMDB_TOKEN=$TMDB
-
-# PORT=8888
-# DB_USER=movies_api
-# DB_PASSWORD=movies_api
-# DB_NAME=movies_api
-EOF
+    # Значения в одинарных кавычках — иначе $ в пароле/токене съедается Docker Compose.
+    {
+        echo "# Создано scripts/install.sh"
+        echo "SUPERUSER_USERNAME=$(env_q "$SU_USER")"
+        echo "SUPERUSER_PASSWORD=$(env_q "$SU_PASS")"
+        echo "TMDB_TOKEN=$(env_q "$TMDB")"
+        echo ""
+        echo "# PORT=8888"
+        echo "# DB_USER=movies_api"
+        echo "# DB_PASSWORD=movies_api"
+        echo "# DB_NAME=movies_api"
+    } > .env
     ok ".env создан"
     [ -n "$TMDB" ] || warn "TMDB токен пуст — обогащение метаданными выключено (задай TMDB_TOKEN в .env позже)."
 
