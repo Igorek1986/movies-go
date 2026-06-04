@@ -77,6 +77,7 @@ func requireAnyAdmin(mode string) func(http.Handler) http.Handler {
 
 func requireParserAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store") // не кэшировать админ-данные на прокси
 		if !checkParserSession(r) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -1166,6 +1167,9 @@ func handleAPIAdminBotRestart(w http.ResponseWriter, r *http.Request) {
 
 // GET /admin — parser-mode only
 func handleParserModeAdmin(w http.ResponseWriter, r *http.Request) {
+	// no-store: иначе кэширующий прокси (nginx) закэширует HTML авторизованной
+	// панели и отдаст его всем — ключ кэша не знает про cookie.
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if !checkParserSession(r) {
 		errMsg := ""

@@ -30,6 +30,9 @@ type ctxKeyUser struct{}
 // requireSession is a chi middleware: 401 if no valid session.
 func requireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Авторизованный ответ персонализирован — кэширующий прокси (nginx/CDN)
+		// не должен его сохранять и отдавать другим. Покрывает и requireAdmin.
+		w.Header().Set("Cache-Control", "no-store")
 		key := auth.SessionFromRequest(r)
 		user := auth.GetSessionUser(r.Context(), key)
 		if user == nil {
@@ -59,6 +62,8 @@ func optionalSession(next http.Handler) http.Handler {
 		key := auth.SessionFromRequest(r)
 		if key != "" {
 			if user := auth.GetSessionUser(r.Context(), key); user != nil {
+				// Персонализированный ответ — не кэшировать на прокси.
+				w.Header().Set("Cache-Control", "no-store")
 				ctx := context.WithValue(r.Context(), ctxKeyUser{}, user)
 				r = r.WithContext(ctx)
 			}
