@@ -437,3 +437,43 @@ func applyCardDates(c *MyshowsCard, releaseDate, firstAirDate string) {
 		c.NumberOfSeasons = 0
 	}
 }
+
+// ─── Timetable ────────────────────────────────────────────────────────────────
+
+type TimetableEpisode struct {
+	TmdbShowID int    `json:"tmdb_show_id"`
+	Season     int    `json:"season_number"`
+	Episode    int    `json:"episode_number"`
+	AirDate    string `json:"air_date"`
+	Title      string `json:"name"`
+}
+
+// GetTimetableByTmdbIDs returns future, non-special episodes for the given TMDB show IDs.
+func GetTimetableByTmdbIDs(ctx context.Context, ids []int64) ([]TimetableEpisode, error) {
+	if len(ids) == 0 {
+		return []TimetableEpisode{}, nil
+	}
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT e.tmdb_show_id, e.season, e.episode,
+		       COALESCE(e.air_date::text, ''), COALESCE(e.title, '')
+		FROM episodes e
+		WHERE e.tmdb_show_id = ANY($1)
+		  AND e.air_date >= CURRENT_DATE
+		  AND e.is_special = false
+		ORDER BY e.air_date, e.tmdb_show_id, e.season, e.episode`,
+		ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var eps []TimetableEpisode
+	for rows.Next() {
+		var ep TimetableEpisode
+		if err := rows.Scan(&ep.TmdbShowID, &ep.Season, &ep.Episode, &ep.AirDate, &ep.Title); err != nil {
+			continue
+		}
+		eps = append(eps, ep)
+	}
+	return eps, nil
+}

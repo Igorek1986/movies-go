@@ -283,6 +283,7 @@ func NewRouter(mode string) http.Handler {
 	r.Post("/myshows/movie_status", handleMyshowsMovieStatus)
 	r.Post("/myshows/set_status", handleMyshowsSetStatus)
 	r.Get("/myshows/status", handleMyshowsGetStatus)
+	r.Post("/myshows/timetable", handleMyshowsTimetablePost)
 	r.With(requireSession).Get("/api/export", handleExport)
 	r.With(requireSession).Post("/api/import", handleImport)
 

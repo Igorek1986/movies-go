@@ -60,6 +60,13 @@ func SetMyshowsID(ctx context.Context, cardID string, myshowsID int) error {
 	return err
 }
 
+// HasEpisodes проверяет есть ли хоть один эпизод для этого сериала.
+func HasEpisodes(ctx context.Context, tmdbShowID int64) bool {
+	var exists bool
+	postgres.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM episodes WHERE tmdb_show_id=$1)`, tmdbShowID).Scan(&exists) //nolint:errcheck
+	return exists
+}
+
 // GetEpisodes returns all episodes for a TMDB show ordered by season, episode.
 func GetEpisodes(ctx context.Context, tmdbShowID int64) []EpisodeRow {
 	rows, err := postgres.Pool.Query(ctx, `

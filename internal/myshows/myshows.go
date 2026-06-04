@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"movies-api/db/store"
 	"log"
+	"movies-api/db/models"
+	"movies-api/db/store"
+	"movies-api/movies/tmdb"
 	"net/http"
 	"regexp"
 	"sort"
@@ -316,14 +318,14 @@ func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 
 	var show struct {
 		Episodes []struct {
-			ID            int     `json:"id"`
-			SeasonNumber  *int    `json:"seasonNumber"`
-			EpisodeNumber *int    `json:"episodeNumber"`
-			Title         string  `json:"title"`
-			Runtime       *int    `json:"runtime"`
-			IsSpecial     bool    `json:"isSpecial"`
-			AirDate       string  `json:"airDate"`
-			AirDateUTC    string  `json:"airDateUTC"`
+			ID            int    `json:"id"`
+			SeasonNumber  *int   `json:"seasonNumber"`
+			EpisodeNumber *int   `json:"episodeNumber"`
+			Title         string `json:"title"`
+			Runtime       *int   `json:"runtime"`
+			IsSpecial     bool   `json:"isSpecial"`
+			AirDate       string `json:"airDate"`
+			AirDateUTC    string `json:"airDateUTC"`
 		} `json:"episodes"`
 	}
 	if err := json.Unmarshal(res, &show); err != nil {
@@ -333,8 +335,8 @@ func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 		return fmt.Errorf("no episodes returned for show_id=%d", *mc.MyshowsID)
 	}
 
-	seenID := map[int]bool{}       // deduplicate by MyShows episode ID
-	seenKey := map[[2]int16]bool{} // guard against PK conflicts
+	seenID := map[int]bool{}        // deduplicate by MyShows episode ID
+	seenKey := map[[2]int16]bool{}  // guard against PK conflicts
 	specialSeq := map[int16]int16{} // season → next counter for ep-0 specials
 	var rows []store.EpisodeRow
 
@@ -424,6 +426,36 @@ func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 
 	log.Printf("myshows: synced %d episodes for %s", len(rows), mc.CardID)
 	return nil
+}
+
+// SyncEpisodesByID синхронизирует эпизоды по tmdb_id + myshows_id.
+// force=false пропускает шоу у которых эпизоды уже есть (холодный долив);
+// force=true перетягивает заново (фоновое обновление календаря).
+// Берёт OriginalTitle из карточки если она есть.
+func SyncEpisodesByID(ctx context.Context, tmdbID int64, myshowsID int, force bool) error {
+	if !force && store.HasEpisodes(ctx, tmdbID) {
+		return nil
+	}
+	cardID := fmt.Sprintf("%d_tv", tmdbID)
+	mc := store.GetMediaCardEpInfo(ctx, cardID)
+	if mc == nil {
+		// Карточки нет — создаём из TMDB. Иначе /myshows/watching отдаёт пустой
+		// title (LEFT JOIN media_cards), и в календаре сериал без названия.
+		if ent := tmdb.GetVideoDetails(false, tmdbID); ent != nil {
+			store.UpsertMediaCard(ent, &models.TorrentDetails{})
+			mc = store.GetMediaCardEpInfo(ctx, cardID)
+		}
+	}
+	if mc == nil {
+		// TMDB не нашёл — продолжаем заглушкой, эпизоды всё равно запишем.
+		mc = &store.MediaCardEpInfo{
+			CardID:        cardID,
+			TmdbID:        tmdbID,
+			OriginalTitle: "",
+		}
+	}
+	mc.MyshowsID = &myshowsID
+	return SyncEpisodes(ctx, mc)
 }
 
 // ─── Episode runtime ───────────────────────────────────────────────────────────
