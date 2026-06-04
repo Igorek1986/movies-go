@@ -152,10 +152,30 @@ bootstrap_root() {
     cd "$ROOT" || { err "Не зайти в $ROOT"; exit 1; }
 }
 
+# Записать app_mode=all ДО первого старта приложения — тогда оно сразу
+# поднимется в режиме all (app_mode читается при запуске), рестарт не нужен.
+pre_seed_mode_all() {
+    say "Режим all — задаю до первого запуска (рестарт не нужен)…"
+    dc up -d db >/dev/null 2>&1 || { warn "БД не поднялась — режим переключишь в /admin."; return; }
+    local i
+    for i in $(seq 1 30); do
+        dc exec -T db pg_isready -U "$(db_user)" -d "$(db_name)" -q 2>/dev/null && break
+        sleep 1
+    done
+    if dc exec -T db psql -U "$(db_user)" "$(db_name)" -q -c \
+        "CREATE TABLE IF NOT EXISTS app_settings (key VARCHAR(100) PRIMARY KEY, value TEXT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
+         INSERT INTO app_settings (key, value) VALUES ('app_mode','all')
+         ON CONFLICT (key) DO UPDATE SET value='all';" >/dev/null 2>&1; then
+        ok "Режим all включён — сервис стартует сразу в нём"
+    else
+        warn "Не удалось задать режим — переключишь в /admin → Настройки → Режим работы."
+    fi
+}
+
 # ── Свежая установка ──────────────────────────────────────────────────────────
 do_install() {
     say "Настройка"
-    local SU_USER SU_PASS SU_PASS2 TMDB
+    local SU_USER SU_PASS SU_PASS2 TMDB APP_MODE
     read -rp "Логин администратора [admin]: " SU_USER </dev/tty
     SU_USER="${SU_USER:-admin}"
     while :; do
@@ -169,6 +189,13 @@ do_install() {
     echo "TMDB токен (v4 Read Access Token) — нужен для метаданных. Можно оставить пустым."
     read -rp "TMDB токен: " TMDB </dev/tty
     [ -n "$TMDB" ] && [[ "$TMDB" != Bearer* ]] && TMDB="Bearer $TMDB"
+
+    echo
+    echo "Режим работы:"
+    echo "  parser — только контент и парсер (по умолчанию)"
+    echo "  all    — полный сервис: аккаунты, устройства, веб-кабинет, профили"
+    read -rp "Режим [parser/all]: " APP_MODE </dev/tty
+    case "${APP_MODE:-parser}" in all|ALL|All) APP_MODE=all ;; *) APP_MODE=parser ;; esac
 
     umask 077
     # Значения в одинарных кавычках — иначе $ в пароле/токене съедается Docker Compose.
@@ -198,6 +225,9 @@ do_install() {
             fi
         fi
     fi
+
+    # Режим all выставляем ДО старта app, чтобы он сразу поднялся в нём (без рестарта).
+    [ "$APP_MODE" = "all" ] && pre_seed_mode_all
 
     if [ -f cards-dump.sql.gz ] || [ -f dump.sql.gz ]; then
         say "Восстановление базы из дампа и запуск сервиса…"
