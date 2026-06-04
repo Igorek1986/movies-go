@@ -34,12 +34,16 @@ type ExportProfile struct {
 }
 
 type ExportTimecode struct {
-	ProfileID  string  `json:"profile_id"`
-	CardID     string  `json:"card_id"`
-	Item       string  `json:"item"`
-	Data       string  `json:"data"`
-	ViewCount  int     `json:"view_count,omitempty"`
-	CountedAt  *string `json:"counted_at,omitempty"`
+	ProfileID string    `json:"profile_id"`
+	CardID    string    `json:"card_id"`
+	Item      string    `json:"item"`
+	Data      string    `json:"data"`
+	ViewCount int       `json:"view_count,omitempty"`
+	CountedAt *string   `json:"counted_at,omitempty"`
+	// UpdatedAt — момент последнего просмотра; по нему строится история и
+	// «продолжить просмотр». Обязательно переносить, иначе вся история съедет
+	// на дату импорта.
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type ExportPluginSetting struct {
@@ -101,12 +105,12 @@ func ExportUserData(ctx context.Context, userID int64) (*ExportData, error) {
 
 		// Timecodes
 		trows, err := postgres.Pool.Query(ctx,
-			`SELECT profile_id, card_id, item, data, view_count, TO_CHAR(counted_at, 'YYYY-MM-DD')
+			`SELECT profile_id, card_id, item, data, view_count, TO_CHAR(counted_at, 'YYYY-MM-DD'), updated_at
 			 FROM timecodes WHERE device_id = $1 ORDER BY id`, devID)
 		if err == nil {
 			for trows.Next() {
 				var t ExportTimecode
-				if err := trows.Scan(&t.ProfileID, &t.CardID, &t.Item, &t.Data, &t.ViewCount, &t.CountedAt); err != nil {
+				if err := trows.Scan(&t.ProfileID, &t.CardID, &t.Item, &t.Data, &t.ViewCount, &t.CountedAt, &t.UpdatedAt); err != nil {
 					continue
 				}
 				out.Devices[i].Timecodes = append(out.Devices[i].Timecodes, t)
@@ -176,11 +180,21 @@ func ImportUserData(ctx context.Context, userID int64, data *ExportData) error {
 		}
 
 		for _, t := range dev.Timecodes {
+			// Старые бэкапы без updated_at → подставляем now() через COALESCE.
+			var updatedAt *time.Time
+			if !t.UpdatedAt.IsZero() {
+				ua := t.UpdatedAt
+				updatedAt = &ua
+			}
 			if _, err := tx.Exec(ctx,
-				`INSERT INTO timecodes (device_id, profile_id, card_id, item, data)
-				 VALUES ($1, $2, $3, $4, $5)
-				 ON CONFLICT (device_id, profile_id, card_id, item) DO UPDATE SET data = EXCLUDED.data`,
-				devID, t.ProfileID, t.CardID, t.Item, t.Data,
+				`INSERT INTO timecodes (device_id, profile_id, card_id, item, data, view_count, counted_at, updated_at)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7::date, COALESCE($8::timestamptz, now()))
+				 ON CONFLICT (device_id, profile_id, card_id, item)
+				 DO UPDATE SET data       = EXCLUDED.data,
+				               view_count = EXCLUDED.view_count,
+				               counted_at = EXCLUDED.counted_at,
+				               updated_at = EXCLUDED.updated_at`,
+				devID, t.ProfileID, t.CardID, t.Item, t.Data, t.ViewCount, t.CountedAt, updatedAt,
 			); err != nil {
 				return err
 			}
