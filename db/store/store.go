@@ -1062,35 +1062,31 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		))
 	}
 	if f.HideWatched && f.DeviceID > 0 {
-		where = append(where, fmt.Sprintf(`NOT (
-			CASE m.media_type
-			WHEN 'movie' THEN
-				EXISTS (
-					SELECT 1 FROM timecodes tc
-					WHERE tc.device_id = $%d
-					  AND tc.profile_id = $%d
-					  AND tc.card_id = (m.tmdb_id::text || '_' || m.media_type)
-					  AND (tc.data::jsonb->>'percent')::numeric >= $%d
-				)
-			ELSE
-				(
-					SELECT COUNT(*) FILTER (
+		// «Досмотренные» card_id считаем ОДНИМ предвычисленным подзапросом (а не
+		// коррелированными подзапросами на каждую карточку-кандидата). Подзапрос
+		// независим от внешнего запроса → PostgreSQL хэширует его в анти-джойн.
+		// Счёт эпизодов для TV считается только по уже просмотренным карточкам
+		// (их немного), а не по всему каталогу.
+		where = append(where, fmt.Sprintf(`m.card_id NOT IN (
+			SELECT mc.card_id
+			FROM (
+				SELECT tc.card_id, COUNT(*) FILTER (
 						WHERE (tc.data::jsonb->>'percent')::numeric >= $%d
 						   OR (tc.data::jsonb->>'special')::boolean IS TRUE
-					)
-					FROM timecodes tc
-					WHERE tc.device_id = $%d
-					  AND tc.profile_id = $%d
-					  AND tc.card_id = (m.tmdb_id::text || '_' || m.media_type)
-				) >= GREATEST(1, COALESCE(
+					) AS w
+				FROM timecodes tc
+				WHERE tc.device_id = $%d AND tc.profile_id = $%d
+				GROUP BY tc.card_id
+			) wt
+			JOIN media_cards mc ON mc.card_id = wt.card_id
+			WHERE (mc.media_type = 'movie' AND wt.w >= 1)
+			   OR (mc.media_type = 'tv' AND wt.w >= GREATEST(1, COALESCE(
 					(SELECT COUNT(*)::int FROM episodes e
-					 WHERE e.tmdb_show_id = m.tmdb_id
+					 WHERE e.tmdb_show_id = mc.tmdb_id
 					   AND NOT e.is_special
 					   AND e.air_date IS NOT NULL AND e.air_date <= CURRENT_DATE),
-					m.number_of_episodes
-				))
-			END
-		)`, n, n+1, n+2, n+2, n, n+1))
+					mc.number_of_episodes)))
+		)`, n+2, n, n+1))
 		args = append(args, f.DeviceID, f.ProfileID, f.WatchedPercent)
 		n += 3
 	}
