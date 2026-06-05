@@ -109,7 +109,10 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 // GET /api/config — public non-sensitive config for the frontend
 func handleAppConfig(w http.ResponseWriter, r *http.Request) {
 	imgProxy := ""
-	if proxy.Default.HasProxy(r.Context(), proxy.RouteImages) {
+	// Через сервер: если включена настройка images_via_server либо настроен
+	// SOCKS5-прокси для картинок — фронтенд гонит изображения через /imgproxy.
+	if store.GetSettingInt(r.Context(), "images_via_server") == 1 ||
+		proxy.Default.HasProxy(r.Context(), proxy.RouteImages) {
 		imgProxy = "/imgproxy"
 	}
 	pluginURL, _ := store.GetSetting(r.Context(), "plugin_url")

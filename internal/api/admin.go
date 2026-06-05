@@ -92,20 +92,20 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	var noRuntimeMovies, noRuntimeTV int
 	var tmdbRefreshedToday, tmdbNotFound int
 	var actorCount, directorCount int
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&users)                                                    //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE created_at::date = CURRENT_DATE`).Scan(&usersToday)         //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&devices)                                                //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices WHERE created_at::date = CURRENT_DATE`).Scan(&devicesToday)     //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards`).Scan(&cards)                                              //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE created_at::date = CURRENT_DATE`).Scan(&cardsToday)   //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes`).Scan(&timecodes)                                            //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes WHERE created_at::date = CURRENT_DATE`).Scan(&timecodesToday) //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='movie' AND (runtime IS NULL OR runtime=0)`).Scan(&noRuntimeMovies)               //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='tv' AND (episode_run_time IS NULL OR episode_run_time=0)`).Scan(&noRuntimeTV)    //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&users)                                                                                             //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE created_at::date = CURRENT_DATE`).Scan(&usersToday)                                                  //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&devices)                                                                                         //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices WHERE created_at::date = CURRENT_DATE`).Scan(&devicesToday)                                              //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards`).Scan(&cards)                                                                                       //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE created_at::date = CURRENT_DATE`).Scan(&cardsToday)                                            //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes`).Scan(&timecodes)                                                                                     //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes WHERE created_at::date = CURRENT_DATE`).Scan(&timecodesToday)                                          //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='movie' AND (runtime IS NULL OR runtime=0)`).Scan(&noRuntimeMovies)                 //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='tv' AND (episode_run_time IS NULL OR episode_run_time=0)`).Scan(&noRuntimeTV)      //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_updated_at::date = CURRENT_DATE AND tmdb_not_found_at IS NULL`).Scan(&tmdbRefreshedToday) //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_not_found_at IS NOT NULL`).Scan(&tmdbNotFound)                                            //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_cast`).Scan(&actorCount)     //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_crew WHERE job='Director'`).Scan(&directorCount) //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_cast`).Scan(&actorCount)                                                             //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_crew WHERE job='Director'`).Scan(&directorCount)                                     //nolint:errcheck
 
 	type newUser struct {
 		Username  string `json:"username"`
@@ -156,25 +156,25 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	JSON(w, http.StatusOK, map[string]any{
-		"users":             users,
-		"users_today":       usersToday,
-		"devices":           devices,
-		"devices_today":     devicesToday,
+		"users":                users,
+		"users_today":          usersToday,
+		"devices":              devices,
+		"devices_today":        devicesToday,
 		"media_cards":          cards,
 		"media_cards_today":    cardsToday,
 		"no_runtime_movies":    noRuntimeMovies,
 		"no_runtime_tv":        noRuntimeTV,
-		"timecodes":         timecodes,
-		"timecodes_today":   timecodesToday,
-		"new_users_today":   newUsersToday,
-		"api_ips_today":     apiIPsToday,
-		"api_reqs_today":    apiReqsToday,
-		"api_today":         apiToday,
-		"api_total":         apiTotal,
-		"cats_today":        catsToday,
-		"cats_total":        catsTotal,
-		"myshows_today":          myshowsToday,
-		"myshows_total":          myshowsTotal,
+		"timecodes":            timecodes,
+		"timecodes_today":      timecodesToday,
+		"new_users_today":      newUsersToday,
+		"api_ips_today":        apiIPsToday,
+		"api_reqs_today":       apiReqsToday,
+		"api_today":            apiToday,
+		"api_total":            apiTotal,
+		"cats_today":           catsToday,
+		"cats_total":           catsTotal,
+		"myshows_today":        myshowsToday,
+		"myshows_total":        myshowsTotal,
 		"tmdb_refreshed_today": tmdbRefreshedToday,
 		"tmdb_not_found":       tmdbNotFound,
 		"actor_count":          actorCount,
@@ -1012,6 +1012,7 @@ var checkboxSettingKeys = map[string]string{
 }
 var boolSettingKeys = map[string]bool{
 	"catalog_require_poster": true,
+	"images_via_server":      true,
 }
 
 // settingsGroupDefs mirrors FastAPI GROUPS.
@@ -1081,6 +1082,7 @@ var settingsGroupDefs = []struct {
 	}},
 	{"Настройки каталога", []string{
 		"catalog_require_poster",
+		"images_via_server",
 		"catalog_actor_count",
 		"catalog_actor_ru_count",
 		"catalog_director_count",
@@ -2209,7 +2211,9 @@ func handleAPIAdminChildTextKwGet(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/admin/child-text-keywords  {"words": "секс насилие"}
 func handleAPIAdminChildTextKwAdd(w http.ResponseWriter, r *http.Request) {
-	var body struct{ Words string `json:"words"` }
+	var body struct {
+		Words string `json:"words"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Words == "" {
 		Error(w, http.StatusBadRequest, "words required")
 		return
@@ -2242,7 +2246,9 @@ func handleAPIAdminChildTextKwAdd(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /api/admin/child-text-keywords  {"word": "секс"}
 func handleAPIAdminChildTextKwDelete(w http.ResponseWriter, r *http.Request) {
-	var body struct{ Word string `json:"word"` }
+	var body struct {
+		Word string `json:"word"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Word == "" {
 		Error(w, http.StatusBadRequest, "word required")
 		return
@@ -2270,7 +2276,9 @@ func handleAPIAdminChildTextAgesGet(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/admin/child-text-keyword-ages  {"ages": [0, 6]}
 func handleAPIAdminChildTextAgesSave(w http.ResponseWriter, r *http.Request) {
-	var body struct{ Ages []int `json:"ages"` }
+	var body struct {
+		Ages []int `json:"ages"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		Error(w, http.StatusBadRequest, "invalid json")
 		return
