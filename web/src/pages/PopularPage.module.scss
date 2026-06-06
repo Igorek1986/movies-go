@@ -89,6 +89,23 @@
 }
 .sortArrow { color: $color-primary; }
 
+// Mobile-only sort control (table headers are hidden on mobile)
+.mobileSort {
+  display: none;
+  align-items: center;
+  gap: $spacing-sm;
+}
+.dirBtn {
+  background: $color-bg-input;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  color: $color-text;
+  padding: 7px 12px;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  &:hover { border-color: $color-primary; color: $color-primary; }
+}
+
 // ── Daily chart ────────────────────────────────────────────────────────────────
 
 .chartCard {
@@ -168,6 +185,17 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     vertical-align: middle;
   }
+
+  // Numeric columns: right-aligned, fixed width so each value sits under
+  // its header (overrides the default left-aligned th).
+  th.num, td.num {
+    text-align: right;
+    white-space: nowrap;
+    width: 104px;
+  }
+
+  // Title column takes the remaining space.
+  th.titleCol, td.titleCol { width: 100%; }
 }
 
 .row {
@@ -224,5 +252,75 @@
     transition: border-color $transition-fast, color $transition-fast;
     &:hover:not(:disabled) { border-color: $color-primary; color: $color-primary; }
     &:disabled { opacity: 0.4; cursor: default; }
+  }
+}
+
+// ── Mobile: table → cards ─────────────────────────────────────────────────────
+@media (max-width: $bp-md) {
+  .page { overflow-x: hidden; }
+
+  .toolbar .search { flex: 1 1 100%; }
+  .mobileSort { display: flex; flex: 1 1 100%; }
+  .mobileSort select { flex: 1; }
+
+  .table {
+    width: 100%;
+
+    thead { display: none; }
+
+    tbody tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 14px;
+      background: $color-bg-card;
+      border: 1px solid $color-border;
+      border-radius: $radius-md;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+
+    td {
+      padding: 0;
+      border: none;
+      width: auto !important;
+      text-align: left !important;
+    }
+
+    td.rank {
+      order: 0;
+      color: $color-text-muted;
+      font-weight: 600;
+      font-size: $font-size-sm;
+      min-width: 1.5em;
+    }
+
+    td.posterCell { order: 1; }
+    .poster, .posterPlaceholder { width: 46px; height: 69px; }
+
+    td.cardTitle {
+      order: 2;
+      flex: 1 1 120px;
+      min-width: 0;
+      font-weight: 600;
+      white-space: normal;
+    }
+
+    // «метка: значение» — по две на строку
+    td[data-label] {
+      order: 3;
+      flex: 1 1 40%;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+
+      &::before {
+        content: attr(data-label);
+        color: $color-text-muted;
+        font-size: $font-size-xs;
+        flex-shrink: 0;
+      }
+    }
   }
 }

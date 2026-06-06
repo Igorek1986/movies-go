@@ -115,7 +115,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	popularSourceCount := -1 // -1 = unknown/unreachable
 	if popularSourceURL != "" {
 		sctx, scancel := context.WithTimeout(ctx, 4*time.Second)
-		if resp, err := fetchPopularSource(sctx, 1); err == nil {
+		if resp, err := fetchPopularSource(sctx, 1, 1); err == nil {
 			popularSourceCount = resp.TotalResults
 		}
 		scancel()

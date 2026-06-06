@@ -31,11 +31,34 @@ interface PopularData {
 }
 
 type SortKey = 'viewers' | 'plays' | 'avg_percent' | 'finished_rate' | 'year' | 'title'
+type SortState = { key: SortKey; dir: 'asc' | 'desc' }
+type TypeFilter = 'all' | 'movie' | 'tv'
+
+const LS_KEY = 'popular_local_prefs'
+
+function loadPrefs(): { sort?: SortState; type?: TypeFilter } {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') } catch { return {} }
+}
 
 function fmtDay(date: string): string {
-  // date is "YYYY-MM-DD"
   const [, m, d] = date.split('-')
   return `${d}.${m}`
+}
+
+function SortableTh({ label, k, sort, onSort, className, title }: {
+  label: string
+  k: SortKey
+  sort: SortState
+  onSort: (k: SortKey) => void
+  className?: string
+  title?: string
+}) {
+  const active = sort.key === k
+  return (
+    <th className={`${className ?? ''} ${styles.sortable}`} onClick={() => onSort(k)} title={title}>
+      {label}{active && <span className={styles.sortArrow}>{sort.dir === 'asc' ? ' ↑' : ' ↓'}</span>}
+    </th>
+  )
 }
 
 export default function PopularPage() {
@@ -43,8 +66,8 @@ export default function PopularPage() {
   const [data, setData] = useState<PopularData | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState<'all' | 'movie' | 'tv'>('all')
-  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'viewers', dir: 'desc' })
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => loadPrefs().type ?? 'all')
+  const [sort, setSort] = useState<SortState>(() => loadPrefs().sort ?? { key: 'viewers', dir: 'desc' })
 
   useEffect(() => {
     fetch('/api/admin/popular')
@@ -52,6 +75,10 @@ export default function PopularPage() {
       .then(setData)
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    localStorage.setItem(LS_KEY, JSON.stringify({ sort, type: typeFilter }))
+  }, [sort, typeFilter])
 
   const daily = data?.daily ?? []
   const allCards = data?.cards ?? []
@@ -65,28 +92,18 @@ export default function PopularPage() {
 
   const cards = useMemo(() => {
     const q = search.trim().toLowerCase()
-    let list = allCards.filter(c =>
+    const list = allCards.filter(c =>
       (typeFilter === 'all' || c.media_type === typeFilter) &&
       (q === '' || c.title.toLowerCase().includes(q))
     )
     const { key, dir } = sort
     const mul = dir === 'asc' ? 1 : -1
-    list = [...list].sort((a, b) => {
+    return [...list].sort((a, b) => {
       if (key === 'title') return a.title.localeCompare(b.title, 'ru') * mul
       if (key === 'year') return ((Number(a.year) || 0) - (Number(b.year) || 0)) * mul
-      return ((a[key] as number) - (b[key] as number)) * mul
+      return (((a[key] as number) || 0) - ((b[key] as number) || 0)) * mul
     })
-    return list
   }, [allCards, search, typeFilter, sort])
-
-  function SortTh({ label, k, className, title }: { label: string; k: SortKey; className?: string; title?: string }) {
-    const active = sort.key === k
-    return (
-      <th className={`${className ?? ''} ${styles.sortable}`} onClick={() => toggleSort(k)} title={title}>
-        {label}{active && <span className={styles.sortArrow}>{sort.dir === 'asc' ? ' ↑' : ' ↓'}</span>}
-      </th>
-    )
-  }
 
   return (
     <Layout wide>
@@ -119,10 +136,7 @@ export default function PopularPage() {
                   className={styles.bar}
                   title={`${fmtDay(d.date)}: ${d.plays} просмотров, ${d.viewers} зрителей, ${d.cards} карточек`}
                 >
-                  <div
-                    className={styles.barFill}
-                    style={{ height: `${(d.plays / maxPlays) * 100}%` }}
-                  />
+                  <div className={styles.barFill} style={{ height: `${(d.plays / maxPlays) * 100}%` }} />
                 </div>
               ))}
             </div>
@@ -143,11 +157,32 @@ export default function PopularPage() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
-              <select className={styles.select} value={typeFilter} onChange={e => setTypeFilter(e.target.value as 'all' | 'movie' | 'tv')}>
+              <select className={styles.select} value={typeFilter} onChange={e => setTypeFilter(e.target.value as TypeFilter)}>
                 <option value="all">Все типы</option>
                 <option value="movie">Фильмы</option>
                 <option value="tv">Сериалы</option>
               </select>
+              <div className={styles.mobileSort}>
+                <select
+                  className={styles.select}
+                  value={sort.key}
+                  onChange={e => setSort(s => ({ key: e.target.value as SortKey, dir: s.dir }))}
+                >
+                  <option value="viewers">Зрителей</option>
+                  <option value="plays">Просмотров</option>
+                  <option value="avg_percent">Досмотр</option>
+                  <option value="finished_rate">Додосмотрели</option>
+                  <option value="year">Год</option>
+                  <option value="title">Название</option>
+                </select>
+                <button
+                  className={styles.dirBtn}
+                  onClick={() => setSort(s => ({ key: s.key, dir: s.dir === 'asc' ? 'desc' : 'asc' }))}
+                  title="Направление сортировки"
+                >
+                  {sort.dir === 'asc' ? '↑ возр.' : '↓ убыв.'}
+                </button>
+              </div>
             </div>
 
             <table className={styles.table}>
@@ -155,13 +190,13 @@ export default function PopularPage() {
                 <tr>
                   <th className={styles.rank}>#</th>
                   <th></th>
-                  <SortTh label="Название" k="title" />
-                  <SortTh label="Год" k="year" />
+                  <SortableTh label="Название" k="title" sort={sort} onSort={toggleSort} className={styles.titleCol} />
+                  <SortableTh label="Год" k="year" sort={sort} onSort={toggleSort} />
                   <th>Тип</th>
-                  <SortTh label="Зрителей" k="viewers" className={styles.num} />
-                  <SortTh label="Просмотров" k="plays" className={styles.num} />
-                  <SortTh label="Досмотр" k="avg_percent" className={styles.num} title="Средняя глубина досмотра" />
-                  <SortTh label="Додосмотрели" k="finished_rate" className={styles.num} title="Доля просмотров, досмотренных до конца (≥85%)" />
+                  <SortableTh label="Зрителей" k="viewers" sort={sort} onSort={toggleSort} className={styles.num} />
+                  <SortableTh label="Просмотров" k="plays" sort={sort} onSort={toggleSort} className={styles.num} />
+                  <SortableTh label="Досмотр" k="avg_percent" sort={sort} onSort={toggleSort} className={styles.num} title="Средняя глубина досмотра" />
+                  <SortableTh label="Додосмотрели" k="finished_rate" sort={sort} onSort={toggleSort} className={styles.num} title="Доля просмотров, досмотренных до конца (≥85%)" />
                 </tr>
               </thead>
               <tbody>
@@ -174,18 +209,18 @@ export default function PopularPage() {
                       onClick={() => navigate(`/card/${c.card_id}`, { state: { backUrl: '/admin/popular' } })}
                     >
                       <td className={styles.rank}>{i + 1}</td>
-                      <td>
+                      <td className={styles.posterCell}>
                         {poster
                           ? <img src={poster} alt="" className={styles.poster} loading="lazy" />
                           : <div className={styles.posterPlaceholder} />}
                       </td>
                       <td className={styles.cardTitle}>{c.title}</td>
-                      <td className={styles.muted}>{c.year || '—'}</td>
-                      <td className={styles.muted}>{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
-                      <td className={`${styles.num} ${styles.numStrong}`}>{c.viewers.toLocaleString('ru')}</td>
-                      <td className={`${styles.num} ${styles.muted}`}>{c.plays.toLocaleString('ru')}</td>
-                      <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`}>{c.avg_percent ? `${c.avg_percent}%` : '—'}</td>
-                      <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`}>{c.avg_percent ? `${c.finished_rate}%` : '—'}</td>
+                      <td className={styles.muted} data-label="Год">{c.year || '—'}</td>
+                      <td className={styles.muted} data-label="Тип">{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
+                      <td className={`${styles.num} ${styles.numStrong}`} data-label="Зрителей">{c.viewers.toLocaleString('ru')}</td>
+                      <td className={`${styles.num} ${styles.muted}`} data-label="Просмотров">{c.plays.toLocaleString('ru')}</td>
+                      <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Досмотр">{c.avg_percent ? `${c.avg_percent}%` : '—'}</td>
+                      <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Додосмотрели">{c.avg_percent ? `${c.finished_rate}%` : '—'}</td>
                     </tr>
                   )
                 })}

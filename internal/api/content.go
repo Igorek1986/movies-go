@@ -51,12 +51,12 @@ type popularSourceResp struct {
 }
 
 // fetchPopularSource pulls one page of the configured external popular source.
-func fetchPopularSource(ctx context.Context, page int) (*popularSourceResp, error) {
+func fetchPopularSource(ctx context.Context, page, perPage int) (*popularSourceResp, error) {
 	src := getPopularSourceURL(ctx)
 	if src == "" {
 		return nil, fmt.Errorf("popular source not configured")
 	}
-	url := fmt.Sprintf("%s/np_popular?page=%d", src, page)
+	url := fmt.Sprintf("%s/np_popular?page=%d&per_page=%d", src, page, perPage)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -78,20 +78,25 @@ func fetchPopularSource(ctx context.Context, page int) (*popularSourceResp, erro
 
 // handleAPIAdminPopularSource returns the full external source's popular list
 // (admin view), aggregating all pages so the client can sort/filter locally.
+// Uses per_page=100 to minimise round-trips, retries the first page once.
 func handleAPIAdminPopularSource(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	first, err := fetchPopularSource(ctx, 1)
+	const perPage = 100
+	first, err := fetchPopularSource(ctx, 1, perPage)
+	if err != nil { // one retry — source can be briefly slow
+		first, err = fetchPopularSource(ctx, 1, perPage)
+	}
 	if err != nil {
 		Error(w, http.StatusBadGateway, "popular source unavailable")
 		return
 	}
 	results := first.Results
-	for page := 2; page <= first.TotalPages && page <= 100; page++ {
-		next, err := fetchPopularSource(ctx, page)
+	for page := 2; page <= first.TotalPages && page <= 50; page++ {
+		next, err := fetchPopularSource(ctx, page, perPage)
 		if err != nil {
-			break // return what we have
+			break // return what we have so far
 		}
 		results = append(results, next.Results...)
 	}

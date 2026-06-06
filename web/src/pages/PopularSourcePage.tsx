@@ -13,19 +13,43 @@ interface SourceCard {
   first_air_date: string
   viewers?: number
   plays?: number
+  rank: number // popularity position from the source (1-based)
 }
 
 interface SourceData {
   source_url: string
-  results: SourceCard[]
+  results: Omit<SourceCard, 'rank'>[]
   total_results: number
 }
 
-type SortKey = 'default' | 'title' | 'year' | 'viewers' | 'plays'
+type SortKey = 'rank' | 'title' | 'year' | 'viewers' | 'plays'
+type SortState = { key: SortKey; dir: 'asc' | 'desc' }
+type TypeFilter = 'all' | 'movie' | 'tv'
 
-function year(c: SourceCard): string {
+const LS_KEY = 'popular_source_prefs'
+
+function loadPrefs(): { sort?: SortState; type?: TypeFilter } {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') } catch { return {} }
+}
+
+function yearOf(c: SourceCard): number {
   const d = c.media_type === 'movie' ? c.release_date : c.first_air_date
-  return d ? d.slice(0, 4) : '—'
+  return d ? Number(d.slice(0, 4)) || 0 : 0
+}
+
+function SortableTh({ label, k, sort, onSort, className }: {
+  label: string
+  k: SortKey
+  sort: SortState
+  onSort: (k: SortKey) => void
+  className?: string
+}) {
+  const active = sort.key === k
+  return (
+    <th className={`${className ?? ''} ${styles.sortable}`} onClick={() => onSort(k)}>
+      {label}{active && <span className={styles.sortArrow}>{sort.dir === 'asc' ? ' ↑' : ' ↓'}</span>}
+    </th>
+  )
 }
 
 export default function PopularSourcePage() {
@@ -34,8 +58,8 @@ export default function PopularSourcePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState<'all' | 'movie' | 'tv'>('all')
-  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'default', dir: 'desc' })
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => loadPrefs().type ?? 'all')
+  const [sort, setSort] = useState<SortState>(() => loadPrefs().sort ?? { key: 'rank', dir: 'asc' })
 
   useEffect(() => {
     fetch('/api/admin/popular-source')
@@ -45,41 +69,38 @@ export default function PopularSourcePage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const allCards = data?.results ?? []
+  useEffect(() => {
+    localStorage.setItem(LS_KEY, JSON.stringify({ sort, type: typeFilter }))
+  }, [sort, typeFilter])
+
+  // Attach a stable popularity rank from the source order.
+  const allCards: SourceCard[] = useMemo(
+    () => (data?.results ?? []).map((c, idx) => ({ ...c, rank: idx + 1 })),
+    [data],
+  )
   const hasCounts = allCards.some(c => typeof c.viewers === 'number')
 
   function toggleSort(key: SortKey) {
     setSort(prev => prev.key === key
       ? { key, dir: prev.dir === 'desc' ? 'asc' : 'desc' }
-      : { key, dir: key === 'title' || key === 'year' ? 'asc' : 'desc' })
+      : { key, dir: key === 'title' || key === 'year' || key === 'rank' ? 'asc' : 'desc' })
   }
 
   const cards = useMemo(() => {
     const q = search.trim().toLowerCase()
-    const list = allCards
-      .map((c, idx) => ({ c, idx }))
-      .filter(({ c }) =>
-        (typeFilter === 'all' || c.media_type === typeFilter) &&
-        (q === '' || c.title.toLowerCase().includes(q)))
+    const list = allCards.filter(c =>
+      (typeFilter === 'all' || c.media_type === typeFilter) &&
+      (q === '' || c.title.toLowerCase().includes(q))
+    )
     const { key, dir } = sort
     const mul = dir === 'asc' ? 1 : -1
-    list.sort((a, b) => {
-      if (key === 'default') return (a.idx - b.idx) * mul
-      if (key === 'title') return a.c.title.localeCompare(b.c.title, 'ru') * mul
-      if (key === 'year') return ((Number(year(a.c)) || 0) - (Number(year(b.c)) || 0)) * mul
-      return (((a.c[key] ?? 0) as number) - ((b.c[key] ?? 0) as number)) * mul
+    return [...list].sort((a, b) => {
+      if (key === 'title') return a.title.localeCompare(b.title, 'ru') * mul
+      if (key === 'year') return (yearOf(a) - yearOf(b)) * mul
+      if (key === 'rank') return (a.rank - b.rank) * mul
+      return (((a[key] ?? 0) as number) - ((b[key] ?? 0) as number)) * mul
     })
-    return list
   }, [allCards, search, typeFilter, sort])
-
-  function SortTh({ label, k, className }: { label: string; k: SortKey; className?: string }) {
-    const active = sort.key === k
-    return (
-      <th className={`${className ?? ''} ${styles.sortable}`} onClick={() => toggleSort(k)}>
-        {label}{active && <span className={styles.sortArrow}>{sort.dir === 'asc' ? ' ↑' : ' ↓'}</span>}
-      </th>
-    )
-  }
 
   return (
     <Layout wide>
@@ -114,47 +135,66 @@ export default function PopularSourcePage() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
-              <select className={styles.select} value={typeFilter} onChange={e => setTypeFilter(e.target.value as 'all' | 'movie' | 'tv')}>
+              <select className={styles.select} value={typeFilter} onChange={e => setTypeFilter(e.target.value as TypeFilter)}>
                 <option value="all">Все типы</option>
                 <option value="movie">Фильмы</option>
                 <option value="tv">Сериалы</option>
               </select>
+              <div className={styles.mobileSort}>
+                <select
+                  className={styles.select}
+                  value={sort.key}
+                  onChange={e => setSort(s => ({ key: e.target.value as SortKey, dir: s.dir }))}
+                >
+                  <option value="rank">По популярности</option>
+                  <option value="title">Название</option>
+                  <option value="year">Год</option>
+                  {hasCounts && <option value="viewers">Зрителей</option>}
+                  {hasCounts && <option value="plays">Просмотров</option>}
+                </select>
+                <button
+                  className={styles.dirBtn}
+                  onClick={() => setSort(s => ({ key: s.key, dir: s.dir === 'asc' ? 'desc' : 'asc' }))}
+                  title="Направление сортировки"
+                >
+                  {sort.dir === 'asc' ? '↑ возр.' : '↓ убыв.'}
+                </button>
+              </div>
             </div>
 
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <SortTh label="#" k="default" className={styles.rank} />
+                  <SortableTh label="#" k="rank" sort={sort} onSort={toggleSort} className={styles.rank} />
                   <th></th>
-                  <SortTh label="Название" k="title" />
-                  <SortTh label="Год" k="year" />
+                  <SortableTh label="Название" k="title" sort={sort} onSort={toggleSort} className={styles.titleCol} />
+                  <SortableTh label="Год" k="year" sort={sort} onSort={toggleSort} />
                   <th>Тип</th>
-                  {hasCounts && <SortTh label="Зрителей" k="viewers" className={styles.num} />}
-                  {hasCounts && <SortTh label="Просмотров" k="plays" className={styles.num} />}
+                  {hasCounts && <SortableTh label="Зрителей" k="viewers" sort={sort} onSort={toggleSort} className={styles.num} />}
+                  {hasCounts && <SortableTh label="Просмотров" k="plays" sort={sort} onSort={toggleSort} className={styles.num} />}
                 </tr>
               </thead>
               <tbody>
-                {cards.map(({ c, idx }, i) => {
+                {cards.map(c => {
                   const poster = posterUrl(c.poster_path, 'w92')
                   const cardId = `${c.id}_${c.media_type}`
-                  const rank = sort.key === 'default' && sort.dir === 'desc' ? idx + 1 : i + 1
                   return (
                     <tr
                       key={cardId}
                       className={styles.row}
                       onClick={() => navigate(`/card/${cardId}`, { state: { backUrl: '/admin/popular-source' } })}
                     >
-                      <td className={styles.rank}>{rank}</td>
-                      <td>
+                      <td className={styles.rank}>{c.rank}</td>
+                      <td className={styles.posterCell}>
                         {poster
                           ? <img src={poster} alt="" className={styles.poster} loading="lazy" />
                           : <div className={styles.posterPlaceholder} />}
                       </td>
                       <td className={styles.cardTitle}>{c.title}</td>
-                      <td className={styles.muted}>{year(c)}</td>
-                      <td className={styles.muted}>{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
-                      {hasCounts && <td className={`${styles.num} ${styles.numStrong}`}>{typeof c.viewers === 'number' ? c.viewers.toLocaleString('ru') : '—'}</td>}
-                      {hasCounts && <td className={`${styles.num} ${styles.muted}`}>{typeof c.plays === 'number' ? c.plays.toLocaleString('ru') : '—'}</td>}
+                      <td className={styles.muted} data-label="Год">{yearOf(c) || '—'}</td>
+                      <td className={styles.muted} data-label="Тип">{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
+                      {hasCounts && <td className={`${styles.num} ${styles.numStrong}`} data-label="Зрителей">{typeof c.viewers === 'number' ? c.viewers.toLocaleString('ru') : '—'}</td>}
+                      {hasCounts && <td className={`${styles.num} ${styles.muted}`} data-label="Просмотров">{typeof c.plays === 'number' ? c.plays.toLocaleString('ru') : '—'}</td>}
                     </tr>
                   )
                 })}
