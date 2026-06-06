@@ -156,6 +156,30 @@ func UpsertEpisodes(ctx context.Context, tmdbShowID int64, eps []EpisodeRow) err
 		}
 	}
 
+	// Remove stale rows for episodes that MyShows renumbered: same myshows_ep_id
+	// but a different (season, episode) than the current batch. This cleans up
+	// duplicates like S01E-1 / S01E00 created across syncs (same source episode).
+	var epIDs, seasons, episodes []int
+	for _, ep := range eps {
+		if ep.MyshowsEpID > 0 {
+			epIDs = append(epIDs, ep.MyshowsEpID)
+			seasons = append(seasons, int(ep.Season))
+			episodes = append(episodes, int(ep.Episode))
+		}
+	}
+	if len(epIDs) > 0 {
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM episodes e
+			USING unnest($2::int[], $3::int[], $4::int[]) AS b(ep_id, season, episode)
+			WHERE e.tmdb_show_id = $1
+			  AND e.myshows_ep_id = b.ep_id
+			  AND (e.season <> b.season OR e.episode <> b.episode)`,
+			tmdbShowID, epIDs, seasons, episodes,
+		); err != nil {
+			return fmt.Errorf("dedup episodes: %w", err)
+		}
+	}
+
 	if _, err := tx.Exec(ctx,
 		`UPDATE media_cards SET episodes_synced_at = now() WHERE tmdb_id = $1 AND media_type = 'tv'`,
 		tmdbShowID,

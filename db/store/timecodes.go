@@ -426,7 +426,8 @@ func GetHistoryFiltered(ctx context.Context, f HistoryFilter) ([]HistoryEntry, H
 		       MAX(t.updated_at)                                                                                                    AS last_watched,
 		       MAX((t.data::jsonb->>'percent')::float)                                                                              AS max_pct,
 		       COUNT(*)                                                                                                             AS total_items,
-		       COUNT(*) FILTER (WHERE (t.data::jsonb->>'percent')::float >= 90 OR (t.data::jsonb->>'special')::boolean IS TRUE)     AS watched_items,
+		       COUNT(*) FILTER (WHERE ((t.data::jsonb->>'percent')::float >= 90 OR (t.data::jsonb->>'special')::boolean IS TRUE)
+		                          AND NOT EXISTS (SELECT 1 FROM episodes e_sp WHERE e_sp.hash = t.item AND e_sp.is_special)) AS watched_items,
 		       COALESCE(
 		         (SELECT COUNT(*)::int FROM episodes e2
 		          WHERE e2.tmdb_show_id = (SELECT mc2.tmdb_id FROM media_cards mc2 WHERE mc2.card_id = t.card_id)

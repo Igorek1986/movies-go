@@ -1074,8 +1074,10 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 			SELECT mc.card_id
 			FROM (
 				SELECT tc.card_id, COUNT(*) FILTER (
-						WHERE (tc.data::jsonb->>'percent')::numeric >= $%d
-						   OR (tc.data::jsonb->>'special')::boolean IS TRUE
+						WHERE ((tc.data::jsonb->>'percent')::numeric >= $%d
+						   OR (tc.data::jsonb->>'special')::boolean IS TRUE)
+						  AND NOT EXISTS (SELECT 1 FROM episodes e_sp
+						                  WHERE e_sp.hash = tc.item AND e_sp.is_special)
 					) AS w
 				FROM timecodes tc
 				WHERE tc.device_id = $%d AND tc.profile_id = $%d
