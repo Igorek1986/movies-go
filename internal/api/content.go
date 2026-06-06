@@ -22,7 +22,11 @@ func getPopularSourceURL(ctx context.Context) string {
 }
 
 func proxyToPopularSource(w http.ResponseWriter, r *http.Request) {
-	target := getPopularSourceURL(r.Context()) + "/np_popular"
+	proxyToPopularSourcePath(w, r, "/np_popular")
+}
+
+func proxyToPopularSourcePath(w http.ResponseWriter, r *http.Request, path string) {
+	target := getPopularSourceURL(r.Context()) + path
 	if r.URL.RawQuery != "" {
 		target += "?" + r.URL.RawQuery
 	}
@@ -40,6 +44,21 @@ func proxyToPopularSource(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body) //nolint:errcheck
+}
+
+// handlePopularDaily serves per-day play dynamics for the popular section.
+// Mirrors np_popular: proxies to the configured source when set, else local.
+func handlePopularDaily(w http.ResponseWriter, r *http.Request) {
+	if getPopularSourceURL(r.Context()) != "" {
+		proxyToPopularSourcePath(w, r, "/np_popular_daily")
+		return
+	}
+	ctx := r.Context()
+	days := store.GetSettingInt(ctx, "popular_period_days")
+	JSON(w, http.StatusOK, map[string]any{
+		"days":  days,
+		"daily": store.GetPopularDaily(ctx, days),
+	})
 }
 
 // popularSourceResp is the np_popular payload returned by another instance.
@@ -100,11 +119,42 @@ func handleAPIAdminPopularSource(w http.ResponseWriter, r *http.Request) {
 		}
 		results = append(results, next.Results...)
 	}
+	// Best-effort: per-day dynamics (older sources may not expose it).
+	daily := fetchPopularSourceDaily(ctx)
 	JSON(w, http.StatusOK, map[string]any{
 		"source_url":    getPopularSourceURL(r.Context()),
 		"results":       results,
 		"total_results": first.TotalResults,
+		"daily":         daily,
 	})
+}
+
+// fetchPopularSourceDaily pulls per-day dynamics from the source. Returns nil
+// on any error (endpoint missing on older sources) so the chart is optional.
+func fetchPopularSourceDaily(ctx context.Context) json.RawMessage {
+	src := getPopularSourceURL(ctx)
+	if src == "" {
+		return nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, src+"/np_popular_daily", nil)
+	if err != nil {
+		return nil
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var out struct {
+		Daily json.RawMessage `json:"daily"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&out) != nil {
+		return nil
+	}
+	return out.Daily
 }
 
 func forwardPlayEvent(cardID, uid string, pct int) {

@@ -16,10 +16,18 @@ interface SourceCard {
   rank: number // popularity position from the source (1-based)
 }
 
+interface DailyPoint {
+  date: string
+  plays: number
+  viewers: number
+  cards: number
+}
+
 interface SourceData {
   source_url: string
   results: Omit<SourceCard, 'rank'>[]
   total_results: number
+  daily?: DailyPoint[] | null
 }
 
 type SortKey = 'rank' | 'title' | 'year' | 'viewers' | 'plays'
@@ -30,6 +38,11 @@ const LS_KEY = 'popular_source_prefs'
 
 function loadPrefs(): { sort?: SortState; type?: TypeFilter } {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') } catch { return {} }
+}
+
+function fmtDay(date: string): string {
+  const [, m, d] = date.split('-')
+  return `${d}.${m}`
 }
 
 function yearOf(c: SourceCard): number {
@@ -79,6 +92,8 @@ export default function PopularSourcePage() {
     [data],
   )
   const hasCounts = allCards.some(c => typeof c.viewers === 'number')
+  const daily = data?.daily ?? []
+  const maxPlays = daily.reduce((m, d) => Math.max(m, d.plays), 0) || 1
 
   function toggleSort(key: SortKey) {
     setSort(prev => prev.key === key
@@ -124,6 +139,28 @@ export default function PopularSourcePage() {
         {!loading && error && <div className={styles.empty}>Источник недоступен</div>}
         {!loading && !error && allCards.length === 0 && (
           <div className={styles.empty}>Источник вернул пустой список</div>
+        )}
+
+        {!loading && !error && daily.length > 0 && (
+          <div className={styles.chartCard}>
+            <p className={styles.chartTitle}>Динамика просмотров по дням (источник)</p>
+            <div className={styles.chart}>
+              {daily.map(d => (
+                <div
+                  key={d.date}
+                  className={styles.bar}
+                  title={`${fmtDay(d.date)}: ${d.plays} просмотров, ${d.viewers} зрителей, ${d.cards} карточек`}
+                >
+                  <div className={styles.barFill} style={{ height: `${(d.plays / maxPlays) * 100}%` }} />
+                </div>
+              ))}
+            </div>
+            <div className={styles.chart} style={{ height: 'auto' }}>
+              {daily.map(d => (
+                <div key={d.date} className={styles.barLabel}>{fmtDay(d.date)}</div>
+              ))}
+            </div>
+          </div>
         )}
 
         {!loading && !error && allCards.length > 0 && (
