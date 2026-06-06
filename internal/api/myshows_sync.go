@@ -24,6 +24,7 @@ var (
 	syncMu      sync.Mutex
 	syncState   = map[int64]syncDay{} // userID → daily counter
 	syncRunning = map[int64]bool{}    // userID → sync currently in progress
+	syncLastAt  = map[int64]time.Time{} // userID → last successful sync time
 )
 
 type syncDay struct {
@@ -58,16 +59,29 @@ func releaseSync(userID int64) {
 	syncMu.Unlock()
 }
 
-// syncAllowed returns (allowed, waitSec). waitSec is seconds until midnight if denied.
+// syncAllowed returns (allowed, waitSec). waitSec > 0 means denied.
 func syncAllowed(userID int64, role string) (bool, int) {
+	now := time.Now()
+	syncMu.Lock()
+	defer syncMu.Unlock()
+
+	// Cooldown between syncs (super role is exempt)
+	if role != "super" {
+		cooldown := store.GetSettingInt(context.Background(), "sync_cooldown_sec")
+		if cooldown > 0 {
+			if last, ok := syncLastAt[userID]; ok {
+				if wait := int(time.Until(last.Add(time.Duration(cooldown) * time.Second)).Seconds()); wait > 0 {
+					return false, wait
+				}
+			}
+		}
+	}
+
+	// Daily limit per role
 	daily := store.GetSettingInt(context.Background(), role+"_myshows_daily")
 	if daily == 0 { // 0 = unlimited
 		return true, 0
 	}
-
-	now := time.Now()
-	syncMu.Lock()
-	defer syncMu.Unlock()
 
 	e := syncState[userID]
 	if e.Day != now.YearDay() {
@@ -80,6 +94,13 @@ func syncAllowed(userID int64, role string) (bool, int) {
 	e.Count++
 	syncState[userID] = e
 	return true, 0
+}
+
+// markSyncDone записывает время последней успешной синхронизации.
+func markSyncDone(userID int64) {
+	syncMu.Lock()
+	syncLastAt[userID] = time.Now()
+	syncMu.Unlock()
 }
 
 // ─── SSE helper ───────────────────────────────────────────────────────────────
@@ -608,6 +629,8 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 
 	// ── Trim and done ─────────────────────────────────────────────────────────
 	trimmed := store.TrimToLimitCount(ctx, deviceID, profileID, u.Role)
+
+	markSyncDone(u.ID)
 
 	msg := fmt.Sprintf("Синхронизировано: %d фильмов, %d сериалов.", moviesTotal-len(notFound), showsTotal)
 	sse.send(map[string]any{

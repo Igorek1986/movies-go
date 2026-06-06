@@ -63,8 +63,8 @@ func NewRouter(mode string) http.Handler {
 		if mode == "all" {
 			r.With(optionalSession).Get("/episodes", handleEpisodes)
 			r.With(optionalSession).Get("/profile-ids", handleAPIProfileIDs)
-			r.Post("/login", handleLogin)
-			r.Post("/register", handleRegister)
+			r.Post("/login", rateLimitMiddleware(loginRL, "rate_login_max", "rate_login_window_sec", handleLogin))
+			r.Post("/register", rateLimitMiddleware(registerRL, "rate_register_max", "rate_register_window_sec", handleRegister))
 			r.Post("/logout", handleLogout)
 			r.Get("/me", handleMe)
 			r.With(requireSession).Post("/change-password", handleChangePassword)
@@ -160,7 +160,7 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireSession).Post("/disable-2fa", handleAPIDisable2FA)
 			r.With(requireSession).Get("/setup-2fa", handleAPISetup2FA)
 			r.With(requireSession).Post("/setup-2fa", handleAPISetup2FAConfirm)
-			r.Post("/verify-2fa", handleAPIVerify2FA)
+			r.Post("/verify-2fa", rateLimitMiddleware(twoFARL, "rate_2fa_max", "rate_2fa_window_sec", handleAPIVerify2FA))
 		}
 	})
 
@@ -266,7 +266,7 @@ func NewRouter(mode string) http.Handler {
 	r.Get("/api/plugin-settings/ws", handlePluginSettingsWS)
 
 	r.Get("/logout", handleLogoutPage)
-	r.Post("/api/forgot-password", handleAPIForgotPassword)
+	r.Post("/api/forgot-password", rateLimitMiddleware(forgotRL, "rate_forgot_max", "rate_forgot_window_sec", handleAPIForgotPassword))
 	r.Post("/api/reset-password", handleAPIResetPassword)
 	r.Get("/api/public/page", handlePublicPage)
 	r.With(requireSession).Post("/myshows/sync", handleMyshowsSync)

@@ -6601,7 +6601,49 @@
                         self._fill(lampaTable.concat(msTable), cardsMap);
                     }
 
-                    fetchUpcoming(msMap, applyItems, applyItems);
+                    // Дополняем msMap сериалами из profile.Shows, которые полностью
+                    // просмотрены и не попали в unwatched_serials, но могут иметь
+                    // будущие серии (завтра/на следующей неделе).
+                    if (!getProfileSetting('myshows_token', '')) {
+                        fetchUpcoming(msMap, applyItems, applyItems);
+                        return;
+                    }
+
+                    makeMyShowsJSONRPCRequest('profile.Shows', {}, function(success, data) {
+                        if (!success || !data || !data.result) {
+                            fetchUpcoming(msMap, applyItems, applyItems);
+                            return;
+                        }
+
+                        var missing = [];
+                        data.result.forEach(function(item) {
+                            var ws = item.watchStatus;
+                            if (ws !== 'watching' && ws !== 'finished') return;
+                            var mid = String(item.show.id);
+                            if (msMap[mid]) return;
+                            missing.push({
+                                myshowsId: item.show.id,
+                                title:         item.show.title,
+                                originalTitle: item.show.titleOriginal,
+                                year:          item.show.year,
+                                type:          'tv'
+                            });
+                        });
+
+                        if (!missing.length) {
+                            fetchUpcoming(msMap, applyItems, applyItems);
+                            return;
+                        }
+
+                        getTMDBDetailsSimple(missing, function(result) {
+                            (result.results || []).forEach(function(card) {
+                                if (!card.myshowsId || !card.id) return;
+                                msMap[String(card.myshowsId)] = card;
+                            });
+                            Log.info('[MS-TT] profile.Shows added', missing.length, 'candidates,', Object.keys(msMap).length, 'total in msMap');
+                            fetchUpcoming(msMap, applyItems, applyItems);
+                        });
+                    });
                 }, getProfileId());
 
                 return self.render();

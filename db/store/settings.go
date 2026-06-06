@@ -64,7 +64,7 @@ var SettingDefaults = map[string]string{
 	"rate_forgot_window_sec":   "3600",
 	"rate_2fa_max":             "5",
 	"rate_2fa_window_sec":      "900",
-	"sync_cooldown_sec":        "86400",
+	"sync_cooldown_sec":        "300",
 	// Analytics
 	"yandex_metrika_enabled":   "0",
 	"yandex_metrika_id":        "",
