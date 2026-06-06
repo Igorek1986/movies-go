@@ -1,0 +1,159 @@
+@use '../styles/variables' as *;
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.backLink {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  text-decoration: none;
+  padding: 4px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  white-space: nowrap;
+  transition: color $transition-fast, border-color $transition-fast;
+  &:hover { color: $color-primary; border-color: $color-primary; }
+}
+
+.desc {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin-bottom: 20px;
+}
+
+.empty {
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  padding: 32px 0;
+  text-align: center;
+}
+
+// ── Daily chart ────────────────────────────────────────────────────────────────
+
+.chartCard {
+  background: $color-bg-card;
+  border: 1px solid $color-border;
+  border-radius: $radius-md;
+  padding: 16px 16px 8px;
+  margin-bottom: 24px;
+}
+
+.chartTitle {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin: 0 0 16px;
+}
+
+.chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 160px;
+}
+
+.bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  cursor: default;
+}
+
+.barFill {
+  width: 100%;
+  background: $color-primary;
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  transition: background $transition-fast;
+}
+
+.bar:hover .barFill { background: $color-primary-hover; }
+
+.barLabel {
+  font-size: 0.62rem;
+  color: $color-text-muted;
+  text-align: center;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+// ── Cards table ──────────────────────────────────────────────────────────────
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: $font-size-sm;
+
+  th {
+    text-align: left;
+    color: $color-text-muted;
+    font-weight: 500;
+    padding: 8px 10px;
+    border-bottom: 1px solid $color-border;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    vertical-align: middle;
+  }
+}
+
+.row {
+  cursor: pointer;
+  &:hover { background: rgba(255, 255, 255, 0.03); }
+}
+
+.rank {
+  color: $color-text-muted;
+  width: 36px;
+  text-align: right;
+}
+
+.poster {
+  width: 36px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: $color-bg-card;
+  display: block;
+}
+
+.posterPlaceholder {
+  width: 36px;
+  height: 54px;
+  border-radius: 4px;
+  background: $color-bg-card;
+}
+
+.cardTitle { font-weight: 500; }
+.muted { color: $color-text-muted; }
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.numStrong { font-weight: 600; }

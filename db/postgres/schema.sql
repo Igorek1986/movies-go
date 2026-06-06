@@ -330,13 +330,15 @@ CREATE TABLE IF NOT EXISTS stats_category_requests (
 
 -- ─── Play events (popularity tracking) ───────────────────────────────────────
 CREATE TABLE IF NOT EXISTS media_play_events (
-    card_id VARCHAR(100) NOT NULL REFERENCES media_cards(card_id) ON DELETE CASCADE,
-    ident   VARCHAR(100) NOT NULL,
-    date    DATE         NOT NULL DEFAULT CURRENT_DATE,
+    card_id     VARCHAR(100) NOT NULL REFERENCES media_cards(card_id) ON DELETE CASCADE,
+    ident       VARCHAR(100) NOT NULL,
+    date        DATE         NOT NULL DEFAULT CURRENT_DATE,
+    max_percent SMALLINT     NOT NULL DEFAULT 0, -- deepest watch progress (%) that day
     PRIMARY KEY (card_id, ident, date)
 );
 
 CREATE INDEX IF NOT EXISTS idx_play_events_date ON media_play_events (date);
+ALTER TABLE media_play_events ADD COLUMN IF NOT EXISTS max_percent SMALLINT NOT NULL DEFAULT 0;
 
 -- ─── Migrations: add columns to existing tables ───────────────────────────────
 -- These are safe to run on any existing DB (IF NOT EXISTS is idempotent).

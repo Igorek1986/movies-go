@@ -109,6 +109,7 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireSession).Post("/profile/create", handleProfileCreate)
 			r.With(requireSession).Get("/actor/{person_id}", handleActorAPI)
 			r.With(requireAdmin).Get("/admin/stats", handleAdminStats)
+			r.With(requireAdmin).Get("/admin/popular", handleAPIAdminPopular)
 			r.With(requireAdmin).Get("/admin/users", handleAdminListUsers)
 			r.With(requireAdmin).Patch("/admin/users/{id}/role", handleAdminSetRole)
 			r.With(requireAdmin).Delete("/admin/users/{id}", handleAdminDeleteUser)

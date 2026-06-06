@@ -422,7 +422,7 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	pct, _ := strconv.Atoi(r.URL.Query().Get("percent"))
 
 	if cardID != "" && uid != "" && pct >= 30 {
-		store.RecordPlayEvent(r.Context(), cardID, uid)
+		store.RecordPlayEvent(r.Context(), cardID, uid, pct)
 		go forwardPlayEvent(cardID, uid, pct)
 	}
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})

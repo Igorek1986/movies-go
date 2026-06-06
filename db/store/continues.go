@@ -154,16 +154,23 @@ func GetContinues(ctx context.Context, deviceID int64, profileID, mediaFilter st
 	return result, total
 }
 
-// RecordPlayEvent records one unique play per (card, ident, day). ON CONFLICT DO NOTHING.
-func RecordPlayEvent(ctx context.Context, cardID, ident string) {
+// RecordPlayEvent records one unique play per (card, ident, day), keeping the
+// deepest watch progress (max_percent) seen that day.
+func RecordPlayEvent(ctx context.Context, cardID, ident string, pct int) {
 	if cardID == "" || ident == "" {
 		return
 	}
+	if pct < 0 {
+		pct = 0
+	} else if pct > 100 {
+		pct = 100
+	}
 	postgres.Pool.Exec(ctx, //nolint:errcheck
-		`INSERT INTO media_play_events (card_id, ident, date)
-		 VALUES ($1, $2, CURRENT_DATE)
-		 ON CONFLICT DO NOTHING`,
-		cardID, ident,
+		`INSERT INTO media_play_events (card_id, ident, date, max_percent)
+		 VALUES ($1, $2, CURRENT_DATE, $3)
+		 ON CONFLICT (card_id, ident, date)
+		 DO UPDATE SET max_percent = GREATEST(media_play_events.max_percent, EXCLUDED.max_percent)`,
+		cardID, ident, pct,
 	)
 }
 
@@ -281,4 +288,102 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 
 	_ = json.Marshal // suppress unused import
 	return result, total
+}
+
+// CountPopularCards returns the number of distinct cards with play events
+// within the given day window.
+func CountPopularCards(ctx context.Context, days int) int {
+	var n int
+	postgres.Pool.QueryRow(ctx, //nolint:errcheck
+		`SELECT COUNT(DISTINCT card_id) FROM media_play_events
+		 WHERE date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')`,
+		days,
+	).Scan(&n)
+	return n
+}
+
+// PopularDaily is one day of aggregated play activity.
+type PopularDaily struct {
+	Date    string `json:"date"`
+	Plays   int    `json:"plays"`   // total play events that day
+	Viewers int    `json:"viewers"` // distinct viewers that day
+	Cards   int    `json:"cards"`   // distinct cards played that day
+}
+
+// GetPopularDaily returns per-day play dynamics for the given window,
+// ordered ascending by date. Days without activity are omitted.
+func GetPopularDaily(ctx context.Context, days int) []PopularDaily {
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT date::text, COUNT(*), COUNT(DISTINCT ident), COUNT(DISTINCT card_id)
+		 FROM media_play_events
+		 WHERE date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')
+		 GROUP BY date
+		 ORDER BY date`,
+		days,
+	)
+	if err != nil {
+		return []PopularDaily{}
+	}
+	defer rows.Close()
+	out := []PopularDaily{}
+	for rows.Next() {
+		var d PopularDaily
+		if rows.Scan(&d.Date, &d.Plays, &d.Viewers, &d.Cards) == nil {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// PopularCard is one card ranked by play activity.
+type PopularCard struct {
+	CardID       string `json:"card_id"`
+	TmdbID       int    `json:"tmdb_id"`
+	MediaType    string `json:"media_type"`
+	Title        string `json:"title"`
+	PosterPath   string `json:"poster_path"`
+	Year         string `json:"year"`
+	Viewers      int    `json:"viewers"`       // distinct people who watched
+	Plays        int    `json:"plays"`         // total play events
+	AvgPercent   int    `json:"avg_percent"`   // average deepest watch progress
+	FinishedRate int    `json:"finished_rate"` // % of plays with max_percent >= 85
+}
+
+// GetPopularCards returns cards ranked by unique viewers within the window.
+func GetPopularCards(ctx context.Context, days, limit int) []PopularCard {
+	if limit < 1 {
+		limit = 200
+	}
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT e.card_id, m.tmdb_id, m.media_type, m.title,
+		        COALESCE(m.poster_path, ''),
+		        COALESCE(NULLIF(left(m.release_date::text, 4), ''), left(m.first_air_date::text, 4), ''),
+		        COUNT(DISTINCT e.ident) AS viewers, COUNT(*) AS plays,
+		        COALESCE(ROUND(AVG(e.max_percent) FILTER (WHERE e.max_percent > 0)), 0)::int AS avg_percent,
+		        COALESCE(ROUND(
+		            100.0 * COUNT(*) FILTER (WHERE e.max_percent >= 85)
+		            / NULLIF(COUNT(*) FILTER (WHERE e.max_percent > 0), 0)
+		        ), 0)::int AS finished_rate
+		 FROM media_play_events e
+		 JOIN media_cards m ON m.card_id = e.card_id
+		 WHERE e.date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')
+		 GROUP BY e.card_id, m.tmdb_id, m.media_type, m.title, m.poster_path, m.release_date, m.first_air_date
+		 ORDER BY viewers DESC, plays DESC
+		 LIMIT $2`,
+		days, limit,
+	)
+	if err != nil {
+		return []PopularCard{}
+	}
+	defer rows.Close()
+	out := []PopularCard{}
+	for rows.Next() {
+		var c PopularCard
+		if rows.Scan(&c.CardID, &c.TmdbID, &c.MediaType, &c.Title,
+			&c.PosterPath, &c.Year, &c.Viewers, &c.Plays,
+			&c.AvgPercent, &c.FinishedRate) == nil {
+			out = append(out, c)
+		}
+	}
+	return out
 }

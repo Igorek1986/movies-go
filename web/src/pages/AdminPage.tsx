@@ -30,6 +30,7 @@ interface Stats {
   tmdb_not_found: number
   actor_count: number
   director_count: number
+  popular_cards: number
 }
 
 interface SystemStats {
@@ -490,6 +491,14 @@ export default function AdminPage() {
                   <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.tmdb_not_found.toLocaleString()}</p>
                   <p className={styles.statLabel}>Не найдено в TMDB</p>
 
+                </Link>
+              </div>
+            )}
+            {stats.popular_cards > 0 && (
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/popular" className={styles.statLink}>
+                  <p className={styles.statValue}>{stats.popular_cards.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Популярных карточек</p>
                 </Link>
               </div>
             )}

@@ -107,6 +107,9 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_cast`).Scan(&actorCount)                                                             //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_crew WHERE job='Director'`).Scan(&directorCount)                                     //nolint:errcheck
 
+	popularDays := store.GetSettingInt(ctx, "popular_period_days")
+	popularCards := store.CountPopularCards(ctx, popularDays)
+
 	type newUser struct {
 		Username  string `json:"username"`
 		CreatedAt string `json:"created_at"`
@@ -179,6 +182,19 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"tmdb_not_found":       tmdbNotFound,
 		"actor_count":          actorCount,
 		"director_count":       directorCount,
+		"popular_cards":        popularCards,
+	})
+}
+
+// handleAPIAdminPopular returns popularity stats: per-day dynamics and a
+// per-card ranking by unique viewers, within the popular_period_days window.
+func handleAPIAdminPopular(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	days := store.GetSettingInt(ctx, "popular_period_days")
+	JSON(w, http.StatusOK, map[string]any{
+		"days":  days,
+		"daily": store.GetPopularDaily(ctx, days),
+		"cards": store.GetPopularCards(ctx, days, 500),
 	})
 }
 
