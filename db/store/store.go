@@ -858,6 +858,9 @@ type MediaRow struct {
 	LatestTorrentDate *time.Time
 	CertificationRU   *string
 	CertificationUS   *string
+	// Popularity counts — populated only by GetPopular, 0 elsewhere.
+	Viewers int
+	Plays   int
 }
 
 // CategoryFilter defines how to filter and sort a category listing.

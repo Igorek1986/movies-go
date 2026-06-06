@@ -203,7 +203,7 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 	}
 
 	baseSQL := fmt.Sprintf(`
-		SELECT e.card_id, COUNT(*) AS weight
+		SELECT e.card_id, COUNT(*) AS weight, COUNT(DISTINCT e.ident) AS viewers
 		FROM media_play_events e
 		JOIN media_cards m ON m.card_id = e.card_id
 		WHERE e.date >= (CURRENT_DATE - ($1::int * INTERVAL '1 day'))
@@ -228,11 +228,15 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 	defer popRows.Close()
 
 	var cardIDs []string
+	playsByID := map[string]int{}
+	viewersByID := map[string]int{}
 	for popRows.Next() {
 		var cid string
-		var w float64
-		if popRows.Scan(&cid, &w) == nil {
+		var plays, viewers int
+		if popRows.Scan(&cid, &plays, &viewers) == nil {
 			cardIDs = append(cardIDs, cid)
+			playsByID[cid] = plays
+			viewersByID[cid] = viewers
 		}
 	}
 	popRows.Close()
@@ -282,6 +286,8 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 	var result []MediaRow
 	for _, cid := range cardIDs {
 		if r, ok := mcMap[cid]; ok {
+			r.Plays = playsByID[cid]
+			r.Viewers = viewersByID[cid]
 			result = append(result, r)
 		}
 	}

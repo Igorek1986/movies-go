@@ -42,6 +42,66 @@ func proxyToPopularSource(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, resp.Body) //nolint:errcheck
 }
 
+// popularSourceResp is the np_popular payload returned by another instance.
+type popularSourceResp struct {
+	Page         int               `json:"page"`
+	Results      []json.RawMessage `json:"results"`
+	TotalPages   int               `json:"total_pages"`
+	TotalResults int               `json:"total_results"`
+}
+
+// fetchPopularSource pulls one page of the configured external popular source.
+func fetchPopularSource(ctx context.Context, page int) (*popularSourceResp, error) {
+	src := getPopularSourceURL(ctx)
+	if src == "" {
+		return nil, fmt.Errorf("popular source not configured")
+	}
+	url := fmt.Sprintf("%s/np_popular?page=%d", src, page)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("popular source status %d", resp.StatusCode)
+	}
+	var out popularSourceResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// handleAPIAdminPopularSource returns the full external source's popular list
+// (admin view), aggregating all pages so the client can sort/filter locally.
+func handleAPIAdminPopularSource(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+
+	first, err := fetchPopularSource(ctx, 1)
+	if err != nil {
+		Error(w, http.StatusBadGateway, "popular source unavailable")
+		return
+	}
+	results := first.Results
+	for page := 2; page <= first.TotalPages && page <= 100; page++ {
+		next, err := fetchPopularSource(ctx, page)
+		if err != nil {
+			break // return what we have
+		}
+		results = append(results, next.Results...)
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"source_url":    getPopularSourceURL(r.Context()),
+		"results":       results,
+		"total_results": first.TotalResults,
+	})
+}
+
 func forwardPlayEvent(cardID, uid string, pct int) {
 	src := getPopularSourceURL(context.Background())
 	if src == "" {
@@ -438,7 +498,12 @@ func handlePopular(w http.ResponseWriter, r *http.Request, page, perPage int, se
 	}
 	results := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		results = append(results, toMediaItem(row))
+		item := toMediaItem(row)
+		if row.Plays > 0 {
+			item["plays"] = row.Plays
+			item["viewers"] = row.Viewers
+		}
+		results = append(results, item)
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"page":          page,

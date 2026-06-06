@@ -35,6 +35,7 @@ import TMDBMissingPage from '@/pages/TMDBMissingPage'
 import NewCardsPage from '@/pages/NewCardsPage'
 import AllCardsPage from '@/pages/AllCardsPage'
 import PopularPage from '@/pages/PopularPage'
+import PopularSourcePage from '@/pages/PopularSourcePage'
 import PersonsAdminPage from '@/pages/PersonsAdminPage'
 import StaticPage from '@/pages/StaticPage'
 import TgMiniAppPage from '@/pages/TgMiniAppPage'
@@ -117,6 +118,7 @@ export default function App() {
       <Route path="/admin/cards-today" element={<PrivateRoute><NewCardsPage /></PrivateRoute>} />
       <Route path="/admin/all-cards" element={<PrivateRoute><AllCardsPage /></PrivateRoute>} />
       <Route path="/admin/popular" element={<PrivateRoute><PopularPage /></PrivateRoute>} />
+      <Route path="/admin/popular-source" element={<PrivateRoute><PopularSourcePage /></PrivateRoute>} />
       <Route path="/admin/no-runtime-movies" element={<PrivateRoute><AllCardsPage noRuntime="movie" /></PrivateRoute>} />
       <Route path="/admin/no-runtime-tv" element={<PrivateRoute><AllCardsPage noRuntime="tv" /></PrivateRoute>} />
       <Route path="/admin/actors" element={<PrivateRoute><PersonsAdminPage /></PrivateRoute>} />

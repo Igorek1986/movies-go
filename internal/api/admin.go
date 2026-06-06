@@ -110,6 +110,17 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	popularDays := store.GetSettingInt(ctx, "popular_period_days")
 	popularCards := store.CountPopularCards(ctx, popularDays)
 
+	// External popular source (if configured): show its card count too.
+	popularSourceURL := getPopularSourceURL(ctx)
+	popularSourceCount := -1 // -1 = unknown/unreachable
+	if popularSourceURL != "" {
+		sctx, scancel := context.WithTimeout(ctx, 4*time.Second)
+		if resp, err := fetchPopularSource(sctx, 1); err == nil {
+			popularSourceCount = resp.TotalResults
+		}
+		scancel()
+	}
+
 	type newUser struct {
 		Username  string `json:"username"`
 		CreatedAt string `json:"created_at"`
@@ -183,6 +194,8 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"actor_count":          actorCount,
 		"director_count":       directorCount,
 		"popular_cards":        popularCards,
+		"popular_source_url":   popularSourceURL,
+		"popular_source_count": popularSourceCount,
 	})
 }
 

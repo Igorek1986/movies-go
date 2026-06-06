@@ -31,6 +31,8 @@ interface Stats {
   actor_count: number
   director_count: number
   popular_cards: number
+  popular_source_url: string
+  popular_source_count: number
 }
 
 interface SystemStats {
@@ -498,7 +500,15 @@ export default function AdminPage() {
               <div className={`${styles.statCard} ${styles.statCardClickable}`}>
                 <Link to="/admin/popular" className={styles.statLink}>
                   <p className={styles.statValue}>{stats.popular_cards.toLocaleString()}</p>
-                  <p className={styles.statLabel}>Популярных карточек</p>
+                  <p className={styles.statLabel}>{stats.popular_source_url ? 'Популярных (локально)' : 'Популярных карточек'}</p>
+                </Link>
+              </div>
+            )}
+            {stats.popular_source_url && (
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/popular-source" className={styles.statLink}>
+                  <p className={styles.statValue}>{stats.popular_source_count >= 0 ? stats.popular_source_count.toLocaleString() : '—'}</p>
+                  <p className={styles.statLabel}>Популярное (источник)</p>
                 </Link>
               </div>
             )}
