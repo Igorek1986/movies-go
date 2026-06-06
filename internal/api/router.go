@@ -274,6 +274,8 @@ func NewRouter(mode string) http.Handler {
 
 	r.Get("/myshows/watching", handleMyshowsWatchingGet)
 	r.Post("/myshows/watching", handleMyshowsWatchingPost)
+	r.Get("/myshows/profile_shows", handleMyshowsProfileShowsGet)
+	r.Post("/myshows/profile_shows", handleMyshowsProfileShowsPost)
 	r.Get("/myshows/watchlist", handleMyshowsStatusGet("watchlist"))
 	r.Post("/myshows/watchlist", handleMyshowsStatusPost("watchlist"))
 	r.Get("/myshows/watched", handleMyshowsStatusGet("watched"))

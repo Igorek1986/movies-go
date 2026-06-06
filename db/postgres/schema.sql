@@ -288,6 +288,14 @@ CREATE TABLE IF NOT EXISTS myshows_user_status (
     PRIMARY KEY (device_id, profile_id, item_id)
 );
 
+CREATE TABLE IF NOT EXISTS myshows_profile_shows (
+    device_id  BIGINT       NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    profile_id VARCHAR(100) NOT NULL DEFAULT '',
+    item_id    BIGINT       NOT NULL REFERENCES myshows_items(id) ON DELETE CASCADE,
+    updated_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    PRIMARY KEY (device_id, profile_id, item_id)
+);
+
 -- ─── Torrents ─────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS torrents (
     hash       TEXT         PRIMARY KEY,

@@ -156,6 +156,100 @@ func GetWatching(ctx context.Context, deviceID int64, profileID string) ([]Mysho
 	return cards, len(cards), nil
 }
 
+// ─── Profile shows (full watching+finished list for timetable) ───────────────
+
+// UpsertProfileShows replaces the full profile show list for a device+profile.
+func UpsertProfileShows(ctx context.Context, deviceID int64, profileID string, items []MyshowsStatusItem) error {
+	tx, err := postgres.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if len(items) == 0 {
+		_, err = tx.Exec(ctx, `DELETE FROM myshows_profile_shows WHERE device_id=$1 AND profile_id=$2`, deviceID, profileID)
+		if err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+
+	itemIDs := make([]int64, 0, len(items))
+	for _, it := range items {
+		var itemID int64
+		err = tx.QueryRow(ctx, `
+			INSERT INTO myshows_items (myshows_id, tmdb_id, media_type)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (myshows_id) DO UPDATE SET
+				tmdb_id    = EXCLUDED.tmdb_id,
+				media_type = EXCLUDED.media_type
+			RETURNING id`, it.MyshowsID, it.TmdbID, it.MediaType,
+		).Scan(&itemID)
+		if err != nil {
+			return err
+		}
+		itemIDs = append(itemIDs, itemID)
+
+		_, err = tx.Exec(ctx, `
+			INSERT INTO myshows_profile_shows (device_id, profile_id, item_id, updated_at)
+			VALUES ($1, $2, $3, now())
+			ON CONFLICT (device_id, profile_id, item_id) DO UPDATE SET updated_at = now()`,
+			deviceID, profileID, itemID,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err = tx.Exec(ctx, `
+		DELETE FROM myshows_profile_shows
+		WHERE device_id=$1 AND profile_id=$2 AND item_id <> ALL($3)`,
+		deviceID, profileID, itemIDs,
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+// GetProfileShows returns all profile shows for a device+profile joined with media_cards.
+func GetProfileShows(ctx context.Context, deviceID int64, profileID string) ([]MyshowsCard, int, error) {
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT mi.myshows_id, mi.tmdb_id, mi.media_type,
+		       COALESCE(mc.title,''), COALESCE(mc.original_title,''),
+		       COALESCE(mc.poster_path,''), COALESCE(mc.backdrop_path,''),
+		       COALESCE(mc.overview,''), COALESCE(mc.vote_average,0),
+		       COALESCE(mc.release_date::text,''), COALESCE(mc.first_air_date::text,''),
+		       COALESCE(mc.number_of_seasons,0)
+		FROM myshows_profile_shows mps
+		JOIN myshows_items mi ON mi.id = mps.item_id
+		LEFT JOIN media_cards mc ON mc.tmdb_id = mi.tmdb_id AND mc.media_type = mi.media_type
+		WHERE mps.device_id=$1 AND mps.profile_id=$2
+		ORDER BY mps.updated_at DESC`, deviceID, profileID)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var cards []MyshowsCard
+	for rows.Next() {
+		var c MyshowsCard
+		var releaseDate, firstAirDate string
+		if err := rows.Scan(
+			&c.MyshowsID, &c.TmdbID, &c.MediaType,
+			&c.Title, &c.OriginalTitle,
+			&c.PosterPath, &c.BackdropPath, &c.Overview, &c.VoteAverage,
+			&releaseDate, &firstAirDate, &c.NumberOfSeasons,
+		); err != nil {
+			continue
+		}
+		applyCardDates(&c, releaseDate, firstAirDate)
+		cards = append(cards, c)
+	}
+	return cards, len(cards), nil
+}
+
 // ─── User status (watchlist / watched / cancelled) ────────────────────────────
 
 // UpsertStatus replaces the status list for a given cache_type with a fresh set.

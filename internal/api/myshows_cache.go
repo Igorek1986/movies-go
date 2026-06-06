@@ -79,6 +79,43 @@ func handleMyshowsWatchingGet(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ─── Profile shows ────────────────────────────────────────────────────────────
+
+func handleMyshowsProfileShowsGet(w http.ResponseWriter, r *http.Request) {
+	d, profileID := myshowsDeviceAuth(w, r)
+	if d == nil {
+		return
+	}
+	cards, total, err := store.GetProfileShows(r.Context(), d.ID, profileID)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"results":       nilSlice(cards),
+		"page":          1,
+		"total_pages":   1,
+		"total_results": total,
+	})
+}
+
+func handleMyshowsProfileShowsPost(w http.ResponseWriter, r *http.Request) {
+	d, profileID := myshowsDeviceAuth(w, r)
+	if d == nil {
+		return
+	}
+	var reqs []myshowsStatusReq
+	if err := json.NewDecoder(r.Body).Decode(&reqs); err != nil {
+		Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if err := store.UpsertProfileShows(r.Context(), d.ID, profileID, toStoreItems(reqs)); err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func handleMyshowsWatchingPost(w http.ResponseWriter, r *http.Request) {
 	d, profileID := myshowsDeviceAuth(w, r)
 	if d == nil {
