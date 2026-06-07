@@ -712,8 +712,11 @@ export default function AdminPage() {
               onChange={restoreBackup}
             />
           </div>
+        </div>
 
-          <h3 className={styles.subTitle}>API-ключ</h3>
+        {/* ── API key ────────────────────────────────────────────────────────── */}
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>API-ключ</h2>
           <p className={styles.empty}>
             Даёт полный доступ к <code>/api/admin/*</code> по заголовку <code>X-API-Key</code> — для скриптов
             бэкапа/восстановления и миграции без логина. Храните в секрете; новая генерация отзывает старый ключ.
