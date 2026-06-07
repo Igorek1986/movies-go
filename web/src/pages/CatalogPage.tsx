@@ -174,11 +174,11 @@ function MediaCard({ item, onClick }: CardProps) {
       <div className={styles.cardBody}>
         <p className={styles.cardTitle}>{title}</p>
         <div className={styles.cardMeta}>
-          {year && <span>{year}</span>}
+          <span>{year || ' '}</span>
           {item.vote_average > 0 && <span>★ {item.vote_average.toFixed(1)}</span>}
           {cert && <span className={`${styles.cert} ${styles[`cert_${cert.replace(/[^a-zA-Z0-9]/g, '_')}`] || ''}`}>{cert}</span>}
         </div>
-        {item.release_quality && <span className={styles.quality}>{item.release_quality}</span>}
+        <span className={styles.quality}>{item.release_quality || ' '}</span>
       </div>
     </div>
   )
