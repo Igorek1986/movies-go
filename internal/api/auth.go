@@ -45,15 +45,32 @@ func requireSession(next http.Handler) http.Handler {
 }
 
 // requireAdmin requires is_admin = true.
+//
+// Принимает два способа авторизации:
+//   - админская сессия (cookie session_key);
+//   - админский API-ключ (заголовок X-API-Key или Authorization: Bearer …) —
+//     для автоматизации (бэкап/восстановление/миграция без логина и 2FA).
 func requireAdmin(next http.Handler) http.Handler {
-	return requireSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u := userFromCtx(r)
-		if u == nil || !u.IsAdmin {
-			Error(w, http.StatusForbidden, "forbidden")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if adminAPIKeyValid(r) {
+			w.Header().Set("Cache-Control", "no-store")
+			// Кладём синтетического админа в контекст: часть хендлеров читает
+			// userFromCtx и не должна получить nil.
+			ctx := context.WithValue(r.Context(), ctxKeyUser{}, &models.User{
+				Username: "api-key", Role: "super", IsAdmin: true,
+			})
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
-		next.ServeHTTP(w, r)
-	}))
+		requireSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u := userFromCtx(r)
+			if u == nil || !u.IsAdmin {
+				Error(w, http.StatusForbidden, "forbidden")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})).ServeHTTP(w, r)
+	})
 }
 
 // optionalSession resolves session but does not block unauthenticated requests.

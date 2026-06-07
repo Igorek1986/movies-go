@@ -72,6 +72,7 @@ export default function AdminPage() {
   const [backingUp, setBackingUp] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const restoreInput = useRef<HTMLInputElement | null>(null)
+  const [apiKey, setApiKey] = useState<string>('')
 
   function toast(text: string, ok = true) {
     const id = Date.now()
@@ -211,7 +212,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([refresh(), fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchSysStats()]).finally(() => setLoading(false))
+    Promise.all([refresh(), fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchSysStats(), fetchApiKey()]).finally(() => setLoading(false))
     const sysInterval = setInterval(fetchSysStats, 5000)
     return () => clearInterval(sysInterval)
   }, [refresh, fetchSysStats]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -368,6 +369,39 @@ export default function AdminPage() {
       toast(e instanceof Error ? e.message : String(e), false)
       setRestoring(false)
     }
+  }
+
+  const fetchApiKey = useCallback(async () => {
+    const res = await fetch('/api/admin/api-key')
+    if (!res.ok) return
+    const data = await res.json()
+    setApiKey(data.api_key || '')
+  }, [])
+
+  async function rotateApiKey() {
+    if (apiKey && !confirm('Сгенерировать новый ключ? Старый перестанет работать.')) return
+    try {
+      const data = await api('/api/admin/api-key', 'POST')
+      setApiKey(data.api_key || '')
+      toast('Ключ сгенерирован')
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
+  async function revokeApiKey() {
+    if (!confirm('Отозвать API-ключ? Запросы с ним перестанут работать.')) return
+    try {
+      await api('/api/admin/api-key', 'DELETE')
+      setApiKey('')
+      toast('Ключ отозван')
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
+  function copyApiKey() {
+    navigator.clipboard?.writeText(apiKey).then(() => toast('Скопировано'), () => toast('Не удалось скопировать', false))
   }
 
   const roleOrder = ['simple', 'premium', 'super']
@@ -677,6 +711,27 @@ export default function AdminPage() {
               style={{ display: 'none' }}
               onChange={restoreBackup}
             />
+          </div>
+
+          <h3 className={styles.subTitle}>API-ключ</h3>
+          <p className={styles.empty}>
+            Даёт полный доступ к <code>/api/admin/*</code> по заголовку <code>X-API-Key</code> — для скриптов
+            бэкапа/восстановления и миграции без логина. Храните в секрете; новая генерация отзывает старый ключ.
+          </p>
+          <div className={styles.apiKeyRow}>
+            <input
+              className={styles.apiKeyInput}
+              type="text"
+              readOnly
+              value={apiKey || ''}
+              placeholder="ключ не задан"
+              onFocus={e => e.target.select()}
+            />
+            {apiKey && <button className={styles.btnSm} onClick={copyApiKey}>Копировать</button>}
+            <button className={styles.actionBtn} onClick={rotateApiKey}>
+              {apiKey ? 'Перегенерировать' : 'Сгенерировать'}
+            </button>
+            {apiKey && <button className={`${styles.actionBtn} ${styles.danger}`} onClick={revokeApiKey}>Отозвать</button>}
           </div>
         </div>
 

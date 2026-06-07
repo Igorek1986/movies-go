@@ -244,6 +244,33 @@
   }
 }
 
+.subTitle {
+  margin: $spacing-lg 0 $spacing-xs;
+  font-size: $font-size-base;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.apiKeyRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.apiKeyInput {
+  flex: 1 1 320px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: $color-bg-input;
+  color: $color-text;
+  font-family: monospace;
+  font-size: $font-size-sm;
+}
+
 .fixRtProgress {
   display: flex;
   flex-direction: column;

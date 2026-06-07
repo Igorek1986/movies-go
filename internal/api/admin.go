@@ -78,7 +78,7 @@ func requireAnyAdmin(mode string) func(http.Handler) http.Handler {
 func requireParserAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store") // не кэшировать админ-данные на прокси
-		if !checkParserSession(r) {
+		if !checkParserSession(r) && !adminAPIKeyValid(r) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
