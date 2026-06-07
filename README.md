@@ -200,7 +200,7 @@ docker compose up -d --build app
 
 ## Reverse proxy
 
-Для продакшна за HTTPS — пример конфига nginx с поддержкой SSE и WebSocket: [`nginx.conf.example`](nginx.conf.example).
+Для продакшна за HTTPS — пример конфига nginx с поддержкой SSE, WebSocket и бэкапа/восстановления БД: [`nginx/numparser.conf`](nginx/numparser.conf).
 
 ## Обновление
 
