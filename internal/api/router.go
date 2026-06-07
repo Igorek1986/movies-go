@@ -135,6 +135,8 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Get("/admin/actors", handleAPIAdminActorList)
 			r.With(requireAdmin).Get("/admin/directors", handleAPIAdminDirectorList)
 			r.With(requireAdmin).Post("/admin/restart", handleAPIAdminRestart)
+			r.With(requireAdmin).Get("/admin/backup", handleAPIAdminBackup)
+			r.With(requireAdmin).Post("/admin/restore", handleAPIAdminRestore)
 			r.With(requireAdmin).Get("/admin/bot/status", handleAPIAdminBotStatus)
 			r.With(requireAdmin).Post("/admin/bot/restart", handleAPIAdminBotRestart)
 			r.With(requireAdmin).Get("/admin/banned-patterns", handleAPIAdminBannedGet)

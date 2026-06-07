@@ -69,6 +69,9 @@ export default function AdminPage() {
   })
   const backfillCastPoll = useRef<ReturnType<typeof setInterval> | null>(null)
   const meId = useRef<number | null>(null)
+  const [backingUp, setBackingUp] = useState(false)
+  const [restoring, setRestoring] = useState(false)
+  const restoreInput = useRef<HTMLInputElement | null>(null)
 
   function toast(text: string, ok = true) {
     const id = Date.now()
@@ -319,6 +322,51 @@ export default function AdminPage() {
       await refresh()
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
+  async function downloadBackup() {
+    setBackingUp(true)
+    try {
+      const res = await fetch('/api/admin/backup')
+      if (!res.ok) throw new Error(await res.text() || 'Ошибка бэкапа')
+      const blob = await res.blob()
+      const cd = res.headers.get('Content-Disposition') || ''
+      const m = cd.match(/filename="?([^"]+)"?/)
+      const name = m ? m[1] : `movies-backup-${Date.now()}.sql.gz`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = name
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      toast('Бэкап скачан')
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    } finally {
+      setBackingUp(false)
+    }
+  }
+
+  async function restoreBackup(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // позволяем выбрать тот же файл повторно
+    if (!file) return
+    if (!confirm(`Восстановить базу из «${file.name}»?\n\nВсе текущие данные (пользователи, токены, настройки, карточки) будут ЗАМЕНЕНЫ. После восстановления приложение перезапустится и вам нужно будет войти заново.`)) return
+    setRestoring(true)
+    try {
+      const fd = new FormData()
+      fd.append('backup', file)
+      const res = await fetch('/api/admin/restore', { method: 'POST', body: fd })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Ошибка восстановления')
+      toast('База восстановлена, перезапуск…')
+      setTimeout(() => window.location.reload(), 4000)
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+      setRestoring(false)
     }
   }
 
@@ -596,6 +644,40 @@ export default function AdminPage() {
             </div>
           )}
 
+        </div>
+
+        {/* ── Backup & restore ───────────────────────────────────────────────── */}
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>Бэкап и восстановление</h2>
+          <p className={styles.empty}>
+            Полный дамп всей базы (пользователи, токены, настройки, карточки) для переезда на другой сервер.
+            Файл содержит секреты — храните его в надёжном месте.
+          </p>
+          <div className={styles.actionsGrid}>
+            <button
+              className={styles.actionBtn}
+              title="Скачать полный дамп всей БД (.sql.gz)"
+              onClick={downloadBackup}
+              disabled={backingUp || restoring}
+            >
+              {backingUp ? 'Подготовка…' : 'Скачать бэкап'}
+            </button>
+            <button
+              className={`${styles.actionBtn} ${styles.danger}`}
+              title="Загрузить .sql.gz и заменить все данные. Приложение перезапустится."
+              onClick={() => restoreInput.current?.click()}
+              disabled={restoring || backingUp}
+            >
+              {restoring ? 'Восстановление…' : 'Восстановить из файла'}
+            </button>
+            <input
+              ref={restoreInput}
+              type="file"
+              accept=".gz,.sql.gz,application/gzip"
+              style={{ display: 'none' }}
+              onChange={restoreBackup}
+            />
+          </div>
         </div>
 
         {/* ── Users ──────────────────────────────────────────────────────────── */}
