@@ -70,7 +70,7 @@ export default function DailyChart({ daily, title, selected, onSelect }: Props) 
   const active = hover != null ? days[hover] : selIdx >= 0 ? days[selIdx] : null
 
   function toggle(i: number) {
-    const date = daily[i].date
+    const date = days[i].date
     setSel(sel === date ? null : date)
   }
 
