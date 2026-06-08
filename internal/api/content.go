@@ -70,12 +70,17 @@ type popularSourceResp struct {
 }
 
 // fetchPopularSource pulls one page of the configured external popular source.
-func fetchPopularSource(ctx context.Context, page, perPage int) (*popularSourceResp, error) {
+// When date (YYYY-MM-DD) is set, it is forwarded so the source restricts the
+// ranking to that day — older sources without date support simply ignore it.
+func fetchPopularSource(ctx context.Context, page, perPage int, date string) (*popularSourceResp, error) {
 	src := getPopularSourceURL(ctx)
 	if src == "" {
 		return nil, fmt.Errorf("popular source not configured")
 	}
 	url := fmt.Sprintf("%s/np_popular?page=%d&per_page=%d", src, page, perPage)
+	if date != "" {
+		url += "&date=" + date
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -102,10 +107,17 @@ func handleAPIAdminPopularSource(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
+	// Optional ?date=YYYY-MM-DD — restricts the ranking to a single day
+	// (daily-chart filter); malformed input is ignored.
+	date := r.URL.Query().Get("date")
+	if !validDate(date) {
+		date = ""
+	}
+
 	const perPage = 100
-	first, err := fetchPopularSource(ctx, 1, perPage)
+	first, err := fetchPopularSource(ctx, 1, perPage, date)
 	if err != nil { // one retry — source can be briefly slow
-		first, err = fetchPopularSource(ctx, 1, perPage)
+		first, err = fetchPopularSource(ctx, 1, perPage, date)
 	}
 	if err != nil {
 		Error(w, http.StatusBadGateway, "popular source unavailable")
@@ -113,7 +125,7 @@ func handleAPIAdminPopularSource(w http.ResponseWriter, r *http.Request) {
 	}
 	results := first.Results
 	for page := 2; page <= first.TotalPages && page <= 50; page++ {
-		next, err := fetchPopularSource(ctx, page, perPage)
+		next, err := fetchPopularSource(ctx, page, perPage, date)
 		if err != nil {
 			break // return what we have so far
 		}
@@ -546,7 +558,11 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 // ─── Popular ──────────────────────────────────────────────────────────────────
 
 func handlePopular(w http.ResponseWriter, r *http.Request, page, perPage int, search string) {
-	rows, total := store.GetPopular(r.Context(), page, perPage, search)
+	date := r.URL.Query().Get("date")
+	if !validDate(date) {
+		date = ""
+	}
+	rows, total := store.GetPopular(r.Context(), page, perPage, search, date)
 	totalPages := (total + perPage - 1) / perPage
 	if totalPages < 1 {
 		totalPages = 1
@@ -557,6 +573,8 @@ func handlePopular(w http.ResponseWriter, r *http.Request, page, perPage int, se
 		if row.Plays > 0 {
 			item["plays"] = row.Plays
 			item["viewers"] = row.Viewers
+			item["avg_percent"] = row.AvgPercent
+			item["finished_rate"] = row.FinishedRate
 		}
 		results = append(results, item)
 	}

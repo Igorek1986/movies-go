@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
+import DailyChart, { type DailyPoint } from '@/components/DailyChart'
 import { posterUrl } from '@/utils/poster'
 import styles from './PopularPage.module.scss'
 
@@ -13,14 +14,9 @@ interface SourceCard {
   first_air_date: string
   viewers?: number
   plays?: number
+  avg_percent?: number
+  finished_rate?: number
   rank: number // popularity position from the source (1-based)
-}
-
-interface DailyPoint {
-  date: string
-  plays: number
-  viewers: number
-  cards: number
 }
 
 interface SourceData {
@@ -30,7 +26,7 @@ interface SourceData {
   daily?: DailyPoint[] | null
 }
 
-type SortKey = 'rank' | 'title' | 'year' | 'viewers' | 'plays'
+type SortKey = 'rank' | 'title' | 'year' | 'viewers' | 'plays' | 'avg_percent' | 'finished_rate'
 type SortState = { key: SortKey; dir: 'asc' | 'desc' }
 type TypeFilter = 'all' | 'movie' | 'tv'
 
@@ -40,9 +36,9 @@ function loadPrefs(): { sort?: SortState; type?: TypeFilter } {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') } catch { return {} }
 }
 
-function fmtDay(date: string): string {
-  const [, m, d] = date.split('-')
-  return `${d}.${m}`
+function fmtDayFull(date: string): string {
+  const [y, m, d] = date.split('-')
+  return `${d}.${m}.${y}`
 }
 
 function yearOf(c: SourceCard): number {
@@ -73,6 +69,11 @@ export default function PopularSourcePage() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => loadPrefs().type ?? 'all')
   const [sort, setSort] = useState<SortState>(() => loadPrefs().sort ?? { key: 'rank', dir: 'asc' })
+  // Daily-chart filter: a selected day restricts the list to that date. The
+  // source must support the date param; older sources ignore it (see note).
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [dayResults, setDayResults] = useState<SourceData['results'] | null>(null)
+  const [dayLoading, setDayLoading] = useState(false)
 
   useEffect(() => {
     fetch('/api/admin/popular-source')
@@ -82,18 +83,32 @@ export default function PopularSourcePage() {
       .finally(() => setLoading(false))
   }, [])
 
+  // Refetch the source list for the selected day (chart filter).
+  useEffect(() => {
+    if (!selectedDate) { setDayResults(null); return }
+    setDayLoading(true)
+    let cancelled = false
+    fetch(`/api/admin/popular-source?date=${selectedDate}`)
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then((d: SourceData) => { if (!cancelled) setDayResults(d.results ?? []) })
+      .catch(() => { if (!cancelled) setDayResults([]) })
+      .finally(() => { if (!cancelled) setDayLoading(false) })
+    return () => { cancelled = true }
+  }, [selectedDate])
+
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify({ sort, type: typeFilter }))
   }, [sort, typeFilter])
 
   // Attach a stable popularity rank from the source order.
+  const results = selectedDate ? (dayResults ?? []) : (data?.results ?? [])
   const allCards: SourceCard[] = useMemo(
-    () => (data?.results ?? []).map((c, idx) => ({ ...c, rank: idx + 1 })),
-    [data],
+    () => results.map((c, idx) => ({ ...c, rank: idx + 1 })),
+    [results],
   )
   const hasCounts = allCards.some(c => typeof c.viewers === 'number')
+  const hasMetrics = allCards.some(c => typeof c.avg_percent === 'number')
   const daily = data?.daily ?? []
-  const maxPlays = daily.reduce((m, d) => Math.max(m, d.plays), 0) || 1
 
   function toggleSort(key: SortKey) {
     setSort(prev => prev.key === key
@@ -137,33 +152,33 @@ export default function PopularSourcePage() {
 
         {loading && <div className={styles.empty}>Загрузка…</div>}
         {!loading && error && <div className={styles.empty}>Источник недоступен</div>}
-        {!loading && !error && allCards.length === 0 && (
-          <div className={styles.empty}>Источник вернул пустой список</div>
-        )}
 
         {!loading && !error && daily.length > 0 && (
-          <div className={styles.chartCard}>
-            <p className={styles.chartTitle}>Динамика просмотров по дням (источник)</p>
-            <div className={styles.chart}>
-              {daily.map(d => (
-                <div
-                  key={d.date}
-                  className={styles.bar}
-                  title={`${fmtDay(d.date)}: ${d.plays} просмотров, ${d.viewers} зрителей, ${d.cards} карточек`}
-                >
-                  <div className={styles.barFill} style={{ height: `${(d.plays / maxPlays) * 100}%` }} />
-                </div>
-              ))}
-            </div>
-            <div className={styles.chart} style={{ height: 'auto' }}>
-              {daily.map(d => (
-                <div key={d.date} className={styles.barLabel}>{fmtDay(d.date)}</div>
-              ))}
-            </div>
+          <DailyChart
+            daily={daily}
+            title="Динамика просмотров по дням (источник)"
+            selected={selectedDate}
+            onSelect={setSelectedDate}
+          />
+        )}
+
+        {selectedDate && (
+          <p className={styles.filterNote}>
+            Показаны данные источника за {fmtDayFull(selectedDate)}.{' '}
+            <button className={styles.resetBtn} onClick={() => setSelectedDate(null)}>
+              Сбросить
+            </button>
+          </p>
+        )}
+
+        {!loading && !error && dayLoading && <div className={styles.empty}>Загрузка…</div>}
+        {!loading && !error && !dayLoading && allCards.length === 0 && (
+          <div className={styles.empty}>
+            {selectedDate ? 'В этот день просмотров не было' : 'Источник вернул пустой список'}
           </div>
         )}
 
-        {!loading && !error && allCards.length > 0 && (
+        {!loading && !error && !dayLoading && allCards.length > 0 && (
           <>
             <div className={styles.toolbar}>
               <input
@@ -188,6 +203,8 @@ export default function PopularSourcePage() {
                   <option value="year">Год</option>
                   {hasCounts && <option value="viewers">Зрителей</option>}
                   {hasCounts && <option value="plays">Просмотров</option>}
+                  {hasMetrics && <option value="avg_percent">Средний %</option>}
+                  {hasMetrics && <option value="finished_rate">Финал</option>}
                 </select>
                 <button
                   className={styles.dirBtn}
@@ -209,6 +226,8 @@ export default function PopularSourcePage() {
                   <th>Тип</th>
                   {hasCounts && <SortableTh label="Зрителей" k="viewers" sort={sort} onSort={toggleSort} className={styles.num} />}
                   {hasCounts && <SortableTh label="Просмотров" k="plays" sort={sort} onSort={toggleSort} className={styles.num} />}
+                  {hasMetrics && <SortableTh label="Средний %" k="avg_percent" sort={sort} onSort={toggleSort} className={styles.num} />}
+                  {hasMetrics && <SortableTh label="Финал" k="finished_rate" sort={sort} onSort={toggleSort} className={styles.num} />}
                 </tr>
               </thead>
               <tbody>
@@ -232,6 +251,8 @@ export default function PopularSourcePage() {
                       <td className={styles.muted} data-label="Тип">{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
                       {hasCounts && <td className={`${styles.num} ${styles.numStrong}`} data-label="Зрителей">{typeof c.viewers === 'number' ? c.viewers.toLocaleString('ru') : '—'}</td>}
                       {hasCounts && <td className={`${styles.num} ${styles.muted}`} data-label="Просмотров">{typeof c.plays === 'number' ? c.plays.toLocaleString('ru') : '—'}</td>}
+                      {hasMetrics && <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Средний %">{c.avg_percent ? `${c.avg_percent}%` : '—'}</td>}
+                      {hasMetrics && <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Финал">{c.avg_percent ? `${c.finished_rate}%` : '—'}</td>}
                     </tr>
                   )
                 })}

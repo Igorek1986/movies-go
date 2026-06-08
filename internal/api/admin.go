@@ -115,7 +115,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	popularSourceCount := -1 // -1 = unknown/unreachable
 	if popularSourceURL != "" {
 		sctx, scancel := context.WithTimeout(ctx, 4*time.Second)
-		if resp, err := fetchPopularSource(sctx, 1, 1); err == nil {
+		if resp, err := fetchPopularSource(sctx, 1, 1, ""); err == nil {
 			popularSourceCount = resp.TotalResults
 		}
 		scancel()
@@ -204,11 +204,23 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 func handleAPIAdminPopular(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	days := store.GetSettingInt(ctx, "popular_period_days")
+	// Optional ?date=YYYY-MM-DD — restricts the card ranking to a single day
+	// (the daily-chart filter). Anything malformed is treated as "no filter".
+	date := r.URL.Query().Get("date")
+	if !validDate(date) {
+		date = ""
+	}
 	JSON(w, http.StatusOK, map[string]any{
 		"days":  days,
 		"daily": store.GetPopularDaily(ctx, days),
-		"cards": store.GetPopularCards(ctx, days, 500),
+		"cards": store.GetPopularCards(ctx, days, 500, date),
 	})
+}
+
+// validDate reports whether s is a well-formed YYYY-MM-DD calendar date.
+func validDate(s string) bool {
+	_, err := time.Parse("2006-01-02", s)
+	return err == nil
 }
 
 func handleAdminListUsers(w http.ResponseWriter, r *http.Request) {

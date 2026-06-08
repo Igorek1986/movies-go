@@ -185,7 +185,9 @@ func HasPopularData(ctx context.Context, days int) bool {
 }
 
 // GetPopular returns globally popular cards by unique plays from media_play_events.
-func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaRow, int) {
+// When date (YYYY-MM-DD) is set, the ranking covers only that single day
+// instead of the rolling window — this backs the daily-chart filter.
+func GetPopular(ctx context.Context, page, perPage int, search, date string) ([]MediaRow, int) {
 	if page < 1 {
 		page = 1
 	}
@@ -193,9 +195,14 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 		perPage = 20
 	}
 
-	searchWhere := ""
 	var args []any
-	args = append(args, 30) // popular_period_days
+	dateWhere := "e.date >= (CURRENT_DATE - ($1::int * INTERVAL '1 day'))"
+	args = append(args, 30) // $1 — popular_period_days window
+	if date != "" {
+		dateWhere = "e.date = $1::date"
+		args[0] = date
+	}
+	searchWhere := ""
 	if search != "" {
 		snip, arg := searchSQL(search, 2)
 		searchWhere = " AND " + snip
@@ -203,13 +210,18 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 	}
 
 	baseSQL := fmt.Sprintf(`
-		SELECT e.card_id, COUNT(*) AS weight, COUNT(DISTINCT e.ident) AS viewers
+		SELECT e.card_id, COUNT(*) AS weight, COUNT(DISTINCT e.ident) AS viewers,
+		       COALESCE(ROUND(AVG(e.max_percent) FILTER (WHERE e.max_percent > 0)), 0)::int AS avg_percent,
+		       COALESCE(ROUND(
+		           100.0 * COUNT(*) FILTER (WHERE e.max_percent >= 85)
+		           / NULLIF(COUNT(*) FILTER (WHERE e.max_percent > 0), 0)
+		       ), 0)::int AS finished_rate
 		FROM media_play_events e
 		JOIN media_cards m ON m.card_id = e.card_id
-		WHERE e.date >= (CURRENT_DATE - ($1::int * INTERVAL '1 day'))
+		WHERE %s
 		  %s
 		GROUP BY e.card_id
-		ORDER BY weight DESC`, searchWhere)
+		ORDER BY weight DESC`, dateWhere, searchWhere)
 
 	var total int
 	postgres.Pool.QueryRow(ctx, //nolint:errcheck
@@ -230,13 +242,17 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 	var cardIDs []string
 	playsByID := map[string]int{}
 	viewersByID := map[string]int{}
+	avgPercentByID := map[string]int{}
+	finishedRateByID := map[string]int{}
 	for popRows.Next() {
 		var cid string
-		var plays, viewers int
-		if popRows.Scan(&cid, &plays, &viewers) == nil {
+		var plays, viewers, avgPercent, finishedRate int
+		if popRows.Scan(&cid, &plays, &viewers, &avgPercent, &finishedRate) == nil {
 			cardIDs = append(cardIDs, cid)
 			playsByID[cid] = plays
 			viewersByID[cid] = viewers
+			avgPercentByID[cid] = avgPercent
+			finishedRateByID[cid] = finishedRate
 		}
 	}
 	popRows.Close()
@@ -288,6 +304,8 @@ func GetPopular(ctx context.Context, page, perPage int, search string) ([]MediaR
 		if r, ok := mcMap[cid]; ok {
 			r.Plays = playsByID[cid]
 			r.Viewers = viewersByID[cid]
+			r.AvgPercent = avgPercentByID[cid]
+			r.FinishedRate = finishedRateByID[cid]
 			result = append(result, r)
 		}
 	}
@@ -317,14 +335,26 @@ type PopularDaily struct {
 }
 
 // GetPopularDaily returns per-day play dynamics for the given window,
-// ordered ascending by date. Days without activity are omitted.
+// ordered ascending by date. Every day in the window is present (zero-filled),
+// so the timeline is continuous and always spans exactly `days` columns.
 func GetPopularDaily(ctx context.Context, days int) []PopularDaily {
+	if days < 1 {
+		days = 30
+	}
 	rows, err := postgres.Pool.Query(ctx,
-		`SELECT date::text, COUNT(*), COUNT(DISTINCT ident), COUNT(DISTINCT card_id)
-		 FROM media_play_events
-		 WHERE date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')
-		 GROUP BY date
-		 ORDER BY date`,
+		`SELECT d::date::text,
+		        COALESCE(s.plays, 0), COALESCE(s.viewers, 0), COALESCE(s.cards, 0)
+		 FROM generate_series(
+		        CURRENT_DATE - (($1::int - 1) * INTERVAL '1 day'),
+		        CURRENT_DATE, INTERVAL '1 day') d
+		 LEFT JOIN (
+		        SELECT date, COUNT(*) AS plays,
+		               COUNT(DISTINCT ident) AS viewers, COUNT(DISTINCT card_id) AS cards
+		        FROM media_play_events
+		        WHERE date >= CURRENT_DATE - (($1::int - 1) * INTERVAL '1 day')
+		        GROUP BY date
+		 ) s ON s.date = d::date
+		 ORDER BY d`,
 		days,
 	)
 	if err != nil {
@@ -355,12 +385,21 @@ type PopularCard struct {
 	FinishedRate int    `json:"finished_rate"` // % of plays with max_percent >= 85
 }
 
-// GetPopularCards returns cards ranked by unique viewers within the window.
-func GetPopularCards(ctx context.Context, days, limit int) []PopularCard {
+// GetPopularCards returns cards ranked by unique viewers. By default it covers
+// the whole `days` window; if `date` (YYYY-MM-DD) is given, it restricts the
+// ranking to play events of that single day — used by the daily-chart filter.
+func GetPopularCards(ctx context.Context, days, limit int, date string) []PopularCard {
 	if limit < 1 {
 		limit = 200
 	}
-	rows, err := postgres.Pool.Query(ctx,
+	where := "e.date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')"
+	args := []any{days}
+	if date != "" {
+		where = "e.date = $1::date"
+		args = []any{date}
+	}
+	args = append(args, limit)
+	rows, err := postgres.Pool.Query(ctx, fmt.Sprintf(
 		`SELECT e.card_id, m.tmdb_id, m.media_type, m.title,
 		        COALESCE(m.poster_path, ''),
 		        COALESCE(NULLIF(left(m.release_date::text, 4), ''), left(m.first_air_date::text, 4), ''),
@@ -372,11 +411,11 @@ func GetPopularCards(ctx context.Context, days, limit int) []PopularCard {
 		        ), 0)::int AS finished_rate
 		 FROM media_play_events e
 		 JOIN media_cards m ON m.card_id = e.card_id
-		 WHERE e.date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')
+		 WHERE %s
 		 GROUP BY e.card_id, m.tmdb_id, m.media_type, m.title, m.poster_path, m.release_date, m.first_air_date
 		 ORDER BY viewers DESC, plays DESC
-		 LIMIT $2`,
-		days, limit,
+		 LIMIT $%d`, where, len(args)),
+		args...,
 	)
 	if err != nil {
 		return []PopularCard{}

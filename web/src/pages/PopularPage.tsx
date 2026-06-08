@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
+import DailyChart, { type DailyPoint } from '@/components/DailyChart'
 import { posterUrl } from '@/utils/poster'
 import styles from './PopularPage.module.scss'
-
-interface DailyPoint {
-  date: string
-  plays: number
-  viewers: number
-  cards: number
-}
 
 interface PopularCard {
   card_id: string
@@ -40,9 +34,9 @@ function loadPrefs(): { sort?: SortState; type?: TypeFilter } {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') } catch { return {} }
 }
 
-function fmtDay(date: string): string {
-  const [, m, d] = date.split('-')
-  return `${d}.${m}`
+function fmtDayFull(date: string): string {
+  const [y, m, d] = date.split('-')
+  return `${d}.${m}.${y}`
 }
 
 function SortableTh({ label, k, sort, onSort, className, title }: {
@@ -68,6 +62,10 @@ export default function PopularPage() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => loadPrefs().type ?? 'all')
   const [sort, setSort] = useState<SortState>(() => loadPrefs().sort ?? { key: 'viewers', dir: 'desc' })
+  // Daily-chart filter: a selected day restricts the card list to that date.
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [dayCards, setDayCards] = useState<PopularCard[] | null>(null)
+  const [dayLoading, setDayLoading] = useState(false)
 
   useEffect(() => {
     fetch('/api/admin/popular')
@@ -76,13 +74,24 @@ export default function PopularPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  // Refetch the card ranking for the selected day (chart filter).
+  useEffect(() => {
+    if (!selectedDate) { setDayCards(null); return }
+    setDayLoading(true)
+    let cancelled = false
+    fetch(`/api/admin/popular?date=${selectedDate}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled) setDayCards(d?.cards ?? []) })
+      .finally(() => { if (!cancelled) setDayLoading(false) })
+    return () => { cancelled = true }
+  }, [selectedDate])
+
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify({ sort, type: typeFilter }))
   }, [sort, typeFilter])
 
   const daily = data?.daily ?? []
-  const allCards = data?.cards ?? []
-  const maxPlays = daily.reduce((m, d) => Math.max(m, d.plays), 0) || 1
+  const allCards = selectedDate ? (dayCards ?? []) : (data?.cards ?? [])
 
   function toggleSort(key: SortKey) {
     setSort(prev => prev.key === key
@@ -122,33 +131,33 @@ export default function PopularPage() {
         </p>
 
         {loading && <div className={styles.empty}>Загрузка…</div>}
-        {!loading && allCards.length === 0 && (
-          <div className={styles.empty}>Пока нет данных о просмотрах</div>
-        )}
 
         {!loading && daily.length > 0 && (
-          <div className={styles.chartCard}>
-            <p className={styles.chartTitle}>Динамика просмотров по дням</p>
-            <div className={styles.chart}>
-              {daily.map(d => (
-                <div
-                  key={d.date}
-                  className={styles.bar}
-                  title={`${fmtDay(d.date)}: ${d.plays} просмотров, ${d.viewers} зрителей, ${d.cards} карточек`}
-                >
-                  <div className={styles.barFill} style={{ height: `${(d.plays / maxPlays) * 100}%` }} />
-                </div>
-              ))}
-            </div>
-            <div className={styles.chart} style={{ height: 'auto' }}>
-              {daily.map(d => (
-                <div key={d.date} className={styles.barLabel}>{fmtDay(d.date)}</div>
-              ))}
-            </div>
+          <DailyChart
+            daily={daily}
+            title="Динамика просмотров по дням"
+            selected={selectedDate}
+            onSelect={setSelectedDate}
+          />
+        )}
+
+        {selectedDate && (
+          <p className={styles.filterNote}>
+            Показаны просмотры за {fmtDayFull(selectedDate)}.{' '}
+            <button className={styles.resetBtn} onClick={() => setSelectedDate(null)}>
+              Сбросить
+            </button>
+          </p>
+        )}
+
+        {!loading && dayLoading && <div className={styles.empty}>Загрузка…</div>}
+        {!loading && !dayLoading && allCards.length === 0 && (
+          <div className={styles.empty}>
+            {selectedDate ? 'В этот день просмотров не было' : 'Пока нет данных о просмотрах'}
           </div>
         )}
 
-        {!loading && allCards.length > 0 && (
+        {!loading && !dayLoading && allCards.length > 0 && (
           <>
             <div className={styles.toolbar}>
               <input
@@ -170,8 +179,8 @@ export default function PopularPage() {
                 >
                   <option value="viewers">Зрителей</option>
                   <option value="plays">Просмотров</option>
-                  <option value="avg_percent">Досмотр</option>
-                  <option value="finished_rate">Додосмотрели</option>
+                  <option value="avg_percent">Средний %</option>
+                  <option value="finished_rate">Финал</option>
                   <option value="year">Год</option>
                   <option value="title">Название</option>
                 </select>
@@ -195,8 +204,8 @@ export default function PopularPage() {
                   <th>Тип</th>
                   <SortableTh label="Зрителей" k="viewers" sort={sort} onSort={toggleSort} className={styles.num} />
                   <SortableTh label="Просмотров" k="plays" sort={sort} onSort={toggleSort} className={styles.num} />
-                  <SortableTh label="Досмотр" k="avg_percent" sort={sort} onSort={toggleSort} className={styles.num} title="Средняя глубина досмотра" />
-                  <SortableTh label="Додосмотрели" k="finished_rate" sort={sort} onSort={toggleSort} className={styles.num} title="Доля просмотров, досмотренных до конца (≥85%)" />
+                  <SortableTh label="Средний %" k="avg_percent" sort={sort} onSort={toggleSort} className={styles.num} title="Средняя глубина просмотра" />
+                  <SortableTh label="Финал" k="finished_rate" sort={sort} onSort={toggleSort} className={styles.num} title="Доля просмотров, досмотренных до конца (≥85%)" />
                 </tr>
               </thead>
               <tbody>
@@ -219,8 +228,8 @@ export default function PopularPage() {
                       <td className={styles.muted} data-label="Тип">{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
                       <td className={`${styles.num} ${styles.numStrong}`} data-label="Зрителей">{c.viewers.toLocaleString('ru')}</td>
                       <td className={`${styles.num} ${styles.muted}`} data-label="Просмотров">{c.plays.toLocaleString('ru')}</td>
-                      <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Досмотр">{c.avg_percent ? `${c.avg_percent}%` : '—'}</td>
-                      <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Додосмотрели">{c.avg_percent ? `${c.finished_rate}%` : '—'}</td>
+                      <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Средний %">{c.avg_percent ? `${c.avg_percent}%` : '—'}</td>
+                      <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Финал">{c.avg_percent ? `${c.finished_rate}%` : '—'}</td>
                     </tr>
                   )
                 })}

@@ -46,6 +46,23 @@
   text-align: center;
 }
 
+// Daily-chart filter indicator
+.filterNote {
+  font-size: $font-size-sm;
+  color: $color-text;
+  margin: -12px 0 16px;
+}
+.resetBtn {
+  background: none;
+  border: none;
+  color: $color-primary;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  &:hover { color: $color-primary-hover; }
+}
+
 // ── Toolbar (search + filters) ───────────────────────────────────────────────
 
 .toolbar {
@@ -104,58 +121,6 @@
   font-size: $font-size-sm;
   cursor: pointer;
   &:hover { border-color: $color-primary; color: $color-primary; }
-}
-
-// ── Daily chart ────────────────────────────────────────────────────────────────
-
-.chartCard {
-  background: $color-bg-card;
-  border: 1px solid $color-border;
-  border-radius: $radius-md;
-  padding: 16px 16px 8px;
-  margin-bottom: 24px;
-}
-
-.chartTitle {
-  font-size: $font-size-sm;
-  color: $color-text-muted;
-  margin: 0 0 16px;
-}
-
-.chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 160px;
-}
-
-.bar {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  height: 100%;
-  cursor: default;
-}
-
-.barFill {
-  width: 100%;
-  background: $color-primary;
-  border-radius: 3px 3px 0 0;
-  min-height: 2px;
-  transition: background $transition-fast;
-}
-
-.bar:hover .barFill { background: $color-primary-hover; }
-
-.barLabel {
-  font-size: 0.62rem;
-  color: $color-text-muted;
-  text-align: center;
-  margin-top: 4px;
-  white-space: nowrap;
-  overflow: hidden;
 }
 
 // ── Cards table ──────────────────────────────────────────────────────────────

@@ -1,0 +1,85 @@
+@use '../styles/variables' as *;
+
+.chartCard {
+  background: $color-bg-card;
+  border: 1px solid $color-border;
+  border-radius: $radius-md;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.chartHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.chartTitle {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin: 0;
+}
+
+.readout {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  // Columns keep a min width (see .col); when they don't fit, scroll instead
+  // of squashing the bars/labels. On wide screens everything fits, no scroll.
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+// Each day is a column holding the bar and its label, so the label is always
+// aligned under its bar regardless of how many days are shown. flex-grow lets
+// columns stretch to fill wide screens; min-width keeps the date label legible
+// (and triggers horizontal scroll on narrow ones).
+.col {
+  // basis 0 + grow: columns share the width on wide screens (no scroll); they
+  // only stop shrinking at min-width, which is what triggers scroll on narrow
+  // screens.
+  flex: 1 1 0;
+  min-width: 30px;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+.barWrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 160px;
+}
+
+.barFill {
+  width: 100%;
+  background: $color-primary;
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  transition: background $transition-fast;
+}
+
+.col:hover .barFill,
+.colActive .barFill { background: $color-primary-hover; }
+
+.barLabel {
+  height: 1.1em;
+  font-size: 0.62rem;
+  color: $color-text-muted;
+  text-align: center;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+}

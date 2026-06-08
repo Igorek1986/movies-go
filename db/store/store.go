@@ -859,8 +859,10 @@ type MediaRow struct {
 	CertificationRU   *string
 	CertificationUS   *string
 	// Popularity counts — populated only by GetPopular, 0 elsewhere.
-	Viewers int
-	Plays   int
+	Viewers      int
+	Plays        int
+	AvgPercent   int // average deepest watch progress
+	FinishedRate int // % of plays watched to the end (>=85%)
 }
 
 // CategoryFilter defines how to filter and sort a category listing.
