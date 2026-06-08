@@ -229,6 +229,7 @@ CREATE TABLE IF NOT EXISTS media_cards (
     tmdb_updated_at      TIMESTAMPTZ,
     tmdb_not_found_at    TIMESTAMPTZ,
     updated_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT uq_media_card_tmdb UNIQUE (tmdb_id, media_type)
 );
 
