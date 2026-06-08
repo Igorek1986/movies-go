@@ -65,4 +65,6 @@ fi
 # ── 4. Start app ──────────────────────────────────────────────────────────────
 echo "Starting application..."
 docker compose up -d --build app
+# Drop the now-dangling old image left by the rebuild (only <none>, safe).
+docker image prune -f >/dev/null 2>&1 || true
 echo "Done."
