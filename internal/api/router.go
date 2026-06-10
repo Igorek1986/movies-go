@@ -195,6 +195,17 @@ func NewRouter(mode string) http.Handler {
 		r.Delete("/{cardID}", handleAPIAdminTMDBMissingDelete)
 	})
 
+	// ── Entity lists (admin, both modes) ─────────────────────────────────────────
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/users-list", handleAPIAdminUsersList)
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/devices-list", handleAPIAdminDevicesList)
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/timecodes-list", handleAPIAdminTimecodesList)
+
+	// ── Today stats (admin, both modes) ──────────────────────────────────────────
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/users-today", handleAPIAdminUsersToday)
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/devices-today", handleAPIAdminDevicesToday)
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/timecodes-today", handleAPIAdminTimecodesToday)
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/tmdb-refreshed-today", handleAPIAdminTMDBRefreshedToday)
+
 	// ── Cards (admin, both modes) ─────────────────────────────────────────────────
 	r.With(requireAnyAdmin(mode)).Get("/api/admin/cards-today", handleAPIAdminCardsToday)
 	r.With(requireAnyAdmin(mode)).Get("/api/admin/all-cards", handleAPIAdminAllCards)

@@ -80,6 +80,18 @@
   }
 }
 
+// ── Mobile controls (filter/sort bar above cards) ──────────────────────────────
+
+.mobileControls {
+  display: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+
+  @media (max-width: $bp-sm) { display: flex; }
+}
+
 // ── Mobile: table rows → cards ─────────────────────────────────────────────────
 
 @media (max-width: $bp-sm) {

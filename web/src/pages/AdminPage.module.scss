@@ -89,6 +89,15 @@
 
 // ── Mobile cards ──────────────────────────────────────────────────────────────
 
+.mobileSort {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+
+  @media (max-width: $bp-sm) { display: flex; }
+}
+
 .cards {
   display: none;
   flex-direction: column;

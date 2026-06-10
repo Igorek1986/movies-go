@@ -50,8 +50,22 @@ interface Toast {
   ok: boolean
 }
 
+interface UsersPaged {
+  total: number
+  page: number
+  per_page: number
+  items: AdminUser[]
+}
+
 export default function AdminPage() {
-  const [users, setUsers] = useState<AdminUser[]>([])
+  const [usersPaged, setUsersPaged] = useState<UsersPaged | null>(null)
+  const [usersPage, setUsersPage]   = useState(1)
+  const [usersSearch, setUsersSearch] = useState('')
+  const [usersQuery, setUsersQuery]   = useState('')
+  const [usersSortBy, setUsersSortBy]   = useState('created_at')
+  const [usersSortDir, setUsersSortDir] = useState<'asc' | 'desc'>('desc')
+  const [usersPerPage, setUsersPerPage] = useState(10)
+  const usersTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
   const [sysStats, setSysStats] = useState<SystemStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -85,21 +99,17 @@ export default function AdminPage() {
     if (res.ok) setSysStats(await res.json())
   }, [])
 
-  // Silent refresh — no loading spinner, no flash
+  const fetchUsers = useCallback(async (page: number, query: string, sortBy: string, sortDir: string, perPage: number) => {
+    const params = new URLSearchParams({ page: String(page), sort_by: sortBy, sort_dir: sortDir, per_page: String(perPage) })
+    if (query) params.set('search', query)
+    const res = await fetch(`/api/admin/users?${params}`)
+    if (res.ok) setUsersPaged(await res.json())
+  }, [])
+
+  // Silent refresh — stats only, no user list reset
   const refresh = useCallback(async () => {
-    const [uRes, sRes] = await Promise.all([
-      fetch('/api/admin/users'),
-      fetch('/api/admin/stats'),
-    ])
-    if (uRes.ok) {
-      const data: AdminUser[] = await uRes.json()
-      setUsers(data)
-      if (meId.current === null) {
-        const me = data.find(u => u.is_admin)
-        if (me) meId.current = me.id
-      }
-    }
-    if (sRes.ok) setStats(await sRes.json())
+    const res = await fetch('/api/admin/stats')
+    if (res.ok) setStats(await res.json())
   }, [])
 
   async function fetchFixRtStatus() {
@@ -212,10 +222,21 @@ export default function AdminPage() {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([refresh(), fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchSysStats(), fetchApiKey()]).finally(() => setLoading(false))
+    // fetch meId once
+    fetch('/api/me').then(r => r.ok ? r.json() : null).then(d => { if (d?.id) meId.current = d.id })
+    Promise.all([
+      refresh(),
+      fetchUsers(1, '', 'created_at', 'desc', 10),
+      fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchSysStats(), fetchApiKey(),
+    ]).finally(() => setLoading(false))
     const sysInterval = setInterval(fetchSysStats, 5000)
     return () => clearInterval(sysInterval)
-  }, [refresh, fetchSysStats]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refresh, fetchSysStats, fetchUsers]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reload users when pagination/sort/perPage changes
+  useEffect(() => {
+    fetchUsers(usersPage, usersQuery, usersSortBy, usersSortDir, usersPerPage)
+  }, [usersPage, usersQuery, usersSortBy, usersSortDir, usersPerPage, fetchUsers]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (fixRtStatus.running) startFixRuntimePoll()
@@ -270,7 +291,7 @@ export default function AdminPage() {
     try {
       await fn()
       toast(label)
-      await refresh()
+      await Promise.all([refresh(), fetchUsers(usersPage, usersQuery, usersSortBy, usersSortDir, usersPerPage)])
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : String(e), false)
     }
@@ -502,24 +523,32 @@ export default function AdminPage() {
 
         {stats && (
           <div className={styles.stats}>
-            <div className={styles.statCard}>
-              <p className={styles.statValue}>{stats.users}</p>
-              <p className={styles.statLabel}>Пользователей</p>
+            <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+              <Link to="/admin/users-list" className={styles.statLink}>
+                <p className={styles.statValue}>{stats.users}</p>
+                <p className={styles.statLabel}>Пользователей</p>
+              </Link>
             </div>
             {stats.users_today > 0 && (
-              <div className={styles.statCard}>
-                <p className={styles.statValue}>+{stats.users_today}</p>
-                <p className={styles.statLabel}>Новых сегодня</p>
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/users-today" className={styles.statLink}>
+                  <p className={styles.statValue}>+{stats.users_today}</p>
+                  <p className={styles.statLabel}>Новых сегодня</p>
+                </Link>
               </div>
             )}
-            <div className={styles.statCard}>
-              <p className={styles.statValue}>{stats.devices}</p>
-              <p className={styles.statLabel}>Устройств</p>
+            <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+              <Link to="/admin/devices-list" className={styles.statLink}>
+                <p className={styles.statValue}>{stats.devices}</p>
+                <p className={styles.statLabel}>Устройств</p>
+              </Link>
             </div>
             {stats.devices_today > 0 && (
-              <div className={styles.statCard}>
-                <p className={styles.statValue}>+{stats.devices_today}</p>
-                <p className={styles.statLabel}>Устройств сегодня</p>
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/devices-today" className={styles.statLink}>
+                  <p className={styles.statValue}>+{stats.devices_today}</p>
+                  <p className={styles.statLabel}>Устройств сегодня</p>
+                </Link>
               </div>
             )}
             <div className={`${styles.statCard} ${styles.statCardClickable}`}>
@@ -537,14 +566,18 @@ export default function AdminPage() {
                 </Link>
               </div>
             )}
-            <div className={styles.statCard}>
-              <p className={styles.statValue}>{stats.timecodes.toLocaleString()}</p>
-              <p className={styles.statLabel}>Таймкодов</p>
+            <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+              <Link to="/admin/timecodes-list" className={styles.statLink}>
+                <p className={styles.statValue}>{stats.timecodes.toLocaleString()}</p>
+                <p className={styles.statLabel}>Таймкодов</p>
+              </Link>
             </div>
             {stats.timecodes_today > 0 && (
-              <div className={styles.statCard}>
-                <p className={styles.statValue}>+{stats.timecodes_today.toLocaleString()}</p>
-                <p className={styles.statLabel}>Таймкодов сегодня</p>
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/timecodes-today" className={styles.statLink}>
+                  <p className={styles.statValue}>+{stats.timecodes_today.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Таймкодов сегодня</p>
+                </Link>
               </div>
             )}
             {stats.no_runtime_movies > 0 && (
@@ -564,9 +597,11 @@ export default function AdminPage() {
               </div>
             )}
             {stats.tmdb_refreshed_today > 0 && (
-              <div className={styles.statCard}>
-                <p className={styles.statValue}>{stats.tmdb_refreshed_today.toLocaleString()}</p>
-                <p className={styles.statLabel}>Обновлено из TMDB сегодня</p>
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/tmdb-refreshed-today" className={styles.statLink}>
+                  <p className={styles.statValue}>{stats.tmdb_refreshed_today.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Обновлено из TMDB сегодня</p>
+                </Link>
               </div>
             )}
             {stats.tmdb_not_found > 0 && (
@@ -740,28 +775,74 @@ export default function AdminPage() {
 
         {/* ── Users ──────────────────────────────────────────────────────────── */}
         <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>Пользователи</h2>
+          <h2 className={styles.sectionTitle}>
+            Пользователи{usersPaged ? ` (${usersPaged.total.toLocaleString()})` : ''}
+          </h2>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+              <input
+                placeholder="Поиск по имени…"
+                value={usersSearch}
+                onChange={e => {
+                  setUsersSearch(e.target.value)
+                  if (usersTimer.current) clearTimeout(usersTimer.current)
+                  usersTimer.current = setTimeout(() => { setUsersPage(1); setUsersQuery(e.target.value.trim()) }, 300)
+                }}
+                style={{ background: '#111', border: '1px solid #444', borderRadius: 6, color: '#fff', padding: '5px 28px 5px 10px', fontSize: '0.82rem', outline: 'none', width: 200 }}
+              />
+              {usersSearch && (
+                <button
+                  onClick={() => {
+                    setUsersSearch('')
+                    if (usersTimer.current) clearTimeout(usersTimer.current)
+                    setUsersPage(1)
+                    setUsersQuery('')
+                  }}
+                  style={{ position: 'absolute', right: 6, background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: 0 }}
+                >×</button>
+              )}
+            </div>
+            <select
+              value={usersPerPage}
+              onChange={e => { setUsersPerPage(Number(e.target.value)); setUsersPage(1) }}
+              style={{ background: '#111', border: '1px solid #444', borderRadius: 6, color: '#ccc', padding: '5px 8px', fontSize: '0.82rem', cursor: 'pointer' }}
+            >
+              <option value={10}>10</option>
+              <option value={30}>30</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={0}>Все</option>
+            </select>
+          </div>
 
           {loading && <p className={styles.empty}>Загрузка…</p>}
-          {!loading && users.length === 0 && <p className={styles.empty}>Нет пользователей</p>}
+          {!loading && usersPaged?.items.length === 0 && <p className={styles.empty}>Нет пользователей</p>}
 
-          {!loading && users.length > 0 && (
+          {usersPaged && usersPaged.items.length > 0 && (
             <>
               {/* Desktop table */}
               <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th>ID</th>
-                    <th>Имя</th>
-                    <th>Роль</th>
-                    <th>Устройств</th>
-                    <th>Создан</th>
-                    <th>Premium до</th>
+                    {(['id', 'username', 'role', 'devices', 'created_at', 'premium_until'] as const).map(col => {
+                      const labels: Record<string, string> = { id: 'ID', username: 'Имя', role: 'Роль', devices: 'Устройств', created_at: 'Создан', premium_until: 'Premium до' }
+                      const active = usersSortBy === col
+                      return (
+                        <th key={col} onClick={() => {
+                          if (active) setUsersSortDir(d => d === 'desc' ? 'asc' : 'desc')
+                          else { setUsersSortBy(col); setUsersSortDir('desc') }
+                          setUsersPage(1)
+                        }} style={{ cursor: 'pointer', userSelect: 'none', color: active ? '#4a90e2' : undefined, whiteSpace: 'nowrap' }}>
+                          {labels[col]}{active ? (usersSortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                        </th>
+                      )
+                    })}
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map(u => (
+                  {usersPaged.items.map(u => (
                     <tr key={u.id} className={u.blocked_at ? styles.rowBlocked : undefined}>
                       <td>{u.id}</td>
                       <td>
@@ -782,9 +863,29 @@ export default function AdminPage() {
                 </tbody>
               </table>
 
+              {/* Mobile sort — hidden on desktop via CSS */}
+              <div className={styles.mobileSort}>
+                <span style={{ color: '#888', fontSize: '0.8rem' }}>Сортировка:</span>
+                <select
+                  value={usersSortBy}
+                  onChange={e => { setUsersSortBy(e.target.value); setUsersPage(1) }}
+                  style={{ background: '#1a1a1a', border: '1px solid #444', borderRadius: 5, color: '#ccc', padding: '4px 8px', fontSize: '0.8rem', flex: 1 }}
+                >
+                  {([['id','ID'],['username','Имя'],['role','Роль'],['devices','Устройств'],['created_at','Дата'],['premium_until','Premium до']] as const).map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => { setUsersSortDir(d => d === 'desc' ? 'asc' : 'desc'); setUsersPage(1) }}
+                  style={{ background: '#1a1a1a', border: '1px solid #444', borderRadius: 5, color: '#ccc', padding: '4px 10px', fontSize: '0.85rem', cursor: 'pointer' }}
+                >
+                  {usersSortDir === 'desc' ? '↓' : '↑'}
+                </button>
+              </div>
+
               {/* Mobile cards */}
               <div className={styles.cards}>
-                {users.map(u => (
+                {usersPaged.items.map(u => (
                   <div key={u.id} className={`${styles.userCard} ${u.blocked_at ? styles.userCardBlocked : ''}`}>
                     <div className={styles.cardTop}>
                       <div className={styles.cardName}>
@@ -806,10 +907,58 @@ export default function AdminPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Pagination */}
+              {usersPerPage > 0 && usersPaged.total > usersPaged.per_page && (
+                <AdminPagination
+                  page={usersPage}
+                  total={Math.ceil(usersPaged.total / usersPaged.per_page)}
+                  onChange={setUsersPage}
+                />
+              )}
             </>
           )}
         </div>
       </div>
     </Layout>
+  )
+}
+
+function AdminPagination({ page, total, onChange }: { page: number; total: number; onChange: (p: number) => void }) {
+  const pages = Array.from({ length: total }, (_, i) => i + 1)
+    .filter(p => p === 1 || p === total || Math.abs(p - page) <= 2)
+    .reduce<(number | '…')[]>((acc, p, i, arr) => {
+      if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('…')
+      acc.push(p)
+      return acc
+    }, [])
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 12, flexWrap: 'wrap' }}>
+      {(['«', '‹'] as const).map((ch, i) => (
+        <APgBtn key={ch} disabled={page === 1} onClick={() => onChange(i === 0 ? 1 : page - 1)}>{ch}</APgBtn>
+      ))}
+      {pages.map((p, i) => p === '…'
+        ? <span key={`e${i}`} style={{ color: '#666', padding: '0 3px' }}>…</span>
+        : <APgBtn key={p} active={p === page} disabled={false} onClick={() => onChange(p as number)}>{p}</APgBtn>
+      )}
+      {(['›', '»'] as const).map((ch, i) => (
+        <APgBtn key={ch} disabled={page === total} onClick={() => onChange(i === 0 ? page + 1 : total)}>{ch}</APgBtn>
+      ))}
+    </div>
+  )
+}
+
+function APgBtn({ children, disabled, active, onClick }: {
+  children: React.ReactNode; disabled: boolean; active?: boolean; onClick: () => void
+}) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      padding: '2px 7px', borderRadius: 4, border: '1px solid',
+      borderColor: active ? '#4a90e2' : '#444',
+      background: active ? '#4a90e2' : 'none',
+      color: disabled ? '#555' : active ? '#fff' : '#ccc',
+      cursor: disabled ? 'default' : 'pointer',
+      fontSize: '0.8rem', minWidth: 26,
+    }}>{children}</button>
   )
 }

@@ -39,6 +39,13 @@ import PopularSourcePage from '@/pages/PopularSourcePage'
 import PersonsAdminPage from '@/pages/PersonsAdminPage'
 import StaticPage from '@/pages/StaticPage'
 import TgMiniAppPage from '@/pages/TgMiniAppPage'
+import UsersTodayPage from '@/pages/UsersTodayPage'
+import DevicesTodayPage from '@/pages/DevicesTodayPage'
+import TimecodesTodayPage from '@/pages/TimecodesTodayPage'
+import TMDBRefreshedTodayPage from '@/pages/TMDBRefreshedTodayPage'
+import UsersListPage from '@/pages/UsersListPage'
+import DevicesListPage from '@/pages/DevicesListPage'
+import TimecodesListPage from '@/pages/TimecodesListPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -123,6 +130,13 @@ export default function App() {
       <Route path="/admin/no-runtime-tv" element={<PrivateRoute><AllCardsPage noRuntime="tv" /></PrivateRoute>} />
       <Route path="/admin/actors" element={<PrivateRoute><PersonsAdminPage /></PrivateRoute>} />
       <Route path="/admin/directors" element={<PrivateRoute><PersonsAdminPage /></PrivateRoute>} />
+      <Route path="/admin/users-today" element={<PrivateRoute><UsersTodayPage /></PrivateRoute>} />
+      <Route path="/admin/devices-today" element={<PrivateRoute><DevicesTodayPage /></PrivateRoute>} />
+      <Route path="/admin/timecodes-today" element={<PrivateRoute><TimecodesTodayPage /></PrivateRoute>} />
+      <Route path="/admin/tmdb-refreshed-today" element={<PrivateRoute><TMDBRefreshedTodayPage /></PrivateRoute>} />
+      <Route path="/admin/users-list" element={<PrivateRoute><UsersListPage /></PrivateRoute>} />
+      <Route path="/admin/devices-list" element={<PrivateRoute><DevicesListPage /></PrivateRoute>} />
+      <Route path="/admin/timecodes-list" element={<PrivateRoute><TimecodesListPage /></PrivateRoute>} />
 
       <Route path="*" element={<NotFoundPage />} />
       </Routes>

@@ -159,17 +159,17 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Username = strings.TrimSpace(req.Username)
 	if req.Username == "" || req.Password == "" {
-		Error(w, http.StatusBadRequest, "username and password required")
+		Error(w, http.StatusBadRequest, "Введите логин и пароль")
 		return
 	}
 
 	u := store.GetUserByUsername(r.Context(), req.Username)
 	if u == nil || !auth.CheckPassword(u.PasswordHash, req.Password) {
-		Error(w, http.StatusUnauthorized, "invalid credentials")
+		Error(w, http.StatusUnauthorized, "Неверный логин или пароль")
 		return
 	}
 	if u.BlockedAt != nil {
-		msg := "account blocked"
+		msg := "Аккаунт заблокирован"
 		if u.BlockReason != nil {
 			msg = *u.BlockReason
 		}
@@ -226,16 +226,16 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Username = strings.TrimSpace(req.Username)
 	if len(req.Username) < 3 {
-		Error(w, http.StatusBadRequest, "username too short")
+		Error(w, http.StatusBadRequest, "Логин слишком короткий (минимум 3 символа)")
 		return
 	}
 	if len(req.Password) < 6 {
-		Error(w, http.StatusBadRequest, "password too short")
+		Error(w, http.StatusBadRequest, "Пароль слишком короткий (минимум 6 символов)")
 		return
 	}
 
 	if store.GetUserByUsername(r.Context(), req.Username) != nil {
-		Error(w, http.StatusConflict, "username taken")
+		Error(w, http.StatusConflict, "Такой логин уже занят")
 		return
 	}
 
@@ -288,11 +288,11 @@ func handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !auth.CheckPassword(u.PasswordHash, req.CurrentPassword) {
-		Error(w, http.StatusUnauthorized, "wrong password")
+		Error(w, http.StatusUnauthorized, "Неверный текущий пароль")
 		return
 	}
 	if len(req.NewPassword) < 6 {
-		Error(w, http.StatusBadRequest, "password too short")
+		Error(w, http.StatusBadRequest, "Новый пароль слишком короткий (минимум 6 символов)")
 		return
 	}
 	hash, err := auth.HashPassword(req.NewPassword)
@@ -311,7 +311,7 @@ func handleChangePassword(w http.ResponseWriter, r *http.Request) {
 func handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u.IsAdmin {
-		Error(w, http.StatusForbidden, "cannot delete admin account")
+		Error(w, http.StatusForbidden, "Нельзя удалить аккаунт администратора")
 		return
 	}
 	var req struct {
@@ -322,7 +322,7 @@ func handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !auth.CheckPassword(u.PasswordHash, req.Password) {
-		Error(w, http.StatusUnauthorized, "wrong password")
+		Error(w, http.StatusUnauthorized, "Неверный пароль")
 		return
 	}
 	if err := store.DeleteUser(r.Context(), u.ID); err != nil {

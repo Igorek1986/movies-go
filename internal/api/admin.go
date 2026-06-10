@@ -224,19 +224,44 @@ func validDate(s string) bool {
 }
 
 func handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := postgres.Pool.Query(r.Context(), `
-		SELECT u.id, u.username, u.role, u.is_admin, u.created_at,
-		       u.blocked_at, u.block_reason, u.premium_until,
-		       COUNT(d.id) AS device_count
-		FROM users u
-		LEFT JOIN devices d ON d.user_id = u.id
-		GROUP BY u.id
-		ORDER BY u.id`)
-	if err != nil {
-		Error(w, http.StatusInternalServerError, "db error")
-		return
+	ctx := r.Context()
+	q := r.URL.Query()
+	search := q.Get("search")
+	page := 1
+	if v, err := strconv.Atoi(q.Get("page")); err == nil && v > 0 {
+		page = v
 	}
-	defer rows.Close()
+	perPage := 10
+	if v, err := strconv.Atoi(q.Get("per_page")); err == nil {
+		switch v {
+		case 10, 30, 50, 100:
+			perPage = v
+		case 0:
+			perPage = 0 // all
+		}
+	}
+	var offset int
+	if perPage > 0 {
+		offset = (page - 1) * perPage
+	}
+
+	sortCol := map[string]string{
+		"id":            "u.id",
+		"username":      "u.username",
+		"role":          "u.role",
+		"devices":       "device_count",
+		"created_at":    "u.created_at",
+		"premium_until": "u.premium_until",
+	}
+	sortBy := "u.id"
+	if col, ok := sortCol[q.Get("sort_by")]; ok {
+		sortBy = col
+	}
+	sortDir := "DESC"
+	if q.Get("sort_dir") == "asc" {
+		sortDir = "ASC"
+	}
+	orderClause := " ORDER BY " + sortBy + " " + sortDir
 
 	type userView struct {
 		ID           int64   `json:"id"`
@@ -249,29 +274,88 @@ func handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 		PremiumUntil *string `json:"premium_until"`
 		DeviceCount  int     `json:"device_count"`
 	}
+
+	const baseQ = `SELECT u.id, u.username, u.role, u.is_admin, u.created_at,
+		u.blocked_at, u.block_reason, u.premium_until,
+		COUNT(d.id)::int AS device_count
+		FROM users u
+		LEFT JOIN devices d ON d.user_id = u.id`
+	groupQ := ` GROUP BY u.id` + orderClause
+
+	scan := func(rows interface {
+		Next() bool
+		Scan(...any) error
+		Close()
+	}) []userView {
+		defer rows.Close()
+		var result []userView
+		for rows.Next() {
+			var u userView
+			var createdAt time.Time
+			var blockedAt, premiumUntil *time.Time
+			if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.IsAdmin, &createdAt,
+				&blockedAt, &u.BlockReason, &premiumUntil, &u.DeviceCount); err == nil {
+				u.CreatedAt = createdAt.Format("2006-01-02T15:04:05Z")
+				if blockedAt != nil {
+					s := blockedAt.Format("2006-01-02T15:04:05Z")
+					u.BlockedAt = &s
+				}
+				if premiumUntil != nil {
+					s := premiumUntil.Format("2006-01-02")
+					u.PremiumUntil = &s
+				}
+				result = append(result, u)
+			}
+		}
+		return result
+	}
+
+	var total int
 	var result []userView
-	for rows.Next() {
-		var u userView
-		var createdAt time.Time
-		var blockedAt, premiumUntil *time.Time
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.IsAdmin, &createdAt,
-			&blockedAt, &u.BlockReason, &premiumUntil, &u.DeviceCount); err == nil {
-			u.CreatedAt = createdAt.Format("2006-01-02T15:04:05Z")
-			if blockedAt != nil {
-				s := blockedAt.Format("2006-01-02T15:04:05Z")
-				u.BlockedAt = &s
-			}
-			if premiumUntil != nil {
-				s := premiumUntil.Format("2006-01-02")
-				u.PremiumUntil = &s
-			}
-			result = append(result, u)
+	if search != "" {
+		like := "%" + search + "%"
+		postgres.Pool.QueryRow(ctx, //nolint:errcheck
+			`SELECT COUNT(*) FROM users WHERE username ILIKE $1`, like).Scan(&total)
+		var rows interface {
+			Next() bool
+			Scan(...any) error
+			Close()
+		}
+		var err error
+		if perPage == 0 {
+			rows, err = postgres.Pool.Query(ctx, baseQ+` WHERE u.username ILIKE $1`+groupQ, like)
+		} else {
+			rows, err = postgres.Pool.Query(ctx, baseQ+` WHERE u.username ILIKE $1`+groupQ+` LIMIT $2 OFFSET $3`, like, perPage, offset)
+		}
+		if err == nil {
+			result = scan(rows)
+		}
+	} else {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&total) //nolint:errcheck
+		var rows interface {
+			Next() bool
+			Scan(...any) error
+			Close()
+		}
+		var err error
+		if perPage == 0 {
+			rows, err = postgres.Pool.Query(ctx, baseQ+groupQ)
+		} else {
+			rows, err = postgres.Pool.Query(ctx, baseQ+groupQ+` LIMIT $1 OFFSET $2`, perPage, offset)
+		}
+		if err == nil {
+			result = scan(rows)
 		}
 	}
 	if result == nil {
 		result = []userView{}
 	}
-	JSON(w, http.StatusOK, result)
+	JSON(w, http.StatusOK, map[string]any{
+		"total":    total,
+		"page":     page,
+		"per_page": perPage,
+		"items":    result,
+	})
 }
 
 // ─── Web history (session auth) ───────────────────────────────────────────────
@@ -766,6 +850,603 @@ func handleAPIAdminEpisodesRefresh(w http.ResponseWriter, r *http.Request) {
 
 func handleAPIAdminCardsToday(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, store.GetNewTodayCards(r.Context()))
+}
+
+func handleAPIAdminUsersToday(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	type deviceItem struct {
+		ID            int64  `json:"id"`
+		Name          string `json:"name"`
+		TimecodeCount int    `json:"timecode_count"`
+	}
+	type row struct {
+		ID            int64        `json:"id"`
+		Username      string       `json:"username"`
+		Role          string       `json:"role"`
+		IsAdmin       bool         `json:"is_admin"`
+		DeviceCount   int          `json:"device_count"`
+		TimecodeCount int          `json:"timecode_count"`
+		Devices       []deviceItem `json:"devices"`
+		CreatedAt     string       `json:"created_at"`
+	}
+	var results []row
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT u.id, u.username, u.role, u.is_admin, u.created_at,
+		        COUNT(DISTINCT d.id)::int, COUNT(DISTINCT t.id)::int
+		 FROM users u
+		 LEFT JOIN devices d ON d.user_id = u.id
+		 LEFT JOIN timecodes t ON t.device_id = d.id
+		 WHERE u.created_at::date = CURRENT_DATE
+		 GROUP BY u.id, u.username, u.role, u.is_admin, u.created_at
+		 ORDER BY u.created_at DESC`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var u row
+			var t time.Time
+			if rows.Scan(&u.ID, &u.Username, &u.Role, &u.IsAdmin, &t, &u.DeviceCount, &u.TimecodeCount) == nil {
+				u.CreatedAt = t.Format("15:04:05")
+				u.Devices = []deviceItem{}
+				results = append(results, u)
+			}
+		}
+	}
+	if results == nil {
+		results = []row{}
+	}
+	if len(results) > 0 {
+		ids := make([]int64, len(results))
+		idx := make(map[int64]int, len(results))
+		for i, u := range results {
+			ids[i] = u.ID
+			idx[u.ID] = i
+		}
+		if drows, err := postgres.Pool.Query(ctx,
+			`SELECT d.user_id, d.id, d.name, COUNT(t.id)::int
+			 FROM devices d
+			 LEFT JOIN timecodes t ON t.device_id = d.id
+			 WHERE d.user_id = ANY($1)
+			 GROUP BY d.user_id, d.id, d.name
+			 ORDER BY d.id`, ids,
+		); err == nil {
+			defer drows.Close()
+			for drows.Next() {
+				var uid, did int64
+				var dname string
+				var tc int
+				if drows.Scan(&uid, &did, &dname, &tc) == nil {
+					if i, ok := idx[uid]; ok {
+						results[i].Devices = append(results[i].Devices, deviceItem{ID: did, Name: dname, TimecodeCount: tc})
+					}
+				}
+			}
+		}
+	}
+	JSON(w, http.StatusOK, results)
+}
+
+func handleAPIAdminDevicesToday(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	type profileItem struct {
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		TimecodeCount int    `json:"timecode_count"`
+	}
+	type row struct {
+		ID            int64         `json:"id"`
+		Username      string        `json:"username"`
+		Name          string        `json:"name"`
+		ProfileCount  int           `json:"profile_count"`
+		TimecodeCount int           `json:"timecode_count"`
+		Profiles      []profileItem `json:"profiles"`
+		CreatedAt     string        `json:"created_at"`
+	}
+	var results []row
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT d.id, u.username, d.name, d.created_at,
+		        COUNT(DISTINCT p.id)::int,
+		        COUNT(DISTINCT t.id)::int
+		 FROM devices d
+		 JOIN users u ON u.id = d.user_id
+		 LEFT JOIN profiles p ON p.device_id = d.id
+		 LEFT JOIN timecodes t ON t.device_id = d.id
+		 WHERE d.created_at::date = CURRENT_DATE
+		 GROUP BY d.id, u.username, d.name, d.created_at
+		 ORDER BY d.created_at DESC`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var d row
+			var t time.Time
+			if rows.Scan(&d.ID, &d.Username, &d.Name, &t, &d.ProfileCount, &d.TimecodeCount) == nil {
+				d.CreatedAt = t.Format("15:04:05")
+				d.Profiles = []profileItem{}
+				results = append(results, d)
+			}
+		}
+	}
+	if results == nil {
+		results = []row{}
+	}
+	// Fetch profile names
+	if len(results) > 0 {
+		ids := make([]int64, len(results))
+		idx := make(map[int64]int, len(results))
+		for i, r := range results {
+			ids[i] = r.ID
+			idx[r.ID] = i
+		}
+		if prows, err := postgres.Pool.Query(ctx,
+			`SELECT p.device_id, p.profile_id, p.name, COUNT(t.id)::int
+			 FROM profiles p
+			 LEFT JOIN timecodes t ON t.device_id = p.device_id AND t.profile_id = p.profile_id
+			 WHERE p.device_id = ANY($1)
+			 GROUP BY p.device_id, p.profile_id, p.name
+			 ORDER BY MIN(p.id)`, ids,
+		); err == nil {
+			defer prows.Close()
+			for prows.Next() {
+				var did int64
+				var pid, pname string
+				var tcCount int
+				if prows.Scan(&did, &pid, &pname, &tcCount) == nil {
+					if i, ok := idx[did]; ok {
+						results[i].Profiles = append(results[i].Profiles, profileItem{ID: pid, Name: pname, TimecodeCount: tcCount})
+					}
+				}
+			}
+		}
+	}
+	JSON(w, http.StatusOK, results)
+}
+
+func handleAPIAdminTimecodesToday(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	type row struct {
+		ID          int64  `json:"id"`
+		Username    string `json:"username"`
+		DeviceName  string `json:"device_name"`
+		ProfileID   string `json:"profile_id"`
+		ProfileName string `json:"profile_name"`
+		CardID      string `json:"card_id"`
+		Item        string `json:"item"`
+		CreatedAt   string `json:"created_at"`
+	}
+	var results []row
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT t.id, u.username, d.name,
+		        t.profile_id, COALESCE(p.name, ''),
+		        t.card_id, t.item, t.created_at
+		 FROM timecodes t
+		 JOIN devices d ON d.id = t.device_id
+		 JOIN users u ON u.id = d.user_id
+		 LEFT JOIN profiles p ON p.device_id = t.device_id AND p.profile_id = t.profile_id
+		 WHERE t.created_at::date = CURRENT_DATE
+		 ORDER BY t.created_at DESC`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var tc row
+			var tm time.Time
+			if rows.Scan(&tc.ID, &tc.Username, &tc.DeviceName, &tc.ProfileID, &tc.ProfileName, &tc.CardID, &tc.Item, &tm) == nil {
+				tc.CreatedAt = tm.Format("15:04:05")
+				results = append(results, tc)
+			}
+		}
+	}
+	if results == nil {
+		results = []row{}
+	}
+	JSON(w, http.StatusOK, results)
+}
+
+func handleAPIAdminTMDBRefreshedToday(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	type row struct {
+		CardID        string  `json:"card_id"`
+		TmdbID        int64   `json:"tmdb_id"`
+		MediaType     string  `json:"media_type"`
+		Title         string  `json:"title"`
+		OriginalTitle string  `json:"original_title"`
+		Year          int     `json:"year"`
+		VoteAverage   float64 `json:"vote_average"`
+		VoteCount     int     `json:"vote_count"`
+		UpdatedAt     string  `json:"updated_at"`
+	}
+	var results []row
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT card_id, tmdb_id, media_type, COALESCE(title,''), COALESCE(original_title,''),
+		        COALESCE(year,0), COALESCE(vote_average,0), COALESCE(vote_count,0), tmdb_updated_at
+		 FROM media_cards
+		 WHERE tmdb_updated_at::date = CURRENT_DATE AND tmdb_not_found_at IS NULL
+		 ORDER BY tmdb_updated_at DESC`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var c row
+			var t time.Time
+			if rows.Scan(&c.CardID, &c.TmdbID, &c.MediaType, &c.Title, &c.OriginalTitle, &c.Year, &c.VoteAverage, &c.VoteCount, &t) == nil {
+				c.UpdatedAt = t.Format("15:04:05")
+				results = append(results, c)
+			}
+		}
+	}
+	if results == nil {
+		results = []row{}
+	}
+	JSON(w, http.StatusOK, results)
+}
+
+func handleAPIAdminUsersList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	q := r.URL.Query()
+	search := q.Get("search")
+	page := 1
+	if v, err := strconv.Atoi(q.Get("page")); err == nil && v > 0 {
+		page = v
+	}
+	const perPage = 100
+	offset := (page - 1) * perPage
+
+	type deviceItem struct {
+		ID            int64  `json:"id"`
+		Name          string `json:"name"`
+		TimecodeCount int    `json:"timecode_count"`
+	}
+	type row struct {
+		ID            int64        `json:"id"`
+		Username      string       `json:"username"`
+		Role          string       `json:"role"`
+		IsAdmin       bool         `json:"is_admin"`
+		BlockedAt     *string      `json:"blocked_at"`
+		PremiumUntil  *string      `json:"premium_until"`
+		DeviceCount   int          `json:"device_count"`
+		TimecodeCount int          `json:"timecode_count"`
+		Devices       []deviceItem `json:"devices"`
+		CreatedAt     string       `json:"created_at"`
+	}
+
+	var total int
+	var results []row
+
+	scan := func(rows interface {
+		Next() bool
+		Scan(...any) error
+		Close()
+	}) {
+		defer rows.Close()
+		for rows.Next() {
+			var u row
+			var createdAt time.Time
+			var blockedAt, premiumUntil *time.Time
+			if rows.Scan(&u.ID, &u.Username, &u.Role, &u.IsAdmin, &blockedAt, &premiumUntil,
+				&u.DeviceCount, &u.TimecodeCount, &createdAt) == nil {
+				u.CreatedAt = createdAt.Format("2006-01-02")
+				if blockedAt != nil {
+					s := blockedAt.Format("2006-01-02")
+					u.BlockedAt = &s
+				}
+				if premiumUntil != nil {
+					s := premiumUntil.Format("2006-01-02")
+					u.PremiumUntil = &s
+				}
+				u.Devices = []deviceItem{}
+				results = append(results, u)
+			}
+		}
+	}
+
+	sortCol := map[string]string{
+		"username":   "u.username",
+		"role":       "u.role",
+		"devices":    "device_count",
+		"timecodes":  "timecode_count",
+		"created_at": "u.created_at",
+	}
+	sortBy := "u.id"
+	if col, ok := sortCol[q.Get("sort_by")]; ok {
+		sortBy = col
+	}
+	sortDir := "DESC"
+	if q.Get("sort_dir") == "asc" {
+		sortDir = "ASC"
+	}
+	orderClause := " ORDER BY " + sortBy + " " + sortDir
+
+	const baseQ = `SELECT u.id, u.username, u.role, u.is_admin, u.blocked_at, u.premium_until,
+		COUNT(DISTINCT d.id)::int AS device_count,
+		COUNT(DISTINCT t.id)::int AS timecode_count,
+		u.created_at
+		FROM users u
+		LEFT JOIN devices d ON d.user_id = u.id
+		LEFT JOIN timecodes t ON t.device_id = d.id`
+	groupQ := ` GROUP BY u.id` + orderClause
+
+	if search != "" {
+		like := "%" + search + "%"
+		postgres.Pool.QueryRow(ctx, //nolint:errcheck
+			`SELECT COUNT(DISTINCT u.id) FROM users u WHERE u.username ILIKE $1`, like).Scan(&total)
+		if rows, err := postgres.Pool.Query(ctx,
+			baseQ+` WHERE u.username ILIKE $1`+groupQ+` LIMIT $2 OFFSET $3`, like, perPage, offset); err == nil {
+			scan(rows)
+		}
+	} else {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&total) //nolint:errcheck
+		if rows, err := postgres.Pool.Query(ctx,
+			baseQ+groupQ+` LIMIT $1 OFFSET $2`, perPage, offset); err == nil {
+			scan(rows)
+		}
+	}
+
+	if results == nil {
+		results = []row{}
+	}
+	if len(results) > 0 {
+		ids := make([]int64, len(results))
+		idx := make(map[int64]int, len(results))
+		for i, u := range results {
+			ids[i] = u.ID
+			idx[u.ID] = i
+		}
+		if drows, err := postgres.Pool.Query(ctx,
+			`SELECT d.user_id, d.id, d.name, COUNT(t.id)::int
+			 FROM devices d
+			 LEFT JOIN timecodes t ON t.device_id = d.id
+			 WHERE d.user_id = ANY($1)
+			 GROUP BY d.user_id, d.id, d.name
+			 ORDER BY d.id`, ids,
+		); err == nil {
+			defer drows.Close()
+			for drows.Next() {
+				var uid, did int64
+				var dname string
+				var tc int
+				if drows.Scan(&uid, &did, &dname, &tc) == nil {
+					if i, ok := idx[uid]; ok {
+						results[i].Devices = append(results[i].Devices, deviceItem{ID: did, Name: dname, TimecodeCount: tc})
+					}
+				}
+			}
+		}
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"total":    total,
+		"page":     page,
+		"per_page": perPage,
+		"items":    results,
+	})
+}
+
+func handleAPIAdminDevicesList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	q := r.URL.Query()
+	search := q.Get("search")
+	page := 1
+	if v, err := strconv.Atoi(q.Get("page")); err == nil && v > 0 {
+		page = v
+	}
+	const perPage = 100
+	offset := (page - 1) * perPage
+
+	// sort_by: username | name | profiles | timecodes | created_at (default: id desc)
+	sortCol := map[string]string{
+		"username":  "u.username",
+		"name":      "d.name",
+		"profiles":  "profile_count",
+		"timecodes": "timecode_count",
+		"created_at": "d.created_at",
+	}
+	sortBy := "d.id"
+	if col, ok := sortCol[q.Get("sort_by")]; ok {
+		sortBy = col
+	}
+	sortDir := "DESC"
+	if q.Get("sort_dir") == "asc" {
+		sortDir = "ASC"
+	}
+	orderClause := " ORDER BY " + sortBy + " " + sortDir
+
+	type profileItem struct {
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		TimecodeCount int    `json:"timecode_count"`
+	}
+	type row struct {
+		ID            int64         `json:"id"`
+		UserID        int64         `json:"user_id"`
+		Username      string        `json:"username"`
+		Name          string        `json:"name"`
+		ProfileCount  int           `json:"profile_count"`
+		TimecodeCount int           `json:"timecode_count"`
+		Profiles      []profileItem `json:"profiles"`
+		CreatedAt     string        `json:"created_at"`
+	}
+
+	const baseSelect = `SELECT d.id, d.user_id, u.username, d.name, d.created_at,
+		COUNT(DISTINCT p.id)::int AS profile_count,
+		COUNT(DISTINCT t.id)::int AS timecode_count
+		FROM devices d
+		JOIN users u ON u.id = d.user_id
+		LEFT JOIN profiles p ON p.device_id = d.id
+		LEFT JOIN timecodes t ON t.device_id = d.id`
+	const groupClause = ` GROUP BY d.id, d.user_id, u.username, d.name, d.created_at`
+
+	var total int
+	var results []row
+
+	scanRows := func(rows interface {
+		Next() bool
+		Scan(...any) error
+		Close()
+	}) {
+		defer rows.Close()
+		for rows.Next() {
+			var r row
+			var t time.Time
+			if rows.Scan(&r.ID, &r.UserID, &r.Username, &r.Name, &t,
+				&r.ProfileCount, &r.TimecodeCount) == nil {
+				r.CreatedAt = t.Format("2006-01-02 15:04:05")
+				r.Profiles = []profileItem{}
+				results = append(results, r)
+			}
+		}
+	}
+
+	if search != "" {
+		like := "%" + search + "%"
+		postgres.Pool.QueryRow(ctx, //nolint:errcheck
+			`SELECT COUNT(*) FROM devices d JOIN users u ON u.id = d.user_id
+			 WHERE u.username ILIKE $1 OR d.name ILIKE $1`, like).Scan(&total)
+		if rows, err := postgres.Pool.Query(ctx,
+			baseSelect+` WHERE u.username ILIKE $1 OR d.name ILIKE $1`+
+				groupClause+orderClause+` LIMIT $2 OFFSET $3`, like, perPage, offset); err == nil {
+			scanRows(rows)
+		}
+	} else {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&total) //nolint:errcheck
+		if rows, err := postgres.Pool.Query(ctx,
+			baseSelect+groupClause+orderClause+` LIMIT $1 OFFSET $2`, perPage, offset); err == nil {
+			scanRows(rows)
+		}
+	}
+
+	// Fetch profile names for returned devices
+	if len(results) > 0 {
+		ids := make([]int64, len(results))
+		idx := make(map[int64]int, len(results))
+		for i, r := range results {
+			ids[i] = r.ID
+			idx[r.ID] = i
+		}
+		if prows, err := postgres.Pool.Query(ctx,
+			`SELECT p.device_id, p.profile_id, p.name, COUNT(t.id)::int
+			 FROM profiles p
+			 LEFT JOIN timecodes t ON t.device_id = p.device_id AND t.profile_id = p.profile_id
+			 WHERE p.device_id = ANY($1)
+			 GROUP BY p.device_id, p.profile_id, p.name
+			 ORDER BY MIN(p.id)`, ids); err == nil {
+			defer prows.Close()
+			for prows.Next() {
+				var did int64
+				var pid, pname string
+				var tcCount int
+				if prows.Scan(&did, &pid, &pname, &tcCount) == nil {
+					if i, ok := idx[did]; ok {
+						results[i].Profiles = append(results[i].Profiles, profileItem{ID: pid, Name: pname, TimecodeCount: tcCount})
+					}
+				}
+			}
+		}
+	}
+
+	if results == nil {
+		results = []row{}
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"total":    total,
+		"page":     page,
+		"per_page": perPage,
+		"items":    results,
+	})
+}
+
+func handleAPIAdminTimecodesList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	q := r.URL.Query()
+	search := q.Get("search")
+	page := 1
+	if v, err := strconv.Atoi(q.Get("page")); err == nil && v > 0 {
+		page = v
+	}
+	const perPage = 100
+	offset := (page - 1) * perPage
+
+	// sort_by: username | device | profile | card_id | item | updated_at (default)
+	sortCol := map[string]string{
+		"username":   "u.username",
+		"device":     "d.name",
+		"profile":    "COALESCE(p.name, t.profile_id)",
+		"card_id":    "t.card_id",
+		"item":       "t.item",
+		"updated_at": "t.updated_at",
+	}
+	sortBy := "t.updated_at"
+	if col, ok := sortCol[q.Get("sort_by")]; ok {
+		sortBy = col
+	}
+	sortDir := "DESC"
+	if q.Get("sort_dir") == "asc" {
+		sortDir = "ASC"
+	}
+	orderClause := " ORDER BY " + sortBy + " " + sortDir
+
+	type row struct {
+		ID          int64  `json:"id"`
+		Username    string `json:"username"`
+		DeviceName  string `json:"device_name"`
+		ProfileID   string `json:"profile_id"`
+		ProfileName string `json:"profile_name"`
+		CardID      string `json:"card_id"`
+		Item        string `json:"item"`
+		UpdatedAt   string `json:"updated_at"`
+	}
+
+	var total int
+	var results []row
+
+	const baseSelect = `SELECT t.id, u.username, d.name,
+		t.profile_id, COALESCE(p.name, ''),
+		t.card_id, t.item, t.updated_at
+		FROM timecodes t
+		JOIN devices d ON d.id = t.device_id
+		JOIN users u ON u.id = d.user_id
+		LEFT JOIN profiles p ON p.device_id = t.device_id AND p.profile_id = t.profile_id`
+
+	scanRows := func(rows interface {
+		Next() bool
+		Scan(...any) error
+		Close()
+	}) {
+		defer rows.Close()
+		for rows.Next() {
+			var r row
+			var t time.Time
+			if rows.Scan(&r.ID, &r.Username, &r.DeviceName, &r.ProfileID, &r.ProfileName, &r.CardID, &r.Item, &t) == nil {
+				r.UpdatedAt = t.Format("2006-01-02 15:04:05")
+				results = append(results, r)
+			}
+		}
+	}
+
+	if search != "" {
+		like := "%" + search + "%"
+		postgres.Pool.QueryRow(ctx, //nolint:errcheck
+			`SELECT COUNT(*) FROM timecodes t
+			 JOIN devices d ON d.id = t.device_id
+			 JOIN users u ON u.id = d.user_id
+			 WHERE u.username ILIKE $1 OR t.card_id ILIKE $1`, like).Scan(&total)
+		if rows, err := postgres.Pool.Query(ctx,
+			baseSelect+` WHERE u.username ILIKE $1 OR t.card_id ILIKE $1`+
+				orderClause+` LIMIT $2 OFFSET $3`, like, perPage, offset); err == nil {
+			scanRows(rows)
+		}
+	} else {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes`).Scan(&total) //nolint:errcheck
+		if rows, err := postgres.Pool.Query(ctx,
+			baseSelect+orderClause+` LIMIT $1 OFFSET $2`, perPage, offset); err == nil {
+			scanRows(rows)
+		}
+	}
+
+	if results == nil {
+		results = []row{}
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"total":    total,
+		"page":     page,
+		"per_page": perPage,
+		"items":    results,
+	})
 }
 
 func handleAPIAdminAllCards(w http.ResponseWriter, r *http.Request) {
