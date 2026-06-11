@@ -221,7 +221,7 @@ func GetPopular(ctx context.Context, page, perPage int, search, date string) ([]
 		WHERE %s
 		  %s
 		GROUP BY e.card_id
-		ORDER BY weight DESC`, dateWhere, searchWhere)
+		ORDER BY weight DESC, e.card_id`, dateWhere, searchWhere)
 
 	var total int
 	postgres.Pool.QueryRow(ctx, //nolint:errcheck
@@ -413,7 +413,7 @@ func GetPopularCards(ctx context.Context, days, limit int, date string) []Popula
 		 JOIN media_cards m ON m.card_id = e.card_id
 		 WHERE %s
 		 GROUP BY e.card_id, m.tmdb_id, m.media_type, m.title, m.poster_path, m.release_date, m.first_air_date
-		 ORDER BY viewers DESC, plays DESC
+		 ORDER BY viewers DESC, plays DESC, e.card_id
 		 LIMIT $%d`, where, len(args)),
 		args...,
 	)
