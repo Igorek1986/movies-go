@@ -124,10 +124,13 @@ export default function StatsPage() {
     try {
       const [sRes, uRes] = await Promise.all([
         fetch('/api/admin/stats'),
-        fetch('/api/admin/users'),
+        fetch('/api/admin/users?per_page=0'),
       ])
       if (sRes.ok) setStats(await sRes.json())
-      if (uRes.ok) setAllUsers(await uRes.json())
+      if (uRes.ok) {
+        const data = await uRes.json()
+        setAllUsers(Array.isArray(data) ? data : (data.items ?? []))
+      }
       setLastUpdate(new Date().toLocaleTimeString('ru'))
     } finally {
       setLoading(false)
