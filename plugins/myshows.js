@@ -6687,6 +6687,7 @@
 
             this._fill = function(table, cardsMap) {
                 self.activity.loader(false);
+                var lastDate = last ? $(last).attr('data-air') : '';
                 body.empty();
 
                 if (!table.length) {
@@ -6702,6 +6703,19 @@
                     self._day(new Date(cur), table, cardsMap);
                     cur.setDate(cur.getDate() + 1);
                 }
+
+                // body.empty() выбросил старые элементы — если фокус не стоял
+                // (первое открытие) или указывает на удалённый узел, ставим на
+                // первый день. Перезапуск toggle пересобирает коллекцию
+                // Navigator и реально наводит фокус.
+                if (!last || !document.body.contains(last)) {
+                    last = (lastDate ? body.find('.timetable__item[data-air="' + lastDate + '"]')[0] : null)
+                        || body.find('.timetable__item').first()[0];
+                }
+                try {
+                    var enabled = Lampa.Controller.enabled();
+                    if (enabled && enabled.name === 'content') Lampa.Controller.toggle('content');
+                } catch(e) {}
             };
 
             this._day = function(date, table, cardsMap) {
@@ -6717,7 +6731,7 @@
                 });
 
                 var item = $([
-                    '<div class="timetable__item selector">',
+                    '<div class="timetable__item selector" data-air="' + airDate + '">',
                     '<div class="timetable__inner">',
                     '<div class="timetable__date"></div>',
                     '<div class="timetable__body"></div>',
