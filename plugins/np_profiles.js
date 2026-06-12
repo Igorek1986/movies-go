@@ -113,6 +113,15 @@
             var _handlers = {};
             var _sensitive = {};
 
+            // np.js выставляет window.IS_NP асинхронно (ответ /device/ping, таймаут 5с).
+            // Пока пинг не завершился, IS_NP === undefined — connect/pull/patch были бы
+            // no-op и синк молча умирал бы до конца сессии. Ждём определённости,
+            // ограниченно: np.js может вообще отсутствовать (15 попыток по 1с).
+            function _whenNpKnown(fn, attempt) {
+                if (window.IS_NP !== undefined || (attempt || 0) >= 15) { fn(); return; }
+                setTimeout(function () { _whenNpKnown(fn, (attempt || 0) + 1); }, 1000);
+            }
+
             // Текущий lampa_profile_id — читается в момент вызова, чтобы учесть переключение профиля
             function _profileId() {
                 try {
@@ -195,8 +204,10 @@
                 register: function (plugin, sensitiveKeys, applyFn, onPullComplete) {
                     _handlers[plugin]  = applyFn;
                     _sensitive[plugin] = sensitiveKeys || [];
-                    _connect();
-                    _pull(plugin, onPullComplete ? function (serverKeys) { onPullComplete(serverKeys); } : null);
+                    _whenNpKnown(function () {
+                        _connect();
+                        _pull(plugin, onPullComplete ? function (serverKeys) { onPullComplete(serverKeys); } : null);
+                    });
                 },
                 // Перечитать настройки всех зарегистрированных плагинов для текущего профиля.
                 // callback вызывается после завершения всех запросов (успех или ошибка).
@@ -208,6 +219,9 @@
                     plugins.forEach(function (plugin) { _pull(plugin, done); });
                 },
                 patch: function (plugin, key, value, callback) {
+                    _whenNpKnown(function () { window.__NMSync._patchNow(plugin, key, value, callback); });
+                },
+                _patchNow: function (plugin, key, value, callback) {
                     var token     = _token();
                     var baseUrl   = _baseUrl();
                     var profileId = _profileId();
