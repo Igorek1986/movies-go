@@ -25,6 +25,10 @@ import (
 	"movies-api/parser"
 )
 
+// initDataMaxAge — макс. возраст Telegram initData. Свежий клиент всегда
+// присылает актуальные данные; всё старше считаем replay-попыткой.
+const initDataMaxAge = 24 * time.Hour
+
 // ─── initData validation ──────────────────────────────────────────────────────
 
 type tgUser struct {
@@ -67,6 +71,17 @@ func validateInitData(initData, botToken string) *tgUser {
 	computed := hex.EncodeToString(mac2.Sum(nil))
 
 	if !hmac.Equal([]byte(computed), []byte(hashVal)) {
+		return nil
+	}
+
+	// Проверяем свежесть: подпись валидна вечно, поэтому без TTL утёкший один раз
+	// initData можно воспроизводить бесконечно (replay). Telegram кладёт auth_date
+	// (unix-время выпуска) — отвергаем данные старше initDataMaxAge.
+	authDate, err := strconv.ParseInt(vals.Get("auth_date"), 10, 64)
+	if err != nil || authDate <= 0 {
+		return nil
+	}
+	if time.Since(time.Unix(authDate, 0)) > initDataMaxAge {
 		return nil
 	}
 
@@ -933,6 +948,7 @@ func buildTgSettingsGroups(all map[string]string) []map[string]any {
 		{"Парсер", []string{"parser_overlap_days"}},
 		{"Бот / Telegram", []string{"telegram_link_ttl_minutes", "reset_code_ttl_minutes", "daily_task_hour", "default_timezone"}},
 		{"Сессии / Устройства", []string{"session_ttl_days", "device_token_ttl_days", "device_code_ttl_minutes"}},
+		{"Безопасность", []string{"rate_device_max", "rate_device_window_sec", "cors_allowed_origins", "trusted_proxy_secret"}},
 	}
 	var result []map[string]any
 	for _, g := range groups {

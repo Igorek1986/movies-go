@@ -161,7 +161,7 @@ func handleAPIVerify2FA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess, err := auth.CreateSession(ctx, userID, r.RemoteAddr, r.Header.Get("User-Agent"))
+	sess, err := auth.CreateSession(ctx, userID, realIP(r), r.Header.Get("User-Agent"))
 	if err != nil {
 		Error(w, http.StatusInternalServerError, "session error")
 		return

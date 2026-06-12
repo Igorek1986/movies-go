@@ -179,6 +179,12 @@ func ClearDeviceTimecodes(ctx context.Context, deviceID, userID int64) error {
 
 const codeTTL = 10 * time.Minute
 
+// DeviceCodeTTLSeconds returns the activation-code lifetime in seconds (for the
+// client-side countdown on the device-pairing screen).
+func DeviceCodeTTLSeconds() int {
+	return int(codeTTL.Seconds())
+}
+
 // generateActivationCode makes a 6-digit numeric string like "483921".
 func generateActivationCode() string {
 	b := make([]byte, 4)

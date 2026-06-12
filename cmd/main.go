@@ -84,7 +84,8 @@ func main() {
 			usePolling, _ := store.GetSetting(appCtx, "telegram_use_polling")
 			if usePolling != "1" {
 				webhookURL := baseURL + "/bot/webhook"
-				if err := bot.SetWebhook(webhookURL); err != nil {
+				secret := bot.EnsureWebhookSecret(appCtx)
+				if err := bot.SetWebhook(webhookURL, secret); err != nil {
 					log.Printf("Telegram webhook register error: %v", err)
 				} else {
 					log.Printf("Telegram webhook registered: %s", webhookURL)

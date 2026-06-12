@@ -2,6 +2,8 @@ package bot
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"strconv"
@@ -79,16 +81,35 @@ func Restart(ctx context.Context) error {
 	return Start(ctx)
 }
 
-// SetWebhook registers the bot webhook at the given URL.
-func SetWebhook(webhookURL string) error {
+// EnsureWebhookSecret returns the stored Telegram webhook secret token,
+// generating and persisting a fresh one if none is set. The secret is sent to
+// Telegram via setWebhook(secret_token=…) and echoed back by Telegram in the
+// X-Telegram-Bot-Api-Secret-Token header on every update, so the webhook
+// handler can reject forged requests.
+func EnsureWebhookSecret(ctx context.Context) string {
+	if s, ok := store.GetSetting(ctx, "telegram_webhook_secret"); ok && s != "" {
+		return s
+	}
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
+	secret := hex.EncodeToString(b) // 32 hex chars, allowed alphabet for secret_token
+	store.SetSetting(ctx, "telegram_webhook_secret", secret)
+	return secret
+}
+
+// SetWebhook registers the bot webhook at the given URL. When secret is
+// non-empty it is passed as secret_token so Telegram signs every update.
+func SetWebhook(webhookURL, secret string) error {
 	if instance == nil {
 		return nil
 	}
-	wh, err := tgbotapi.NewWebhook(webhookURL)
-	if err != nil {
-		return err
+	params := tgbotapi.Params{"url": webhookURL}
+	if secret != "" {
+		params["secret_token"] = secret
 	}
-	_, err = instance.Request(wh)
+	_, err := instance.MakeRequest("setWebhook", params)
 	return err
 }
 

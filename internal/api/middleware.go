@@ -9,6 +9,7 @@ import (
 	_ "embed"
 	"movies-api/db/store"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -107,8 +108,12 @@ func bannedOriginsMiddleware(next http.Handler) http.Handler {
 				log.Printf("banned origin blocked: %s", blocked)
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Credentials", "true")
+				if origin != "" {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					if corsOriginAllowed(origin) {
+						w.Header().Set("Access-Control-Allow-Credentials", "true")
+					}
+				}
 				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(buildBlockedResponse()) //nolint:errcheck
 				return
@@ -118,18 +123,84 @@ func bannedOriginsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// corsMiddleware разрешает запросы с любого Origin (для Lampa плагинов).
+// ── CORS credentialed-origin allowlist ─────────────────────────────────────────
+//
+// Lampa-плагины обращаются к контент-API по токену в query/заголовке (без
+// cookie) — им достаточно отражённого Origin без credentials. Куки (session_key)
+// нужны только same-origin веб-приложению. Поэтому Access-Control-Allow-Credentials
+// выдаём ТОЛЬКО для origin'ов из allowlist (base_url + cors_allowed_origins),
+// иначе любой сторонний сайт мог бы читать ответы с куками жертвы.
+
+var corsCache struct {
+	sync.Mutex
+	allowed  map[string]struct{}
+	loadedAt time.Time
+}
+
+// originOf нормализует строку до "scheme://host[:port]" (без пути/слеша).
+func originOf(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+func loadCORSAllowed() map[string]struct{} {
+	corsCache.Lock()
+	defer corsCache.Unlock()
+	if corsCache.allowed != nil && time.Since(corsCache.loadedAt) < 60*time.Second {
+		return corsCache.allowed
+	}
+	allowed := make(map[string]struct{})
+	if base, _ := store.GetSetting(context.Background(), "base_url"); base != "" {
+		if o := originOf(base); o != "" {
+			allowed[o] = struct{}{}
+		}
+	}
+	if extra, _ := store.GetSetting(context.Background(), "cors_allowed_origins"); extra != "" {
+		for _, part := range strings.FieldsFunc(extra, func(r rune) bool { return r == ',' || r == '\n' }) {
+			if o := originOf(part); o != "" {
+				allowed[o] = struct{}{}
+			}
+		}
+	}
+	corsCache.allowed = allowed
+	corsCache.loadedAt = time.Now()
+	return allowed
+}
+
+func corsOriginAllowed(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	_, ok := loadCORSAllowed()[origin]
+	return ok
+}
+
+// corsMiddleware разрешает кросс-доменные запросы. Кредённые (с cookie) — только
+// для origin'ов из allowlist; для остальных Origin отражается без credentials,
+// чтобы публичное контент-API оставалось доступным Lampa-плагинам.
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin == "" {
-			origin = "*"
+		switch {
+		case origin == "":
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		case corsOriginAllowed(origin):
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Vary", "Origin")
+		default:
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
 		}
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Telegram-Init-Data")
-		w.Header().Set("Vary", "Origin")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

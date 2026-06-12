@@ -16,7 +16,9 @@ func NewRouter(mode string) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.RealIP)
+	// NB: chi middleware.RealIP намеренно НЕ используется — он безусловно доверяет
+	// X-Forwarded-For/X-Real-IP, что позволяет подделать IP при прямом доступе к
+	// порту. Реальный IP вычисляет realIP() с проверкой секрета доверенного прокси.
 	r.Use(corsMiddleware)
 	r.Use(bannedOriginsMiddleware)
 	r.Use(gzipMiddleware)
@@ -261,9 +263,9 @@ func NewRouter(mode string) http.Handler {
 	registerTgAppRoutes(r)
 
 	r.Get("/device/ping", handleDevicePing)
-	r.Post("/device/code", handleDeviceGetCode)
-	r.Get("/device/code", handleDeviceGetCode)
-	r.Get("/device/status", handleDeviceStatus)
+	r.Post("/device/code", rateLimitMiddleware(deviceRL, "rate_device_max", "rate_device_window_sec", handleDeviceGetCode))
+	r.Get("/device/code", rateLimitMiddleware(deviceRL, "rate_device_max", "rate_device_window_sec", handleDeviceGetCode))
+	r.Get("/device/status", rateLimitMiddleware(deviceRL, "rate_device_max", "rate_device_window_sec", handleDeviceStatus))
 	r.With(requireSession).Post("/device/link", handleDeviceLink)
 
 	r.Route("/timecode", func(r chi.Router) {
@@ -333,7 +335,20 @@ func servePlugins(next http.Handler) http.Handler {
 			return
 		}
 
-		fullPath := filepath.Join("plugins", rel)
+		// filepath.Join сам по себе НЕ защищает от обхода каталога: rel вида
+		// "../config/config.go" вылезет за plugins/. Сейчас спасает только то, что
+		// http.ServeFile отбивает ".." в r.URL.Path, но полагаться на это хрупко —
+		// явно проверяем, что итоговый путь остаётся внутри plugins/.
+		base, err := filepath.Abs("plugins")
+		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		fullPath := filepath.Join(base, rel)
+		if fullPath != base && !strings.HasPrefix(fullPath, base+string(os.PathSeparator)) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		info, err := os.Stat(fullPath)
 		if err != nil || info.IsDir() {
 			next.ServeHTTP(w, r)

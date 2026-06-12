@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import DOMPurify from 'dompurify'
 import Layout from '@/components/Layout'
 import styles from './StaticPage.module.scss'
 
@@ -30,7 +31,7 @@ export default function StaticPage({ name }: Props) {
             <>
               <div
                 className={styles.content}
-                dangerouslySetInnerHTML={{ __html: html }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
               />
               <p className={styles.back}>
                 <button className={styles.backBtn} onClick={() => navigate(-1)}>← Назад</button>

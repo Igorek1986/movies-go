@@ -64,6 +64,8 @@ var SettingDefaults = map[string]string{
 	"rate_forgot_window_sec":   "3600",
 	"rate_2fa_max":             "5",
 	"rate_2fa_window_sec":      "900",
+	"rate_device_max":          "120",
+	"rate_device_window_sec":   "60",
 	"sync_cooldown_sec":        "300",
 	// Analytics
 	"yandex_metrika_enabled":   "0",
@@ -101,6 +103,15 @@ var SettingDefaults = map[string]string{
 	"app_mode": "parser",
 	// Security
 	"banned_patterns": "bylampa",
+	// CORS: дополнительные origin'ы (через запятую/перенос строки), которым
+	// разрешены кредённые (с cookie) кросс-доменные запросы. base_url добавляется
+	// автоматически. Пусто = только base_url.
+	"cors_allowed_origins": "",
+	// Секрет доверенного прокси. Порт приложения открыт напрямую (IP:PORT), поэтому
+	// X-Forwarded-For/X-Real-IP принимаются только если запрос несёт заголовок
+	// X-Proxy-Token с этим значением (его проставляет наш nginx). Пусто = заголовкам
+	// не доверяем, IP берётся из соединения. Нужно для корректного rate-limit за nginx.
+	"trusted_proxy_secret": "",
 	// MyShows
 	"myshows_api_url":  "https://myshows.me/v3/rpc/",
 	"myshows_auth_url": "https://myshows.me/api/session",
@@ -119,6 +130,10 @@ var SettingDefaults = map[string]string{
 	"telegram_bot_name":    "",
 	"telegram_admin_ids":   "",
 	"telegram_use_polling": "0",
+	// Секрет вебхука Telegram (secret_token). Генерируется автоматически при
+	// регистрации вебхука; используется для проверки заголовка
+	// X-Telegram-Bot-Api-Secret-Token входящих апдейтов.
+	"telegram_webhook_secret": "",
 }
 
 // ─── Generic key-value settings ───────────────────────────────────────────────

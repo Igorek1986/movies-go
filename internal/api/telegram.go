@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 
@@ -9,8 +10,22 @@ import (
 	"movies-api/internal/bot"
 )
 
-// POST /bot/webhook — receives Telegram updates
+// POST /bot/webhook — receives Telegram updates.
+//
+// Telegram echoes the configured secret_token in the
+// X-Telegram-Bot-Api-Secret-Token header on every update. Without this check
+// anyone who knows the URL could POST forged updates and, since bot-admin
+// rights are derived from the update's chat id, execute admin commands. We
+// reject any request whose header does not match the stored secret (and reject
+// everything if no secret is configured, e.g. polling mode).
 func handleTelegramWebhook(w http.ResponseWriter, r *http.Request) {
+	secret, _ := store.GetSetting(r.Context(), "telegram_webhook_secret")
+	provided := r.Header.Get("X-Telegram-Bot-Api-Secret-Token")
+	if secret == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(secret)) != 1 {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
 	var update tgbotapi.Update
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
 		w.WriteHeader(http.StatusBadRequest)

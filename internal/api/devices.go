@@ -40,7 +40,10 @@ func handleDeviceGetCode(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "cannot generate code")
 		return
 	}
-	JSON(w, http.StatusOK, map[string]string{"code": code})
+	JSON(w, http.StatusOK, map[string]any{
+		"code":       code,
+		"expires_in": store.DeviceCodeTTLSeconds(),
+	})
 }
 
 // GET /device/status?code=XXXXXX

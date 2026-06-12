@@ -1878,7 +1878,8 @@ func handleAPIAdminBotRestart(w http.ResponseWriter, r *http.Request) {
 		baseURL := strings.TrimRight(rawBaseURL, "/")
 		usePolling, _ := store.GetSetting(ctx, "telegram_use_polling")
 		if usePolling != "1" {
-			if err := bot.SetWebhook(baseURL + "/bot/webhook"); err != nil {
+			secret := bot.EnsureWebhookSecret(ctx)
+			if err := bot.SetWebhook(baseURL+"/bot/webhook", secret); err != nil {
 				log.Printf("bot restart: webhook error: %v", err)
 			}
 		}

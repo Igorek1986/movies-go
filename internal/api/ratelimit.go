@@ -55,6 +55,11 @@ var (
 	registerRL = newIPRateLimiter()
 	forgotRL   = newIPRateLimiter()
 	twoFARL    = newIPRateLimiter()
+	// deviceRL ограничивает /device/code и /device/status: коды активации —
+	// 6-значные (1e6 вариантов), так что без лимита их можно перебрать через
+	// опрос /device/status и перехватить токен привязанного устройства. Лимит
+	// щедрый, чтобы не мешать легитимному поллингу одного кода.
+	deviceRL = newIPRateLimiter()
 )
 
 func rateLimitMiddleware(rl *ipRateLimiter, maxKey, windowKey string, next http.HandlerFunc) http.HandlerFunc {

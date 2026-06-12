@@ -541,6 +541,10 @@ const LABELS: Record<string, string> = {
   privacy_policy_content: 'Политика обработки персональных данных (HTML)',
   consent_content:        'Согласие на обработку персональных данных (HTML)',
   app_mode:               'Режим работы',
+  rate_device_max:          'Активация устройства — макс. запросов',
+  rate_device_window_sec:   'Активация устройства — окно (сек)',
+  cors_allowed_origins:     'CORS: доверенные origin с cookie (через запятую; base_url уже включён)',
+  trusted_proxy_secret:     'Секрет доверенного прокси (X-Proxy-Token от nginx; пусто = не доверять XFF)',
 }
 
 const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
@@ -583,7 +587,11 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'rate_register_max', 'rate_register_window_sec',
     'rate_forgot_max', 'rate_forgot_window_sec',
     'rate_2fa_max', 'rate_2fa_window_sec',
+    'rate_device_max', 'rate_device_window_sec',
     'sync_cooldown_sec',
+  ]},
+  { name: 'Безопасность', keys: [
+    'cors_allowed_origins', 'trusted_proxy_secret',
   ]},
   { name: 'MyShows', keys: ['myshows_api_url', 'myshows_auth_url'] },
   { name: 'TMDB обновление карточек', keys: [

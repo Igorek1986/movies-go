@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -188,12 +190,50 @@ func forwardPlayEvent(cardID, uid string, pct int) {
 	}
 }
 
-func realIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
+// proxySecretCache кэширует настройку trusted_proxy_secret на 60с: realIP
+// вызывается в т.ч. при частом поллинге, а GetSetting ходит в БД на каждый вызов.
+var proxySecretCache struct {
+	sync.Mutex
+	secret   string
+	loadedAt time.Time
+}
+
+func trustedProxySecret() string {
+	proxySecretCache.Lock()
+	defer proxySecretCache.Unlock()
+	if !proxySecretCache.loadedAt.IsZero() && time.Since(proxySecretCache.loadedAt) < 60*time.Second {
+		return proxySecretCache.secret
 	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
+	s, _ := store.GetSetting(context.Background(), "trusted_proxy_secret")
+	proxySecretCache.secret = s
+	proxySecretCache.loadedAt = time.Now()
+	return s
+}
+
+// requestFromTrustedProxy сообщает, пришёл ли запрос от нашего nginx.
+//
+// Порт приложения выставлен наружу напрямую (IP:PORT), и за docker-NAT RemoteAddr
+// у ВСЕХ внешних запросов одинаковый (gateway бриджа) — отличить nginx от прямого
+// злоумышленника по IP нельзя. Поэтому доверяем заголовкам X-Forwarded-For/
+// X-Real-IP только если запрос несёт секретный заголовок X-Proxy-Token, который
+// проставляет лишь наш доверенный nginx. Без него (прямой доступ, подделка XFF)
+// заголовки игнорируются и берётся реальный RemoteAddr соединения.
+func requestFromTrustedProxy(r *http.Request) bool {
+	secret := trustedProxySecret()
+	if secret == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Proxy-Token")), []byte(secret)) == 1
+}
+
+func realIP(r *http.Request) string {
+	if requestFromTrustedProxy(r) {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			return strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
+		}
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			return strings.TrimSpace(xri)
+		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

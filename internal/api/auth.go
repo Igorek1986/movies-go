@@ -195,7 +195,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess, err := auth.CreateSession(r.Context(), u.ID,
-		r.RemoteAddr, r.Header.Get("User-Agent"))
+		realIP(r), r.Header.Get("User-Agent"))
 	if err != nil {
 		Error(w, http.StatusInternalServerError, "session error")
 		return
@@ -252,7 +252,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess, err := auth.CreateSession(r.Context(), u.ID,
-		r.RemoteAddr, r.Header.Get("User-Agent"))
+		realIP(r), r.Header.Get("User-Agent"))
 	if err != nil {
 		Error(w, http.StatusInternalServerError, "session error")
 		return
