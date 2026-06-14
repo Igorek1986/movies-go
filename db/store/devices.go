@@ -140,6 +140,9 @@ func DeleteDevice(ctx context.Context, deviceID, userID int64) error {
 		`DELETE FROM devices WHERE id = $1 AND user_id = $2`,
 		deviceID, userID,
 	)
+	if err == nil {
+		notifyWatchedChanged(deviceID, "")
+	}
 	return err
 }
 
@@ -172,6 +175,9 @@ func ClearDeviceTimecodes(ctx context.Context, deviceID, userID int64) error {
 			SELECT id FROM devices WHERE id = $1 AND user_id = $2
 		)`, deviceID, userID,
 	)
+	if err == nil {
+		notifyWatchedChanged(deviceID, "")
+	}
 	return err
 }
 

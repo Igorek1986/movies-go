@@ -13,6 +13,18 @@ import (
 	"time"
 )
 
+// OnWatchedChanged is called after any mutation that can change a profile's watched set
+// (timecode write/delete, special toggle, profile/device clear), so the API layer can drop
+// its cached watched-set. profileID "" means the whole device (all profiles). Set from the
+// API layer; nil-safe for modes without the web/API cache.
+var OnWatchedChanged func(deviceID int64, profileID string)
+
+func notifyWatchedChanged(deviceID int64, profileID string) {
+	if OnWatchedChanged != nil {
+		OnWatchedChanged(deviceID, profileID)
+	}
+}
+
 // ─── Role limits ──────────────────────────────────────────────────────────────
 
 type RoleLimits struct {
@@ -103,6 +115,9 @@ func UpsertTimecodes(ctx context.Context, deviceID int64, profileID string, rows
 		}
 		saved++
 	}
+	if saved > 0 {
+		notifyWatchedChanged(deviceID, profileID)
+	}
 	return saved
 }
 
@@ -137,6 +152,7 @@ func DeleteTimecode(ctx context.Context, deviceID int64, profileID, cardID, item
 		 WHERE device_id=$1 AND profile_id=$2 AND card_id=$3 AND item=$4`,
 		deviceID, profileID, cardID, item,
 	)
+	notifyWatchedChanged(deviceID, profileID)
 }
 
 // CardProgress holds aggregated watch progress for one card.
@@ -287,6 +303,9 @@ func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, ite
 		    view_count = timecodes.view_count + CASE WHEN EXCLUDED.counted_at IS NOT NULL AND timecodes.counted_at IS NULL THEN 1 ELSE 0 END`,
 		deviceID, profileID, cardID, item, string(newData), countedAt,
 	)
+	if err == nil {
+		notifyWatchedChanged(deviceID, profileID)
+	}
 	return err
 }
 
@@ -308,6 +327,9 @@ func SetCardTimecodeWatched(ctx context.Context, deviceID int64, profileID, card
 		    view_count = GREATEST(timecodes.view_count, 1)`,
 		deviceID, profileID, cardID, item, string(data), date,
 	)
+	if err == nil {
+		notifyWatchedChanged(deviceID, profileID)
+	}
 	return err
 }
 
@@ -323,6 +345,9 @@ func MarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID,
 		    counted_at = COALESCE(timecodes.counted_at, EXCLUDED.counted_at)`,
 		deviceID, profileID, cardID, item, string(data), today,
 	)
+	if err == nil {
+		notifyWatchedChanged(deviceID, profileID)
+	}
 	return err
 }
 
@@ -336,15 +361,19 @@ func UnmarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardI
 		SET data = EXCLUDED.data, updated_at = now(), counted_at = NULL`,
 		deviceID, profileID, cardID, item, string(data),
 	)
+	if err == nil {
+		notifyWatchedChanged(deviceID, profileID)
+	}
 	return err
 }
 
-// DeleteCardTimecodes removes all timecodes for device+card.
+// DeleteCardTimecodes removes all timecodes for device+card (all profiles).
 func DeleteCardTimecodes(ctx context.Context, deviceID int64, cardID string) {
 	postgres.Pool.Exec(ctx, //nolint:errcheck
 		`DELETE FROM timecodes WHERE device_id=$1 AND card_id=$2`,
 		deviceID, cardID,
 	)
+	notifyWatchedChanged(deviceID, "") // affects all profiles of the device
 }
 
 // ExportTimecodes returns {card_id: {item: data_json}} — Lampac-compatible format.
@@ -739,6 +768,9 @@ func DeleteProfile(ctx context.Context, deviceID int64, profileID string) error 
 		`DELETE FROM profiles WHERE device_id=$1 AND profile_id=$2`,
 		deviceID, profileID,
 	)
+	if err == nil {
+		notifyWatchedChanged(deviceID, profileID)
+	}
 	return err
 }
 
@@ -747,6 +779,9 @@ func MigrateDefaultTimecodes(ctx context.Context, deviceID int64, profileID stri
 		`UPDATE timecodes SET profile_id=$2 WHERE device_id=$1 AND profile_id=''`,
 		deviceID, profileID,
 	)
+	if err == nil {
+		notifyWatchedChanged(deviceID, "") // moves timecodes between '' and the target profile
+	}
 	return err
 }
 
@@ -755,6 +790,9 @@ func ClearProfileTimecodes(ctx context.Context, deviceID int64, profileID string
 		`DELETE FROM timecodes WHERE device_id=$1 AND profile_id=$2`,
 		deviceID, profileID,
 	)
+	if err == nil {
+		notifyWatchedChanged(deviceID, profileID)
+	}
 	return err
 }
 

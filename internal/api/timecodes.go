@@ -54,7 +54,8 @@ func handleSaveTimecode(w http.ResponseWriter, r *http.Request) {
 	})
 	store.TrimToLimit(r.Context(), d.ID, profileID, deviceUserRole(r, d))
 	store.UpsertProfileName(r.Context(), d.ID, profileID, profileName)
-	InvalidateWatched(d.ID, profileID) // progress changed → refresh cached watched-set
+	// watched-set cache is invalidated inside store.UpsertTimecodes (and the other
+	// timecode mutations) via store.OnWatchedChanged — no explicit call needed here.
 
 	// Update runtime/episode_run_time from player-reported duration when reliable.
 	if m := cardIDRe.FindStringSubmatch(body.CardID); m != nil && playerDur.Duration > 60 {
@@ -120,7 +121,6 @@ func handleBatchTimecodes(w http.ResponseWriter, r *http.Request) {
 	profileID := r.URL.Query().Get("profile_id")
 	saved := store.UpsertTimecodes(r.Context(), d.ID, profileID, rows)
 	store.TrimToLimit(r.Context(), d.ID, profileID, deviceUserRole(r, d))
-	InvalidateWatched(d.ID, profileID)
 
 	JSON(w, http.StatusOK, map[string]any{"success": true, "saved": saved})
 }
@@ -165,7 +165,6 @@ func handleImportLampac(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	saved := store.UpsertTimecodes(r.Context(), d.ID, profileID, rows)
-	InvalidateWatched(d.ID, profileID)
 	JSON(w, http.StatusOK, map[string]any{"success": true, "imported": saved})
 }
 
@@ -183,9 +182,7 @@ func handleDeleteTimecode(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "card_id and item required")
 		return
 	}
-	profileID := r.URL.Query().Get("profile_id")
-	store.DeleteTimecode(r.Context(), d.ID, profileID, cardID, item)
-	InvalidateWatched(d.ID, profileID)
+	store.DeleteTimecode(r.Context(), d.ID, r.URL.Query().Get("profile_id"), cardID, item)
 	JSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 

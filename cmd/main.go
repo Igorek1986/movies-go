@@ -103,6 +103,15 @@ func main() {
 	api.InitCategorySettings()
 	parser.OnComplete = api.InvalidateCategoryCache
 	go api.RecomputeCategoryCounts() // warm random-collection totals before first request
+	// Drop the cached watched-set whenever a profile's progress changes (timecode write/
+	// delete, special toggle, profile/device clear). profileID "" means the whole device.
+	store.OnWatchedChanged = func(deviceID int64, profileID string) {
+		if profileID == "" {
+			api.InvalidateWatchedDevice(deviceID)
+		} else {
+			api.InvalidateWatched(deviceID, profileID)
+		}
+	}
 
 	// HTTP сервер
 	srv := &http.Server{

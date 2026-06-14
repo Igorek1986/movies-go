@@ -109,10 +109,19 @@ func cachedWatchedCardIDs(deviceID int64, profileID string, percent int) []strin
 	return v.([]string)
 }
 
-// InvalidateWatched drops cached watched-sets for a profile after it saves a timecode,
-// so the next category request reflects the new progress.
+// InvalidateWatched drops cached watched-sets for one profile after its progress changes,
+// so the next category request reflects it.
 func InvalidateWatched(deviceID int64, profileID string) {
-	prefix := strconv.FormatInt(deviceID, 10) + ":" + profileID + ":"
+	invalidateWatchedPrefix(strconv.FormatInt(deviceID, 10) + ":" + profileID + ":")
+}
+
+// InvalidateWatchedDevice drops cached watched-sets for all profiles of a device
+// (used when a mutation clears/affects the whole device).
+func InvalidateWatchedDevice(deviceID int64) {
+	invalidateWatchedPrefix(strconv.FormatInt(deviceID, 10) + ":")
+}
+
+func invalidateWatchedPrefix(prefix string) {
 	watchedMu.Lock()
 	for k := range watchedCache {
 		if strings.HasPrefix(k, prefix) {
