@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // ─── Response cache ───────────────────────────────────────────────────────────
@@ -53,10 +55,71 @@ func InvalidateCategoryCache() {
 	childTextAgesLoaded = false
 	childTextAgesMu.Unlock()
 
+	watchedMu.Lock()
+	watchedCache = map[string][]string{}
+	watchedMu.Unlock()
+
 	log.Println("catcache: invalidated")
 
 	// Data changed — refresh per-category totals for random collections.
 	go RecomputeCategoryCounts()
+}
+
+// ─── Watched-set cache (per device+profile) ──────────────────────────────────
+//
+// hide_watched excludes fully-watched cards. Computing that set scans timecodes +
+// episodes (~hundreds of ms) and was previously run inside every category request —
+// painful for the uncached genre_* collections. The set depends only on the profile's
+// progress, so it is cached here and refreshed when the profile saves a timecode.
+
+var (
+	watchedMu    sync.RWMutex
+	watchedCache = map[string][]string{}
+	watchedSF    singleflight.Group // dedupe concurrent computations of the same key
+)
+
+func watchedKey(deviceID int64, profileID string, percent int) string {
+	return strconv.FormatInt(deviceID, 10) + ":" + profileID + ":" + strconv.Itoa(percent)
+}
+
+// cachedWatchedCardIDs returns the profile's fully-watched card_ids, computing and
+// caching them on a miss.
+func cachedWatchedCardIDs(deviceID int64, profileID string, percent int) []string {
+	k := watchedKey(deviceID, profileID, percent)
+	watchedMu.RLock()
+	ids, ok := watchedCache[k]
+	watchedMu.RUnlock()
+	if ok {
+		return ids
+	}
+	// Concurrent misses (e.g. the 16 genre lines on the home screen) share one query.
+	v, _, _ := watchedSF.Do(k, func() (any, error) {
+		watchedMu.RLock()
+		cached, hit := watchedCache[k]
+		watchedMu.RUnlock()
+		if hit {
+			return cached, nil
+		}
+		computed := store.WatchedCardIDs(deviceID, profileID, percent)
+		watchedMu.Lock()
+		watchedCache[k] = computed
+		watchedMu.Unlock()
+		return computed, nil
+	})
+	return v.([]string)
+}
+
+// InvalidateWatched drops cached watched-sets for a profile after it saves a timecode,
+// so the next category request reflects the new progress.
+func InvalidateWatched(deviceID int64, profileID string) {
+	prefix := strconv.FormatInt(deviceID, 10) + ":" + profileID + ":"
+	watchedMu.Lock()
+	for k := range watchedCache {
+		if strings.HasPrefix(k, prefix) {
+			delete(watchedCache, k)
+		}
+	}
+	watchedMu.Unlock()
 }
 
 // ─── Per-category totals (random collections) ────────────────────────────────

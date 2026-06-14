@@ -547,6 +547,9 @@ func applyHideWatched(r *http.Request, f *store.CategoryFilter, profileID string
 		f.DeviceID = d.ID
 		f.ProfileID = profileID
 		f.WatchedPercent = pct
+		// Precomputed (cached) set of watched card_ids — avoids the heavy per-request
+		// timecodes+episodes subquery. Invalidated when the profile saves a timecode.
+		f.WatchedCardIDs = cachedWatchedCardIDs(d.ID, profileID, pct)
 	}
 }
 

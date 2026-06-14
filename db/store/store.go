@@ -901,6 +901,10 @@ type CategoryFilter struct {
 	DeviceID        int64
 	ProfileID       string
 	WatchedPercent  int
+	// WatchedCardIDs is the precomputed set of fully-watched card_ids for the profile
+	// (filled by the API layer from a cache). When HideWatched is set these are excluded
+	// via card_id <> ALL(...), avoiding the expensive per-request watched-set subquery.
+	WatchedCardIDs []string
 	RequirePoster   bool // exclude cards with empty/null poster_path
 	RecentDays      int  // if > 0, only cards that have a torrent added to tracker within last N days
 }
@@ -1118,39 +1122,65 @@ func categoryWhere(f CategoryFilter) (where []string, args []interface{}, n int)
 			f.RecentDays,
 		))
 	}
-	if f.HideWatched && f.DeviceID > 0 {
-		// «Досмотренные» card_id считаем ОДНИМ предвычисленным подзапросом (а не
-		// коррелированными подзапросами на каждую карточку-кандидата). Подзапрос
-		// независим от внешнего запроса → PostgreSQL хэширует его в анти-джойн.
-		// Счёт эпизодов для TV считается только по уже просмотренным карточкам
-		// (их немного), а не по всему каталогу.
-		where = append(where, fmt.Sprintf(`m.card_id NOT IN (
-			SELECT mc.card_id
-			FROM (
-				SELECT tc.card_id, COUNT(*) FILTER (
-						WHERE ((tc.data::jsonb->>'percent')::numeric >= $%d
-						   OR (tc.data::jsonb->>'special')::boolean IS TRUE)
-						  AND NOT EXISTS (SELECT 1 FROM episodes e_sp
-						                  WHERE e_sp.hash = tc.item AND e_sp.is_special)
-					) AS w
-				FROM timecodes tc
-				WHERE tc.device_id = $%d AND tc.profile_id = $%d
-				GROUP BY tc.card_id
-			) wt
-			JOIN media_cards mc ON mc.card_id = wt.card_id
-			WHERE (mc.media_type = 'movie' AND wt.w >= 1)
-			   OR (mc.media_type = 'tv' AND wt.w >= GREATEST(1, COALESCE(
-					(SELECT COUNT(*)::int FROM episodes e
-					 WHERE e.tmdb_show_id = mc.tmdb_id
-					   AND NOT e.is_special
-					   AND e.air_date IS NOT NULL AND e.air_date <= CURRENT_DATE),
-					mc.number_of_episodes)))
-		)`, n+2, n, n+1))
-		args = append(args, f.DeviceID, f.ProfileID, f.WatchedPercent)
-		n += 3
+	if f.HideWatched && len(f.WatchedCardIDs) > 0 {
+		// Множество досмотренных card_id предвычислено и закэшировано в API-слое
+		// (WatchedCardIDs) — здесь только дешёвое исключение по массиву. Раньше тут
+		// был тяжёлый подзапрос по timecodes+episodes на каждый запрос (см. WatchedCardIDs).
+		where = append(where, fmt.Sprintf("m.card_id <> ALL($%d)", n))
+		args = append(args, f.WatchedCardIDs)
+		n++
 	}
 
 	return where, args, n
+}
+
+// WatchedCardIDs returns the set of fully-watched card_ids for a profile: movies with a
+// timecode at >= percent (or marked special), and TV shows where the watched-episode count
+// reaches the number of aired non-special episodes. This is the expensive query that the
+// API layer runs once and caches (invalidated on timecode write), instead of running it
+// inside every category request.
+func WatchedCardIDs(deviceID int64, profileID string, percent int) []string {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if percent < 1 {
+		percent = 90
+	}
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT mc.card_id
+		FROM (
+			SELECT tc.card_id, COUNT(*) FILTER (
+					WHERE ((tc.data::jsonb->>'percent')::numeric >= $3
+					   OR (tc.data::jsonb->>'special')::boolean IS TRUE)
+					  AND NOT EXISTS (SELECT 1 FROM episodes e_sp
+					                  WHERE e_sp.hash = tc.item AND e_sp.is_special)
+				) AS w
+			FROM timecodes tc
+			WHERE tc.device_id = $1 AND tc.profile_id = $2
+			GROUP BY tc.card_id
+		) wt
+		JOIN media_cards mc ON mc.card_id = wt.card_id
+		WHERE (mc.media_type = 'movie' AND wt.w >= 1)
+		   OR (mc.media_type = 'tv' AND wt.w >= GREATEST(1, COALESCE(
+				(SELECT COUNT(*)::int FROM episodes e
+				 WHERE e.tmdb_show_id = mc.tmdb_id
+				   AND NOT e.is_special
+				   AND e.air_date IS NOT NULL AND e.air_date <= CURRENT_DATE),
+				mc.number_of_episodes)))`,
+		deviceID, profileID, percent)
+	if err != nil {
+		log.Printf("store: watched card ids: %v", err)
+		return nil
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // mediaCardCols is the SELECT list for category card rows (scanned by scanMediaRows).
