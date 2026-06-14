@@ -244,9 +244,8 @@ CREATE INDEX IF NOT EXISTS idx_media_cards_language       ON media_cards (origin
 CREATE INDEX IF NOT EXISTS idx_mc_latest_torrent  ON media_cards (latest_torrent_date DESC NULLS LAST);
 CREATE INDEX IF NOT EXISTS idx_mc_release_date    ON media_cards ((COALESCE(release_date, first_air_date)) DESC NULLS LAST);
 CREATE INDEX IF NOT EXISTS idx_mc_created_at      ON media_cards (created_at DESC NULLS LAST);
--- Materialised random order for genre/random collections: index seek instead of full ORDER BY RANDOM() scan.
--- card_id is a unique tiebreaker so OFFSET paging over equal rand_key values never repeats a row.
-CREATE INDEX IF NOT EXISTS idx_mc_rand_key        ON media_cards (rand_key, card_id);
+-- NB: idx_mc_rand_key is created in the migrations section below, after the rand_key
+-- column is guaranteed to exist (an existing media_cards table is not recreated here).
 -- ─── Episodes ─────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS episodes (
     tmdb_show_id  INT         NOT NULL,
@@ -405,9 +404,13 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS child_birth_year SMALLINT;
 -- Migration: TMDB keyword IDs for child content filtering
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS keyword_ids INTEGER[];
 
--- Migration: materialised random key for fast random collections (genre_*, genre_random)
+-- Migration: materialised random key for fast random collections (genre_*, genre_random).
+-- The column must be added before its index — for an existing DB the CREATE TABLE above
+-- is a no-op, so the index is created here rather than in the index section.
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS rand_key DOUBLE PRECISION DEFAULT random();
 UPDATE media_cards SET rand_key = random() WHERE rand_key IS NULL;
+-- card_id is a unique tiebreaker so OFFSET paging over equal rand_key values never repeats a row.
+CREATE INDEX IF NOT EXISTS idx_mc_rand_key ON media_cards (rand_key, card_id);
 
 -- Actor cast for catalog collections
 CREATE TABLE IF NOT EXISTS media_card_cast (
