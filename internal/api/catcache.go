@@ -54,6 +54,56 @@ func InvalidateCategoryCache() {
 	childTextAgesMu.Unlock()
 
 	log.Println("catcache: invalidated")
+
+	// Data changed — refresh per-category totals for random collections.
+	go RecomputeCategoryCounts()
+}
+
+// ─── Per-category totals (random collections) ────────────────────────────────
+//
+// genre_* / genre_random are served via an indexed rand_key seek (no COUNT in the
+// request path). Their total card count changes only when the catalog changes, so it
+// is cached here and refreshed once per parser run via RecomputeCategoryCounts.
+
+var (
+	catCountMu sync.RWMutex
+	catCount   = map[string]int{}
+)
+
+// cachedCategoryCount returns the cached total for a random category, computing the
+// base count on a cold miss.
+func cachedCategoryCount(category string) int {
+	catCountMu.RLock()
+	v, ok := catCount[category]
+	catCountMu.RUnlock()
+	if ok {
+		return v
+	}
+	return recomputeCategoryCount(category)
+}
+
+func recomputeCategoryCount(category string) int {
+	preset, ok := categoryRoutes[category]
+	if !ok {
+		return 0
+	}
+	f := preset
+	applyCatalogTrackers(&f)
+	c := store.CountCategory(f)
+	catCountMu.Lock()
+	catCount[category] = c
+	catCountMu.Unlock()
+	return c
+}
+
+// RecomputeCategoryCounts refreshes cached totals for all random (genre_*) categories.
+// Called after each parser run and once at startup.
+func RecomputeCategoryCounts() {
+	for cat := range categoryRoutes {
+		if strings.HasPrefix(cat, "genre_") {
+			recomputeCategoryCount(cat)
+		}
+	}
 }
 
 func getCached(key string) (cachedResp, bool) {

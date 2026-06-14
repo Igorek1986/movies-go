@@ -102,6 +102,7 @@ func main() {
 
 	api.InitCategorySettings()
 	parser.OnComplete = api.InvalidateCategoryCache
+	go api.RecomputeCategoryCounts() // warm random-collection totals before first request
 
 	// HTTP сервер
 	srv := &http.Server{

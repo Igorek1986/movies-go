@@ -10,6 +10,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // normalizeSearch strips punctuation that varies across sources so that
@@ -876,6 +878,11 @@ type CategoryFilter struct {
 	OrderByRating   bool
 	OrderByCreatedAt bool    // ORDER BY created_at DESC (recently added to tracker)
 	RandomOrder     bool     // ORDER BY RANDOM()
+	// RandSeed, when non-nil, selects a random page via the indexed rand_key column
+	// instead of a full ORDER BY RANDOM() scan: rows are taken from a rotation of the
+	// rand_key permutation starting at the seed (so the same seed paginates without
+	// duplicates). Used for genre_* / genre_random. Count is skipped (caller supplies total).
+	RandSeed *float64
 	Genres          []string // genre names (OR logic), e.g. ["боевик", "Боевик и Приключения"]
 	Child                bool
 	ChildAge             int      // computed from birth year; -1 = child but no age set, >=0 = cert-based filter
@@ -912,9 +919,54 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 	}
 	offset := (f.Page - 1) * perPage
 
-	var where []string
-	var args []interface{}
-	n := 1
+	where, args, n := categoryWhere(f)
+
+	whereClause := ""
+	if len(where) > 0 {
+		whereClause = "WHERE " + strings.Join(where, " AND ")
+	}
+
+	// Random collections (genre_*/genre_random): indexed seek over rand_key.
+	// Count is skipped — the caller fills total_results from the per-category cache.
+	if f.RandSeed != nil {
+		return listRandomByKey(ctx, whereClause, args, *f.RandSeed, n, perPage, offset), 0
+	}
+
+	orderBy := "m.latest_torrent_date DESC NULLS LAST, m.created_at DESC"
+	if f.RandomOrder {
+		orderBy = "RANDOM()"
+	} else if f.OrderByRating {
+		orderBy = "m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST, m.created_at DESC"
+	} else if f.OrderByCreatedAt {
+		orderBy = "m.created_at DESC NULLS LAST"
+	} else if f.OldOnly || f.Year > 0 {
+		// Archive / year categories: sort by release/air date descending
+		orderBy = "COALESCE(m.release_date, m.first_air_date) DESC NULLS LAST, m.created_at DESC"
+	}
+
+	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM media_cards m %s`, whereClause)
+	if err := postgres.Pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
+		log.Printf("store: count category: %v", err)
+		return
+	}
+
+	dataSQL := fmt.Sprintf(`SELECT %s FROM media_cards m %s ORDER BY %s LIMIT %d OFFSET %d`,
+		mediaCardCols, whereClause, orderBy, perPage, offset)
+
+	qrows, err := postgres.Pool.Query(ctx, dataSQL, args...)
+	if err != nil {
+		log.Printf("store: query category: %v", err)
+		return
+	}
+	defer qrows.Close()
+	rows = scanMediaRows(qrows)
+	return
+}
+
+// categoryWhere builds the WHERE conditions (and their args) shared by ListCategory
+// and CountCategory. n is the next positional-parameter index.
+func categoryWhere(f CategoryFilter) (where []string, args []interface{}, n int) {
+	n = 1
 
 	if f.NewOnly || f.OldOnly {
 		delta := f.YearDelta
@@ -1098,49 +1150,21 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		n += 3
 	}
 
-	whereClause := ""
-	if len(where) > 0 {
-		whereClause = "WHERE " + strings.Join(where, " AND ")
-	}
+	return where, args, n
+}
 
-	orderBy := "m.latest_torrent_date DESC NULLS LAST, m.created_at DESC"
-	if f.RandomOrder {
-		orderBy = "RANDOM()"
-	} else if f.OrderByRating {
-		orderBy = "m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST, m.created_at DESC"
-	} else if f.OrderByCreatedAt {
-		orderBy = "m.created_at DESC NULLS LAST"
-	} else if f.OldOnly || f.Year > 0 {
-		// Archive / year categories: sort by release/air date descending
-		orderBy = "COALESCE(m.release_date, m.first_air_date) DESC NULLS LAST, m.created_at DESC"
-	}
+// mediaCardCols is the SELECT list for category card rows (scanned by scanMediaRows).
+const mediaCardCols = `m.tmdb_id, m.media_type, m.title, m.original_title,
+	m.overview, m.poster_path, m.backdrop_path,
+	m.release_date::text, m.first_air_date::text, m.last_air_date::text,
+	m.vote_average, m.vote_count, m.original_language, m.adult, m.status,
+	m.number_of_seasons, m.seasons, m.last_ep_season, m.last_ep_number, m.updated_at,
+	m.best_video_quality, m.latest_torrent_date,
+	m.certification_ru, m.certification_us`
 
-	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM media_cards m %s`, whereClause)
-	if err := postgres.Pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
-		log.Printf("store: count category: %v", err)
-		return
-	}
-
-	dataSQL := fmt.Sprintf(`
-		SELECT m.tmdb_id, m.media_type, m.title, m.original_title,
-			m.overview, m.poster_path, m.backdrop_path,
-			m.release_date::text, m.first_air_date::text, m.last_air_date::text,
-			m.vote_average, m.vote_count, m.original_language, m.adult, m.status,
-			m.number_of_seasons, m.seasons, m.last_ep_season, m.last_ep_number, m.updated_at,
-			m.best_video_quality, m.latest_torrent_date,
-			m.certification_ru, m.certification_us
-		FROM media_cards m
-		%s
-		ORDER BY %s
-		LIMIT %d OFFSET %d`, whereClause, orderBy, perPage, offset)
-
-	qrows, err := postgres.Pool.Query(ctx, dataSQL, args...)
-	if err != nil {
-		log.Printf("store: query category: %v", err)
-		return
-	}
+// scanMediaRows reads MediaRow values from a query using the mediaCardCols list.
+func scanMediaRows(qrows pgx.Rows) (rows []MediaRow) {
 	defer qrows.Close()
-
 	for qrows.Next() {
 		var r MediaRow
 		if err := qrows.Scan(
@@ -1158,6 +1182,76 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 		rows = append(rows, r)
 	}
 	return
+}
+
+// CountCategory returns the number of cards matching the filter (ignoring pagination
+// and RandSeed). Used to cache per-category totals for random collections.
+func CountCategory(f CategoryFilter) int {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	where, args, _ := categoryWhere(f)
+	whereClause := ""
+	if len(where) > 0 {
+		whereClause = "WHERE " + strings.Join(where, " AND ")
+	}
+	return countCards(ctx, whereClause, args)
+}
+
+func countCards(ctx context.Context, whereClause string, args []interface{}) int {
+	var c int
+	if err := postgres.Pool.QueryRow(ctx,
+		"SELECT COUNT(*) FROM media_cards m "+whereClause, args...).Scan(&c); err != nil {
+		log.Printf("store: count cards: %v", err)
+	}
+	return c
+}
+
+func andCond(whereClause, cond string) string {
+	if whereClause == "" {
+		return "WHERE " + cond
+	}
+	return whereClause + " AND " + cond
+}
+
+func queryRandPage(ctx context.Context, whereClause string, args []interface{}, limit, offset int) []MediaRow {
+	// card_id is a unique tiebreaker → deterministic order so OFFSET paging across
+	// separate page requests never repeats or skips a row at a boundary.
+	sql := fmt.Sprintf("SELECT %s FROM media_cards m %s ORDER BY m.rand_key, m.card_id LIMIT %d OFFSET %d",
+		mediaCardCols, whereClause, limit, offset)
+	qrows, err := postgres.Pool.Query(ctx, sql, args...)
+	if err != nil {
+		log.Printf("store: query rand page: %v", err)
+		return nil
+	}
+	return scanMediaRows(qrows)
+}
+
+// listRandomByKey returns a page from the rand_key permutation rotated to start at seed.
+// The permutation is: cards with rand_key >= seed (ascending), then cards with
+// rand_key < seed (ascending) — i.e. a circular order. Because the same seed yields the
+// same rotation, paginating with OFFSET never repeats a card. It reads only ~perPage rows
+// via the rand_key index instead of scanning every matching row like ORDER BY RANDOM().
+func listRandomByKey(ctx context.Context, whereClause string, args []interface{}, seed float64, seedN, perPage, offset int) []MediaRow {
+	seedArgs := append(append([]interface{}{}, args...), seed)
+	highWhere := andCond(whereClause, fmt.Sprintf("m.rand_key >= $%d", seedN))
+
+	high := queryRandPage(ctx, highWhere, seedArgs, perPage, offset)
+	if len(high) >= perPage {
+		return high
+	}
+
+	// High part exhausted (or offset is past it) — wrap to the low part (rand_key < seed).
+	lowWhere := andCond(whereClause, fmt.Sprintf("m.rand_key < $%d", seedN))
+	highCount := offset + len(high) // valid when offset was within the high part
+	if len(high) == 0 {
+		highCount = countCards(ctx, highWhere, seedArgs)
+	}
+	lowOffset := offset - highCount
+	if lowOffset < 0 {
+		lowOffset = 0
+	}
+	low := queryRandPage(ctx, lowWhere, seedArgs, perPage-len(high), lowOffset)
+	return append(high, low...)
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────

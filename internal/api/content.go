@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"movies-api/db/models"
 	"movies-api/db/store"
 	"net"
@@ -393,13 +394,36 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 	if q.Get("hide_unrated") == "1" {
 		f.HideUnrated = true
 	}
+	// genre_* / genre_random: indexed random-key paging. The seed (a point in the
+	// rand_key permutation) is random per request, but the client echoes it back on
+	// later pages so full-screen scrolling never repeats a card.
+	if strings.HasPrefix(category, "genre_") {
+		seed := categorySeed(q.Get("seed"))
+		f.RandSeed = &seed
+	}
 	applyHideWatched(r, &f, profileID)
 	applyChildFilter(r, &f, profileID)
 	applyAdultTextFilter(r, &f, profileID)
 	applyCatalogTrackers(&f)
 
 	rows, total := store.ListCategory(f)
+	if f.RandSeed != nil {
+		// total is skipped by ListCategory for the seek path — use the cached
+		// per-category count (refreshed once per parser run) so total_pages is exact.
+		total = cachedCategoryCount(category)
+	}
 	sendCategoryResponse(w, rows, total, page, perPage)
+}
+
+// categorySeed parses the client-supplied seed (a float in [0,1)); when absent or
+// invalid it returns a fresh random seed so each first request is randomly ordered.
+func categorySeed(s string) float64 {
+	if s != "" {
+		if v, err := strconv.ParseFloat(s, 64); err == nil && v >= 0 && v < 1 {
+			return v
+		}
+	}
+	return rand.Float64()
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
