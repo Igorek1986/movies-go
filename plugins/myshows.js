@@ -329,10 +329,26 @@
         return false;
     }
 
+    // NP настроен пользователем и есть все реквизиты для запроса.
+    // Не зависит от пинга (isNpConnected) — нужно для чтения до его завершения.
+    function isNpConfigured() {
+        var useNp = getProfileSetting('myshows_use_np', false);
+        var npEnabled = (useNp === true || useNp === 'true');
+        return npEnabled && !!getProfileSetting('myshows_token') &&
+               !!getNpToken() && !!getNpBaseUrl();
+    }
+
     // Загрузка кеша
     function loadCacheFromServer(path, propertyName, callback, options) {
 
         var mode = getStorageMode();
+        // options.forceNp — читать с NP по настройке, не дожидаясь пинга (isNpConnected).
+        // NP-эндпоинт быстрый и требует только токен+url; при недоступности вернёт
+        // null и сработает обычный fallback. Исправляет медленный холодный старт,
+        // когда страница собирается раньше, чем пинг выставит IS_NP.
+        if (options && options.forceNp && mode !== 'np' && isNpConfigured()) {
+            mode = 'np';
+        }
         var profileId = getProfileId();
 
         if (!getProfileSetting('myshows_token')) {
@@ -363,6 +379,16 @@
             npNet.silent(npUrl,
                 function(response) {
                     if (response && response.results) {
+                        // NP-сервер отдаёт myshows_id (snake_case), а весь плагин
+                        // матчит по myshowsId. Без этого надёжный матч по ID не
+                        // срабатывает → дедуп падает на сравнение имён и в "Непросмотренных"
+                        // появляются дубли карточек (см. updateUIIfNeeded / findCardInMyShowsSection).
+                        for (var ri = 0; ri < response.results.length; ri++) {
+                            var item = response.results[ri];
+                            if (item && item.myshowsId === undefined && item.myshows_id !== undefined) {
+                                item.myshowsId = item.myshows_id;
+                            }
+                        }
                         response.shows = response.results;
                         callback(response);
                     } else {
@@ -2372,7 +2398,10 @@
     function getUnwatchedShowsWithDetails(callback, show) {
         Log.info('getUnwatchedShowsWithDetails called');
 
-        if (isNpConnected()) {
+        // isNpConfigured(): читаем с NP по настройке, не дожидаясь пинга — иначе на
+        // холодном старте страница соберётся раньше IS_NP и уйдёт в медленный
+        // fetchFromMyShowsAPI. forceNp ниже заставляет loadCacheFromServer идти на NP.
+        if (isNpConnected() || isNpConfigured()) {
             if (!getProfileSetting('myshows_token') || !getNpToken()) {
                 callback({ shows: [] });
                 return;
@@ -2380,7 +2409,7 @@
             loadCacheFromServer('unwatched_serials', 'shows', function(cachedResult) {
                 var shows = cachedResult && cachedResult.shows;
                 if (shows && shows.length > 0) {
-                    // В isNpConnected() картах нет watched_count/total_count — парсим из progress_marker ("3/12")
+                    // В NP-картах нет watched_count/total_count — парсим из progress_marker ("3/12")
                     shows.forEach(function(s) {
                         if (s.progress_marker && !s.watched_count) {
                             var parts = String(s.progress_marker).split('/');
@@ -2405,7 +2434,7 @@
                         callback(freshResult || { shows: [] });
                     });
                 }
-            });
+            }, { forceNp: true });
         } else if (IS_LAMPAC) {
             loadCacheFromServer('unwatched_serials', 'shows', function(cachedResult) {
                 if (cachedResult && cachedResult.shows && cachedResult.shows.length) {
@@ -3515,7 +3544,6 @@
                     else status = 'remove';
                 }
                 updateButtonStates(status, !isSerial, true);
-                Lampa.Storage.set('myshows_was_watching', false);
             }, function() {});
 
             if (isSerial) {
@@ -3523,6 +3551,9 @@
                     if (!isSameFullCardOpen(currentCard)) return;
                     if (foundShow && (foundShow.progress_marker || foundShow.next_episode || foundShow.remaining)) {
                         updateFullCardMarkers(foundShow);
+                    } else if (!foundShow) {
+                        // Сериала больше нет в "непросмотренных" → досмотрен: доводим метки и убираем
+                        completeFullCardMarkers(currentCard);
                     }
                 }, currentCard);
             }
@@ -3534,6 +3565,8 @@
                 if (!isSameFullCardOpen(currentCard)) return;
                 if (foundShow && (foundShow.progress_marker || foundShow.next_episode || foundShow.remaining)) {
                     updateFullCardMarkers(foundShow);
+                } else if (!foundShow) {
+                    completeFullCardMarkers(currentCard);
                 }
             }, currentCard);
             // serial_status/movie_status хранят id=MyShows id и без года — строгий матч
@@ -3542,7 +3575,6 @@
                 if (!isSameFullCardOpen(currentCard)) return;
                 if (foundShow) {
                     updateButtonStates(foundShow.watchStatus, false, true);
-                    Lampa.Storage.set('myshows_was_watching', false);
                 }
             });
         } else {
@@ -3550,7 +3582,6 @@
                 if (!isSameFullCardOpen(currentCard)) return;
                 if (foundMovie) {
                     updateButtonStates(foundMovie.watchStatus, true, true);
-                    Lampa.Storage.set('myshows_was_watching', false);
                 }
             });
         }
@@ -3610,6 +3641,41 @@
         } else if (existingNext) {
             existingNext.remove();
         }
+    }
+
+    // Сериал досмотрен (его больше нет в "непросмотренных"): доводим прогресс до N/N,
+    // остаток до 0, затем плавно убираем все метки с постера полной карточки.
+    function completeFullCardMarkers(currentCard) {
+        if (currentCard && !isSameFullCardOpen(currentCard)) return;
+
+        var posterElement = $('.full-start-new__poster');
+        if (!posterElement.length) return;
+        var posterDom = posterElement[0];
+
+        var progress  = posterDom.querySelector('.myshows-progress');
+        var remaining = posterDom.querySelector('.myshows-remaining');
+        var next      = posterDom.querySelector('.myshows-next-episode');
+
+        if (!progress && !remaining && !next) return; // меток нет — нечего завершать
+
+        if (progress) {
+            var parts = (progress.textContent || '').split('/');
+            if (parts.length === 2 && parts[1]) {
+                animateFullCardMarker(progress, parts[1] + '/' + parts[1], 'progress');
+            }
+        }
+        if (remaining) animateFullCardMarker(remaining, '0', 'remaining');
+
+        // После анимации счётчиков плавно убираем все метки
+        setTimeout(function() {
+            [progress, remaining, next].forEach(function(el) {
+                if (!el || !el.parentNode) return;
+                el.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(10px)';
+                setTimeout(function() { if (el.parentNode) el.remove(); }, 500);
+            });
+        }, 1600);
     }
 
     function animateFullCardMarker(markerElement, newValue, markerType) {
@@ -3974,6 +4040,10 @@
 
                     // ✅ ИСПРАВЛЕНО: Передаём класс маркера
                     updateCardWithAnimation(cardElement, newProgressMarker, 'myshows-progress');
+
+                    // Счётчик оставшихся серий доводим до 0
+                    cardData.remaining = 0;
+                    updateCardWithAnimation(cardElement, '0', 'myshows-remaining');
 
                     var parentSection = cardElement.closest('.items-line');
                     var allCards = parentSection.querySelectorAll('.card');
