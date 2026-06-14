@@ -972,6 +972,11 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 func categoryWhere(f CategoryFilter) (where []string, args []interface{}, n int) {
 	n = 1
 
+	// Каталог/Подборки показывают только карточки с раздачами. Метаданные-only
+	// карточки (например, дозагруженные из TMDB под список MyShows) не имеют
+	// торрентов и не должны всплывать в каталоге.
+	where = append(where, "EXISTS (SELECT 1 FROM torrents t WHERE t.card_id = m.card_id)")
+
 	if f.NewOnly || f.OldOnly {
 		delta := f.YearDelta
 		if delta < 1 {

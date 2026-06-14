@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"movies-api/db/models"
 	"movies-api/db/store"
 	"movies-api/internal/myshows"
+	"movies-api/movies/tmdb"
 	"net/http"
 	"strconv"
 	"time"
@@ -59,6 +61,55 @@ func myshowsDeviceAuth(w http.ResponseWriter, r *http.Request) (*deviceCtx, stri
 	return d, profileID
 }
 
+// ─── Lazy TMDB enrichment ─────────────────────────────────────────────────────
+
+// enrichMissingMyshowsCards дозагружает из TMDB карточки, которые есть в списке
+// MyShows, но отсутствуют в media_cards (пустой title/name). Найденные карточки
+// сохраняются через UpsertMediaCard, поэтому следующий запрос отдаётся уже из БД.
+// Торренты при этом не создаются — такая карточка скрыта из Каталога (см.
+// guard EXISTS torrents в categoryWhere) до появления реальной раздачи.
+// Возвращает true, если хотя бы одна карточка была сохранена (нужно перечитать).
+func enrichMissingMyshowsCards(cards []store.MyshowsCard) bool {
+	enriched := false
+	for _, c := range cards {
+		if c.TmdbID <= 0 || c.Title != "" || c.Name != "" {
+			continue
+		}
+		isMovie := c.MediaType == "movie"
+		ent := tmdb.GetVideoDetails(isMovie, c.TmdbID)
+		if ent == nil {
+			continue
+		}
+		ent.MediaType = c.MediaType // authoritative type from myshows_items
+		store.UpsertMediaCard(ent, &models.TorrentDetails{})
+		enriched = true
+	}
+	return enriched
+}
+
+// myshowsEnsureCards дозагружает пустые карточки и, если что-то сохранилось,
+// перечитывает список через reread для единообразного форматирования.
+func myshowsEnsureCards(cards []store.MyshowsCard, total int,
+	reread func() ([]store.MyshowsCard, int, error)) ([]store.MyshowsCard, int) {
+	if enrichMissingMyshowsCards(cards) {
+		if c2, t2, err := reread(); err == nil {
+			return c2, t2
+		}
+	}
+	return cards, total
+}
+
+// myshowsEnsureStatusCards — вариант для GetStatusPage (с totalPages).
+func myshowsEnsureStatusCards(cards []store.MyshowsCard, total, totalPages int,
+	reread func() ([]store.MyshowsCard, int, int, error)) ([]store.MyshowsCard, int, int) {
+	if enrichMissingMyshowsCards(cards) {
+		if c2, t2, tp2, err := reread(); err == nil {
+			return c2, t2, tp2
+		}
+	}
+	return cards, total, totalPages
+}
+
 // ─── Watching ─────────────────────────────────────────────────────────────────
 
 func handleMyshowsWatchingGet(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +122,9 @@ func handleMyshowsWatchingGet(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	cards, total = myshowsEnsureCards(cards, total, func() ([]store.MyshowsCard, int, error) {
+		return store.GetWatching(r.Context(), d.ID, profileID)
+	})
 	JSON(w, http.StatusOK, map[string]any{
 		"results":       nilSlice(cards),
 		"page":          1,
@@ -91,6 +145,9 @@ func handleMyshowsProfileShowsGet(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	cards, total = myshowsEnsureCards(cards, total, func() ([]store.MyshowsCard, int, error) {
+		return store.GetProfileShows(r.Context(), d.ID, profileID)
+	})
 	JSON(w, http.StatusOK, map[string]any{
 		"results":       nilSlice(cards),
 		"page":          1,
@@ -135,6 +192,9 @@ func handleMyshowsWatchingPost(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	cards, total = myshowsEnsureCards(cards, total, func() ([]store.MyshowsCard, int, error) {
+		return store.GetWatching(r.Context(), d.ID, profileID)
+	})
 	JSON(w, http.StatusOK, map[string]any{
 		"results":       nilSlice(cards),
 		"page":          1,
@@ -160,6 +220,9 @@ func handleMyshowsStatusGet(cacheType string) http.HandlerFunc {
 			Error(w, http.StatusInternalServerError, "db error")
 			return
 		}
+		cards, total, totalPages = myshowsEnsureStatusCards(cards, total, totalPages, func() ([]store.MyshowsCard, int, int, error) {
+			return store.GetStatusPage(r.Context(), d.ID, profileID, cacheType, page)
+		})
 		JSON(w, http.StatusOK, map[string]any{
 			"results":       nilSlice(cards),
 			"page":          page,
@@ -193,6 +256,9 @@ func handleMyshowsStatusPost(cacheType string) http.HandlerFunc {
 			Error(w, http.StatusInternalServerError, "db error")
 			return
 		}
+		cards, total, totalPages = myshowsEnsureStatusCards(cards, total, totalPages, func() ([]store.MyshowsCard, int, int, error) {
+			return store.GetStatusPage(r.Context(), d.ID, profileID, cacheType, page)
+		})
 		JSON(w, http.StatusOK, map[string]any{
 			"results":       nilSlice(cards),
 			"page":          page,
