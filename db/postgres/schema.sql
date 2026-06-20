@@ -404,6 +404,11 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS child_birth_year SMALLINT;
 -- Migration: TMDB keyword IDs for child content filtering
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS keyword_ids INTEGER[];
 
+-- Migration: id непросмотренных серий для каждого watching-сериала (NP-кэш). Позволяет
+-- клиенту на холодном старте сразу знать, какие серии непросмотрены (myshows.js
+-- isEpisodeUnwatched), а не только их количество.
+ALTER TABLE myshows_watching ADD COLUMN IF NOT EXISTS unwatched_episode_ids BIGINT[];
+
 -- Migration: materialised random key for fast random collections (genre_*, genre_random).
 -- The column must be added before its index — for an existing DB the CREATE TABLE above
 -- is a no-op, so the index is created here rather than in the index section.

@@ -9,13 +9,14 @@ const myshowsPageSize = 20
 
 // MyshowsStatusItem is the incoming item from the plugin.
 type MyshowsStatusItem struct {
-	MyshowsID      int
-	TmdbID         int64
-	MediaType      string
-	CacheType      string  // watching/watchlist/watched/cancelled
-	UnwatchedCount *int
-	NextEpisode    *string
-	ProgressMarker *string
+	MyshowsID         int
+	TmdbID            int64
+	MediaType         string
+	CacheType         string // watching/watchlist/watched/cancelled
+	UnwatchedCount    *int
+	NextEpisode       *string
+	ProgressMarker    *string
+	UnwatchedEpisodes []int64 // id непросмотренных серий (для watching)
 }
 
 // MyshowsCard is the outgoing card for list responses.
@@ -37,6 +38,7 @@ type MyshowsCard struct {
 	UnwatchedCount  *int    `json:"unwatched_count,omitempty"`
 	NextEpisode     *string `json:"next_episode,omitempty"`
 	ProgressMarker  *string `json:"progress_marker,omitempty"`
+	UnwatchedEpisodes []int64 `json:"unwatched_episodes,omitempty"`
 }
 
 // ─── Watching ─────────────────────────────────────────────────────────────────
@@ -76,14 +78,15 @@ func UpsertWatching(ctx context.Context, deviceID int64, profileID string, items
 		itemIDs = append(itemIDs, itemID)
 
 		_, err = tx.Exec(ctx, `
-			INSERT INTO myshows_watching (device_id, profile_id, item_id, unwatched_count, next_episode, progress_marker, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, now())
+			INSERT INTO myshows_watching (device_id, profile_id, item_id, unwatched_count, next_episode, progress_marker, unwatched_episode_ids, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, now())
 			ON CONFLICT (device_id, profile_id, item_id) DO UPDATE SET
-				unwatched_count = EXCLUDED.unwatched_count,
-				next_episode    = EXCLUDED.next_episode,
-				progress_marker = EXCLUDED.progress_marker,
-				updated_at      = now()`,
-			deviceID, profileID, itemID, it.UnwatchedCount, it.NextEpisode, it.ProgressMarker,
+				unwatched_count       = EXCLUDED.unwatched_count,
+				next_episode          = EXCLUDED.next_episode,
+				progress_marker       = EXCLUDED.progress_marker,
+				unwatched_episode_ids = EXCLUDED.unwatched_episode_ids,
+				updated_at            = now()`,
+			deviceID, profileID, itemID, it.UnwatchedCount, it.NextEpisode, it.ProgressMarker, it.UnwatchedEpisodes,
 		)
 		if err != nil {
 			return err
@@ -126,7 +129,7 @@ func GetWatching(ctx context.Context, deviceID int64, profileID string) ([]Mysho
 		       COALESCE(mc.overview,''), COALESCE(mc.vote_average,0),
 		       COALESCE(mc.release_date::text,''), COALESCE(mc.first_air_date::text,''),
 		       COALESCE(mc.number_of_seasons,0),
-		       mw.unwatched_count, mw.next_episode, mw.progress_marker
+		       mw.unwatched_count, mw.next_episode, mw.progress_marker, mw.unwatched_episode_ids
 		FROM myshows_watching mw
 		JOIN myshows_items mi ON mi.id = mw.item_id
 		LEFT JOIN media_cards mc ON mc.tmdb_id = mi.tmdb_id AND mc.media_type = mi.media_type
@@ -146,7 +149,7 @@ func GetWatching(ctx context.Context, deviceID int64, profileID string) ([]Mysho
 			&c.Title, &c.OriginalTitle,
 			&c.PosterPath, &c.BackdropPath, &c.Overview, &c.VoteAverage,
 			&releaseDate, &firstAirDate, &c.NumberOfSeasons,
-			&c.UnwatchedCount, &c.NextEpisode, &c.ProgressMarker,
+			&c.UnwatchedCount, &c.NextEpisode, &c.ProgressMarker, &c.UnwatchedEpisodes,
 		); err != nil {
 			continue
 		}

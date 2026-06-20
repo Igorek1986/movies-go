@@ -19,9 +19,10 @@ type myshowsStatusReq struct {
 	TmdbID         int64   `json:"tmdb_id"`
 	MediaType      string  `json:"media_type"`
 	CacheType      string  `json:"cache_type"`
-	UnwatchedCount *int    `json:"unwatched_count"`
-	NextEpisode    *string `json:"next_episode"`
-	ProgressMarker *string `json:"progress_marker"`
+	UnwatchedCount    *int    `json:"unwatched_count"`
+	NextEpisode       *string `json:"next_episode"`
+	ProgressMarker    *string `json:"progress_marker"`
+	UnwatchedEpisodes []int64 `json:"unwatched_episodes"`
 }
 
 // Only myshows_id + cache_type (for serial_status / movie_status paths).
@@ -41,9 +42,10 @@ func toStoreItems(reqs []myshowsStatusReq) []store.MyshowsStatusItem {
 			TmdbID:         r.TmdbID,
 			MediaType:      r.MediaType,
 			CacheType:      r.CacheType,
-			UnwatchedCount: r.UnwatchedCount,
-			NextEpisode:    r.NextEpisode,
-			ProgressMarker: r.ProgressMarker,
+			UnwatchedCount:    r.UnwatchedCount,
+			NextEpisode:       r.NextEpisode,
+			ProgressMarker:    r.ProgressMarker,
+			UnwatchedEpisodes: r.UnwatchedEpisodes,
 		})
 	}
 	return out
