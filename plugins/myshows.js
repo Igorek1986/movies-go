@@ -25,6 +25,10 @@
     var checkedEpisodes = {};
     // Фильмы (tmdbId), уже отмеченные "Просмотрел" в этой сессии — тот же 2-мин guard.
     var checkedMovies = {};
+    // tmdbId сериалов, только что переведённых в "Смотрю": данные непросмотренных ещё не
+    // подгрузились (_unwatchedEpisodeIds пуст для них) — пока галочки ставим только реально
+    // отмеченным сериям (checkedEpisodes), иначе мигают на всех. Снимается после fetchFromMyShowsAPI.
+    var _pendingWatchedShows = {};
     // In-memory set id непросмотренных серий. Заполняется в fetchFromMyShowsAPI (lists.EpisodesUnwatched,
     // где есть id серий — в отличие от NP-кэша /myshows/watching, хранящего только счётчики).
     // fetchFromMyShowsAPI зовётся при старте (через таймаут) и после каждой отметки → set всегда актуален.
@@ -67,11 +71,17 @@
             return;
         }
         watchingTransitionInFlight[key] = true;
+        if (key) _pendingWatchedShows[key] = true; // данные ещё не загружены → строгий режим галочек
         Log.info('[MS-guard] Переводим сериал в Смотрю (' + reason + ', tmdbId=' + key + ')');
         setMyShowsStatus(card, 'watching', function(success) {
             watchingTransitionInFlight[key] = false;
             if (success) {
                 setCardStatusCache(card.id, false, 'watching');
+                _myShowsDirty = true;
+                // Авто-переход в "Смотрю" из-за просмотра серии: навешиваем метки на карточки
+                // главной и вставляем в "Непросмотренные" (с ретраями до появления в кэше).
+                // При ручном нажатии кнопки это делает обработчик кнопки — здесь только авто-путь.
+                addUnwatchedTraces(card);
                 // Кнопки перерисуем при возврате на full (activity 'archive') — для плавного перехода.
                 Log.info('[MS-guard] ✅ сериал переведён в Смотрю (tmdbId=' + key + ')');
             } else {
@@ -1823,6 +1833,7 @@
                 _unwatchedEpisodeIds = newUnwatchedIds;
                 _unwatchedEpisodeIdsReady = true;
                 _unwatchedEpisodeIdsProfile = startProfile;
+                _pendingWatchedShows = {}; // данные подгрузились → строгий режим галочек больше не нужен
                 Log.info('[MS-guard] in-memory непросмотренных серий: ' + Object.keys(newUnwatchedIds).length);
                 // Набор непросмотренных мог измениться (в т.ч. правки на сайте) → обновляем галочки.
                 scheduleEpisodeBadgeDecorate();
@@ -5192,7 +5203,7 @@
     }
 
     // Навесить/снять галочку на одной DOM-карточке серии.
-    function decorateOneEpisodeCard(cardEl, lookup, fallbackSeason) {
+    function decorateOneEpisodeCard(cardEl, lookup, fallbackSeason, strict) {
         var entry = null;
 
         // 1) Надёжный путь: .time-line[data-hash] (есть у season-episode карточек)
@@ -5211,17 +5222,34 @@
         }
 
         var imgBox = cardEl.querySelector('.full-episode__img, .season-episode__img, .online-prestige__img');
-        // Онлайн/Торренты: если контейнера картинки нет — цепляем галочку к самой карточке.
+        // Прочие вью (Торренты и т.п.): знакомого контейнера картинки нет — берём родителя
+        // первой превью-картинки, чтобы галочка села на миниатюру, а не в угол всей строки.
+        if (!imgBox) {
+            var img = cardEl.querySelector('img');
+            if (img && img.parentNode && img.parentNode !== cardEl) imgBox = img.parentNode;
+        }
         if (!imgBox) imgBox = cardEl;
-        if (imgBox === cardEl) cardEl.classList.add('myshows-check-anchor');
+        imgBox.classList.add('myshows-check-anchor'); // position: relative для абсолютного бейджа
         var existing = imgBox.querySelector('.myshows-episode-checked');
 
-        var watched = entry && isEpisodeWatchedMyShows(entry.episodeId, entry.airDate);
+        // strict (сериал только перешёл в "Смотрю", данные ещё не загружены): галочку ставим
+        // только реально отмеченным в этой сессии сериям — иначе мигают на всех.
+        var watched = strict
+            ? (entry && !!checkedEpisodes[parseInt(entry.episodeId)])
+            : (entry && isEpisodeWatchedMyShows(entry.episodeId, entry.airDate));
         if (watched) {
             if (!existing) {
                 var badge = document.createElement('div');
                 badge.className = 'myshows-episode-checked';
                 imgBox.appendChild(badge);
+                // Торренты и пр.: картинка-превью — прямой ребёнок карточки (в неё не вложить),
+                // бейдж сел бы в правый край всей строки. Сдвигаем его к правому краю миниатюры.
+                if (imgBox === cardEl) {
+                    var thumb = cardEl.querySelector('img');
+                    if (thumb && thumb.offsetWidth && thumb.offsetWidth < cardEl.offsetWidth * 0.6) {
+                        badge.style.right = (cardEl.offsetWidth - thumb.offsetLeft - thumb.offsetWidth + 6) + 'px';
+                    }
+                }
             }
         } else if (existing) {
             existing.remove();
@@ -5243,14 +5271,22 @@
     }
 
     // Ближайший «карточный» предок таймлайна (для произвольных онлайн/торрент-скинов).
+    // Возвращает null, если таймлайн внутри hover-попапа серий на главной (.card-watched)
+    // или его носитель — постер-карточка (.card): это не эпизод-карточки, их не метим.
     function nearestCardAnchor(tlEl) {
         var n = tlEl, depth = 0;
-        while (n && depth < 6) {
-            if (n.classList && (n.classList.contains('full-episode') || n.classList.contains('season-episode') ||
-                n.classList.contains('online-prestige') || n.classList.contains('selector'))) return n;
+        while (n && depth < 8) {
+            if (n.classList) {
+                if (n.classList.contains('card-watched')) return null; // попап серий на постере
+                if (n.classList.contains('full-episode') || n.classList.contains('season-episode') ||
+                    n.classList.contains('online-prestige')) return n;
+                if (n.classList.contains('selector')) {
+                    return n.classList.contains('card') ? null : n; // .card = постер, не серия
+                }
+            }
             n = n.parentNode; depth++;
         }
-        return tlEl.parentNode;
+        return null;
     }
 
     // Собрать карточки серий во всех вью: full/season-episode, online-prestige (Lampac)
@@ -5298,8 +5334,11 @@
             return;
         }
 
+        // Сериал только что переведён в "Смотрю" — данные непросмотренных ещё не подгрузились,
+        // ставим галочки только реально отмеченным сериям (иначе мигают на всех).
+        var strict = !!_pendingWatchedShows[tmdbKey];
         for (var i = 0; i < cards.length; i++) {
-            decorateOneEpisodeCard(cards[i], lookup, episodeLineSeason(cards[i]));
+            decorateOneEpisodeCard(cards[i], lookup, episodeLineSeason(cards[i]), strict);
         }
     }
 
