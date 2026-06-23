@@ -32,6 +32,10 @@
     var _unwatchedEpisodeIds = {};
     var _unwatchedEpisodeIdsReady = false;
     var _unwatchedEpisodeIdsProfile = null;
+    // Инстанс линии «Непросмотренные» (из события line create) — для штатной вставки карточек.
+    var _myShowsLine = null;
+    // Флаг «состав непросмотренных менялся» — при возврате на главную пересобираем линию.
+    var _myShowsDirty = false;
     // Статус открытой карточки, посчитанный при открытии full (см. Listener 'full').
     // Нужен, чтобы авто-флоу не дёргал SetShowStatus/SetMovieStatus, если статус уже такой.
     // Ключ: tmdbId + ':' + (movie|tv). Значения как в резолве карточки:
@@ -2796,19 +2800,14 @@
             return null;
         }
 
-        // Добавляем новые сериалы
+        // Новые сериалы здесь НЕ вставляем (фоновый диф полного списка вставлял карточки
+        // пачкой и тянул сериалы со 2-й страницы). Если карточка уже есть в DOM — обновляем
+        // её данные. Единственный реально новый сериал вставляет путь возврата из плеера (3766).
         newShows.forEach(function(newShow) {
             if (!findInArray(newShow, oldShows)) {
                 var showName = newShow.original_name || newShow.name || newShow.title || '';
-                Log.info('Adding new show:', showName, '(myshowsId:', newShow.myshowsId, ')');
-
-                // ✅ Проверяем, есть ли карточка в DOM
                 var existingCard = findCardInMyShowsSection(showName, newShow.myshowsId);
-                if (!existingCard) {
-                    insertNewCardIntoMyShowsSection(newShow);
-                } else {
-                    Log.info('Card already exists in DOM:', showName);
-                    // Обновляем данные существующей карточки
+                if (existingCard) {
                     existingCard.card_data = existingCard.card_data || {};
                     existingCard.card_data.progress_marker = newShow.progress_marker;
                     existingCard.card_data.next_episode = newShow.next_episode;
@@ -3720,6 +3719,13 @@
             addNextEpisodeToExplorer(event.object.movie);
         }
 
+        // План B: вернулись на главную после изменений состава непросмотренных →
+        // пересобираем линию «Непросмотренные» из свежего кэша (линия теперь активна).
+        if (event.type === 'start' && (event.component === 'main' || event.component === 'category') && _myShowsDirty) {
+            _myShowsDirty = false;
+            setTimeout(reconcileMyShowsLine, 100);
+        }
+
         if (event.type === 'start' && event.component === 'full') {
             var currentCard = event.object && event.object.card;
             if (currentCard) {
@@ -4083,6 +4089,7 @@
     // перестроится через setMyShowsStatus → fetchFromMyShowsAPI; тут только живой DOM.
     function removeUnwatchedTraces(card) {
         if (!card) return;
+        _myShowsDirty = true; // состав непросмотренных изменился → пересобрать линию на главной
         var showName  = card.original_name || card.original_title || card.title || card.name;
         var myshowsId = card.myshowsId;
 
@@ -4102,15 +4109,114 @@
         // 2) Метки на ВСЕХ линиях (зеркало updateAllMyShowsCards) — снять везде, где встречается сериал
         removeMarkersFromAllCards(showName, myshowsId);
 
-        // 3) Карточка в секции "Непросмотренные" (если секция в DOM) — найти и удалить целиком
+        // 3) Карточка в секции "Непросмотренные" на главной (если секция в DOM)
         var cardEl = findCardInMyShowsSection(showName, myshowsId);
         if (cardEl) {
             var parentSection = cardEl.closest('.items-line');
             var allCards = parentSection ? parentSection.querySelectorAll('.card') : [];
             var idx = [].slice.call(allCards).indexOf(cardEl);
+            // Если линия архивная (мы на full) — переназначим её фокус-цель на предыдущую,
+            // чтобы при возврате на главную фокус встал на соседнюю, а не на первую.
+            if (_myShowsLine) {
+                var prevMain = neighborCard(allCards, idx);
+                if (prevMain) _myShowsLine.last = prevMain;
+            }
             Log.info('[MS-guard] Сериал ушёл из Смотрю → удаляем карточку из "Непросмотренные" (' + showName + ')');
             removeCompletedCard(cardEl, showName, parentSection, idx);
         }
+
+        // 4) Карточка на активной странице "Еще" (компонент myshows_unwatched/категория) —
+        // это отдельный компонент, findCardInMyShowsSection его не покрывает.
+        removeShowCardFromActiveView(card);
+    }
+
+    // План B: при возврате на главную привести линию «Непросмотренные» в соответствие свежему
+    // кэшу — линия активна, удаление корректно работает с фокусом. Только удаление:
+    // 1) устаревшие карточки (сериала больше нет в непросмотренных);
+    // 2) «хвосты» — карточки после кнопки «Еще» (.card-more).
+    // Добавление новых делается живьём (addUnwatchedTraces вставляет перед «Еще»).
+    function reconcileMyShowsLine() {
+        var section = findMyShowsSection();
+        if (!section) return;
+        loadCacheFromServer('unwatched_serials', 'shows', function(res) {
+            if (!findMyShowsSection()) return;
+            var shows = (res && res.shows) ? res.shows : [];
+
+            var moreBtn = section.querySelector('.card-more');
+            var cards = section.querySelectorAll('.card');
+            for (var i = 0; i < cards.length; i++) {
+                var el = cards[i];
+                if (!el.card_data || (el.dataset && el.dataset.removing === 'true')) continue;
+                var stale = true;
+                for (var j = 0; j < shows.length; j++) { if (sameShow(shows[j], el.card_data)) { stale = false; break; } }
+                var afterMore = moreBtn && (moreBtn.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+                if (stale || afterMore) {
+                    el.dataset.removing = 'true';
+                    var all = section.querySelectorAll('.card');
+                    var idx = [].slice.call(all).indexOf(el);
+                    Log.info('[MS-guard] reconcile: убираем карточку с главной (' + getCardName(el.card_data) + (afterMore ? ', после Еще' : ', устарела') + ')');
+                    removeCompletedCard(el, getCardName(el.card_data), section, idx);
+                }
+            }
+        });
+    }
+
+    // Соседняя карточка для фокуса: предыдущая (не помеченная на удаление), иначе следующая.
+    function neighborCard(cards, i) {
+        for (var p = i - 1; p >= 0; p--) {
+            if (cards[p] && !(cards[p].dataset && cards[p].dataset.removing === 'true')) return cards[p];
+        }
+        for (var n = i + 1; n < cards.length; n++) {
+            if (cards[n] && !(cards[n].dataset && cards[n].dataset.removing === 'true')) return cards[n];
+        }
+        return null;
+    }
+
+    // Удалить карточку сериала со страницы «Еще» (компоненты myshows_unwatched/myshows_all),
+    // в т.ч. когда она архивная (под открытой full-карточкой). Ограничено этими страницами,
+    // чтобы не трогать общий каталог. Матч по sameShow (myshowsId/любое имя).
+    function removeShowCardFromActiveView(card) {
+        if (!Lampa.Activity || !Lampa.Activity.all) return;
+        var acts = Lampa.Activity.all() || [];
+        var activeComp = (Lampa.Activity.active && Lampa.Activity.active() && Lampa.Activity.active().component) || '';
+        var name = card.original_name || card.original_title || card.title || card.name;
+        acts.forEach(function(a) {
+            if (!a || (a.component !== 'myshows_unwatched' && a.component !== 'myshows_all')) return;
+            var render = a.activity && a.activity.render && a.activity.render(true);
+            var dom = render && (render[0] || render);
+            if (!dom || !dom.querySelectorAll) return;
+            var isActivePage = a.component === activeComp;
+            var cards = dom.querySelectorAll('.card');
+            for (var i = 0; i < cards.length; i++) {
+                if (cards[i].dataset && cards[i].dataset.removing === 'true') continue;
+                if (sameShow(cards[i].card_data, card)) {
+                    cards[i].dataset.removing = 'true';
+                    Log.info('[MS-guard] Удаляем карточку со страницы "Еще" (' + name + ', ' + a.component + ', active=' + isActivePage + ')');
+                    if (isActivePage) {
+                        var cont = cards[i].parentNode;
+                        var all = cont ? cont.querySelectorAll('.card') : [];
+                        var idx = [].slice.call(all).indexOf(cards[i]);
+                        removeCompletedCard(cards[i], name, cont, idx);
+                    } else {
+                        // Архивная страница: переназначаем фокус-цель компонента (this.last) на
+                        // ПРЕДЫДУЩУЮ карточку — иначе при возврате Lampa сфокусирует первую
+                        // (this.last указывал на удаляемую). Компонент = a.activity.component.
+                        var prevDom = neighborCard(cards, i);
+                        var comp = a.activity && a.activity.component;
+                        if (prevDom && comp) {
+                            comp.last = prevDom;
+                            Log.info('[MS-guard] "Еще": фокус-цель → предыдущая карточка');
+                        }
+                        (function(el) {
+                            el.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+                            el.style.opacity = '0';
+                            el.style.transform = 'translateY(10px)';
+                            setTimeout(function() { if (el.parentNode) el.remove(); }, 400);
+                        })(cards[i]);
+                    }
+                }
+            }
+        });
     }
 
     // Сериал добавлен в "Смотрю" → сразу, без перезагрузки: метки на full-карточке + на всех
@@ -4119,6 +4225,7 @@
     // (setMyShowsStatus → fetchFromMyShowsAPI), поэтому читаем кэш с ретраями.
     function addUnwatchedTraces(card, attempt) {
         if (!card) return;
+        _myShowsDirty = true; // состав непросмотренных изменился → пересобрать линию на главной
         attempt = attempt || 0;
         var showName = card.original_name || card.original_title || card.title || card.name;
         var needle   = card.myshowsId || showName;
@@ -4552,8 +4659,9 @@
                     cardData.remaining = 0;
                     updateCardWithAnimation(cardElement, '0', 'myshows-remaining');
 
-                    var parentSection = cardElement.closest('.items-line');
-                    var allCards = parentSection.querySelectorAll('.card');
+                    // На «Еще»/категории контейнер не .items-line — фолбэк на parentNode.
+                    var parentSection = cardElement.closest('.items-line') || cardElement.parentNode;
+                    var allCards = parentSection ? parentSection.querySelectorAll('.card') : [];
                     var currentIndex = [].slice.call(allCards).indexOf(cardElement);
 
                     setTimeout(function() {
@@ -4566,19 +4674,21 @@
     }
 
     function removeCompletedCard(cardElement, showName, parentSection, cardIndex) {
+        // Контейнер карточек: на «Еще» (категория) это не .items-line — берём parentNode.
+        if (!parentSection) parentSection = cardElement.parentNode;
 
         // Проверяем, находится ли фокус на удаляемой карточке
         var isCurrentlyFocused = cardElement.classList.contains('focus');
 
-        // Определяем следующую карточку для фокуса только если карточка сейчас в фокусе
+        // Карточка для фокуса: предпочитаем ПРЕДЫДУЩУЮ соседнюю; если удаляем первую — следующую.
         var nextCard = null;
         if (isCurrentlyFocused) {
             var allCards = parentSection.querySelectorAll('.card');
 
-            if (cardIndex < allCards.length - 1) {
-                nextCard = allCards[cardIndex + 1]; // Следующая карточка
-            } else if (cardIndex > 0) {
+            if (cardIndex > 0) {
                 nextCard = allCards[cardIndex - 1]; // Предыдущая карточка
+            } else if (cardIndex < allCards.length - 1) {
+                nextCard = allCards[cardIndex + 1]; // Если первая — следующая
             }
         }
 
@@ -4646,6 +4756,84 @@
         return null;
     }
 
+    // Один и тот же сериал? Сравниваем по myshowsId и по ЛЮБОМУ из имён (русское/оригинал),
+    // т.к. у карточек имя бывает то русским, то оригинальным, а myshowsId порой undefined.
+    function sameShow(a, b) {
+        if (!a || !b) return false;
+        if (a.myshowsId && b.myshowsId && a.myshowsId === b.myshowsId) return true;
+        var an = [a.name, a.title, a.original_name, a.original_title];
+        var bn = [b.name, b.title, b.original_name, b.original_title];
+        for (var i = 0; i < an.length; i++) {
+            if (!an[i]) continue;
+            var x = String(an[i]).toLowerCase();
+            for (var j = 0; j < bn.length; j++) {
+                if (bn[j] && String(bn[j]).toLowerCase() === x) return true;
+            }
+        }
+        return false;
+    }
+
+    // Дубль: карточка уже есть в секции (DOM) или в данных линии (results, даже не отрисована).
+    function showAlreadyInLine(line, showData) {
+        var section = findMyShowsSection();
+        if (section) {
+            var cards = section.querySelectorAll('.card');
+            for (var i = 0; i < cards.length; i++) {
+                if (sameShow(cards[i].card_data, showData)) return true;
+            }
+        }
+        var arr = (line.data && line.data.results) || [];
+        for (var k = 0; k < arr.length; k++) {
+            if (sameShow(arr[k], showData)) return true;
+        }
+        return false;
+    }
+
+    // Вставка через инстанс линии: createAndAppend создаёт карточку механизмом линии — она
+    // попадает в this.items и вешает on('visible'→collectionAppend), поэтому навигация её
+    // видит и фокус доходит. Возвращает true, если вставка прошла (или дубль уже есть),
+    // false — линия недоступна (тогда fallback на старый ручной путь).
+    function insertViaLine(showData) {
+        var line = _myShowsLine;
+        if (!line || !line.emit || !line.render || !line.data) return false;
+
+        var html, dom;
+        try { html = line.render(true); dom = (html && (html[0] || html)) || null; } catch (e) { return false; }
+        if (!dom || !document.body.contains(dom)) return false;
+
+        if (showAlreadyInLine(line, showData)) {
+            Log.info('[MS-line] insertViaLine: дубль, пропуск');
+            return true; // карточка уже есть в DOM или в данных линии
+        }
+
+        try {
+            // НЕ пушим в line.data.results: иначе ленивый onScroll (results.slice(items.length))
+            // создаст карточку повторно из этой записи — дубль на позиции ~21. createAndAppend
+            // и так кладёт её в this.items (рендерится в конце отрисованных, фокус доходит).
+            line.emit('createAndAppend', showData);
+
+            // card_data + метки на свежесозданной карточке (последняя в this.items)
+            var item = line.items && line.items[line.items.length - 1];
+            if (item && item.render) {
+                var el = item.render(true);
+                var elDom = el && (el[0] || el);
+                if (elDom) {
+                    elDom.card_data = showData;
+                    // Поставить перед кнопкой «Еще» (.card-more), иначе карточка висит после неё.
+                    if (elDom.parentNode) {
+                        var moreBtn = elDom.parentNode.querySelector('.card-more');
+                        if (moreBtn && moreBtn !== elDom) elDom.parentNode.insertBefore(elDom, moreBtn);
+                    }
+                }
+                addProgressMarkerToCard(el, showData);
+            }
+        } catch (e) {
+            Log.error('insertViaLine error', e);
+            return false;
+        }
+        return true;
+    }
+
     function insertNewCardIntoMyShowsSection(showData, retryCount) {
         // Guard от гонок: данные предыдущего профиля могли дорезолвиться после переключения
         if (showData && showData._renderToken !== undefined && showData._renderToken !== _profileRenderToken) {
@@ -4664,6 +4852,12 @@
             remaining: showData.remaining,
             next_episode: showData.next_episode
         });
+
+        // Штатный путь — через инстанс линии (карточка попадает в this.items, фокус доходит).
+        if (insertViaLine(showData)) {
+            Log.info('Card inserted via line instance');
+            return;
+        }
 
         if (typeof retryCount === 'undefined') {
             retryCount = 0;
@@ -7168,6 +7362,10 @@
     Lampa.Listener.follow('line', function(event) {
         if (event.data && event.data.title && event.data.title.indexOf('MyShows') !== -1) {
             if (event.type === 'create') {
+                // Запоминаем инстанс линии — через него вставляем новые карточки штатно
+                // (createAndAppend → попадают в this.items, навигация их видит).
+                _myShowsLine = event.line || null;
+
                 // Принудительно создаем все карточки после создания Line
                 if (event.data && event.data.results && event.line) {
                     event.data.results.forEach(function(show) {
