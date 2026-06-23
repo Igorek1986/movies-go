@@ -3680,10 +3680,12 @@
             var attempts = 0;
             (function tryInsert() {
                 var act = Lampa.Activity.active && Lampa.Activity.active();
-                if (!act || !act.movie || String(act.movie.id) !== String(movie.id)) return;
-                var cardEl = document.querySelector('.activity--active .explorer-card');
-                if (!cardEl) {
-                    if (nextEpisode && ++attempts < 10) setTimeout(tryInsert, 300);
+                var actOk = act && act.movie && String(act.movie.id) === String(movie.id);
+                // После закрытия плеера Explorer становится активным не мгновенно — ретраим
+                // и пока активность/карточка не та (раньше выходили сразу и метка не вставала).
+                var cardEl = actOk ? document.querySelector('.activity--active .explorer-card') : null;
+                if (!actOk || !cardEl) {
+                    if (++attempts < 12) setTimeout(tryInsert, 300);
                     return;
                 }
                 var old = cardEl.querySelector('.myshows-explorer-next');
@@ -3706,8 +3708,11 @@
 
     // Обновление метки после просмотра: плеер закрывается ПОВЕРХ Explorer-активности
     // (Торренты/Онлайн), сама активность не перезапускается и событий не шлёт.
-    // Ловим закрытие плеера; 3с — серверу нужно время отметить серию (та же
-    // задержка, что у refreshFullCardStatus на полной карточке).
+    // Ловим закрытие плеера. Раньше ждали 3с «пока сервер отметит серию», но next_episode
+    // next_episode обновляется оптимистично (applyEpisodeMarkLocally) — мгновенный отклик есть.
+    // Здесь через 3 c реконсилим с сервером: за время просмотра могла выйти новая серия / измениться
+    // статус на сайте, плюс для ВНЕШНЕГО плеера серверу нужно время распространить отметку (она
+    // уходит только на возврате в Lampa).
     if (window.Lampa && Lampa.Player && Lampa.Player.listener) {
         Lampa.Player.listener.follow('destroy', function() {
             if (!Lampa.Storage.get('myshows_was_watching', false)) return;
@@ -3715,7 +3720,7 @@
             if (!act || act.component === 'full' || !act.movie) return;
             var movie = act.movie;
             setTimeout(function() {
-                addNextEpisodeToExplorer(movie);
+                fetchFromMyShowsAPI(function() { addNextEpisodeToExplorer(movie); });
             }, 3000);
         });
     }
@@ -3763,14 +3768,16 @@
                     // Определяем тип контента
                     var isSerial = currentCard.number_of_seasons > 0 || currentCard.seasons;
 
-                    // Вместо слепых 3 c — обновляем по готовности данных: fetchFromMyShowsAPI
-                    // подтянет свежие непросмотренные (в т.ч. для только что начатого сериала,
-                    // которого ещё нет в кэше), а сетевая задержка даёт кадр для плавной анимации
-                    // меток/статуса со старого значения к новому. full при возврате не
-                    // перерисовывается, поэтому метки в DOM остаются старыми до колбэка.
-                    fetchFromMyShowsAPI(function() {
-                        refreshFullCardStatus(isSerial, originalName, currentCard);
-                    });
+                    // Реконсиляция с сервером через 3 c: за время просмотра могли появиться новые
+                    // серии или статусы, отмеченные на сайте MyShows; плюс серверу нужно время
+                    // распространить только что сделанную отметку (важно для ВНЕШНЕГО плеера, где
+                    // серия отмечается только на возврате). Мгновенный отклик уже дал оптимистичный
+                    // applyEpisodeMarkLocally; здесь подтягиваем свежие данные и сверяем метки/статус.
+                    setTimeout(function() {
+                        fetchFromMyShowsAPI(function() {
+                            refreshFullCardStatus(isSerial, originalName, currentCard);
+                        });
+                    }, 3000);
                 }
             }
         }
@@ -3781,28 +3788,31 @@
             var wasWatching = Lampa.Storage.get('myshows_was_watching', false);
 
             if (lastCard && wasWatching) {
-                // Был просмотр. Вместо слепых 3 c — обновляем по готовности данных: колбэк
-                // fetchFromMyShowsAPI подтянет свежий кэш (в т.ч. только что начатый сериал),
-                // затем обновляем/вставляем/убираем карточку в секции.
+                // Был просмотр. Через 3 c реконсилим секцию со свежими данными MyShows: за время
+                // просмотра могли появиться новые серии / отметки на сайте, плюс серверу нужно
+                // время распространить только что сделанную отметку (важно для внешнего плеера).
+                // Мгновенно секцию уже обновил оптимистичный applyEpisodeMarkLocally.
                 var originalName = lastCard.original_name || lastCard.original_title || lastCard.title;
                 var lastMyshowsId = lastCard.myshowsId;
                 Lampa.Storage.set('myshows_was_watching', false);
 
-                fetchFromMyShowsAPI(function() {
-                    var needle = lastMyshowsId || originalName;
-                    findShowInCache('unwatched_serials', 'shows', needle, function(foundShow) {
-                        if (foundShow) {
-                            var existingCard = findCardInMyShowsSection(originalName, foundShow.myshowsId);
-                            if (existingCard && foundShow.progress_marker) {
-                                updateAllMyShowsCards(originalName, foundShow.myshowsId, foundShow.progress_marker, foundShow.next_episode, foundShow.remaining);
-                            } else if (!existingCard) {
-                                insertNewCardIntoMyShowsSection(foundShow);
+                setTimeout(function() {
+                    fetchFromMyShowsAPI(function() {
+                        var needle = lastMyshowsId || originalName;
+                        findShowInCache('unwatched_serials', 'shows', needle, function(foundShow) {
+                            if (foundShow) {
+                                var existingCard = findCardInMyShowsSection(originalName, foundShow.myshowsId);
+                                if (existingCard && foundShow.progress_marker) {
+                                    updateAllMyShowsCards(originalName, foundShow.myshowsId, foundShow.progress_marker, foundShow.next_episode, foundShow.remaining);
+                                } else if (!existingCard) {
+                                    insertNewCardIntoMyShowsSection(foundShow);
+                                }
+                            } else {
+                                updateCompletedShowCard(originalName);
                             }
-                        } else {
-                            updateCompletedShowCard(originalName);
-                        }
-                    }, lastCard);
-                });
+                        }, lastCard);
+                    });
+                }, 3000);
             } else if (currentCard) {
                 // Просто навигация - обновляем сразу без таймаута
                 var originalName = currentCard.original_name || currentCard.original_title || currentCard.title;
@@ -3936,6 +3946,11 @@
             if (isSameFullCardOpen(card)) updateFullCardMarkers(show);
             // Карточка в секции "Непросмотренные" (если открыта главная) — синхронно
             updateAllMyShowsCards(showName, show.myshowsId, show.progress_marker, show.next_episode, show.remaining);
+            // "Следующая серия" в Онлайн/Торрентах: обновляем именно когда отметка применилась.
+            // Важно для ВНЕШНЕГО плеера — там серия отмечается только после возврата в Lampa,
+            // и метку нужно обновить в этот момент, а не на событии закрытия плеера.
+            var act = Lampa.Activity.active && Lampa.Activity.active();
+            if (act && act.movie && act.component !== 'full') addNextEpisodeToExplorer(card);
         });
     }
 
