@@ -3781,12 +3781,14 @@
             var wasWatching = Lampa.Storage.get('myshows_was_watching', false);
 
             if (lastCard && wasWatching) {
-                // Был просмотр - выполняем полную логику с таймаутом
+                // Был просмотр. Вместо слепых 3 c — обновляем по готовности данных: колбэк
+                // fetchFromMyShowsAPI подтянет свежий кэш (в т.ч. только что начатый сериал),
+                // затем обновляем/вставляем/убираем карточку в секции.
                 var originalName = lastCard.original_name || lastCard.original_title || lastCard.title;
                 var lastMyshowsId = lastCard.myshowsId;
                 Lampa.Storage.set('myshows_was_watching', false);
 
-                setTimeout(function() {
+                fetchFromMyShowsAPI(function() {
                     var needle = lastMyshowsId || originalName;
                     findShowInCache('unwatched_serials', 'shows', needle, function(foundShow) {
                         if (foundShow) {
@@ -3800,7 +3802,7 @@
                             updateCompletedShowCard(originalName);
                         }
                     }, lastCard);
-                }, 3000);
+                });
             } else if (currentCard) {
                 // Просто навигация - обновляем сразу без таймаута
                 var originalName = currentCard.original_name || currentCard.original_title || currentCard.title;
