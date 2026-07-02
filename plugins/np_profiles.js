@@ -35,6 +35,8 @@
     if (window.profiles_plugin) return;
     window.profiles_plugin = true;
 
+    var VERSION = '1.0.0';
+
     // ── Синхронизация настроек плагинов (window.__NMSync) ─────────────────────
     if (!window.__NMSync) {
         (function () {
@@ -1319,12 +1321,25 @@
     registerHistoryComponent();
     listenFullCardOpen();
 
+    function boot() {
+        init();
+        try {
+            Lampa.Manifest.plugins = {
+                type: 'other',
+                version: VERSION,
+                name: 'NUMParser Profiles',
+                description: 'Профили с синхронизацией через NP-сервер'
+            };
+        } catch (e) {}
+        console.log('NP-Profiles', 'plugin ready, version', VERSION);
+    }
+
     // Ждём готовности Lampa
     if (window.appready) {
-        init();
+        boot();
     } else {
         Lampa.Listener.follow('app', function (e) {
-            if (e.type === 'ready') init();
+            if (e.type === 'ready') boot();
         });
     }
 })();
