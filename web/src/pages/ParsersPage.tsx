@@ -28,6 +28,9 @@ interface ParsersData {
   kinozal_password: string
   catalog_trackers: string
   tracker_cards: Record<string, number>
+  rutor_host: string
+  kinozal_host: string
+  nnmclub_host: string
 }
 
 interface Toast {
@@ -46,6 +49,12 @@ const TRACKER_DOMAINS: Record<string, string> = {
   kinozal: 'kinozal.tv',
   nnmclub: 'nnmclub.to',
   rutor: 'rutor.info',
+}
+
+const DEFAULT_TRACKER_HOSTS: Record<string, string> = {
+  rutor: 'http://rutor.info',
+  kinozal: 'https://kinozal.tv',
+  nnmclub: 'https://nnmclub.to',
 }
 
 function formatDate(iso: string) {
@@ -73,6 +82,9 @@ export default function ParsersPage() {
   const [credModal, setCredModal] = useState<{ tracker: string; login: string; password: string } | null>(null)
   const [credSaving, setCredSaving] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [trackerHosts, setTrackerHosts] = useState<Record<string, string>>({})
+  const [hostModal, setHostModal] = useState<{ tracker: string; host: string } | null>(null)
+  const [hostSaving, setHostSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -99,6 +111,12 @@ export default function ParsersPage() {
 
     const ct = d.catalog_trackers ?? 'rutor'
     setCatalogTrackers(new Set(ct.split(',').map(s => s.trim()).filter(Boolean)))
+
+    setTrackerHosts({
+      rutor: d.rutor_host ?? '',
+      kinozal: d.kinozal_host ?? '',
+      nnmclub: d.nnmclub_host ?? '',
+    })
 
     setTrackerDates(prev => {
       const next = { ...prev }
@@ -146,6 +164,13 @@ export default function ParsersPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [credModal])
+
+  useEffect(() => {
+    if (!hostModal) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setHostModal(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [hostModal])
 
   async function api(url: string, method = 'POST', body?: object) {
     const res = await fetch(url, {
@@ -276,6 +301,27 @@ export default function ParsersPage() {
       toast(e instanceof Error ? e.message : String(e), false)
     } finally {
       setCredSaving(false)
+    }
+  }
+
+  function openHostModal(name: string) {
+    setHostModal({ tracker: name, host: trackerHosts[name] ?? '' })
+  }
+
+  async function saveHost() {
+    if (!hostModal) return
+    setHostSaving(true)
+    try {
+      await api('/api/admin/parsers/settings', 'POST', {
+        [`${hostModal.tracker}_host`]: hostModal.host.trim(),
+      })
+      toast('Домен сохранён')
+      setHostModal(null)
+      await load()
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    } finally {
+      setHostSaving(false)
     }
   }
 
@@ -472,6 +518,13 @@ export default function ParsersPage() {
                             Аккаунт
                           </button>
                         )}
+                        <button
+                          className={styles.btnSm}
+                          onClick={() => openHostModal(name)}
+                          title="Домен трекера — смена на зеркало, если основной заблокирован"
+                        >
+                          Домен
+                        </button>
                       </td>
                     </tr>
                   )
@@ -619,6 +672,53 @@ export default function ParsersPage() {
                 <button type="button" className={styles.btn} onClick={() => setCredModal(null)}>Отмена</button>
                 <button type="submit" className={`${styles.btn} ${styles.btnPrimary}`} disabled={credSaving}>
                   {credSaving ? 'Сохранение…' : 'Сохранить'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {hostModal && (
+        <div className={styles.modalOverlay} onClick={() => setHostModal(null)}>
+          <div className={styles.modalDialog} onClick={e => e.stopPropagation()}>
+            <div className={styles.modalSiteHeader}>
+              <div className={styles.modalSiteIcon}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="2" y1="12" x2="22" y2="12"/>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                </svg>
+              </div>
+              <div>
+                <div className={styles.modalSiteDomain}>
+                  {TRACKER_DOMAINS[hostModal.tracker] ?? hostModal.tracker}
+                </div>
+                <div className={styles.modalSiteDesc}>Домен трекера</div>
+              </div>
+            </div>
+            <form
+              className={styles.modalForm}
+              onSubmit={e => { e.preventDefault(); saveHost() }}
+            >
+              <label className={styles.modalLabel}>
+                Base URL
+                <input
+                  type="text"
+                  className={styles.modalInput}
+                  value={hostModal.host}
+                  onChange={e => setHostModal(m => m && { ...m, host: e.target.value })}
+                  placeholder={DEFAULT_TRACKER_HOSTS[hostModal.tracker] ?? ''}
+                  autoComplete="off"
+                  autoFocus
+                />
+              </label>
+              <p className={styles.hint}>
+                Пусто = значение по умолчанию ({DEFAULT_TRACKER_HOSTS[hostModal.tracker]}). Меняйте на зеркало, если основной домен заблокирован.
+              </p>
+              <div className={styles.modalFooter}>
+                <button type="button" className={styles.btn} onClick={() => setHostModal(null)}>Отмена</button>
+                <button type="submit" className={`${styles.btn} ${styles.btnPrimary}`} disabled={hostSaving}>
+                  {hostSaving ? 'Сохранение…' : 'Сохранить'}
                 </button>
               </div>
             </form>

@@ -120,6 +120,10 @@ var SettingDefaults = map[string]string{
 	"plugin_url":         "",
 	"donate_url":         "",
 	"popular_source_url": "",
+	// Parser trackers — override for mirror domains when the primary is blocked
+	"rutor_host":   "",
+	"kinozal_host": "",
+	"nnmclub_host": "",
 	// Legal
 	"site_name":              "Movies-API",
 	"contact_email":          "",

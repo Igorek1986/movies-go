@@ -118,6 +118,9 @@ func handleAPIAdminParsersSettings(w http.ResponseWriter, r *http.Request) {
 		KinozalLogin    *string `json:"kinozal_login"`
 		KinozalPassword *string `json:"kinozal_password"`
 		CatalogTrackers *string `json:"catalog_trackers"`
+		RutorHost       *string `json:"rutor_host"`
+		KinozalHost     *string `json:"kinozal_host"`
+		NNMClubHost     *string `json:"nnmclub_host"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		Error(w, http.StatusBadRequest, "bad request")
@@ -165,6 +168,15 @@ func handleAPIAdminParsersSettings(w http.ResponseWriter, r *http.Request) {
 	if body.CatalogTrackers != nil {
 		store.SetSetting(ctx, "catalog_trackers", *body.CatalogTrackers)
 		InvalidateCategoryCache()
+	}
+	if body.RutorHost != nil {
+		store.SetSetting(ctx, "rutor_host", *body.RutorHost)
+	}
+	if body.KinozalHost != nil {
+		store.SetSetting(ctx, "kinozal_host", *body.KinozalHost)
+	}
+	if body.NNMClubHost != nil {
+		store.SetSetting(ctx, "nnmclub_host", *body.NNMClubHost)
 	}
 
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})

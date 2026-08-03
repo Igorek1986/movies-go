@@ -449,6 +449,9 @@ const PLACEHOLDERS: Record<string, string> = {
   myshows_api_url: 'https://myshows.me/v3/rpc/',
   myshows_auth_url:'https://myshows.me/api/session',
   contact_email:   'admin@example.com',
+  rutor_host:   'http://rutor.info (пусто = по умолчанию)',
+  kinozal_host: 'https://kinozal.tv (пусто = по умолчанию)',
+  nnmclub_host: 'https://nnmclub.to (пусто = по умолчанию)',
 }
 
 const SELECT_KEYS: Record<string, string[]> = {
@@ -464,6 +467,9 @@ const CHECKBOX_KEYS: Record<string, string> = {
 
 const DESCRIPTIONS: Record<string, string> = {
   popular_source_url: 'URL публичного парсера для категории «Популярное» и форвардинга play events. Если не задан — Популярное берётся из локальной БД.',
+  rutor_host:   'Домен трекера Rutor.info. Меняйте на зеркало, если основной домен заблокирован.',
+  kinozal_host: 'Домен трекера Kinozal.tv. Меняйте на зеркало, если основной домен заблокирован.',
+  nnmclub_host: 'Домен трекера NNMClub.to. Меняйте на зеркало, если основной домен заблокирован.',
 }
 
 const LABELS: Record<string, string> = {
@@ -545,6 +551,9 @@ const LABELS: Record<string, string> = {
   rate_device_window_sec:   'Активация устройства — окно (сек)',
   cors_allowed_origins:     'CORS: доверенные origin с cookie (через запятую; base_url уже включён)',
   trusted_proxy_secret:     'Секрет доверенного прокси (X-Proxy-Token от nginx; пусто = не доверять XFF)',
+  rutor_host:   'Домен Rutor.info',
+  kinozal_host: 'Домен Kinozal.tv',
+  nnmclub_host: 'Домен NNMClub.to',
 }
 
 const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
@@ -594,6 +603,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'cors_allowed_origins', 'trusted_proxy_secret',
   ]},
   { name: 'MyShows', keys: ['myshows_api_url', 'myshows_auth_url'] },
+  { name: 'Парсер — домены трекеров', keys: ['rutor_host', 'kinozal_host', 'nnmclub_host'] },
   { name: 'TMDB обновление карточек', keys: [
     'tmdb_refresh_new_year_delta', 'tmdb_refresh_old_batch', 'tmdb_refresh_age_days',
   ]},
