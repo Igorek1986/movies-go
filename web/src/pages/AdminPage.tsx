@@ -521,6 +521,17 @@ export default function AdminPage() {
           </div>
         )}
 
+        {!stats && (
+          <div className={styles.stats}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className={styles.statCard}>
+                <div className={styles.statSkeletonValue} />
+                <div className={styles.statSkeletonLabel} />
+              </div>
+            ))}
+          </div>
+        )}
+
         {stats && (
           <div className={styles.stats}>
             <div className={`${styles.statCard} ${styles.statCardClickable}`}>

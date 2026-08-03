@@ -396,6 +396,20 @@
   margin: $spacing-xs 0 0;
 }
 
+.statSkeletonValue {
+  @include skeleton-bar;
+  height: 28px;
+  width: 60%;
+  margin: 0 auto;
+}
+
+.statSkeletonLabel {
+  @include skeleton-bar;
+  height: 11px;
+  width: 80%;
+  margin: $spacing-sm auto 0;
+}
+
 .statLink {
   display: block;
   text-decoration: none;

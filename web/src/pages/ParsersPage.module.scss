@@ -171,6 +171,11 @@
   flex-wrap: wrap;
 }
 
+.skeletonRow {
+  @include skeleton-bar;
+  height: 28px;
+}
+
 .rowDisabled td { opacity: 0.5; }
 
 // ── Order arrows ──────────────────────────────────────────────────────────────

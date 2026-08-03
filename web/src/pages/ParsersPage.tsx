@@ -428,7 +428,28 @@ export default function ParsersPage() {
             </div>
           )}
 
-          {loading && <p className={styles.empty}>Загрузка…</p>}
+          {loading && (
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th className={styles.thOrder}>Порядок</th>
+                  <th>Трекер</th>
+                  <th>Последний запуск</th>
+                  <th>Карточек</th>
+                  <th>Статус</th>
+                  <th>В каталоге</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <tr key={i}>
+                    <td colSpan={7}><div className={styles.skeletonRow} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
 
           {!loading && order.length > 0 && (
             <table className={styles.table}>
