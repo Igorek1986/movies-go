@@ -174,8 +174,15 @@
   text-align: right;
 }
 
+.thPoster { width: 56px; }
+
 .poster {
   width: 36px;
+  // Глобальный img{max-width:100%} (global.scss) на этапе intrinsic-sizing
+  // ячейки таблицы (table-layout:auto) резолвится от неопределённой ширины
+  // в 0 — картинка грузится (natural size есть), но рисуется 0px шириной.
+  // Пиксельный max-width вместо процентного разрывает эту зависимость.
+  max-width: 36px;
   height: 54px;
   object-fit: cover;
   border-radius: 4px;
@@ -261,7 +268,7 @@
     }
 
     td.posterCell { order: 1; }
-    .poster, .posterPlaceholder { width: 46px; height: 69px; }
+    .poster, .posterPlaceholder { width: 46px; max-width: 46px; height: 69px; }
 
     td.cardTitle {
       order: 2;

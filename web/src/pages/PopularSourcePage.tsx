@@ -220,7 +220,7 @@ export default function PopularSourcePage() {
               <thead>
                 <tr>
                   <SortableTh label="#" k="rank" sort={sort} onSort={toggleSort} className={styles.rank} />
-                  <th></th>
+                  <th className={styles.thPoster}></th>
                   <SortableTh label="Название" k="title" sort={sort} onSort={toggleSort} className={styles.titleCol} />
                   <SortableTh label="Год" k="year" sort={sort} onSort={toggleSort} />
                   <th>Тип</th>

@@ -202,7 +202,7 @@ export default function PopularPage() {
               <thead>
                 <tr>
                   <th className={styles.rank}>#</th>
-                  <th></th>
+                  <th className={styles.thPoster}></th>
                   <SortableTh label="Название" k="title" sort={sort} onSort={toggleSort} className={styles.titleCol} />
                   <SortableTh label="Год" k="year" sort={sort} onSort={toggleSort} />
                   <th>Тип</th>
