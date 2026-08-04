@@ -642,6 +642,7 @@ func handlePopular(w http.ResponseWriter, r *http.Request, page, perPage int, se
 			item["viewers"] = row.Viewers
 			item["avg_percent"] = row.AvgPercent
 			item["finished_rate"] = row.FinishedRate
+			item["weighted_plays"] = row.WeightedPlays
 		}
 		results = append(results, item)
 	}

@@ -223,14 +223,15 @@ func GetPopular(ctx context.Context, page, perPage int, search, date string) ([]
 		       COALESCE(ROUND(
 		           100.0 * COUNT(*) FILTER (WHERE e.max_percent >= 85)
 		           / NULLIF(COUNT(*) FILTER (WHERE e.max_percent > 0), 0)
-		       ), 0)::int AS finished_rate
+		       ), 0)::int AS finished_rate,
+		       ROUND((COUNT(*) * (CASE WHEN m.media_type = 'movie' THEN $%d::float8 ELSE $%d::float8 END))::numeric, 1) AS weighted_plays
 		FROM media_play_events e
 		JOIN media_cards m ON m.card_id = e.card_id
 		WHERE %s
 		  %s
 		GROUP BY e.card_id, m.media_type
-		ORDER BY COUNT(*) * (CASE WHEN m.media_type = 'movie' THEN $%d::float8 ELSE $%d::float8 END) DESC, e.card_id`,
-		dateWhere, searchWhere, movieWeightIdx, tvWeightIdx)
+		ORDER BY weighted_plays DESC, e.card_id`,
+		movieWeightIdx, tvWeightIdx, dateWhere, searchWhere)
 
 	var total int
 	postgres.Pool.QueryRow(ctx, //nolint:errcheck
@@ -253,15 +254,18 @@ func GetPopular(ctx context.Context, page, perPage int, search, date string) ([]
 	viewersByID := map[string]int{}
 	avgPercentByID := map[string]int{}
 	finishedRateByID := map[string]int{}
+	weightedPlaysByID := map[string]float64{}
 	for popRows.Next() {
 		var cid string
 		var plays, viewers, avgPercent, finishedRate int
-		if popRows.Scan(&cid, &plays, &viewers, &avgPercent, &finishedRate) == nil {
+		var weightedPlays float64
+		if popRows.Scan(&cid, &plays, &viewers, &avgPercent, &finishedRate, &weightedPlays) == nil {
 			cardIDs = append(cardIDs, cid)
 			playsByID[cid] = plays
 			viewersByID[cid] = viewers
 			avgPercentByID[cid] = avgPercent
 			finishedRateByID[cid] = finishedRate
+			weightedPlaysByID[cid] = weightedPlays
 		}
 	}
 	popRows.Close()
@@ -315,6 +319,7 @@ func GetPopular(ctx context.Context, page, perPage int, search, date string) ([]
 			r.Viewers = viewersByID[cid]
 			r.AvgPercent = avgPercentByID[cid]
 			r.FinishedRate = finishedRateByID[cid]
+			r.WeightedPlays = weightedPlaysByID[cid]
 			result = append(result, r)
 		}
 	}

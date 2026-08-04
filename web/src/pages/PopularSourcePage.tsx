@@ -16,6 +16,7 @@ interface SourceCard {
   plays?: number
   avg_percent?: number
   finished_rate?: number
+  weighted_plays?: number
   rank: number // popularity position from the source (1-based)
 }
 
@@ -124,11 +125,16 @@ export default function PopularSourcePage() {
     )
     const { key, dir } = sort
     const mul = dir === 'asc' ? 1 : -1
+    // «Просмотров» сортируем по weighted_plays (если источник его отдаёт) — та же
+    // метрика, что реально ранжирует «rank» (см. PopularPage.tsx).
+    const val = (c: SourceCard) => key === 'plays'
+      ? (c.weighted_plays ?? c.plays)
+      : c[key as 'viewers' | 'avg_percent' | 'finished_rate']
     return [...list].sort((a, b) => {
       if (key === 'title') return a.title.localeCompare(b.title, 'ru') * mul
       if (key === 'year') return (yearOf(a) - yearOf(b)) * mul
       if (key === 'rank') return (a.rank - b.rank) * mul
-      return (((a[key] ?? 0) as number) - ((b[key] ?? 0) as number)) * mul
+      return (((val(a) ?? 0) as number) - ((val(b) ?? 0) as number)) * mul
     })
   }, [allCards, search, typeFilter, sort])
 
@@ -250,7 +256,20 @@ export default function PopularSourcePage() {
                       <td className={styles.muted} data-label="Год">{yearOf(c) || '—'}</td>
                       <td className={styles.muted} data-label="Тип">{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
                       {hasCounts && <td className={`${styles.num} ${styles.numStrong}`} data-label="Зрителей">{typeof c.viewers === 'number' ? c.viewers.toLocaleString('ru') : '—'}</td>}
-                      {hasCounts && <td className={`${styles.num} ${styles.muted}`} data-label="Просмотров">{typeof c.plays === 'number' ? c.plays.toLocaleString('ru') : '—'}</td>}
+                      {hasCounts && (
+                        <td className={`${styles.num} ${styles.muted}`} data-label="Просмотров">
+                          {typeof c.plays === 'number' ? (
+                            <>
+                              {Math.round(c.weighted_plays ?? c.plays).toLocaleString('ru')}
+                              {typeof c.weighted_plays === 'number' && c.weighted_plays !== c.plays && (
+                                <span title="В скобках — реальное число просмотров без коэффициента movie/tv">
+                                  {' '}({c.plays.toLocaleString('ru')})
+                                </span>
+                              )}
+                            </>
+                          ) : '—'}
+                        </td>
+                      )}
                       {hasMetrics && <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Средний %">{c.avg_percent ? `${c.avg_percent}%` : '—'}</td>}
                       {hasMetrics && <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Финал">{c.avg_percent ? `${c.finished_rate}%` : '—'}</td>}
                     </tr>
