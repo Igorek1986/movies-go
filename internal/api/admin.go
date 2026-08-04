@@ -1761,7 +1761,7 @@ var settingsGroupDefs = []struct {
 	{"Общие настройки", []string{
 		"inactive_delete_days", "inactive_warn_days", "timecode_grace_days",
 		"premium_warn_days", "premium_extend_all_days", "watched_threshold",
-		"popular_period_days", "daily_task_hour",
+		"popular_period_days", "popular_weight_movie", "popular_weight_tv", "daily_task_hour",
 		"session_ttl_days", "session_renew_days", "device_token_ttl_days",
 		"device_code_ttl_minutes", "telegram_link_ttl_minutes",
 		"reset_code_ttl_minutes", "pending_2fa_ttl_sec",
@@ -2111,6 +2111,27 @@ input[type=number]{flex:none}
   </section>
 
   <section>
+    <h2>Популярное — коэффициенты</h2>
+    <p style="font-size:.82rem;color:#888;margin:0">Множитель к числу зрителей при ранжировании (1.0 = без поправки). Сериал набирает зрителей быстрее фильма — коэффициент &lt;1 уравновешивает это.</p>
+    <div style="display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem">
+      <label>Фильмы
+        <div class="row" style="margin-top:4px">
+          <input type="number" id="popWeightMovieInput" step="0.1" min="0" max="2" placeholder="1.0">
+        </div>
+      </label>
+      <label>Сериалы
+        <div class="row" style="margin-top:4px">
+          <input type="number" id="popWeightTvInput" step="0.1" min="0" max="2" placeholder="0.7">
+        </div>
+      </label>
+      <div class="row">
+        <button class="btn btn-primary" onclick="savePopularWeights()">Сохранить</button>
+        <span id="popWeightStatus" style="font-size:.82rem;color:#4a90e2"></span>
+      </div>
+    </div>
+  </section>
+
+  <section>
     <h2>Прокси</h2>
     <div id="proxyList"><span class="empty">Загрузка…</span></div>
     <hr style="border-color:#2a2a2a;margin:.5rem 0">
@@ -2289,6 +2310,24 @@ function saveParserHosts(){
     .catch(function(){s.style.color='#e74c3c';s.textContent='Ошибка';});
 }
 
+// ── Popular weights ──────────────────────────────────────────────────────────
+function loadPopularWeights(){
+  fetch('/api/admin/settings').then(function(r){return r.json();}).then(function(d){
+    document.getElementById('popWeightMovieInput').value=d.popular_weight_movie||'1.0';
+    document.getElementById('popWeightTvInput').value=d.popular_weight_tv||'0.7';
+  }).catch(function(){});
+}
+function savePopularWeights(){
+  var s=document.getElementById('popWeightStatus');
+  var body={
+    popular_weight_movie:document.getElementById('popWeightMovieInput').value.trim(),
+    popular_weight_tv:document.getElementById('popWeightTvInput').value.trim()
+  };
+  fetch('/api/admin/settings/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){if(!r.ok)throw new Error();s.style.color='#4a90e2';s.textContent='Сохранено';setTimeout(function(){s.textContent=''},2000);})
+    .catch(function(){s.style.color='#e74c3c';s.textContent='Ошибка';});
+}
+
 // ── TMDB child keywords ───────────────────────────────────────────────────────
 var SUGGESTED_KW=[
   {id:281741,name:'nudity'},{id:354470,name:'sex scene'},{id:329280,name:'sexual content'},
@@ -2432,6 +2471,7 @@ twLoad();
 
 loadParsers();
 loadPats();
+loadPopularWeights();
 
 // ── Proxy management ──────────────────────────────────────────────────────────
 var pxConfigs=[], pxRoutes=[];

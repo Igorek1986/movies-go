@@ -209,6 +209,14 @@ func GetPopular(ctx context.Context, page, perPage int, search, date string) ([]
 		args = append(args, arg)
 	}
 
+	// Весовые коэффициенты movie/tv для ранжирования (настройка popular_weight_*):
+	// сериал накапливает зрителей быстрее фильма (много серий/дней), коэффициент
+	// уравновешивает это в сортировке, не искажая сами счётчики viewers/plays.
+	movieWeightIdx := len(args) + 1
+	args = append(args, GetSettingFloat(ctx, "popular_weight_movie"))
+	tvWeightIdx := len(args) + 1
+	args = append(args, GetSettingFloat(ctx, "popular_weight_tv"))
+
 	baseSQL := fmt.Sprintf(`
 		SELECT e.card_id, COUNT(*) AS weight, COUNT(DISTINCT e.ident) AS viewers,
 		       COALESCE(ROUND(AVG(e.max_percent) FILTER (WHERE e.max_percent > 0)), 0)::int AS avg_percent,
@@ -220,8 +228,9 @@ func GetPopular(ctx context.Context, page, perPage int, search, date string) ([]
 		JOIN media_cards m ON m.card_id = e.card_id
 		WHERE %s
 		  %s
-		GROUP BY e.card_id
-		ORDER BY weight DESC, e.card_id`, dateWhere, searchWhere)
+		GROUP BY e.card_id, m.media_type
+		ORDER BY COUNT(*) * (CASE WHEN m.media_type = 'movie' THEN $%d ELSE $%d END) DESC, e.card_id`,
+		dateWhere, searchWhere, movieWeightIdx, tvWeightIdx)
 
 	var total int
 	postgres.Pool.QueryRow(ctx, //nolint:errcheck
@@ -398,6 +407,13 @@ func GetPopularCards(ctx context.Context, days, limit int, date string) []Popula
 		where = "e.date = $1::date"
 		args = []any{date}
 	}
+	// Весовые коэффициенты movie/tv для ранжирования (настройка popular_weight_*) —
+	// см. комментарий в GetPopular.
+	movieWeightIdx := len(args) + 1
+	args = append(args, GetSettingFloat(ctx, "popular_weight_movie"))
+	tvWeightIdx := len(args) + 1
+	args = append(args, GetSettingFloat(ctx, "popular_weight_tv"))
+	limitIdx := len(args) + 1
 	args = append(args, limit)
 	rows, err := postgres.Pool.Query(ctx, fmt.Sprintf(
 		`SELECT e.card_id, m.tmdb_id, m.media_type, m.title,
@@ -413,8 +429,9 @@ func GetPopularCards(ctx context.Context, days, limit int, date string) []Popula
 		 JOIN media_cards m ON m.card_id = e.card_id
 		 WHERE %s
 		 GROUP BY e.card_id, m.tmdb_id, m.media_type, m.title, m.poster_path, m.release_date, m.first_air_date
-		 ORDER BY viewers DESC, plays DESC, e.card_id
-		 LIMIT $%d`, where, len(args)),
+		 ORDER BY COUNT(DISTINCT e.ident) * (CASE WHEN m.media_type = 'movie' THEN $%d ELSE $%d END) DESC,
+		          plays DESC, e.card_id
+		 LIMIT $%d`, where, movieWeightIdx, tvWeightIdx, limitIdx),
 		args...,
 	)
 	if err != nil {

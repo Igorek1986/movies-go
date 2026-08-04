@@ -46,6 +46,11 @@ var SettingDefaults = map[string]string{
 	// General
 	"watched_threshold":         "90",
 	"popular_period_days":       "30",
+	// Весовые коэффициенты для ранжирования «Популярного» (movie/tv) — сериал
+	// накапливает зрителей быстрее фильма (много серий/дней), коэффициент < 1
+	// уравновешивает это. 1.0 = без поправки.
+	"popular_weight_movie": "1.0",
+	"popular_weight_tv":    "0.7",
 	"daily_task_hour":           "2",
 	"default_timezone":          "Europe/Moscow",
 	"session_ttl_days":          "30",
@@ -191,6 +196,21 @@ func GetSettingInt(ctx context.Context, key string) int {
 	}
 	if def, ok := SettingDefaults[key]; ok {
 		if n, err := strconv.Atoi(def); err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+// GetSettingFloat returns a numeric setting value with a fallback default.
+func GetSettingFloat(ctx context.Context, key string) float64 {
+	if v, ok := GetSetting(ctx, key); ok {
+		if n, err := strconv.ParseFloat(v, 64); err == nil {
+			return n
+		}
+	}
+	if def, ok := SettingDefaults[key]; ok {
+		if n, err := strconv.ParseFloat(def, 64); err == nil {
 			return n
 		}
 	}
