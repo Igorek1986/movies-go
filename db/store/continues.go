@@ -229,7 +229,7 @@ func GetPopular(ctx context.Context, page, perPage int, search, date string) ([]
 		WHERE %s
 		  %s
 		GROUP BY e.card_id, m.media_type
-		ORDER BY COUNT(*) * (CASE WHEN m.media_type = 'movie' THEN $%d ELSE $%d END) DESC, e.card_id`,
+		ORDER BY COUNT(*) * (CASE WHEN m.media_type = 'movie' THEN $%d::float8 ELSE $%d::float8 END) DESC, e.card_id`,
 		dateWhere, searchWhere, movieWeightIdx, tvWeightIdx)
 
 	var total int
@@ -382,19 +382,22 @@ func GetPopularDaily(ctx context.Context, days int) []PopularDaily {
 
 // PopularCard is one card ranked by play activity.
 type PopularCard struct {
-	CardID       string `json:"card_id"`
-	TmdbID       int    `json:"tmdb_id"`
-	MediaType    string `json:"media_type"`
-	Title        string `json:"title"`
-	PosterPath   string `json:"poster_path"`
-	Year         string `json:"year"`
-	Viewers      int    `json:"viewers"`       // distinct people who watched
-	Plays        int    `json:"plays"`         // total play events
-	AvgPercent   int    `json:"avg_percent"`   // average deepest watch progress
-	FinishedRate int    `json:"finished_rate"` // % of plays with max_percent >= 85
+	CardID          string  `json:"card_id"`
+	TmdbID          int     `json:"tmdb_id"`
+	MediaType       string  `json:"media_type"`
+	Title           string  `json:"title"`
+	PosterPath      string  `json:"poster_path"`
+	Year            string  `json:"year"`
+	Viewers         int     `json:"viewers"`          // distinct people who watched
+	Plays           int     `json:"plays"`            // total play events
+	AvgPercent      int     `json:"avg_percent"`      // average deepest watch progress
+	FinishedRate    int     `json:"finished_rate"`    // % of plays with max_percent >= 85
+	WeightedPlays   float64 `json:"weighted_plays"` // plays × popular_weight_movie/tv — та же метрика, что ранжирует реальную категорию «Популярное» (GetPopular)
 }
 
-// GetPopularCards returns cards ranked by unique viewers. By default it covers
+// GetPopularCards returns cards ranked by weighted plays (same metric and
+// popular_weight_movie/tv coefficient as GetPopular, so the order here
+// matches the real "Популярное" catalog category). By default it covers
 // the whole `days` window; if `date` (YYYY-MM-DD) is given, it restricts the
 // ranking to play events of that single day — used by the daily-chart filter.
 func GetPopularCards(ctx context.Context, days, limit int, date string) []PopularCard {
@@ -424,14 +427,14 @@ func GetPopularCards(ctx context.Context, days, limit int, date string) []Popula
 		        COALESCE(ROUND(
 		            100.0 * COUNT(*) FILTER (WHERE e.max_percent >= 85)
 		            / NULLIF(COUNT(*) FILTER (WHERE e.max_percent > 0), 0)
-		        ), 0)::int AS finished_rate
+		        ), 0)::int AS finished_rate,
+		        ROUND((COUNT(*) * (CASE WHEN m.media_type = 'movie' THEN $%d::float8 ELSE $%d::float8 END))::numeric, 1) AS weighted_plays
 		 FROM media_play_events e
 		 JOIN media_cards m ON m.card_id = e.card_id
 		 WHERE %s
 		 GROUP BY e.card_id, m.tmdb_id, m.media_type, m.title, m.poster_path, m.release_date, m.first_air_date
-		 ORDER BY COUNT(DISTINCT e.ident) * (CASE WHEN m.media_type = 'movie' THEN $%d ELSE $%d END) DESC,
-		          plays DESC, e.card_id
-		 LIMIT $%d`, where, movieWeightIdx, tvWeightIdx, limitIdx),
+		 ORDER BY weighted_plays DESC, viewers DESC, e.card_id
+		 LIMIT $%d`, movieWeightIdx, tvWeightIdx, where, limitIdx),
 		args...,
 	)
 	if err != nil {
@@ -443,7 +446,7 @@ func GetPopularCards(ctx context.Context, days, limit int, date string) []Popula
 		var c PopularCard
 		if rows.Scan(&c.CardID, &c.TmdbID, &c.MediaType, &c.Title,
 			&c.PosterPath, &c.Year, &c.Viewers, &c.Plays,
-			&c.AvgPercent, &c.FinishedRate) == nil {
+			&c.AvgPercent, &c.FinishedRate, &c.WeightedPlays) == nil {
 			out = append(out, c)
 		}
 	}

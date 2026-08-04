@@ -16,6 +16,7 @@ interface PopularCard {
   plays: number
   avg_percent: number
   finished_rate: number
+  weighted_plays: number
 }
 
 interface PopularData {
@@ -107,10 +108,13 @@ export default function PopularPage() {
     )
     const { key, dir } = sort
     const mul = dir === 'asc' ? 1 : -1
+    // «Просмотров» сортируем по weighted_plays — той же метрике, что ранжирует
+    // реальную категорию «Популярное» в Lampa (см. GetPopular), а не по сырому plays.
+    const val = (c: PopularCard) => key === 'plays' ? c.weighted_plays : (c[key] as number)
     return [...list].sort((a, b) => {
       if (key === 'title') return a.title.localeCompare(b.title, 'ru') * mul
       if (key === 'year') return ((Number(a.year) || 0) - (Number(b.year) || 0)) * mul
-      return (((a[key] as number) || 0) - ((b[key] as number) || 0)) * mul
+      return ((val(a) || 0) - (val(b) || 0)) * mul
     })
   }, [allCards, search, typeFilter, sort])
 
@@ -227,7 +231,14 @@ export default function PopularPage() {
                       <td className={styles.muted} data-label="Год">{c.year || '—'}</td>
                       <td className={styles.muted} data-label="Тип">{c.media_type === 'movie' ? 'Фильм' : 'Сериал'}</td>
                       <td className={`${styles.num} ${styles.numStrong}`} data-label="Зрителей">{c.viewers.toLocaleString('ru')}</td>
-                      <td className={`${styles.num} ${styles.muted}`} data-label="Просмотров">{c.plays.toLocaleString('ru')}</td>
+                      <td className={`${styles.num} ${styles.muted}`} data-label="Просмотров">
+                        {Math.round(c.weighted_plays).toLocaleString('ru')}
+                        {c.weighted_plays !== c.plays && (
+                          <span title="В скобках — реальное число просмотров без коэффициента movie/tv">
+                            {' '}({c.plays.toLocaleString('ru')})
+                          </span>
+                        )}
+                      </td>
                       <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Средний %">{c.avg_percent ? `${c.avg_percent}%` : '—'}</td>
                       <td className={`${styles.num} ${c.avg_percent ? '' : styles.muted}`} data-label="Финал">{c.avg_percent ? `${c.finished_rate}%` : '—'}</td>
                     </tr>
