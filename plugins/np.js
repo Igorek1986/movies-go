@@ -1,7 +1,7 @@
  (function () {
     'use strict';
 
-    var VERSION = '1.0.0';
+    var VERSION = '1.0.1';
 
     var DEFAULT_SOURCE_NAME = 'NUMParser';
     var SOURCE_NAME = Lampa.Storage.get('numparser_source_name', DEFAULT_SOURCE_NAME);
@@ -86,6 +86,7 @@
         var currentYear = new Date().getFullYear();
         var list = [
             // ── Фиксированные строки ───────────────────────────────────────────
+            { key: 'unwatched',              title: 'Непросмотренные' },
             { key: 'myshows_unwatched',      title: 'Непросмотренные (MyShows)' },
             { key: 'np_popular',             title: 'Популярно в NP' },
             { key: 'movies_ru_new',          title: 'Новые русские фильмы' },
@@ -214,7 +215,7 @@
 
             var category = params.url;
             var page = params.page || 1;
-            var isContinues = category === 'continues' || category.indexOf('continues_') === 0;
+            var isContinues = category === 'continues' || category.indexOf('continues_') === 0 || category === 'unwatched';
             var token = '';
             if (Lampa.Storage.get('numparser_hide_watched') || isContinues) {
                 token = Lampa.Storage.get('numparser_api_key', '');
@@ -533,7 +534,7 @@
 
             function makeRequest(category, title, callback) {
                 var page = 1;
-                var isContinues = category === 'continues' || category.indexOf('continues_') === 0;
+                var isContinues = category === 'continues' || category.indexOf('continues_') === 0 || category === 'unwatched';
                 var token = '';
                 if (Lampa.Storage.get('numparser_hide_watched') || isContinues) {
                     token = Lampa.Storage.get('numparser_api_key', '');
