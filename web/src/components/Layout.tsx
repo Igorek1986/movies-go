@@ -64,6 +64,15 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   return (
     <div className={styles.layout}>
       <nav className={styles.nav}>
+        {/* Mobile burger — leftmost */}
+        <button
+          className={`${styles.burger}${menuOpen ? ' ' + styles.burgerOpen : ''}`}
+          onClick={() => setMenuOpen(o => !o)}
+          aria-label="Меню"
+        >
+          <span /><span /><span />
+        </button>
+
         <a className={styles.brand} href="/">Movies API</a>
 
         {/* Desktop */}
@@ -74,16 +83,9 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
           <button className={styles.btnLogout} onClick={handleLogout}>Выйти</button>
         </div>
 
-        {/* Mobile: profile switcher + burger */}
+        {/* Mobile: profile switcher — rightmost */}
         <div className={styles.navMobileRight}>
           <ProfileSwitcher />
-          <button
-            className={`${styles.burger}${menuOpen ? ' ' + styles.burgerOpen : ''}`}
-            onClick={() => setMenuOpen(o => !o)}
-            aria-label="Меню"
-          >
-            <span /><span /><span />
-          </button>
         </div>
       </nav>
 

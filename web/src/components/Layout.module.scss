@@ -98,7 +98,7 @@ $nav-height: 52px;
   }
 }
 
-// ── Mobile right cluster (profile switcher + burger) — visible on mobile only ─
+// ── Mobile right cluster (profile switcher) — visible on mobile only ─────────
 
 .navMobileRight {
   display: none;
@@ -111,8 +111,10 @@ $nav-height: 52px;
   }
 }
 
+// ── Burger button — leftmost, visible on mobile only ──────────────────────────
+
 .burger {
-  display: flex;
+  display: none;
   flex-direction: column;
   justify-content: center;
   gap: 5px;
@@ -136,6 +138,10 @@ $nav-height: 52px;
 
   &:hover span { background: $color-text; }
 
+  @media (max-width: $bp-md) {
+    display: flex;
+  }
+
   // Animate to X when open
   &.burgerOpen span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
   &.burgerOpen span:nth-child(2) { opacity: 0; transform: scaleX(0); }
@@ -152,23 +158,23 @@ $nav-height: 52px;
   backdrop-filter: blur(2px);
 }
 
-// ── Mobile drawer (slides from top-right / full width) ───────────────────────
+// ── Mobile drawer (slides from top-left / full width) ────────────────────────
 
 .drawer {
   position: fixed;
   top: 0;
-  right: 0;
+  left: 0;
   bottom: 0;
   width: min(280px, 85vw);
   background: $color-bg-card;
-  border-left: 1px solid $color-border;
+  border-right: 1px solid $color-border;
   z-index: 300;
   display: flex;
   flex-direction: column;
   padding: $spacing-xl $spacing-lg $spacing-lg;
   padding-top: calc(#{$spacing-xl} + env(safe-area-inset-top));
   gap: $spacing-md;
-  transform: translateX(100%);
+  transform: translateX(-100%);
   transition: transform $transition-normal;
   overflow-y: auto;
 
