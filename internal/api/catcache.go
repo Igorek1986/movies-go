@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/singleflight"
 )
@@ -129,6 +130,74 @@ func invalidateWatchedPrefix(prefix string) {
 		}
 	}
 	watchedMu.Unlock()
+}
+
+// ─── Unwatched-shows cache (per device+profile) ───────────────────────────────
+//
+// Same shape as the watched-set cache above, but for the "Непросмотренные" list.
+// Unlike genre_*/movies_new/etc. (cached by full URL, invalidated only per parser
+// run), this is profile-progress-dependent and must go stale the moment a timecode
+// changes — so it gets its own cache keyed by device+profile+percent and is dropped
+// via the same OnWatchedChanged hook as watchedCache, not the generic category cache.
+
+var (
+	unwatchedMu    sync.RWMutex
+	unwatchedCache = map[string][]store.UnwatchedTVShow{}
+	unwatchedSF    singleflight.Group
+)
+
+func unwatchedKey(deviceID int64, profileID string, percent int) string {
+	return strconv.FormatInt(deviceID, 10) + ":" + profileID + ":" + strconv.Itoa(percent)
+}
+
+// cachedUnwatchedShows returns the profile's "Непросмотренные" shows, computing and
+// caching them on a miss.
+func cachedUnwatchedShows(deviceID int64, profileID string, percent int) []store.UnwatchedTVShow {
+	k := unwatchedKey(deviceID, profileID, percent)
+	unwatchedMu.RLock()
+	shows, ok := unwatchedCache[k]
+	unwatchedMu.RUnlock()
+	if ok {
+		return shows
+	}
+	v, _, _ := unwatchedSF.Do(k, func() (any, error) {
+		unwatchedMu.RLock()
+		cached, hit := unwatchedCache[k]
+		unwatchedMu.RUnlock()
+		if hit {
+			return cached, nil
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		computed := store.UnwatchedTVShows(ctx, deviceID, profileID, percent)
+		unwatchedMu.Lock()
+		unwatchedCache[k] = computed
+		unwatchedMu.Unlock()
+		return computed, nil
+	})
+	return v.([]store.UnwatchedTVShow)
+}
+
+// InvalidateUnwatched drops the cached "Непросмотренные" list for one profile after its
+// progress changes.
+func InvalidateUnwatched(deviceID int64, profileID string) {
+	invalidateUnwatchedPrefix(strconv.FormatInt(deviceID, 10) + ":" + profileID + ":")
+}
+
+// InvalidateUnwatchedDevice drops cached "Непросмотренные" lists for all profiles of a
+// device.
+func InvalidateUnwatchedDevice(deviceID int64) {
+	invalidateUnwatchedPrefix(strconv.FormatInt(deviceID, 10) + ":")
+}
+
+func invalidateUnwatchedPrefix(prefix string) {
+	unwatchedMu.Lock()
+	for k := range unwatchedCache {
+		if strings.HasPrefix(k, prefix) {
+			delete(unwatchedCache, k)
+		}
+	}
+	unwatchedMu.Unlock()
 }
 
 // ─── Per-category totals (random collections) ────────────────────────────────

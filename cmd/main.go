@@ -108,8 +108,10 @@ func main() {
 	store.OnWatchedChanged = func(deviceID int64, profileID string) {
 		if profileID == "" {
 			api.InvalidateWatchedDevice(deviceID)
+			api.InvalidateUnwatchedDevice(deviceID)
 		} else {
 			api.InvalidateWatched(deviceID, profileID)
+			api.InvalidateUnwatched(deviceID, profileID)
 		}
 	}
 

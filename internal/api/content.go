@@ -624,7 +624,11 @@ func handleUnwatched(w http.ResponseWriter, r *http.Request, profileID string, p
 		return
 	}
 
-	shows := store.UnwatchedTVShows(r.Context(), d.ID, profileID, 90)
+	percent, _ := strconv.Atoi(r.URL.Query().Get("percent"))
+	if percent < 1 {
+		percent = 90
+	}
+	shows := cachedUnwatchedShows(d.ID, profileID, percent)
 	if len(shows) == 0 {
 		JSON(w, http.StatusOK, emptyPage(page))
 		return
@@ -668,6 +672,44 @@ func handleUnwatched(w http.ResponseWriter, r *http.Request, profileID string, p
 		"total_pages":   totalPages,
 		"total_results": total,
 	})
+}
+
+// handleUnwatchedProgress serves the unwatched-episode progress for a single TV show —
+// a cheap, targeted refresh meant to be called right after a timecode is confirmed,
+// instead of refetching the whole "Непросмотренные" list.
+func handleUnwatchedProgress(w http.ResponseWriter, r *http.Request) {
+	d := deviceFromRequest(r)
+	cardID := r.URL.Query().Get("card_id")
+	if d == nil || cardID == "" {
+		JSON(w, http.StatusOK, map[string]any{"found": false})
+		return
+	}
+
+	percent, _ := strconv.Atoi(r.URL.Query().Get("percent"))
+	if percent < 1 {
+		percent = 90
+	}
+	profileID := r.URL.Query().Get("profile_id")
+
+	show, ok := store.UnwatchedTVShowProgress(r.Context(), d.ID, profileID, cardID, percent)
+	if !ok {
+		JSON(w, http.StatusOK, map[string]any{"found": false})
+		return
+	}
+
+	resp := map[string]any{
+		"found":           true,
+		"unwatched_count": show.AiredCount - show.WatchedCount,
+		"watched_count":   show.WatchedCount,
+		"aired_count":     show.AiredCount,
+	}
+	if show.NextSeason != nil && show.NextEpisodeNum != nil {
+		resp["next_episode"] = map[string]any{
+			"season_number":  *show.NextSeason,
+			"episode_number": *show.NextEpisodeNum,
+		}
+	}
+	JSON(w, http.StatusOK, resp)
 }
 
 // ─── POST /api/view ───────────────────────────────────────────────────────────
