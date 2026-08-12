@@ -908,6 +908,9 @@ type CategoryFilter struct {
 	WatchedCardIDs []string
 	RequirePoster   bool // exclude cards with empty/null poster_path
 	RecentDays      int  // if > 0, only cards that have a torrent added to tracker within last N days
+	// CardIDs, when non-empty, restricts results to this explicit set of card_ids and
+	// orders them in the given order (e.g. profile-personalized lists like "unwatched").
+	CardIDs []string
 }
 
 // ListCategory returns a page of media_cards matching the filter.
@@ -924,7 +927,7 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 	}
 	offset := (f.Page - 1) * perPage
 
-	where, args, n := categoryWhere(f)
+	where, args, n, cardIDsIdx := categoryWhere(f)
 
 	whereClause := ""
 	if len(where) > 0 {
@@ -938,7 +941,10 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 	}
 
 	orderBy := "m.latest_torrent_date DESC NULLS LAST, m.created_at DESC"
-	if f.RandomOrder {
+	if cardIDsIdx > 0 {
+		// Profile-personalized list (e.g. "unwatched") — preserve the caller's order.
+		orderBy = fmt.Sprintf("array_position($%d::text[], m.card_id)", cardIDsIdx)
+	} else if f.RandomOrder {
 		orderBy = "RANDOM()"
 	} else if f.OrderByRating {
 		orderBy = "m.vote_average DESC NULLS LAST, m.vote_count DESC NULLS LAST, m.created_at DESC"
@@ -969,8 +975,10 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 }
 
 // categoryWhere builds the WHERE conditions (and their args) shared by ListCategory
-// and CountCategory. n is the next positional-parameter index.
-func categoryWhere(f CategoryFilter) (where []string, args []interface{}, n int) {
+// and CountCategory. n is the next positional-parameter index. cardIDsIdx is the
+// positional index of the f.CardIDs arg (0 if unused), needed by ListCategory to sort
+// results in the given CardIDs order via array_position.
+func categoryWhere(f CategoryFilter) (where []string, args []interface{}, n int, cardIDsIdx int) {
 	n = 1
 
 	// Каталог/Подборки показывают только карточки с раздачами. Метаданные-only
@@ -1136,8 +1144,14 @@ func categoryWhere(f CategoryFilter) (where []string, args []interface{}, n int)
 		args = append(args, f.WatchedCardIDs)
 		n++
 	}
+	if len(f.CardIDs) > 0 {
+		where = append(where, fmt.Sprintf("m.card_id = ANY($%d)", n))
+		args = append(args, f.CardIDs)
+		cardIDsIdx = n
+		n++
+	}
 
-	return where, args, n
+	return where, args, n, cardIDsIdx
 }
 
 // WatchedCardIDs returns the set of fully-watched card_ids for a profile: movies with a
@@ -1225,7 +1239,7 @@ func scanMediaRows(qrows pgx.Rows) (rows []MediaRow) {
 func CountCategory(f CategoryFilter) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	where, args, _ := categoryWhere(f)
+	where, args, _, _ := categoryWhere(f)
 	whereClause := ""
 	if len(where) > 0 {
 		whereClause = "WHERE " + strings.Join(where, " AND ")

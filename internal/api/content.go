@@ -317,6 +317,12 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ── unwatched — TV shows with an unwatched aired episode ─────────────────
+	if category == "unwatched" {
+		handleUnwatched(w, r, profileID, page, perPage)
+		return
+	}
+
 	// ── np_popular ────────────────────────────────────────────────────────────
 	if category == "np_popular" {
 		if getPopularSourceURL(r.Context()) != "" {
@@ -600,6 +606,65 @@ func handleContinues(w http.ResponseWriter, r *http.Request, category, profileID
 	JSON(w, http.StatusOK, map[string]any{
 		"page":          page,
 		"results":       entries,
+		"total_pages":   totalPages,
+		"total_results": total,
+	})
+}
+
+// ─── Unwatched ────────────────────────────────────────────────────────────────
+
+// handleUnwatched serves TV shows the profile is watching that have an unwatched
+// aired episode — the local equivalent of MyShows' "Непросмотренные". Each item is
+// annotated with unwatched_count, watched_count, aired_count and next_episode (the
+// earliest unwatched aired episode).
+func handleUnwatched(w http.ResponseWriter, r *http.Request, profileID string, page, perPage int) {
+	d := deviceFromRequest(r)
+	if d == nil {
+		JSON(w, http.StatusOK, emptyPage(page))
+		return
+	}
+
+	shows := store.UnwatchedTVShows(r.Context(), d.ID, profileID, 90)
+	if len(shows) == 0 {
+		JSON(w, http.StatusOK, emptyPage(page))
+		return
+	}
+
+	ids := make([]string, len(shows))
+	progress := make(map[string]store.UnwatchedTVShow, len(shows))
+	for i, s := range shows {
+		ids[i] = s.CardID
+		progress[s.CardID] = s
+	}
+
+	f := store.CategoryFilter{MediaTypes: []string{"tv"}, CardIDs: ids, Page: page, PerPage: perPage}
+	applyCatalogTrackers(&f)
+	rows, total := store.ListCategory(f)
+
+	totalPages := (total + perPage - 1) / perPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	results := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		item := toMediaItem(row)
+		cardID := fmt.Sprintf("%d_%s", row.TmdbID, row.MediaType)
+		if s, ok := progress[cardID]; ok {
+			item["unwatched_count"] = s.AiredCount - s.WatchedCount
+			item["watched_count"] = s.WatchedCount
+			item["aired_count"] = s.AiredCount
+			if s.NextSeason != nil && s.NextEpisodeNum != nil {
+				item["next_episode"] = map[string]any{
+					"season_number":  *s.NextSeason,
+					"episode_number": *s.NextEpisodeNum,
+				}
+			}
+		}
+		results = append(results, item)
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"page":          page,
+		"results":       results,
 		"total_pages":   totalPages,
 		"total_results": total,
 	})

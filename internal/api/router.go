@@ -48,6 +48,7 @@ func NewRouter(mode string) http.Handler {
 	r.Get("/continues_movie", cached)
 	r.Get("/continues_tv", cached)
 	r.Get("/continues_anime", cached)
+	r.Get("/unwatched", cached)
 	r.Get("/np_popular", cached)
 	r.Get("/np_popular_daily", handlePopularDaily)
 

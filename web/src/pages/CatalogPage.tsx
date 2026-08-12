@@ -20,6 +20,10 @@ interface MediaItem {
   certification_us?: string
   category_name?: string
   year?: string
+  unwatched_count?: number
+  watched_count?: number
+  aired_count?: number
+  next_episode?: { season_number: number; episode_number: number }
 }
 
 interface CatalogResponse {
@@ -131,11 +135,27 @@ function MediaCard({ item, onClick }: CardProps) {
   const cert = getCertification(item)
   return (
     <div className={styles.card} onClick={onClick} tabIndex={0} data-card onKeyDown={e => { if (e.key === 'Enter') onClick() }}>
-      {url
-        ? <img className={styles.poster} src={url} alt={title} loading="lazy" />
-        : <div className={styles.posterPlaceholder}>{title || 'Нет постера'}</div>
-      }
-      {item.media_type === 'tv' && <span className={styles.typeBadge}>Сериал</span>}
+      <div className={styles.posterWrap}>
+        {url
+          ? <img className={styles.poster} src={url} alt={title} loading="lazy" />
+          : <div className={styles.posterPlaceholder}>{title || 'Нет постера'}</div>
+        }
+        {item.media_type === 'tv' && <span className={styles.typeBadge}>Сериал</span>}
+        {!!item.unwatched_count && (
+          <span className={styles.unwatchedBadge}>{item.unwatched_count}</span>
+        )}
+        {!!item.aired_count && (
+          <>
+            <span className={styles.progressLabel}>{item.watched_count ?? 0}/{item.aired_count}</span>
+            <div className={styles.progressTrack}>
+              <div
+                className={styles.progressFill}
+                style={{ width: `${Math.min(100, ((item.watched_count ?? 0) / item.aired_count) * 100)}%` }}
+              />
+            </div>
+          </>
+        )}
+      </div>
       <div className={styles.cardBody}>
         <p className={styles.cardTitle}>{title}</p>
         <div className={styles.cardMeta}>
@@ -143,7 +163,12 @@ function MediaCard({ item, onClick }: CardProps) {
           {item.vote_average > 0 && <span>★ {item.vote_average.toFixed(1)}</span>}
           {cert && <span className={`${styles.cert} ${styles[`cert_${cert.replace(/[^a-zA-Z0-9]/g, '_')}`] || ''}`}>{cert}</span>}
         </div>
-        <span className={styles.quality}>{item.release_quality || ' '}</span>
+        <div className={styles.cardMeta}>
+          <span className={styles.quality}>{item.release_quality || ' '}</span>
+          {item.next_episode && (
+            <span className={styles.nextEp}>S{item.next_episode.season_number}E{item.next_episode.episode_number}</span>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -679,7 +704,10 @@ export default function CatalogPage() {
         const res = await fetch('/api/categories')
         if (!res.ok) return
         const cats: Category[] = await res.json()
-        const randomized = randomizeGenres(cats)
+        // "Непросмотренные" — личная подборка (сериалы с невыпущенным новым эпизодом),
+        // не идёт через общий /api/categories (его же читает np.js для Lampa).
+        const withUnwatched: Category[] = [{ id: 'unwatched', name: 'Непросмотренные' }, ...cats]
+        const randomized = randomizeGenres(withUnwatched)
         _cache.categories = randomized
         setCategories(applyRowOrder(randomized))
       } catch {}
