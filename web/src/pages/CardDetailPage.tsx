@@ -3,6 +3,7 @@ import { useParams, Link, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl, tmdbUrl } from '@/utils/poster'
 import { useAuth } from '@/hooks/useAuth'
+import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import styles from './CardDetailPage.module.scss'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -26,8 +27,6 @@ interface Genre   { id: number; name: string }
 interface Season  { season_number: number; name: string; episode_count: number; air_date: string }
 interface CastMember { id: number; name: string; character: string; profile_path: string | null }
 interface SimilarItem { card_id: string; tmdb_id: number; media_type: string; title: string; poster_path: string; year: string }
-interface Device { id: number; name: string; token: string }
-interface Profile { device_id: number; profile_id: string; name: string }
 interface CardTimecode { item: string; percent: number; time: number; duration_sec: number | null; profile_id: string; special: boolean }
 interface TimePickerCtx { initialSec: number; maxSec: number; item: string; profileId: string }
 interface EpisodeData {
@@ -52,19 +51,6 @@ function episodeItem(season: number, ep: number, origTitle: string): string {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function loadActiveDevice(): Device | null {
-  try { const v = localStorage.getItem('active_device'); return v ? JSON.parse(v) : null } catch { return null }
-}
-function loadActiveProfile(): Profile | null {
-  try { const v = localStorage.getItem('active_profile'); return v ? JSON.parse(v) : null } catch { return null }
-}
-function saveActiveDevice(d: Device | null) {
-  try { d ? localStorage.setItem('active_device', JSON.stringify(d)) : localStorage.removeItem('active_device') } catch {}
-}
-function saveActiveProfile(p: Profile | null) {
-  try { p ? localStorage.setItem('active_profile', JSON.stringify(p)) : localStorage.removeItem('active_profile') } catch {}
-}
 
 function fmtTime(sec: number): string {
   const h = Math.floor(sec / 3600)
@@ -501,10 +487,7 @@ export default function CardDetailPage() {
   const backUrl    = (location.state as { backUrl?: string } | null)?.backUrl ?? `/catalog#${cardId}`
   const { user }   = useAuth()
 
-  const [devices,       setDevices]      = useState<Device[]>([])
-  const [profiles,      setProfiles]     = useState<Profile[]>([])
-  const [activeDevice,  setActiveDevice] = useState<Device | null>(() => loadActiveDevice())
-  const [activeProfile, setActiveProfile]= useState<Profile | null>(() => loadActiveProfile())
+  const { activeDevice, activeProfile } = useActiveProfile()
 
   const [card,         setCard]        = useState<CardDetail | null>(null)
   const [cast,         setCast]        = useState<CastMember[]>([])
@@ -532,7 +515,6 @@ export default function CardDetailPage() {
   }, [profileTimecodes])
 
   const defaultProfileId = activeProfileId || timecodes[0]?.profile_id || ''
-  const visibleProfiles = profiles.filter(p => p.device_id === activeDevice?.id)
 
   const loadTimecodes = useCallback((cid: string, devId: number) => {
     fetch(`/api/web/card-timecodes?device_id=${devId}&card_id=${encodeURIComponent(cid)}`)
@@ -540,42 +522,6 @@ export default function CardDetailPage() {
       .then((rows: CardTimecode[]) => { setTimecodes(rows ?? []); setTimecodesLoaded(true) })
       .catch(() => {})
   }, [])
-
-  // Load devices and profiles; restore saved selection
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch('/api/devices')
-        if (!res.ok) return
-        const devList: Device[] = await res.json()
-        setDevices(devList)
-        if (!devList.length) return
-
-        const allProfiles: Profile[] = []
-        await Promise.all(devList.map(async d => {
-          try {
-            const pRes = await fetch(`/api/devices/${d.id}/profiles`)
-            if (!pRes.ok) return
-            const pd: { profiles: { profile_id: string; name: string }[] } = await pRes.json()
-            for (const p of pd.profiles) allProfiles.push({ device_id: d.id, profile_id: p.profile_id, name: p.name })
-          } catch {}
-        }))
-        setProfiles(allProfiles)
-
-        // Restore saved device (validate it still exists)
-        const savedDev = loadActiveDevice()
-        const chosenDev = devList.find(d => d.id === savedDev?.id) ?? devList[0]
-        setActiveDevice(chosenDev)
-
-        // Restore saved profile for this device
-        const savedProf = loadActiveProfile()
-        const devProfiles = allProfiles.filter(p => p.device_id === chosenDev.id)
-        const chosenProf = devProfiles.find(p => p.profile_id === savedProf?.profile_id) ?? devProfiles[0] ?? null
-        setActiveProfile(chosenProf)
-      } catch {}
-    }
-    load()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!cardId) return
@@ -634,20 +580,6 @@ export default function CardDetailPage() {
     load()
     return () => { cancelled = true }
   }, [card?.card_id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  function selectDevice(d: Device) {
-    setActiveDevice(d)
-    saveActiveDevice(d)
-    const devProfiles = profiles.filter(p => p.device_id === d.id)
-    const first = devProfiles[0] ?? null
-    setActiveProfile(first)
-    saveActiveProfile(first)
-  }
-
-  function selectProfile(p: Profile) {
-    setActiveProfile(p)
-    saveActiveProfile(p)
-  }
 
   async function saveTimecodeForItem(ctx: TimePickerCtx, sec: number) {
     if (!activeDevice || !cardId) return
@@ -810,38 +742,6 @@ export default function CardDetailPage() {
             {card.genres?.length > 0 && (
               <div className={styles.genres}>
                 {card.genres.map(g => <span key={g.id} className={styles.genre}>{g.name}</span>)}
-              </div>
-            )}
-
-            {/* ── Device / profile switcher ── */}
-            {(devices.length > 1 || visibleProfiles.length > 0) && (
-              <div className={styles.deviceSwitcher}>
-                {devices.length > 1 && (
-                  <div className={styles.deviceTabGroup}>
-                    {devices.map(d => (
-                      <button
-                        key={d.id}
-                        className={`${styles.deviceTab} ${activeDevice?.id === d.id ? styles.deviceTabActive : ''}`}
-                        onClick={() => selectDevice(d)}
-                      >
-                        {d.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {visibleProfiles.length > 0 && (
-                  <div className={styles.profileTabGroup}>
-                    {visibleProfiles.map(p => (
-                      <button
-                        key={p.profile_id}
-                        className={`${styles.profileTab} ${activeProfile?.profile_id === p.profile_id ? styles.profileTabActive : ''}`}
-                        onClick={() => selectProfile(p)}
-                      >
-                        {p.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 

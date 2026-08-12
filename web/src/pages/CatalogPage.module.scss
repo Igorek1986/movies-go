@@ -22,68 +22,6 @@
   justify-content: space-between;
 }
 
-.deviceTabs {
-  display: flex;
-  gap: 0;
-  border: 1px solid $color-border;
-  border-radius: $radius-sm;
-  overflow: hidden;
-  width: fit-content;
-}
-
-.deviceTab {
-  padding: $spacing-xs $spacing-lg;
-  border: none;
-  border-right: 1px solid $color-border;
-  background: $color-bg-card;
-  color: $color-text-muted;
-  font-size: $font-size-sm;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background $transition-fast, color $transition-fast;
-
-  &:last-child { border-right: none; }
-  &:hover { background: rgba($color-primary, 0.08); color: $color-text; }
-}
-
-.deviceTabActive {
-  background: $color-primary;
-  color: #fff;
-  &:hover { background: $color-primary-hover; }
-}
-
-.profileTabs {
-  display: flex;
-  gap: $spacing-xs;
-  flex-wrap: wrap;
-  padding-left: 2px;
-}
-
-.tab {
-  padding: 2px $spacing-md;
-  border: 1px solid $color-border;
-  border-radius: $radius-full;
-  background: transparent;
-  color: $color-text-muted;
-  font-size: $font-size-xs;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background $transition-fast, color $transition-fast, border-color $transition-fast;
-
-  &:hover {
-    border-color: $color-primary;
-    color: $color-primary;
-  }
-}
-
-.tabActive {
-  background: rgba($color-primary, 0.15);
-  border-color: $color-primary;
-  color: $color-primary;
-  font-weight: 600;
-}
-
 .resetOrderBtn {
   margin-left: auto;
   padding: 2px $spacing-md;

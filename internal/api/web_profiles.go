@@ -12,6 +12,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// Sentinel path segment for the implicit "" default profile — see handleWebUpdateProfile.
+const defaultProfileURLParam = "_default"
+
 // GET /api/devices/{id}/profiles
 func handleWebListProfiles(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
@@ -101,6 +104,12 @@ func handleWebUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	profileID := chi.URLParam(r, "profile_id")
+	if profileID == defaultProfileURLParam {
+		// chi never matches an empty path segment, so the implicit "" default
+		// profile is addressed via this sentinel instead — see profileUrlParam
+		// on the frontend.
+		profileID = ""
+	}
 	var req struct {
 		Name           *string        `json:"name"`
 		Icon           *string        `json:"icon"`

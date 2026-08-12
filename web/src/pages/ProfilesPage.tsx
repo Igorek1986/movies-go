@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } fr
 import { useAuth } from '@/hooks/useAuth'
 import Layout from '@/components/Layout'
 import PasswordInput from '@/components/PasswordInput'
+import { PROFILE_ICON_IDS, profileIconSrc } from '@/utils/profileIcon'
+import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import styles from './ProfilesPage.module.scss'
 
 interface TelegramStatus {
@@ -42,18 +44,6 @@ interface SyncLogEntry {
   current?: number
   total?: number
   name?: string
-}
-
-const PROFILE_ICON_EXTS: Record<string, string> = {
-  id1: 'png', id2: 'png', id3: 'png', id4: 'png', id5: 'png', id6: 'png', id7: 'png',
-  id8: 'svg', id9: 'svg', id10: 'svg', id11: 'svg', id12: 'svg', id13: 'png',
-  id14: 'svg', id15: 'svg', id16: 'svg', id17: 'svg', id18: 'svg',
-}
-const PROFILE_ICON_IDS = Object.keys(PROFILE_ICON_EXTS)
-
-function profileIconSrc(id: string) {
-  const ext = PROFILE_ICON_EXTS[id] ?? 'svg'
-  return `/static/profileIcons/${id}.${ext}`
 }
 
 function IconPicker({ current, onSelect, onClose }: { current: string; onSelect: (id: string) => void; onClose: () => void }) {
@@ -164,6 +154,7 @@ function BirthYearPicker({ current, onSave, onClose }: {
 
 export default function ProfilesPage() {
   const { user } = useAuth()
+  const { refresh: refreshActiveProfile } = useActiveProfile()
   const [devices, setDevices] = useState<Device[]>([])
   const [visibleTokens, setVisibleTokens] = useState<Set<number>>(new Set())
   const [copied, setCopied] = useState<number | null>(null)
@@ -271,7 +262,8 @@ export default function ProfilesPage() {
     setSyncDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
     setImportDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
     setFileDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    refreshActiveProfile()
+  }, [refreshActiveProfile])
 
   const fetchTgStatus = useCallback(async () => {
     const res = await fetch('/api/telegram/status')
@@ -499,6 +491,7 @@ export default function ProfilesPage() {
     if (syncDeviceId === openProfilesFor) setSyncDeviceProfiles(filtered)
     if (importDeviceId === openProfilesFor) setImportDeviceProfiles(filtered)
     if (fileDeviceId === openProfilesFor) setFileDeviceProfiles(filtered)
+    refreshActiveProfile()
   }
 
   async function handleCreateProfile(e: React.FormEvent) {

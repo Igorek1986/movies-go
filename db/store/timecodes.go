@@ -748,10 +748,43 @@ func UpdateProfile(ctx context.Context, deviceID int64, profileID string, name, 
 		return fmt.Errorf("nothing to update")
 	}
 	args = append(args, deviceID, profileID)
-	_, err := postgres.Pool.Exec(ctx,
+	tag, err := postgres.Pool.Exec(ctx,
 		fmt.Sprintf("UPDATE profiles SET %s WHERE device_id=$%d AND profile_id=$%d",
 			strings.Join(sets, ","), n, n+1),
 		args...,
+	)
+	if err != nil || tag.RowsAffected() > 0 {
+		return err
+	}
+
+	// No row yet — e.g. the implicit "" default profile only exists via
+	// orphan timecodes, or a device with no timecodes at all. Create it.
+	var nameVal string
+	if name != nil {
+		nameVal = *name
+	}
+	var iconVal *string
+	if icon != nil && *icon != "" {
+		iconVal = icon
+	}
+	var childVal bool
+	if child != nil {
+		childVal = *child
+	}
+	var birthYearVal *int
+	if childBirthYear != nil && *childBirthYear != 0 {
+		birthYearVal = childBirthYear
+	}
+	paramsVal := "{}"
+	if params != nil {
+		b, _ := json.Marshal(params)
+		paramsVal = string(b)
+	}
+	_, err = postgres.Pool.Exec(ctx,
+		`INSERT INTO profiles (device_id, profile_id, name, icon, child, child_birth_year, params)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 ON CONFLICT (device_id, profile_id) DO NOTHING`,
+		deviceID, profileID, nameVal, iconVal, childVal, birthYearVal, paramsVal,
 	)
 	return err
 }

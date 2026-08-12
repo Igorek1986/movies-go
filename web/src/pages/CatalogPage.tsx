@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
 import { scrollV, getGridCols } from '@/utils/scrollNav'
+import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import styles from './CatalogPage.module.scss'
 
 interface MediaItem {
@@ -32,19 +33,6 @@ interface Category {
   name: string
 }
 
-interface Device {
-  id: number
-  name: string
-  token: string
-}
-
-interface Profile {
-  device_id: number
-  profile_id: string
-  name: string
-  icon?: string | null
-}
-
 // Scroll the horizontal row container so el is centered.
 // CSS scroll-behavior: smooth on .rowScroll handles the animation.
 function scrollH(el: HTMLElement) {
@@ -57,9 +45,6 @@ function scrollH(el: HTMLElement) {
 }
 
 const LS_ROW_ORDER    = 'catalog_row_order'
-const LS_DEVICE_KEY   = 'active_device'
-const LS_PROFILE_KEY  = 'active_profile'
-const LS_PROFILES_KEY = 'cached_profiles'
 const SS_SEARCH = 'catalog_search'
 
 // Module-level cache — survives SPA navigation, resets on full page reload.
@@ -132,26 +117,6 @@ function applyRowOrder(categories: Category[]): Category[] {
 
 function saveRowOrder(ids: string[]) {
   try { localStorage.setItem(LS_ROW_ORDER, JSON.stringify(ids)) } catch {}
-}
-
-
-function loadDevice(): Device | null {
-  try { return JSON.parse(localStorage.getItem(LS_DEVICE_KEY) || 'null') } catch { return null }
-}
-function saveDevice(d: Device | null) {
-  try { d ? localStorage.setItem(LS_DEVICE_KEY, JSON.stringify(d)) : localStorage.removeItem(LS_DEVICE_KEY) } catch {}
-}
-function loadProfile(): Profile | null {
-  try { return JSON.parse(localStorage.getItem(LS_PROFILE_KEY) || 'null') } catch { return null }
-}
-function saveProfile(p: Profile | null) {
-  try { p ? localStorage.setItem(LS_PROFILE_KEY, JSON.stringify(p)) : localStorage.removeItem(LS_PROFILE_KEY) } catch {}
-}
-function loadProfiles(): Profile[] {
-  try { return JSON.parse(localStorage.getItem(LS_PROFILES_KEY) || 'null') ?? [] } catch { return [] }
-}
-function saveProfiles(ps: Profile[]) {
-  try { localStorage.setItem(LS_PROFILES_KEY, JSON.stringify(ps)) } catch {}
 }
 
 interface CardProps {
@@ -356,15 +321,9 @@ interface CategoryViewProps {
   onBack: () => void
   onCardClick: (item: MediaItem) => void
   focusAfterIdx?: number
-  devices?: Device[]
-  profiles?: Profile[]
-  activeDevice?: Device | null
-  activeProfile?: Profile | null
-  onSelectDevice?: (d: Device) => void
-  onSelectProfile?: (p: Profile) => void
 }
 
-function CategoryView({ category, token, profileId, onBack, onCardClick, focusAfterIdx, devices, profiles, activeDevice, activeProfile, onSelectDevice, onSelectProfile }: CategoryViewProps) {
+function CategoryView({ category, token, profileId, onBack, onCardClick, focusAfterIdx }: CategoryViewProps) {
   const cached = _cache.catView?.id === category.id ? _cache.catView : null
 
   const [items, setItemsRaw] = useState<MediaItem[]>(cached?.items ?? [])
@@ -515,43 +474,9 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
     }, 400)
   }
 
-  const catVisibleProfiles = (profiles ?? []).filter(p => p.device_id === activeDevice?.id)
-  const catShowDeviceTabs = (devices ?? []).length > 1
-  const catShowProfileTabs = catVisibleProfiles.length > 0
-
   return (
     <div className={styles.categoryView}>
       <button className={styles.backBtn} onClick={onBack}>← Назад</button>
-      {(catShowDeviceTabs || catShowProfileTabs) && (
-        <div className={styles.toolbar}>
-          {catShowDeviceTabs && (
-            <div className={styles.deviceTabs}>
-              {devices!.map(d => (
-                <button
-                  key={d.id}
-                  className={`${styles.deviceTab} ${activeDevice?.id === d.id ? styles.deviceTabActive : ''}`}
-                  onClick={() => onSelectDevice?.(d)}
-                >
-                  {d.name}
-                </button>
-              ))}
-            </div>
-          )}
-          {catShowProfileTabs && (
-            <div className={styles.profileTabs}>
-              {catVisibleProfiles.map(p => (
-                <button
-                  key={p.profile_id}
-                  className={`${styles.tab} ${activeProfile?.profile_id === p.profile_id ? styles.tabActive : ''}`}
-                  onClick={() => onSelectProfile?.(p)}
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
       <div className={styles.categoryHeader}>
         <h2 className={styles.categoryTitle}>{category.name}</h2>
         <div ref={catSearchRef} className={styles.searchWrap}>
@@ -622,10 +547,7 @@ export default function CatalogPage() {
   const searchSentinelRef = useRef<HTMLDivElement>(null)
   const searchPageRef = useRef(1)
 
-  const [devices, setDevices] = useState<Device[]>([])
-  const [profiles, setProfiles] = useState<Profile[]>(() => loadProfiles())
-  const [activeDevice, setActiveDevice] = useState<Device | null>(() => loadDevice())
-  const [activeProfile, setActiveProfile] = useState<Profile | null>(() => loadProfile())
+  const { activeDevice, activeProfile } = useActiveProfile()
 
   const [mainSearchFloating, setMainSearchFloating] = useState(false)
   const mainSearchRef = useRef<HTMLDivElement>(null)
@@ -735,45 +657,17 @@ export default function CatalogPage() {
     return () => window.removeEventListener('scroll', check)
   }, [expandedCategory])
 
+  // Row cache is keyed by category id only (not profile) — drop it whenever the
+  // active profile actually changes so CategoryRow doesn't flash stale items
+  // while its key-driven remount re-fetches.
+  const prevProfileKeyRef = useRef<string | null | undefined>(undefined)
   useEffect(() => {
-    async function loadDevicesAndProfiles() {
-      try {
-        const res = await fetch('/api/devices')
-        if (!res.ok) return
-        const devList: Device[] = await res.json()
-        setDevices(devList)
-        if (!devList.length) return
-
-        const allProfiles: Profile[] = []
-        await Promise.all(devList.map(async d => {
-          try {
-            const pRes = await fetch(`/api/devices/${d.id}/profiles`)
-            if (!pRes.ok) return
-            const pd: { profiles: { profile_id: string; name: string }[] } = await pRes.json()
-            for (const p of pd.profiles) {
-              allProfiles.push({ device_id: d.id, profile_id: p.profile_id, name: p.name })
-            }
-          } catch {}
-        }))
-        setProfiles(allProfiles)
-        saveProfiles(allProfiles)
-
-        const savedDev  = loadDevice()
-        const savedProf = loadProfile()
-        const chosenDevice = devList.find(d => d.id === savedDev?.id) ?? devList[0]
-        setActiveDevice(chosenDevice)
-
-        const devProfiles = allProfiles.filter(p => p.device_id === chosenDevice.id)
-        const chosenProfile =
-          devProfiles.find(p => p.profile_id === savedProf?.profile_id) ?? devProfiles[0] ?? null
-        setActiveProfile(chosenProfile)
-
-        saveDevice(chosenDevice)
-        saveProfile(chosenProfile)
-      } catch {}
+    const key = activeProfile ? `${activeProfile.device_id}:${activeProfile.profile_id}` : null
+    if (prevProfileKeyRef.current !== undefined && prevProfileKeyRef.current !== key) {
+      _cache.rows = {}
     }
-    loadDevicesAndProfiles()
-  }, [])
+    prevProfileKeyRef.current = key
+  }, [activeProfile])
 
   useEffect(() => {
     if (_cache.categories.length > 0) {
@@ -882,23 +776,6 @@ export default function CatalogPage() {
     navigate(`/card/${cardId}`, { state: { backUrl } })
   }
 
-  function selectDevice(d: Device) {
-    setActiveDevice(d)
-    const devProfiles = profiles.filter(p => p.device_id === d.id)
-    const firstProfile = devProfiles[0] ?? null
-    setActiveProfile(firstProfile)
-    saveDevice(d)
-    saveProfile(firstProfile)
-    _cache.rows = {}
-  }
-
-  function selectProfile(p: Profile) {
-    setActiveProfile(p)
-    saveProfile(p)
-    _cache.rows = {}
-  }
-
-  const visibleProfiles = profiles.filter(p => p.device_id === activeDevice?.id)
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
 
@@ -1033,19 +910,6 @@ export default function CatalogPage() {
         {!expandedCat && (
           <div className={styles.toolbar}>
             <div className={styles.toolbarTop}>
-              {devices.length > 1 && (
-                <div className={styles.deviceTabs}>
-                  {devices.map(d => (
-                    <button
-                      key={d.id}
-                      className={`${styles.deviceTab} ${activeDevice?.id === d.id ? styles.deviceTabActive : ''}`}
-                      onClick={() => selectDevice(d)}
-                    >
-                      {d.name}
-                    </button>
-                  ))}
-                </div>
-              )}
               {hasCustomOrder && (
                 <button className={styles.resetOrderBtn} onClick={resetRowOrder} title="Вернуть порядок по умолчанию">
                   Сбросить порядок
@@ -1063,19 +927,6 @@ export default function CatalogPage() {
                 )}
               </div>
             </div>
-            {visibleProfiles.length > 0 && (
-              <div className={styles.profileTabs}>
-                {visibleProfiles.map(p => (
-                  <button
-                    key={p.profile_id}
-                    className={`${styles.tab} ${activeProfile?.profile_id === p.profile_id ? styles.tabActive : ''}`}
-                    onClick={() => selectProfile(p)}
-                  >
-                    {p.name}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -1087,12 +938,6 @@ export default function CatalogPage() {
             onBack={handleBack}
             onCardClick={handleCardClick}
             focusAfterIdx={expandedFocusIdx}
-            devices={devices}
-            profiles={profiles}
-            activeDevice={activeDevice}
-            activeProfile={activeProfile}
-            onSelectDevice={selectDevice}
-            onSelectProfile={selectProfile}
           />
         )}
 

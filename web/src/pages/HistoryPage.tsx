@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
 import { scrollV, getGridCols } from '@/utils/scrollNav'
+import { useActiveProfile, ACTIVE_PROFILE_STORAGE_KEY, type Device, type Profile } from '@/contexts/ActiveProfileContext'
 import styles from './HistoryPage.module.scss'
 
 interface HistoryItem {
@@ -35,18 +36,6 @@ interface HistoryResponse {
   results: HistoryItem[]
 }
 
-interface Device {
-  id: number
-  name: string
-  token: string
-}
-
-interface Profile {
-  device_id: number
-  profile_id: string
-  name: string
-}
-
 const SORT_OPTIONS = [
   { value: 'watched',       label: 'По дате просмотра' },
   { value: 'release',       label: 'По дате выхода' },
@@ -54,8 +43,6 @@ const SORT_OPTIONS = [
   { value: 'progress_desc', label: 'По прогрессу ↓' },
 ]
 
-const DEVICE_KEY  = 'active_device'
-const PROFILE_KEY = 'active_profile'
 const FILTER_KEY  = 'history_filter'
 
 function loadSavedFilter(): { mediaType: string; inProgress: boolean; sort: string } {
@@ -93,36 +80,26 @@ function buildFilterKey(devId: number | undefined, profId: string | undefined, m
 function getInitCacheIfValid(): HistCache | null {
   if (!_histCache) return null
   try {
-    const dev  = JSON.parse(localStorage.getItem(DEVICE_KEY) || 'null')
-    const prof = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null')
-    const prefix = [dev?.id, prof?.profile_id].join('|') + '|'
+    const key = JSON.parse(localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY) || 'null')
+    const prefix = [key?.device_id, key?.profile_id].join('|') + '|'
     return _histCache.filterKey.startsWith(prefix) ? _histCache : null
   } catch { return null }
 }
 
 export default function HistoryPage() {
   const navigate = useNavigate()
+  const { activeDevice, activeProfile, loaded } = useActiveProfile()
 
   const [items, setItems]         = useState<HistoryItem[]>(() => getInitCacheIfValid()?.items ?? [])
   const [counts, setCounts]       = useState<HistoryCounts | null>(() => getInitCacheIfValid()?.counts ?? null)
   const [totalPages, setTotalPages] = useState(() => getInitCacheIfValid()?.totalPages ?? 1)
   const [loading, setLoading]     = useState(false)
-  const [initialized, setInitialized] = useState(false)
 
   const [mediaType,   setMediaType]   = useState(() => getInitCacheIfValid()?.mediaType   ?? loadSavedFilter().mediaType)
   const [inProgress,  setInProgress]  = useState(() => getInitCacheIfValid()?.inProgress  ?? loadSavedFilter().inProgress)
   const [sort,        setSort]        = useState(() => getInitCacheIfValid()?.sort        ?? loadSavedFilter().sort)
   const [search,      setSearch]      = useState(() => getInitCacheIfValid()?.search      ?? '')
   const [searchInput, setSearchInput] = useState(() => getInitCacheIfValid()?.search      ?? '')
-
-  const [devices,  setDevices]  = useState<Device[]>([])
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [activeDevice, setActiveDevice] = useState<Device | null>(() => {
-    try { return JSON.parse(localStorage.getItem(DEVICE_KEY) || 'null') } catch { return null }
-  })
-  const [activeProfile, setActiveProfile] = useState<Profile | null>(() => {
-    try { return JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null') } catch { return null }
-  })
 
   const [searchFloating, setSearchFloating] = useState(false)
   const sentinelRef    = useRef<HTMLDivElement>(null)
@@ -187,62 +164,6 @@ export default function HistoryPage() {
     window.addEventListener('scroll', check, { passive: true })
     return () => window.removeEventListener('scroll', check)
   }, [])
-
-  // Load devices + profiles on mount
-  useEffect(() => {
-    async function load() {
-      const devRes = await fetch('/api/devices')
-      if (!devRes.ok) { setInitialized(true); return }
-      const devList: Device[] = await devRes.json()
-      setDevices(devList)
-
-      const savedDev  = activeDevice
-      const foundDev  = savedDev ? devList.find(d => d.id === savedDev.id) : null
-      const currentDev = foundDev ?? devList[0] ?? null
-
-      const allProfiles: Profile[] = []
-      await Promise.all(devList.map(async d => {
-        const pRes = await fetch(`/api/devices/${d.id}/profiles`)
-        if (!pRes.ok) return
-        const pd: { profiles: { profile_id: string; name: string }[] } = await pRes.json()
-        for (const p of pd.profiles) {
-          allProfiles.push({ device_id: d.id, profile_id: p.profile_id, name: p.name })
-        }
-      }))
-      setProfiles(allProfiles)
-
-      if (!currentDev) { setInitialized(true); return }
-      if (!foundDev) selectDevice(currentDev, allProfiles)
-
-      const devProfiles = allProfiles.filter(p => p.device_id === currentDev.id)
-      const savedProf   = activeProfile
-      const foundProf   = savedProf?.device_id === currentDev.id
-        ? devProfiles.find(p => p.profile_id === savedProf.profile_id)
-        : null
-      if (!foundProf && devProfiles.length > 0) selectProfile(devProfiles[0])
-
-      setInitialized(true)
-    }
-    load()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  function selectDevice(d: Device, currentProfiles: Profile[]) {
-    setActiveDevice(d)
-    localStorage.setItem(DEVICE_KEY, JSON.stringify(d))
-    const source = currentProfiles.length > 0 ? currentProfiles : profiles
-    const devProfiles = source.filter(p => p.device_id === d.id)
-    if (devProfiles.length > 0) {
-      selectProfile(devProfiles[0])
-    } else {
-      setActiveProfile(null)
-      localStorage.removeItem(PROFILE_KEY)
-    }
-  }
-
-  function selectProfile(p: Profile) {
-    setActiveProfile(p)
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(p))
-  }
 
   function handleFilterTab(type: string) {
     if (type === 'in_progress') {
@@ -417,8 +338,6 @@ export default function HistoryPage() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [navigate])
 
-  const visibleProfiles = profiles.filter(p => p.device_id === activeDevice?.id)
-
   const filterTabs = [
     { key: 'all',         label: 'Все',        count: counts?.all },
     { key: 'movie',       label: 'Фильмы',     count: counts?.movies },
@@ -430,36 +349,9 @@ export default function HistoryPage() {
     <Layout>
       <div className={styles.page}>
 
-        {/* ── Device + profile selector ── */}
-        {devices.length > 0 && (
+        {/* ── Search ── */}
+        {loaded && activeDevice && (
           <div className={styles.selectorBar}>
-            <div className={styles.selectorRow}>
-              <div className={styles.deviceTabs}>
-                {devices.map(d => (
-                  <button
-                    key={d.id}
-                    className={`${styles.deviceTab} ${activeDevice?.id === d.id ? styles.deviceTabActive : ''}`}
-                    onClick={() => selectDevice(d, profiles)}
-                  >
-                    {d.name}
-                  </button>
-                ))}
-              </div>
-              {visibleProfiles.length > 0 && (
-                <div className={styles.profileTabs}>
-                  {visibleProfiles.map(p => (
-                    <button
-                      key={p.profile_id}
-                      className={`${styles.profileTab} ${activeProfile?.profile_id === p.profile_id ? styles.profileTabActive : ''}`}
-                      onClick={() => selectProfile(p)}
-                    >
-                      {p.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
             <form className={styles.searchForm} onSubmit={handleSearch}>
               <div ref={searchWrapRef} className={styles.searchWrap}>
                 <span className={styles.searchIcon}>🔍</span>
@@ -516,13 +408,13 @@ export default function HistoryPage() {
         )}
 
         {/* ── States ── */}
-        {!initialized && <div className={styles.empty}>Загрузка…</div>}
+        {!loaded && <div className={styles.empty}>Загрузка…</div>}
 
-        {initialized && !activeProfile && (
-          <div className={styles.empty}>Выберите устройство и профиль</div>
+        {loaded && !activeProfile && (
+          <div className={styles.empty}>Выберите профиль в шапке сайта</div>
         )}
 
-        {initialized && activeProfile && !loading && items.length === 0 && (
+        {loaded && activeProfile && !loading && items.length === 0 && (
           <div className={styles.empty}>История пуста</div>
         )}
 

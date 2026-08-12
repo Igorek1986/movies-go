@@ -98,10 +98,21 @@ $nav-height: 52px;
   }
 }
 
-// ── Burger button — visible on mobile only ────────────────────────────────────
+// ── Mobile right cluster (profile switcher + burger) — visible on mobile only ─
+
+.navMobileRight {
+  display: none;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-shrink: 0;
+
+  @media (max-width: $bp-md) {
+    display: flex;
+  }
+}
 
 .burger {
-  display: none;
+  display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 5px;
@@ -129,10 +140,6 @@ $nav-height: 52px;
   &.burgerOpen span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
   &.burgerOpen span:nth-child(2) { opacity: 0; transform: scaleX(0); }
   &.burgerOpen span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
-
-  @media (max-width: $bp-md) {
-    display: flex;
-  }
 }
 
 // ── Mobile overlay ────────────────────────────────────────────────────────────

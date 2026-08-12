@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import { ProfileSwitcher } from '@/components/ProfileSwitcher'
 import styles from './Layout.module.scss'
 
 export default function Layout({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
@@ -69,17 +70,21 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
         <div className={styles.navLinks}>
           {links}
           <span className={styles.navUser}>{user?.username}</span>
+          <ProfileSwitcher />
           <button className={styles.btnLogout} onClick={handleLogout}>Выйти</button>
         </div>
 
-        {/* Mobile burger */}
-        <button
-          className={`${styles.burger}${menuOpen ? ' ' + styles.burgerOpen : ''}`}
-          onClick={() => setMenuOpen(o => !o)}
-          aria-label="Меню"
-        >
-          <span /><span /><span />
-        </button>
+        {/* Mobile: profile switcher + burger */}
+        <div className={styles.navMobileRight}>
+          <ProfileSwitcher />
+          <button
+            className={`${styles.burger}${menuOpen ? ' ' + styles.burgerOpen : ''}`}
+            onClick={() => setMenuOpen(o => !o)}
+            aria-label="Меню"
+          >
+            <span /><span /><span />
+          </button>
+        </div>
       </nav>
 
       {/* Mobile overlay */}

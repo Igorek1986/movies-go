@@ -7,6 +7,7 @@ function ScrollToTop() {
   return null
 }
 import { useAuth } from '@/hooks/useAuth'
+import { ActiveProfileProvider } from '@/contexts/ActiveProfileContext'
 import { setImgProxy } from '@/utils/poster'
 import footerStyles from '@/components/AppFooter.module.scss'
 
@@ -89,7 +90,7 @@ export default function App() {
   }, [])
 
   return (
-    <>
+    <ActiveProfileProvider>
       <ScrollToTop />
       <div style={{ flex: 1 }}>
       <Routes>
@@ -142,6 +143,6 @@ export default function App() {
       </Routes>
       </div>
       <AppFooter />
-    </>
+    </ActiveProfileProvider>
   )
 }
