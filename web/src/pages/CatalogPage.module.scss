@@ -449,7 +449,7 @@
 
 .floatingBar {
   position: fixed;
-  top: 52px;
+  top: calc(52px + env(safe-area-inset-top));
   left: 0;
   right: 0;
   z-index: 100;

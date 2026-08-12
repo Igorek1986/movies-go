@@ -7,7 +7,7 @@ $nav-height: 52px;
   flex-direction: column;
   min-height: 100vh;
   background: $color-bg;
-  padding-top: $nav-height;
+  padding-top: calc(#{$nav-height} + env(safe-area-inset-top));
 }
 
 // ── Nav bar ───────────────────────────────────────────────────────────────────
@@ -15,6 +15,9 @@ $nav-height: 52px;
 .nav {
   @include flex-between;
   padding: $spacing-sm $spacing-lg;
+  padding-top: calc(#{$spacing-sm} + env(safe-area-inset-top));
+  height: calc(#{$nav-height} + env(safe-area-inset-top));
+  box-sizing: border-box;
   background: $color-bg-card;
   border-bottom: 1px solid $color-border;
   position: fixed;
@@ -26,6 +29,7 @@ $nav-height: 52px;
 
   @media (max-width: $bp-md) {
     padding: $spacing-sm $spacing-md;
+    padding-top: calc(#{$spacing-sm} + env(safe-area-inset-top));
   }
 }
 
@@ -155,6 +159,7 @@ $nav-height: 52px;
   display: flex;
   flex-direction: column;
   padding: $spacing-xl $spacing-lg $spacing-lg;
+  padding-top: calc(#{$spacing-xl} + env(safe-area-inset-top));
   gap: $spacing-md;
   transform: translateX(100%);
   transition: transform $transition-normal;
