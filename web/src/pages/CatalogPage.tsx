@@ -683,16 +683,16 @@ export default function CatalogPage() {
   }, [expandedCategory])
 
   // Row cache is keyed by category id only (not profile) — drop it whenever the
-  // active profile actually changes so CategoryRow doesn't flash stale items
-  // while its key-driven remount re-fetches.
+  // active profile actually changes so CategoryRow doesn't flash stale items while
+  // its key-driven remount re-fetches. Must run synchronously during render (not in
+  // a useEffect): CategoryRow reads _cache.rows[cat.id] as initialCache in this same
+  // render pass, before any effect would get a chance to clear it.
   const prevProfileKeyRef = useRef<string | null | undefined>(undefined)
-  useEffect(() => {
-    const key = activeProfile ? `${activeProfile.device_id}:${activeProfile.profile_id}` : null
-    if (prevProfileKeyRef.current !== undefined && prevProfileKeyRef.current !== key) {
-      _cache.rows = {}
-    }
-    prevProfileKeyRef.current = key
-  }, [activeProfile])
+  const profileKey = activeProfile ? `${activeProfile.device_id}:${activeProfile.profile_id}` : null
+  if (prevProfileKeyRef.current !== undefined && prevProfileKeyRef.current !== profileKey) {
+    _cache.rows = {}
+  }
+  prevProfileKeyRef.current = profileKey
 
   useEffect(() => {
     if (_cache.categories.length > 0) {
