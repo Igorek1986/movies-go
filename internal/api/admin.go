@@ -1757,6 +1757,7 @@ var settingsGroupDefs = []struct {
 	}},
 	{"Обновление эпизодов", []string{
 		"episodes_future_threshold", "episodes_refresh_batch", "episodes_refresh_delay",
+		"aired_cutoff_days", "aired_cutoff_hour",
 	}},
 	{"Общие настройки", []string{
 		"inactive_delete_days", "inactive_warn_days", "timecode_grace_days",

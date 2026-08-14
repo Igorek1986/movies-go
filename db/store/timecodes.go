@@ -450,7 +450,7 @@ func GetHistoryFiltered(ctx context.Context, f HistoryFilter) ([]HistoryEntry, H
 		f.PerPage = 24
 	}
 
-	const baseSelect = `
+	baseSelect := `
 		SELECT t.card_id,
 		       MAX(t.updated_at)                                                                                                    AS last_watched,
 		       MAX((t.data::jsonb->>'percent')::float)                                                                              AS max_pct,
@@ -461,7 +461,7 @@ func GetHistoryFiltered(ctx context.Context, f HistoryFilter) ([]HistoryEntry, H
 		         (SELECT COUNT(*)::int FROM episodes e2
 		          WHERE e2.tmdb_show_id = (SELECT mc2.tmdb_id FROM media_cards mc2 WHERE mc2.card_id = t.card_id)
 		            AND NOT e2.is_special
-		          	AND e2.air_date IS NOT NULL AND e2.air_date <= CURRENT_DATE),
+		          	AND e2.air_date IS NOT NULL AND e2.air_date <= ` + AiredCutoffDate(ctx) + `),
 		         MAX(mc.number_of_episodes), 0)                                                                                     AS total_episodes,
 		       COALESCE(MAX(mc.tmdb_id), 0),
 		       COALESCE(MAX(mc.media_type), ''),

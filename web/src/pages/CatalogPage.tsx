@@ -23,7 +23,7 @@ interface MediaItem {
   unwatched_count?: number
   watched_count?: number
   aired_count?: number
-  next_episode?: { season_number: number; episode_number: number }
+  next_episode?: string
 }
 
 interface CatalogResponse {
@@ -166,7 +166,7 @@ function MediaCard({ item, onClick }: CardProps) {
         <div className={styles.cardMeta}>
           <span className={styles.quality}>{item.release_quality || ' '}</span>
           {item.next_episode && (
-            <span className={styles.nextEp}>S{item.next_episode.season_number}E{item.next_episode.episode_number}</span>
+            <span className={styles.nextEp}>{item.next_episode}</span>
           )}
         </div>
       </div>

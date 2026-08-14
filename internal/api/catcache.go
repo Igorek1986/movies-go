@@ -146,14 +146,15 @@ var (
 	unwatchedSF    singleflight.Group
 )
 
-func unwatchedKey(deviceID int64, profileID string, percent int) string {
-	return strconv.FormatInt(deviceID, 10) + ":" + profileID + ":" + strconv.Itoa(percent)
+func unwatchedKey(deviceID int64, profileID string, percent int, sortOrder string) string {
+	return strconv.FormatInt(deviceID, 10) + ":" + profileID + ":" + strconv.Itoa(percent) + ":" + sortOrder
 }
 
 // cachedUnwatchedShows returns the profile's "Непросмотренные" shows, computing and
-// caching them on a miss.
-func cachedUnwatchedShows(deviceID int64, profileID string, percent int) []store.UnwatchedTVShow {
-	k := unwatchedKey(deviceID, profileID, percent)
+// caching them on a miss. sortOrder is part of the cache key — different sort orders
+// are cached separately.
+func cachedUnwatchedShows(deviceID int64, profileID string, percent int, sortOrder string) []store.UnwatchedTVShow {
+	k := unwatchedKey(deviceID, profileID, percent, sortOrder)
 	unwatchedMu.RLock()
 	shows, ok := unwatchedCache[k]
 	unwatchedMu.RUnlock()
@@ -169,7 +170,7 @@ func cachedUnwatchedShows(deviceID int64, profileID string, percent int) []store
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		computed := store.UnwatchedTVShows(ctx, deviceID, profileID, percent)
+		computed := store.UnwatchedTVShows(ctx, deviceID, profileID, percent, sortOrder)
 		unwatchedMu.Lock()
 		unwatchedCache[k] = computed
 		unwatchedMu.Unlock()

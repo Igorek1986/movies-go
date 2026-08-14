@@ -43,6 +43,13 @@ var SettingDefaults = map[string]string{
 	"episodes_future_threshold": "5",
 	"episodes_refresh_batch":    "10",
 	"episodes_refresh_delay":    "2",
+	// Отсечка (по местному времени сервера), после которой серия считается
+	// официально вышедшей — TMDB отдаёт только дату, а субтитры/раздачи обычно
+	// появляются позже дня выхода. cutoff = air_date + aired_cutoff_days дней +
+	// aired_cutoff_hour часов. 0/0 = сразу с полуночи дня выхода (прежнее
+	// поведение).
+	"aired_cutoff_days": "0",
+	"aired_cutoff_hour": "20",
 	// General
 	"watched_threshold":         "90",
 	"popular_period_days":       "30",

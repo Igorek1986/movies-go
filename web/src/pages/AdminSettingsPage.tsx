@@ -496,6 +496,8 @@ const LABELS: Record<string, string> = {
   episodes_future_threshold: 'Порог будущих серий (меньше — обновляем)',
   episodes_refresh_batch:    'Размер пачки при обновлении',
   episodes_refresh_delay:    'Пауза между пачками (сек)',
+  aired_cutoff_days:        'Отсечка «вышедшей» серии — сдвиг в днях (0 = в день выхода)',
+  aired_cutoff_hour:        'Отсечка «вышедшей» серии — час в этот день (0 = с полуночи)',
   inactive_delete_days:     'Автоудаление неактивных аккаунтов (дней, 0 = выкл)',
   inactive_warn_days:       'Предупреждение об удалении аккаунта (дней до удаления)',
   timecode_grace_days:      'Грейс-период таймкодов (дней)',
@@ -576,6 +578,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   ]},
   { name: 'Обновление эпизодов', keys: [
     'episodes_future_threshold', 'episodes_refresh_batch', 'episodes_refresh_delay',
+    'aired_cutoff_days', 'aired_cutoff_hour',
   ]},
   { name: 'Общие настройки', keys: [
     'inactive_delete_days', 'inactive_warn_days', 'timecode_grace_days',

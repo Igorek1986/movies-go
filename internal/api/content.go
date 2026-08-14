@@ -628,7 +628,8 @@ func handleUnwatched(w http.ResponseWriter, r *http.Request, profileID string, p
 	if percent < 1 {
 		percent = 90
 	}
-	shows := cachedUnwatchedShows(d.ID, profileID, percent)
+	sortOrder := r.URL.Query().Get("sort")
+	shows := cachedUnwatchedShows(d.ID, profileID, percent, sortOrder)
 	if len(shows) == 0 {
 		JSON(w, http.StatusOK, emptyPage(page))
 		return
@@ -657,11 +658,15 @@ func handleUnwatched(w http.ResponseWriter, r *http.Request, profileID string, p
 			item["unwatched_count"] = s.AiredCount - s.WatchedCount
 			item["watched_count"] = s.WatchedCount
 			item["aired_count"] = s.AiredCount
+			// progress_marker/next_episode use the same field names and string
+			// shape np.js's normalizeData already whitelists for myshows_unwatched
+			// (no [object Object] risk — always strings). np_unwatched.js turns off
+			// myshows_badge_* when its own labels are on, so myshows.js's card
+			// decorator (which also triggers off these same field names) never
+			// double-draws.
+			item["progress_marker"] = fmt.Sprintf("%d/%d", s.WatchedCount, s.AiredCount)
 			if s.NextSeason != nil && s.NextEpisodeNum != nil {
-				item["next_episode"] = map[string]any{
-					"season_number":  *s.NextSeason,
-					"episode_number": *s.NextEpisodeNum,
-				}
+				item["next_episode"] = fmt.Sprintf("S%02d/E%02d", *s.NextSeason, *s.NextEpisodeNum)
 			}
 		}
 		results = append(results, item)
@@ -702,14 +707,41 @@ func handleUnwatchedProgress(w http.ResponseWriter, r *http.Request) {
 		"unwatched_count": show.AiredCount - show.WatchedCount,
 		"watched_count":   show.WatchedCount,
 		"aired_count":     show.AiredCount,
+		"progress_marker": fmt.Sprintf("%d/%d", show.WatchedCount, show.AiredCount),
 	}
 	if show.NextSeason != nil && show.NextEpisodeNum != nil {
-		resp["next_episode"] = map[string]any{
-			"season_number":  *show.NextSeason,
-			"episode_number": *show.NextEpisodeNum,
-		}
+		resp["next_episode"] = fmt.Sprintf("S%02d/E%02d", *show.NextSeason, *show.NextEpisodeNum)
 	}
 	JSON(w, http.StatusOK, resp)
+}
+
+// handleUnwatchedEpisodes serves the list of watched episodes for one TV show — used
+// to put a checkmark on individual episode cards (season/episode picker, Explorer),
+// mirroring myshows.js's per-episode checkmark.
+func handleUnwatchedEpisodes(w http.ResponseWriter, r *http.Request) {
+	d := deviceFromRequest(r)
+	cardID := r.URL.Query().Get("card_id")
+	if d == nil || cardID == "" {
+		JSON(w, http.StatusOK, map[string]any{"episodes": []any{}})
+		return
+	}
+
+	percent, _ := strconv.Atoi(r.URL.Query().Get("percent"))
+	if percent < 1 {
+		percent = 90
+	}
+	profileID := r.URL.Query().Get("profile_id")
+
+	episodes := store.WatchedEpisodes(r.Context(), d.ID, profileID, cardID, percent)
+	results := make([]map[string]any, 0, len(episodes))
+	for _, e := range episodes {
+		results = append(results, map[string]any{
+			"hash":    e.Hash,
+			"season":  e.Season,
+			"episode": e.Episode,
+		})
+	}
+	JSON(w, http.StatusOK, map[string]any{"episodes": results})
 }
 
 // ─── POST /api/view ───────────────────────────────────────────────────────────

@@ -51,14 +51,15 @@ func handlePatchPluginSettings(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	clientID := r.URL.Query().Get("client_id")
 	go func() {
 		msg, _ := json.Marshal(map[string]any{
-			"plugin":           plugin,
-			"key":              body.Key,
-			"value":            body.Value,
+			"plugin":     plugin,
+			"key":        body.Key,
+			"value":      body.Value,
 			"profile_id": profileID,
 		})
-		SettingsHub.Broadcast(d.UserID, d.ID, msg)
+		SettingsHub.Broadcast(d.UserID, d.ID, clientID, msg)
 	}()
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

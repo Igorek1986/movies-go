@@ -68,7 +68,7 @@ func handleSaveTimecode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Broadcast to other devices of the same user.
-	go broadcastTimecode(d.UserID, d.ID, profileID, body.CardID, body.Item, body.Data)
+	go broadcastTimecode(d.UserID, d.ID, r.URL.Query().Get("client_id"), profileID, body.CardID, body.Item, body.Data)
 
 	JSON(w, http.StatusOK, map[string]bool{"success": true})
 }
@@ -308,7 +308,7 @@ func handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "update error")
 		return
 	}
-	go broadcastProfileUpdated(d.UserID, d.ID, profileID, req.Name, req.Icon)
+	go broadcastProfileUpdated(d.UserID, d.ID, r.URL.Query().Get("client_id"), profileID, req.Name, req.Icon)
 	JSON(w, http.StatusOK, map[string]any{"ok": true, "profile_id": profileID})
 }
 
@@ -361,13 +361,13 @@ func handlePutFavorite(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
-	go broadcastFavorite(d.UserID, d.ID, profileID, body.Favorite)
+	go broadcastFavorite(d.UserID, d.ID, r.URL.Query().Get("client_id"), profileID, body.Favorite)
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // ─── WS broadcast helpers ─────────────────────────────────────────────────────
 
-func broadcastTimecode(userID, deviceID int64, profileID, cardID, item, data string) {
+func broadcastTimecode(userID, deviceID int64, clientID, profileID, cardID, item, data string) {
 	msg, _ := json.Marshal(map[string]any{
 		"type":       "timecode",
 		"profile_id": profileID,
@@ -375,19 +375,19 @@ func broadcastTimecode(userID, deviceID int64, profileID, cardID, item, data str
 		"item":       item,
 		"data":       json.RawMessage(data),
 	})
-	TimecodeHub.Broadcast(userID, deviceID, msg)
+	TimecodeHub.Broadcast(userID, deviceID, clientID, msg)
 }
 
-func broadcastFavorite(userID, deviceID int64, profileID string, favorite any) {
+func broadcastFavorite(userID, deviceID int64, clientID, profileID string, favorite any) {
 	msg, _ := json.Marshal(map[string]any{
 		"type":       "favorite",
 		"profile_id": profileID,
 		"favorite":   favorite,
 	})
-	TimecodeHub.Broadcast(userID, deviceID, msg)
+	TimecodeHub.Broadcast(userID, deviceID, clientID, msg)
 }
 
-func broadcastProfileUpdated(userID, deviceID int64, profileID string, name *string, icon *string) {
+func broadcastProfileUpdated(userID, deviceID int64, clientID, profileID string, name *string, icon *string) {
 	payload := map[string]any{
 		"type":       "profile_updated",
 		"profile_id": profileID,
@@ -399,7 +399,7 @@ func broadcastProfileUpdated(userID, deviceID int64, profileID string, name *str
 		payload["icon"] = *icon
 	}
 	msg, _ := json.Marshal(payload)
-	TimecodeHub.Broadcast(userID, deviceID, msg)
+	TimecodeHub.Broadcast(userID, deviceID, clientID, msg)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

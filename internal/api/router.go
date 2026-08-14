@@ -52,6 +52,7 @@ func NewRouter(mode string) http.Handler {
 	// parser runs) — handleUnwatched uses its own cache invalidated by OnWatchedChanged.
 	r.Get("/unwatched", handleCategory)
 	r.Get("/unwatched/progress", handleUnwatchedProgress)
+	r.Get("/unwatched/episodes", handleUnwatchedEpisodes)
 	r.Get("/np_popular", cached)
 	r.Get("/np_popular_daily", handlePopularDaily)
 

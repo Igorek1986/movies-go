@@ -1165,6 +1165,7 @@ func WatchedCardIDs(deviceID int64, profileID string, percent int) []string {
 	if percent < 1 {
 		percent = 90
 	}
+	cutoff := AiredCutoffDate(ctx)
 	rows, err := postgres.Pool.Query(ctx, `
 		SELECT mc.card_id
 		FROM (
@@ -1184,7 +1185,7 @@ func WatchedCardIDs(deviceID int64, profileID string, percent int) []string {
 				(SELECT COUNT(*)::int FROM episodes e
 				 WHERE e.tmdb_show_id = mc.tmdb_id
 				   AND NOT e.is_special
-				   AND e.air_date IS NOT NULL AND e.air_date <= CURRENT_DATE),
+				   AND e.air_date IS NOT NULL AND e.air_date <= `+cutoff+`),
 				mc.number_of_episodes)))`,
 		deviceID, profileID, percent)
 	if err != nil {
