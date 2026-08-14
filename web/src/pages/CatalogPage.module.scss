@@ -352,6 +352,19 @@
   backdrop-filter: blur(4px);
 }
 
+.nextEpBadge {
+  position: absolute;
+  bottom: 8px;
+  left: $spacing-xs;
+  padding: 1px 5px;
+  border-radius: $radius-sm;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: $font-size-xs;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+
 .progressTrack {
   position: absolute;
   bottom: 0;
@@ -386,20 +399,20 @@
 .cardMeta {
   display: flex;
   justify-content: space-between;
+  gap: $spacing-xs;
   font-size: $font-size-xs;
   color: $color-text-muted;
+  min-width: 0;
 }
 
 .quality {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
   font-size: $font-size-xs;
   font-weight: 600;
   color: $color-warning;
-}
-
-.nextEp {
-  font-size: $font-size-xs;
-  font-weight: 600;
-  color: $color-text-muted;
 }
 
 .cert {

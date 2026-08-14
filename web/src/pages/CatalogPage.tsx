@@ -144,6 +144,9 @@ function MediaCard({ item, onClick }: CardProps) {
         {!!item.unwatched_count && (
           <span className={styles.unwatchedBadge}>{item.unwatched_count}</span>
         )}
+        {item.next_episode && (
+          <span className={styles.nextEpBadge}>{item.next_episode}</span>
+        )}
         {!!item.aired_count && (
           <>
             <span className={styles.progressLabel}>{item.watched_count ?? 0}/{item.aired_count}</span>
@@ -165,9 +168,6 @@ function MediaCard({ item, onClick }: CardProps) {
         </div>
         <div className={styles.cardMeta}>
           <span className={styles.quality}>{item.release_quality || ' '}</span>
-          {item.next_episode && (
-            <span className={styles.nextEp}>{item.next_episode}</span>
-          )}
         </div>
       </div>
     </div>
