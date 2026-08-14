@@ -442,3 +442,30 @@ CREATE TABLE IF NOT EXISTS media_card_crew (
     PRIMARY KEY (card_id, person_id, job)
 );
 CREATE INDEX IF NOT EXISTS idx_mcc_crew_person_id ON media_card_crew(person_id);
+
+-- ─── Web Push subscriptions ────────────────────────────────────────────────────
+-- Browser push subscriptions (Web Push API), scoped to device+profile like
+-- timecodes/favorites — a profile only gets notified about shows it is watching.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id         BIGSERIAL    PRIMARY KEY,
+    device_id  BIGINT       NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    profile_id VARCHAR(100) NOT NULL DEFAULT '',
+    endpoint   TEXT         NOT NULL UNIQUE,
+    p256dh     TEXT         NOT NULL,
+    auth       TEXT         NOT NULL,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_push_subs_device_profile ON push_subscriptions (device_id, profile_id);
+
+-- Dedup: which (device, profile, episode) combos already got a "new episode" push,
+-- so the periodic check never sends the same notification twice.
+CREATE TABLE IF NOT EXISTS push_notified_episodes (
+    device_id   BIGINT       NOT NULL,
+    profile_id  VARCHAR(100) NOT NULL DEFAULT '',
+    card_id     VARCHAR(100) NOT NULL,
+    season      INT          NOT NULL,
+    episode     INT          NOT NULL,
+    notified_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    PRIMARY KEY (device_id, profile_id, card_id, season, episode)
+);

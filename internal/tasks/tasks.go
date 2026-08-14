@@ -22,6 +22,7 @@ func Start(ctx context.Context) {
 	appCtx = ctx
 	go runDailyLoop(ctx)
 	go runDeliveryLoop(ctx)
+	go runPushNotifyLoop(ctx)
 }
 
 // ─── Daily loop ───────────────────────────────────────────────────────────────
@@ -87,6 +88,22 @@ func runDeliveryLoop(ctx context.Context) {
 			return
 		case <-tick.C:
 			RunNotificationDelivery(ctx)
+		}
+	}
+}
+
+// ─── Push notify loop (every 15 min) ─────────────────────────────────────────
+
+func runPushNotifyLoop(ctx context.Context) {
+	tick := time.NewTicker(15 * time.Minute)
+	defer tick.Stop()
+	RunPushNotifyCheck(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			RunPushNotifyCheck(ctx)
 		}
 	}
 }

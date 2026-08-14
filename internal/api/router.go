@@ -313,6 +313,12 @@ func NewRouter(mode string) http.Handler {
 	r.Post("/myshows/set_status", handleMyshowsSetStatus)
 	r.Get("/myshows/status", handleMyshowsGetStatus)
 	r.Post("/myshows/timetable", handleMyshowsTimetablePost)
+
+	r.Get("/push/vapid-key", handlePushVapidKey)
+	r.Post("/push/subscribe", handlePushSubscribe)
+	r.Post("/push/unsubscribe", handlePushUnsubscribe)
+	r.Get("/push/status", handlePushStatus)
+	r.Post("/push/test", handlePushTest)
 	r.With(requireSession).Get("/api/export", handleExport)
 	r.With(requireSession).Post("/api/import", handleImport)
 

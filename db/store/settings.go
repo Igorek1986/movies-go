@@ -50,6 +50,10 @@ var SettingDefaults = map[string]string{
 	// поведение).
 	"aired_cutoff_days": "0",
 	"aired_cutoff_hour": "20",
+	// Web Push (VAPID) — key pair generated lazily on first use (push.EnsureVAPIDKeys)
+	// and persisted here; empty until then.
+	"vapid_public_key":  "",
+	"vapid_private_key": "",
 	// General
 	"watched_threshold":         "90",
 	"popular_period_days":       "30",

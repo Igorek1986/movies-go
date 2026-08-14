@@ -65,6 +65,25 @@
   &:hover { border-color: $color-primary; color: $color-text; }
 }
 
+.bellBtn {
+  @include flex-center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: $color-bg-card;
+  font-size: $font-size-base;
+  cursor: pointer;
+  transition: border-color $transition-fast;
+
+  &:hover { border-color: $color-primary; }
+  &:disabled { opacity: 0.6; cursor: default; }
+}
+
+.bellOn {
+  border-color: $color-primary;
+}
+
 .errorMsg, .loadingMsg, .emptyMsg {
   color: $color-text-muted;
   font-size: $font-size-sm;

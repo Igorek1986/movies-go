@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
+import { isPushSupported, getPushStatus, subscribeToPush, unsubscribeFromPush } from '@/utils/push'
 import styles from './CalendarPage.module.scss'
 
 interface CalendarEpisode {
@@ -66,6 +67,8 @@ export default function CalendarPage() {
   const [episodes, setEpisodes] = useState<CalendarEpisode[] | null>(null)
   const [error, setError] = useState(false)
   const [selectedDate, setSelectedDate] = useState<string | null>(todayStr())
+  const [pushSubscribed, setPushSubscribed] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
 
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
@@ -82,6 +85,28 @@ export default function CalendarPage() {
   }, [loaded, token, profileId, year, month])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!loaded || !token) return
+    getPushStatus(token, profileId).then(setPushSubscribed)
+  }, [loaded, token, profileId])
+
+  async function togglePush() {
+    if (!token || pushBusy) return
+    setPushBusy(true)
+    try {
+      const ok = pushSubscribed ? await unsubscribeFromPush(token) : await subscribeToPush(token, profileId)
+      if (ok) setPushSubscribed(!pushSubscribed)
+    } finally {
+      setPushBusy(false)
+    }
+  }
+
+  async function sendTestPush() {
+    if (!token) return
+    const params = new URLSearchParams({ token, profile_id: profileId })
+    await fetch(`/push/test?${params}`, { method: 'POST' })
+  }
 
   // Re-selecting the day panel on month navigation: land on today if the viewed
   // month is the current one, otherwise clear the selection.
@@ -131,6 +156,19 @@ export default function CalendarPage() {
             <span className={styles.monthLabel}>{MONTH_NAMES[month - 1]} {year}</span>
             <button className={styles.navBtn} onClick={() => goMonth(1)} aria-label="Следующий месяц">›</button>
             <button className={styles.todayBtn} onClick={goToday}>Сегодня</button>
+            {isPushSupported() && (
+              <button
+                className={`${styles.bellBtn}${pushSubscribed ? ' ' + styles.bellOn : ''}`}
+                onClick={togglePush}
+                disabled={pushBusy}
+                title={pushSubscribed ? 'Уведомления о новых сериях включены' : 'Включить уведомления о новых сериях'}
+              >
+                {pushSubscribed ? '🔔' : '🔕'}
+              </button>
+            )}
+            {pushSubscribed && (
+              <button className={styles.todayBtn} onClick={sendTestPush}>Тест push</button>
+            )}
           </div>
         </div>
 
