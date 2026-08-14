@@ -59,6 +59,11 @@ const _cache = {
   rows: {} as Record<string, RowCache>,
   scrollY: 0,
   catView: null as CatViewCache | null,
+  // Profile the cached rows/catView belong to — module-level (not a ref) because
+  // a profile switch made while CatalogPage is unmounted (e.g. from the admin
+  // panel) must still be detected on remount; a component-local ref would reset
+  // to "unknown" on every mount and miss changes that happened while away.
+  profileKey: null as string | null,
 }
 
 export function invalidateCatalogCache() {
@@ -684,15 +689,18 @@ export default function CatalogPage() {
 
   // Row cache is keyed by category id only (not profile) — drop it whenever the
   // active profile actually changes so CategoryRow doesn't flash stale items while
-  // its key-driven remount re-fetches. Must run synchronously during render (not in
-  // a useEffect): CategoryRow reads _cache.rows[cat.id] as initialCache in this same
-  // render pass, before any effect would get a chance to clear it.
-  const prevProfileKeyRef = useRef<string | null | undefined>(undefined)
+  // its key-driven remount re-fetches. Compared against _cache.profileKey (module-
+  // level, not a ref) so a profile switch made while CatalogPage was unmounted
+  // (e.g. from the admin panel) is still caught on remount — see _cache comment.
+  // Must run synchronously during render (not in a useEffect): CategoryRow reads
+  // _cache.rows[cat.id] as initialCache in this same render pass, before any
+  // effect would get a chance to clear it.
   const profileKey = activeProfile ? `${activeProfile.device_id}:${activeProfile.profile_id}` : null
-  if (prevProfileKeyRef.current !== undefined && prevProfileKeyRef.current !== profileKey) {
+  if (_cache.profileKey !== null && _cache.profileKey !== profileKey) {
     _cache.rows = {}
+    _cache.catView = null
   }
-  prevProfileKeyRef.current = profileKey
+  _cache.profileKey = profileKey
 
   useEffect(() => {
     if (_cache.categories.length > 0) {
