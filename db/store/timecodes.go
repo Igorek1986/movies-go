@@ -114,6 +114,7 @@ func UpsertTimecodes(ctx context.Context, deviceID int64, profileID string, rows
 			continue
 		}
 		saved++
+		EnsureImpliedStatus(ctx, deviceID, profileID, r.CardID, pct)
 	}
 	if saved > 0 {
 		notifyWatchedChanged(deviceID, profileID)
@@ -305,6 +306,7 @@ func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, ite
 	)
 	if err == nil {
 		notifyWatchedChanged(deviceID, profileID)
+		EnsureImpliedStatus(ctx, deviceID, profileID, cardID, percent)
 	}
 	return err
 }
@@ -329,6 +331,7 @@ func SetCardTimecodeWatched(ctx context.Context, deviceID int64, profileID, card
 	)
 	if err == nil {
 		notifyWatchedChanged(deviceID, profileID)
+		EnsureImpliedStatus(ctx, deviceID, profileID, cardID, 100)
 	}
 	return err
 }

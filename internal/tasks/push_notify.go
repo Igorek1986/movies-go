@@ -21,9 +21,13 @@ func RunPushNotifyCheck(ctx context.Context) {
 	log.Printf("tasks: push_notify: %d new episode notifications to send", len(notifications))
 
 	for _, n := range notifications {
+		body := fmt.Sprintf("Вышла серия S%02dE%02d", n.Season, n.Episode)
+		if n.EpisodeName != "" {
+			body += " — " + n.EpisodeName
+		}
 		payload, _ := json.Marshal(map[string]any{
 			"title": n.Title,
-			"body":  fmt.Sprintf("Вышла серия S%02dE%02d", n.Season, n.Episode),
+			"body":  body,
 			"url":   "/card/" + n.CardID,
 		})
 		status, body, err := push.Send(ctx, push.Subscription{Endpoint: n.Endpoint, P256dh: n.P256dh, Auth: n.Auth}, payload)

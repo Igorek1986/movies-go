@@ -54,6 +54,7 @@ func NewRouter(mode string) http.Handler {
 	r.Get("/unwatched/progress", handleUnwatchedProgress)
 	r.Get("/unwatched/episodes", handleUnwatchedEpisodes)
 	r.Get("/calendar", handleCalendar)
+	r.Get("/media-library", handleMediaLibrary)
 	r.Get("/np_popular", cached)
 	r.Get("/np_popular_daily", handlePopularDaily)
 
@@ -102,6 +103,8 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireSession).Get("/web/card-progress", handleWebCardProgress)
 			r.With(requireSession).Post("/web/mark-special", handleWebMarkSpecial)
 			r.With(requireSession).Post("/web/unmark-special", handleWebUnmarkSpecial)
+			r.With(requireSession).Get("/web/status", handleWebGetStatus)
+			r.With(requireSession).Post("/web/set-status", handleWebSetStatus)
 			r.With(requireSession).Get("/history", handleWebHistoryAll)
 			r.With(requireSession).Get("/card-timecodes", handleWebCardTimecodes)
 			r.With(requireSession).Delete("/card-timecodes", handleWebDeleteCardTimecodes)
@@ -287,6 +290,9 @@ func NewRouter(mode string) http.Handler {
 		r.Delete("/profiles/{profile_id}", handleDeleteProfile)
 		r.Get("/favorite", handleGetFavorite)
 		r.Put("/favorite", handlePutFavorite)
+		r.Get("/status", handleGetSubjectiveStatus)
+		r.Put("/status", handleSetSubjectiveStatus)
+		r.Delete("/status", handleDeleteSubjectiveStatus)
 		r.Get("/ws", handleTimecodeWS)
 	})
 

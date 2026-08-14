@@ -68,6 +68,55 @@ function runtimeLabel(m: number) {
   if (!h) return `${r} мин`; return r ? `${h} ч ${r} мин` : `${h} ч`
 }
 
+// ── Watch-status icons (same shapes as plugins/myshows.js's watch_icon/later_icon/
+// cancelled_icon/remove_icon, for visual consistency between web and Lampa) ──────
+
+function IconEye() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  )
+}
+function IconCheck() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <path d="M8 12l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+function IconMinus() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <path d="M8 12h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+function IconCross() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+interface WatchStatusOption { status: string; title: string; icon: () => React.ReactElement }
+const TV_STATUS_OPTIONS: WatchStatusOption[] = [
+  { status: 'watching',     title: 'Смотрю',            icon: IconEye },
+  { status: 'planned',      title: 'Буду смотреть',      icon: IconCheck },
+  { status: 'stopped',      title: 'Перестал смотреть', icon: IconMinus },
+  { status: 'not_watching', title: 'Не смотрю',          icon: IconCross },
+]
+const MOVIE_STATUS_OPTIONS: WatchStatusOption[] = [
+  { status: 'watched',      title: 'Просмотрел',    icon: IconEye },
+  { status: 'planned',      title: 'Буду смотреть', icon: IconCheck },
+  { status: 'not_watching', title: 'Не смотрю',      icon: IconCross },
+]
+
 // ── Drum Column ───────────────────────────────────────────────────────────────
 
 const ITEM_H = 44
@@ -499,6 +548,8 @@ export default function CardDetailPage() {
   const [apiEpisodes,  setApiEpisodes] = useState<EpisodeData[] | null>(null)
   const [refreshing,   setRefreshing]  = useState(false)
   const [refreshed,    setRefreshed]   = useState(false)
+  const [watchStatus,  setWatchStatus] = useState('')
+  const [statusBusy,   setStatusBusy]  = useState(false)
 
   const activeProfileId = activeProfile?.profile_id ?? ''
 
@@ -548,6 +599,33 @@ export default function CardDetailPage() {
     if (!cardId || !activeDevice) return
     loadTimecodes(cardId, activeDevice.id)
   }, [cardId, activeDevice?.id, loadTimecodes])
+
+  // Subjective status ("Медиатека") — Смотрю/Буду смотреть/Перестал смотреть/Не
+  // смотрю for TV, Просмотрел/Буду смотреть/Не смотрю for movies.
+  useEffect(() => {
+    if (!cardId || !activeDevice || !defaultProfileId) return
+    const params = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, profile_id: defaultProfileId })
+    fetch(`/api/web/status?${params}`)
+      .then(r => r.ok ? r.json() : { status: '' })
+      .then(d => setWatchStatus(d.status || ''))
+      .catch(() => {})
+  }, [cardId, activeDevice, defaultProfileId])
+
+  async function toggleWatchStatus(next: string) {
+    if (!activeDevice || !cardId || statusBusy) return
+    const status = watchStatus === next ? '' : next // clicking the active one clears it
+    setStatusBusy(true)
+    try {
+      const res = await fetch('/api/web/set-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, profile_id: defaultProfileId, status }),
+      })
+      if (res.ok) setWatchStatus(status)
+    } finally {
+      setStatusBusy(false)
+    }
+  }
 
   // Load episodes; if source is not myshows — trigger sync and retry up to 3 times
   useEffect(() => {
@@ -738,6 +816,23 @@ export default function CardDetailPage() {
               {tags.map((t, i) => <span key={i} className={styles.tag}>{t}</span>)}
               {card.vote_average > 0 && <span className={styles.tagRating}>★ {card.vote_average.toFixed(1)}</span>}
             </div>
+
+            {activeDevice && (
+              <div className={styles.watchStatusRow}>
+                {(isTV ? TV_STATUS_OPTIONS : MOVIE_STATUS_OPTIONS).map(opt => (
+                  <button
+                    key={opt.status}
+                    className={`${styles.watchStatusBtn}${watchStatus === opt.status ? ' ' + styles.watchStatusActive : ''}`}
+                    disabled={statusBusy}
+                    title={opt.title}
+                    aria-label={opt.title}
+                    onClick={() => toggleWatchStatus(opt.status)}
+                  >
+                    <opt.icon />
+                  </button>
+                ))}
+              </div>
+            )}
 
             {card.genres?.length > 0 && (
               <div className={styles.genres}>

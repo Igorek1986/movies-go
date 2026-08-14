@@ -16,6 +16,7 @@ import RegisterPage from '@/pages/RegisterPage'
 import ProfilesPage from '@/pages/ProfilesPage'
 import CatalogPage from '@/pages/CatalogPage'
 import CalendarPage from '@/pages/CalendarPage'
+import MediaLibraryPage from '@/pages/MediaLibraryPage'
 import HistoryPage from '@/pages/HistoryPage'
 import CardDetailPage from '@/pages/CardDetailPage'
 import AdminPage from '@/pages/AdminPage'
@@ -112,6 +113,7 @@ export default function App() {
       <Route path="/catalog" element={<PrivateRoute><CatalogPage /></PrivateRoute>} />
       <Route path="/catalog/:category" element={<PrivateRoute><CatalogCategoryRedirect /></PrivateRoute>} />
       <Route path="/calendar" element={<PrivateRoute><CalendarPage /></PrivateRoute>} />
+      <Route path="/media-library" element={<PrivateRoute><MediaLibraryPage /></PrivateRoute>} />
       <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
       <Route path="/card/:cardId" element={<PrivateRoute><CardDetailPage /></PrivateRoute>} />
       <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />

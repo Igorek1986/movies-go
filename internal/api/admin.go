@@ -491,6 +491,71 @@ func handleWebSetTimecode(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// GET /api/web/status?device_id=&card_id=&profile_id=
+func handleWebGetStatus(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	if u == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	q := r.URL.Query()
+	deviceID, _ := strconv.ParseInt(q.Get("device_id"), 10, 64)
+	cardID := q.Get("card_id")
+	if deviceID == 0 || cardID == "" {
+		Error(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	var ownerID int64
+	if err := postgres.Pool.QueryRow(r.Context(),
+		`SELECT user_id FROM devices WHERE id=$1`, deviceID,
+	).Scan(&ownerID); err != nil || ownerID != u.ID {
+		Error(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	status := store.GetSubjectiveStatus(r.Context(), deviceID, q.Get("profile_id"), cardID)
+	JSON(w, http.StatusOK, map[string]string{"status": status})
+}
+
+// POST /api/web/set-status
+func handleWebSetStatus(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	if u == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		DeviceID  int64  `json:"device_id"`
+		CardID    string `json:"card_id"`
+		ProfileID string `json:"profile_id"`
+		Status    string `json:"status"` // "" clears back to implied
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	var ownerID int64
+	if err := postgres.Pool.QueryRow(r.Context(),
+		`SELECT user_id FROM devices WHERE id=$1`, body.DeviceID,
+	).Scan(&ownerID); err != nil || ownerID != u.ID {
+		Error(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	if body.Status == "" {
+		store.ClearSubjectiveStatus(r.Context(), body.DeviceID, body.ProfileID, body.CardID)
+		JSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+	if !validStatusesFor(body.CardID)[body.Status] {
+		Error(w, http.StatusBadRequest, "invalid status for this media type")
+		return
+	}
+	if err := store.SetSubjectiveStatus(r.Context(), body.DeviceID, body.ProfileID, body.CardID, body.Status); err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // DELETE /api/web/card-timecodes?device_id=&card_id=
 func handleWebDeleteCardTimecodes(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)

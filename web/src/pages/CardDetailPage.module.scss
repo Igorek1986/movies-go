@@ -194,6 +194,34 @@
   font-weight: 600;
 }
 
+.watchStatusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+  margin-top: $spacing-xs;
+}
+
+.watchStatusBtn {
+  @include flex-center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid $color-border;
+  border-radius: $radius-full;
+  background: $color-bg-card;
+  color: $color-text-muted;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
+
+  &:hover:not(:disabled) { border-color: $color-primary; color: $color-text; }
+  &:disabled { opacity: 0.6; cursor: default; }
+}
+
+.watchStatusActive {
+  border-color: $color-primary;
+  background: rgba($color-primary, 0.15);
+  color: $color-primary;
+}
+
 .genres {
   display: flex;
   flex-wrap: wrap;

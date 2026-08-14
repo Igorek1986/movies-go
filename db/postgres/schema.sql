@@ -469,3 +469,18 @@ CREATE TABLE IF NOT EXISTS push_notified_episodes (
     notified_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
     PRIMARY KEY (device_id, profile_id, card_id, season, episode)
 );
+
+-- ─── Subjective statuses ("Медиатека") ─────────────────────────────────────────
+-- Personal per-profile status, independent of watch history — "Смотрю"/"Буду
+-- смотреть"/"Перестал смотреть"/"Не смотрю" for TV, "Просмотрел"/"Буду
+-- смотреть"/"Не смотрю" for movies. An explicit row here always wins over
+-- anything derived from timecodes (see store.EnsureImpliedStatus).
+CREATE TABLE IF NOT EXISTS subjective_statuses (
+    device_id  BIGINT       NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    profile_id VARCHAR(100) NOT NULL DEFAULT '',
+    card_id    VARCHAR(100) NOT NULL,
+    status     VARCHAR(20)  NOT NULL,
+    updated_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    PRIMARY KEY (device_id, profile_id, card_id)
+);
+CREATE INDEX IF NOT EXISTS idx_subjective_statuses_lookup ON subjective_statuses (device_id, profile_id, status);

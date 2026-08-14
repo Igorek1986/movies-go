@@ -77,7 +77,8 @@ type NewEpisodeNotification struct {
 	DeviceID       int64
 	ProfileID      string
 	CardID         string
-	Title          string
+	Title          string // show title
+	EpisodeName    string // episode title, may be empty
 	Season         int
 	Episode        int
 }
@@ -91,21 +92,26 @@ func FindNewEpisodeNotifications(ctx context.Context) []NewEpisodeNotification {
 	//nolint:gosec // cutoff comes from AiredCutoffDate (admin setting only), not user input
 	rows, err := postgres.Pool.Query(ctx, `
 		SELECT ps.id, ps.endpoint, ps.p256dh, ps.auth, ps.device_id, ps.profile_id,
-		       ep.card_id, ep.title, ep.season, ep.episode
+		       ep.card_id, ep.title, ep.episode_title, ep.season, ep.episode
 		FROM push_subscriptions ps
 		CROSS JOIN LATERAL (
-			SELECT DISTINCT mc.card_id, mc.title, e.season, e.episode
+			SELECT DISTINCT mc.card_id, mc.title, COALESCE(e.title, '') AS episode_title, e.season, e.episode
 			FROM timecodes tc
 			JOIN media_cards mc ON mc.card_id = tc.card_id AND mc.media_type = 'tv'
 			JOIN episodes e ON e.tmdb_show_id = mc.tmdb_id AND NOT e.is_special
 			WHERE tc.device_id = ps.device_id AND tc.profile_id = ps.profile_id
 			  AND e.air_date IS NOT NULL AND e.air_date <= `+cutoff+`
+			  -- Hard age cap, independent of push_notified_episodes bookkeeping — a
+			  -- push claiming an episode just "aired" is meaningless (and spammy) for
+			  -- anything that actually aired long ago, whatever the reason it was never
+			  -- marked notified (race at startup, bug, manual DB edit, ...).
+			  AND e.air_date >= CURRENT_DATE - INTERVAL '14 days'
 			  AND NOT EXISTS (
 			      SELECT 1 FROM push_notified_episodes n
 			      WHERE n.device_id = ps.device_id AND n.profile_id = ps.profile_id
 			        AND n.card_id = mc.card_id AND n.season = e.season AND n.episode = e.episode
 			  )
-		) ep ON true`)
+		) ep`)
 	if err != nil {
 		log.Printf("store: find new episode notifications: %v", err)
 		return nil
@@ -115,7 +121,7 @@ func FindNewEpisodeNotifications(ctx context.Context) []NewEpisodeNotification {
 	for rows.Next() {
 		var n NewEpisodeNotification
 		if rows.Scan(&n.SubscriptionID, &n.Endpoint, &n.P256dh, &n.Auth, &n.DeviceID, &n.ProfileID,
-			&n.CardID, &n.Title, &n.Season, &n.Episode) == nil {
+			&n.CardID, &n.Title, &n.EpisodeName, &n.Season, &n.Episode) == nil {
 			out = append(out, n)
 		}
 	}
@@ -131,5 +137,31 @@ func MarkEpisodeNotified(ctx context.Context, deviceID int64, profileID, cardID 
 		deviceID, profileID, cardID, season, episode)
 	if err != nil {
 		log.Printf("store: mark episode notified: %v", err)
+	}
+}
+
+// SeedNotifiedEpisodes marks every already-aired episode of every subscription's
+// watched shows as "notified" WITHOUT sending anything — called once at startup and
+// right after a new subscription is created, so FindNewEpisodeNotifications only
+// ever surfaces genuinely new episodes instead of flooding a fresh subscription
+// with a push for its entire back catalog of aired-but-never-notified episodes.
+func SeedNotifiedEpisodes(ctx context.Context) {
+	cutoff := AiredCutoffDate(ctx)
+	//nolint:gosec // cutoff comes from AiredCutoffDate (admin setting only), not user input
+	tag, err := postgres.Pool.Exec(ctx, `
+		INSERT INTO push_notified_episodes (device_id, profile_id, card_id, season, episode)
+		SELECT DISTINCT ps.device_id, ps.profile_id, mc.card_id, e.season, e.episode
+		FROM push_subscriptions ps
+		JOIN timecodes tc ON tc.device_id = ps.device_id AND tc.profile_id = ps.profile_id
+		JOIN media_cards mc ON mc.card_id = tc.card_id AND mc.media_type = 'tv'
+		JOIN episodes e ON e.tmdb_show_id = mc.tmdb_id AND NOT e.is_special
+		WHERE e.air_date IS NOT NULL AND e.air_date <= `+cutoff+`
+		ON CONFLICT DO NOTHING`)
+	if err != nil {
+		log.Printf("store: seed notified episodes: %v", err)
+		return
+	}
+	if tag.RowsAffected() > 0 {
+		log.Printf("store: seed notified episodes: marked %d already-aired episodes as notified", tag.RowsAffected())
 	}
 }

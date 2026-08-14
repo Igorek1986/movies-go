@@ -75,6 +75,12 @@ func main() {
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
 
+	// Must finish (synchronously, before tasks.Start below) so the push-notify
+	// loop's first check — which can fire within moments of tasks.Start — never
+	// races it and floods every subscriber with their entire back catalog of
+	// already-aired episodes.
+	store.SeedNotifiedEpisodes(appCtx)
+
 	// Telegram бот и фоновые задачи
 	if mode == "all" {
 		if err := bot.Start(appCtx); err != nil {
@@ -103,6 +109,7 @@ func main() {
 	api.InitCategorySettings()
 	parser.OnComplete = api.InvalidateCategoryCache
 	go api.RecomputeCategoryCounts() // warm random-collection totals before first request
+	go store.BackfillImpliedStatuses(appCtx) // catch up subjective statuses for pre-existing timecodes
 	// Drop the cached watched-set whenever a profile's progress changes (timecode write/
 	// delete, special toggle, profile/device clear). profileID "" means the whole device.
 	store.OnWatchedChanged = func(deviceID int64, profileID string) {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -42,6 +43,9 @@ func handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	// Mark already-aired episodes as notified so the next periodic check doesn't
+	// flood this brand-new subscription with its entire watched-shows back catalog.
+	go store.SeedNotifiedEpisodes(context.Background())
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

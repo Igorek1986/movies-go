@@ -81,8 +81,13 @@ func UnwatchedTVShows(ctx context.Context, deviceID int64, profileID string, per
 			-- touched over the years (only the count, not correctness, changes: a
 			-- show untouched in ages behind 300 more-recent ones wouldn't realistically
 			-- still be "actively watching" anyway).
+			-- subjective_statuses gates this to status='watching' — EnsureImpliedStatus
+			-- sets that the moment a timecode is saved, unless the profile already chose
+			-- "Брошено"/"Не смотрю" explicitly, in which case badges stop.
 			SELECT tc.card_id, MAX(tc.updated_at) AS last_watched
 			FROM timecodes tc
+			JOIN subjective_statuses ss ON ss.device_id = tc.device_id AND ss.profile_id = tc.profile_id
+			                            AND ss.card_id = tc.card_id AND ss.status = 'watching'
 			WHERE tc.device_id = $1 AND tc.profile_id = $2
 			GROUP BY tc.card_id
 			ORDER BY MAX(tc.updated_at) DESC
@@ -177,7 +182,11 @@ func UnwatchedTVShowProgress(ctx context.Context, deviceID int64, profileID, car
 			ORDER BY e.air_date ASC, e.season ASC, e.episode ASC
 			LIMIT 1
 		) ne ON true
-		WHERE mc.card_id = $3 AND mc.media_type = 'tv'`,
+		WHERE mc.card_id = $3 AND mc.media_type = 'tv'
+		  AND EXISTS (
+		      SELECT 1 FROM subjective_statuses ss
+		      WHERE ss.device_id = $1 AND ss.profile_id = $2 AND ss.card_id = $3 AND ss.status = 'watching'
+		  )`,
 		deviceID, profileID, cardID, percent,
 	).Scan(&show.AiredCount, &show.WatchedCount, &show.NextSeason, &show.NextEpisodeNum)
 	if err != nil {
