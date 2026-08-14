@@ -744,6 +744,52 @@ func handleUnwatchedEpisodes(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"episodes": results})
 }
 
+// handleCalendar serves upcoming/recent episode air dates for one calendar month, for
+// TV shows the profile is actively watching — backend for the web calendar page (and,
+// later, a Lampa plugin — same token auth as every other Lampa-facing endpoint here).
+// Uses the real air_date, not the aired_cutoff-adjusted one: the calendar shows actual
+// release dates, unlike the watched/unwatched logic.
+func handleCalendar(w http.ResponseWriter, r *http.Request) {
+	d := deviceFromRequest(r)
+	if d == nil {
+		JSON(w, http.StatusOK, map[string]any{"episodes": []any{}})
+		return
+	}
+	profileID := r.URL.Query().Get("profile_id")
+
+	now := time.Now()
+	year, _ := strconv.Atoi(r.URL.Query().Get("year"))
+	month, _ := strconv.Atoi(r.URL.Query().Get("month"))
+	if year < 1 {
+		year = now.Year()
+	}
+	if month < 1 || month > 12 {
+		month = int(now.Month())
+	}
+	from := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 1, 0)
+
+	eps := store.UpcomingEpisodes(r.Context(), d.ID, profileID, from.Format("2006-01-02"), to.Format("2006-01-02"))
+	results := make([]map[string]any, 0, len(eps))
+	for _, e := range eps {
+		results = append(results, map[string]any{
+			"card_id":      e.CardID,
+			"tmdb_id":      e.TmdbShowID,
+			"title":        e.Title,
+			"poster_path":  e.PosterPath,
+			"season":       e.Season,
+			"episode":      e.Episode,
+			"air_date":     e.AirDate,
+			"episode_name": e.EpisodeName,
+		})
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"year":     year,
+		"month":    month,
+		"episodes": results,
+	})
+}
+
 // ─── POST /api/view ───────────────────────────────────────────────────────────
 // Records a play event for popularity tracking.
 // With token: ident = profile_id or device_id (server-verified).

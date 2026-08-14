@@ -53,6 +53,7 @@ func NewRouter(mode string) http.Handler {
 	r.Get("/unwatched", handleCategory)
 	r.Get("/unwatched/progress", handleUnwatchedProgress)
 	r.Get("/unwatched/episodes", handleUnwatchedEpisodes)
+	r.Get("/calendar", handleCalendar)
 	r.Get("/np_popular", cached)
 	r.Get("/np_popular_daily", handlePopularDaily)
 
