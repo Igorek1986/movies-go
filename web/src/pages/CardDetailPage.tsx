@@ -34,6 +34,12 @@ interface EpisodeData {
   hash: string; watched: boolean; special: boolean; user_special: boolean; catalog_special: boolean
   percent: number; duration_sec: number | null; future: boolean; air_date: string | null
 }
+type PendingConfirm =
+  | { kind: 'deleteMovie' }
+  | { kind: 'deleteShow' }
+  | { kind: 'deleteEpisode'; ep: EpisodeData; profileId: string }
+  | { kind: 'cascadeForward'; episodes: EpisodeData[]; profileId: string }
+  | { kind: 'cascadeBackward'; episodes: EpisodeData[]; profileId: string }
 
 // ── Media hash ────────────────────────────────────────────────────────────────
 
@@ -66,6 +72,9 @@ function qualityLabel(q: number) {
 function runtimeLabel(m: number) {
   if (!m) return ''; const h = Math.floor(m/60); const r = m%60
   if (!h) return `${r} мин`; return r ? `${h} ч ${r} мин` : `${h} ч`
+}
+function epLabel(ep: { season: number; episode: number }) {
+  return `S${String(ep.season).padStart(2,'0')}E${String(ep.episode).padStart(2,'0')}`
 }
 
 // ── Watch-status icons (same shapes as plugins/myshows.js's watch_icon/later_icon/
@@ -280,6 +289,26 @@ function TimePicker({ ctx, onConfirm, onCancel }: {
   )
 }
 
+// ── Confirm modal (delete/cascade prompts) ──────────────────────────────────────
+
+function ConfirmModal({ title, message, confirmLabel, onConfirm, onCancel }: {
+  title: string; message?: string; confirmLabel: string
+  onConfirm: () => void; onCancel: () => void
+}) {
+  return (
+    <div className={styles.tpOverlay} onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
+      <div className={styles.tpDialog}>
+        <p className={styles.tpTitle}>{title}</p>
+        {message && <p className={styles.tpNote}>{message}</p>}
+        <div className={styles.tpBtns}>
+          <button className={styles.tpOk} onClick={onConfirm}>{confirmLabel}</button>
+          <button className={styles.tpCancel} onClick={onCancel}>Отмена</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Interactive bar ───────────────────────────────────────────────────────────
 
 function InteractiveBar({ percent, onClick }: { percent: number; onClick: (pct: number) => void }) {
@@ -298,7 +327,7 @@ function InteractiveBar({ percent, onClick }: { percent: number; onClick: (pct: 
 
 // ── TV Episode List ───────────────────────────────────────────────────────────
 
-function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, onMarkAllWatched, onMarkSpecial, onUnmarkSpecial, apiEpisodes, timecodesLoaded, numberOfSeasons }: {
+function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, onMarkAllWatched, onMarkSpecial, onUnmarkSpecial, onDeleteEpisode, apiEpisodes, timecodesLoaded, numberOfSeasons }: {
   card: CardDetail
   tcMap: Record<string, CardTimecode>
   defaultProfileId: string
@@ -307,6 +336,7 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
   onMarkAllWatched: (items: Array<{ item: string; profileId: string }>) => void
   onMarkSpecial: (item: string, profileId: string) => void
   onUnmarkSpecial: (item: string, profileId: string) => void
+  onDeleteEpisode: (ep: EpisodeData, profileId: string) => void
   apiEpisodes: EpisodeData[] | null
   timecodesLoaded: boolean
   numberOfSeasons: number
@@ -475,6 +505,9 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
             ) : (
               <button className={styles.epSpecial} onClick={() => onMarkSpecial(ep.hash, profileId)} title="Отметить как просмотренный">★</button>
             )}
+            {!isCatalogSpecial && (pct > 0 || isUserMarked) && (
+              <button className={styles.epDelete} onClick={() => onDeleteEpisode(ep, profileId)} title="Сбросить таймкод">✕</button>
+            )}
           </div>
         </div>
       )
@@ -563,6 +596,7 @@ export default function CardDetailPage() {
   const [statusBusy,   setStatusBusy]  = useState(false)
   const [isFavorite,   setIsFavorite]  = useState(false)
   const [favoriteBusy, setFavoriteBusy] = useState(false)
+  const [confirmState, setConfirmState] = useState<PendingConfirm | null>(null)
 
   const activeProfileId = activeProfile?.profile_id ?? ''
 
@@ -579,6 +613,22 @@ export default function CardDetailPage() {
   }, [profileTimecodes])
 
   const defaultProfileId = activeProfileId || timecodes[0]?.profile_id || ''
+
+  // Chronological order across ALL seasons (excludes specials/season 0, catalog
+  // specials, and unaired episodes) — used to detect gaps for the cascade
+  // "mark previous"/"reset following" prompts.
+  const flatEpisodes = useMemo(() => {
+    if (!apiEpisodes) return []
+    return apiEpisodes
+      .filter(ep => ep.season > 0 && !ep.catalog_special && !ep.future)
+      .sort((a, b) => a.season - b.season || a.episode - b.episode)
+  }, [apiEpisodes])
+
+  const epIsWatched = useCallback((ep: EpisodeData) => {
+    if (ep.user_special) return true
+    const tc = tcMap[ep.hash]
+    return tc != null && (tc.percent >= 90 || tc.special)
+  }, [tcMap])
 
   const loadTimecodes = useCallback((cid: string, devId: number) => {
     fetch(`/api/web/card-timecodes?device_id=${devId}&card_id=${encodeURIComponent(cid)}`)
@@ -740,6 +790,22 @@ export default function CardDetailPage() {
     return () => { cancelled = true }
   }, [card?.card_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Cascade detection (whole-series chronological order) ────────────────────
+  // "Отметил серию N, а предыдущие не отмечены" → offer to mark them too.
+  function checkForwardCascade(item: string, profileId: string) {
+    const idx = flatEpisodes.findIndex(e => e.hash === item)
+    if (idx <= 0) return
+    const prevUnwatched = flatEpisodes.slice(0, idx).filter(e => !epIsWatched(e))
+    if (prevUnwatched.length) setConfirmState({ kind: 'cascadeForward', episodes: prevUnwatched, profileId })
+  }
+  // "Сбросил серию N, а следующие отмечены" → offer to reset them too.
+  function checkBackwardCascade(item: string, profileId: string) {
+    const idx = flatEpisodes.findIndex(e => e.hash === item)
+    if (idx < 0) return
+    const nextWatched = flatEpisodes.slice(idx + 1).filter(epIsWatched)
+    if (nextWatched.length) setConfirmState({ kind: 'cascadeBackward', episodes: nextWatched, profileId })
+  }
+
   async function saveTimecodeForItem(ctx: TimePickerCtx, sec: number) {
     if (!activeDevice || !cardId) return
     const percent = ctx.maxSec > 0 ? Math.min(100, sec / ctx.maxSec * 100) : sec
@@ -749,6 +815,10 @@ export default function CardDetailPage() {
       body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item: ctx.item, percent, profile_id: ctx.profileId }),
     })
     loadTimecodes(cardId, activeDevice.id)
+    // Percent≥90 can imply "Просмотрел" (movie) server-side (EnsureImpliedStatus) —
+    // watchStatus is separate local state, doesn't refresh on its own.
+    loadWatchStatus()
+    if (card?.media_type === 'tv' && percent >= 90) checkForwardCascade(ctx.item, ctx.profileId)
   }
 
   async function markAllWatched(items: Array<{ item: string; profileId: string }>) {
@@ -761,6 +831,7 @@ export default function CardDetailPage() {
       })
     ))
     loadTimecodes(cardId, activeDevice.id)
+    loadWatchStatus()
   }
 
   async function markSpecial(item: string, profileId: string) {
@@ -771,6 +842,8 @@ export default function CardDetailPage() {
       body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item, profile_id: profileId }),
     })
     loadTimecodes(cardId, activeDevice.id)
+    loadWatchStatus() // MarkSpecialTimecode implies "Смотрю" for TV — refresh to show it
+    checkForwardCascade(item, profileId)
   }
 
   async function unmarkSpecial(item: string, profileId: string) {
@@ -783,11 +856,69 @@ export default function CardDetailPage() {
     loadTimecodes(cardId, activeDevice.id)
   }
 
+  async function deleteEpisodeTimecode(item: string, profileId: string) {
+    if (!activeDevice || !cardId) return
+    const qs = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, item, profile_id: profileId })
+    await fetch(`/api/episode-timecode?${qs}`, { method: 'DELETE' })
+    loadTimecodes(cardId, activeDevice.id)
+    checkBackwardCascade(item, profileId)
+  }
+
+  function loadWatchStatus() {
+    if (!cardId || !activeDevice || !defaultProfileId) return
+    const params = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, profile_id: defaultProfileId })
+    fetch(`/api/web/status?${params}`)
+      .then(r => r.ok ? r.json() : { status: '' })
+      .then(d => setWatchStatus(d.status || ''))
+      .catch(() => {})
+  }
+
+  // Deleting the movie's timecode also un-implies "Просмотрел" server-side
+  // (see clearWatchedStatusIfMovie in db/store/timecodes.go) — refetch to reflect it.
   async function deleteAllTimecodes() {
-    if (!activeDevice || !cardId || !confirm('Удалить историю просмотра?')) return
+    if (!activeDevice || !cardId) return
     const qs = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId })
     await fetch(`/api/web/card-timecodes?${qs}`, { method: 'DELETE' })
     setTimecodes([])
+    loadWatchStatus()
+  }
+
+  async function runConfirm() {
+    if (!confirmState || !activeDevice || !cardId) { setConfirmState(null); return }
+    const state = confirmState
+    setConfirmState(null)
+    if (state.kind === 'deleteMovie' || state.kind === 'deleteShow') {
+      await deleteAllTimecodes()
+    } else if (state.kind === 'deleteEpisode') {
+      await deleteEpisodeTimecode(state.ep.hash, state.profileId)
+    } else if (state.kind === 'cascadeForward') {
+      await Promise.all(state.episodes.map(ep =>
+        fetch('/api/web/mark-special', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item: ep.hash, profile_id: state.profileId }),
+        })
+      ))
+      loadTimecodes(cardId, activeDevice.id)
+      loadWatchStatus()
+    } else if (state.kind === 'cascadeBackward') {
+      await Promise.all(state.episodes.map(ep => {
+        const qs = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, item: ep.hash, profile_id: state.profileId })
+        return fetch(`/api/episode-timecode?${qs}`, { method: 'DELETE' })
+      }))
+      loadTimecodes(cardId, activeDevice.id)
+    }
+  }
+
+  function confirmModalProps(state: PendingConfirm): { title: string; message?: string; confirmLabel: string } {
+    const episodesNote = (eps: EpisodeData[]) => eps.length <= 8 ? eps.map(epLabel).join(', ') : `${eps.length} серий`
+    switch (state.kind) {
+      case 'deleteMovie':     return { title: 'Удалить историю просмотра?', confirmLabel: 'Удалить' }
+      case 'deleteShow':      return { title: 'Сбросить таймкоды всех серий?', message: 'Статус («Смотрю» и т.п.) не меняется', confirmLabel: 'Сбросить' }
+      case 'deleteEpisode':   return { title: `Сбросить таймкод ${epLabel(state.ep)}?`, confirmLabel: 'Сбросить' }
+      case 'cascadeForward':  return { title: 'Отметить предыдущие серии?', message: episodesNote(state.episodes), confirmLabel: 'Отметить' }
+      case 'cascadeBackward': return { title: 'Сбросить следующие серии?', message: episodesNote(state.episodes), confirmLabel: 'Сбросить' }
+    }
   }
 
   async function refreshFromTMDB() {
@@ -959,7 +1090,7 @@ export default function CardDetailPage() {
                     {movieDur > 0 && ` · ${fmtTime(Math.round(movieDur * moviePct / 100))} / ${fmtTime(movieDur)}`}
                   </span>
                   {moviePct > 0 && (
-                    <button className={styles.deleteBtn} onClick={deleteAllTimecodes}>✕</button>
+                    <button className={styles.deleteBtn} onClick={() => setConfirmState({ kind: 'deleteMovie' })}>✕</button>
                   )}
                 </div>
                 <div
@@ -983,6 +1114,7 @@ export default function CardDetailPage() {
                       ? `${tvWatchedEps} / ${tvTotalEps} серий`
                       : `${tvWatchedEps} серий просмотрено`}
                   </span>
+                  <button className={styles.deleteBtn} onClick={() => setConfirmState({ kind: 'deleteShow' })}>✕</button>
                 </div>
                 <div className={styles.tvBar}>
                   <div className={styles.tvBarFill} style={{ width: `${tvProgress}%` }} />
@@ -1052,6 +1184,7 @@ export default function CardDetailPage() {
             onMarkAllWatched={markAllWatched}
             onMarkSpecial={markSpecial}
             onUnmarkSpecial={unmarkSpecial}
+            onDeleteEpisode={(ep, profileId) => setConfirmState({ kind: 'deleteEpisode', ep, profileId })}
             apiEpisodes={apiEpisodes}
             timecodesLoaded={timecodesLoaded}
             numberOfSeasons={card.number_of_seasons}
@@ -1088,6 +1221,15 @@ export default function CardDetailPage() {
           ctx={tpCtx}
           onConfirm={async (ctx, sec) => { setTpCtx(null); await saveTimecodeForItem(ctx, sec) }}
           onCancel={() => setTpCtx(null)}
+        />
+      )}
+
+      {/* ── Delete/cascade confirmation ── */}
+      {confirmState && (
+        <ConfirmModal
+          {...confirmModalProps(confirmState)}
+          onConfirm={runConfirm}
+          onCancel={() => setConfirmState(null)}
         />
       )}
 

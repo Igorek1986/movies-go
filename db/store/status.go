@@ -103,20 +103,24 @@ func ListCardIDsByStatus(ctx context.Context, deviceID int64, profileID, status 
 	return out
 }
 
-// EnsureImpliedStatus sets an implied status the first time a card gets real watch
-// activity — "watching" for a TV show (any timecode at all), "watched" for a movie
-// once its percent crosses watched_threshold — but only if no status is set yet.
-// An explicit choice (including a deliberate "не смотрю"/"брошено") is never
-// overwritten by this. Cheap no-op (ON CONFLICT DO NOTHING) once a row exists.
+// EnsureImpliedStatus re-derives status on every real watch event — "watching" for
+// a TV show (any timecode at all), "watched" for a movie once its percent crosses
+// watched_threshold. Real watch activity always wins, INCLUDING over an explicit
+// choice ("не смотрю"/"брошено") — a status set a while ago is weaker evidence than
+// "just actually watched an episode". Called from live timecode writes only (not
+// from BackfillImpliedStatuses, which stays ON CONFLICT DO NOTHING — it replays
+// historical data in bulk on every startup and must not stomp on statuses the user
+// set after that old activity happened).
 func EnsureImpliedStatus(ctx context.Context, deviceID int64, profileID, cardID string, percent float64) {
 	threshold := GetSettingInt(ctx, "watched_threshold")
 	_, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO subjective_statuses (device_id, profile_id, card_id, status)
-		SELECT $1, $2, $3, CASE WHEN mc.media_type = 'movie' THEN 'watched' ELSE 'watching' END
+		SELECT $1, $2, $3::varchar, CASE WHEN mc.media_type = 'movie' THEN 'watched' ELSE 'watching' END
 		FROM media_cards mc
-		WHERE mc.card_id = $3
-		  AND (mc.media_type != 'movie' OR $4 >= $5)
-		ON CONFLICT (device_id, profile_id, card_id) DO NOTHING`,
+		WHERE mc.card_id = $3::varchar
+		  AND (mc.media_type != 'movie' OR $4::float8 >= $5::int)
+		ON CONFLICT (device_id, profile_id, card_id) DO UPDATE
+		SET status = EXCLUDED.status, updated_at = now()`,
 		deviceID, profileID, cardID, percent, threshold)
 	if err != nil {
 		log.Printf("store: ensure implied status: %v", err)

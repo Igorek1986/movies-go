@@ -667,6 +667,19 @@
   &:hover { color: $color-text-muted; }
 }
 
+.epDelete {
+  background: none;
+  border: none;
+  color: $color-text-muted;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color $transition-fast;
+  &:hover { color: #e05252; }
+}
+
 // ── Drum time picker ──────────────────────────────────────────────────────────
 
 .tpOverlay {

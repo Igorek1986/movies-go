@@ -154,6 +154,22 @@ func DeleteTimecode(ctx context.Context, deviceID int64, profileID, cardID, item
 		deviceID, profileID, cardID, item,
 	)
 	notifyWatchedChanged(deviceID, profileID)
+	clearWatchedStatusIfMovie(ctx, deviceID, profileID, cardID)
+}
+
+// clearWatchedStatusIfMovie un-implies "Просмотрел" when a movie's timecode is
+// removed — the timecode was the evidence EnsureImpliedStatus used to set it, so
+// deleting it should undo that. Only clears the implied 'watched' value, never an
+// explicit 'planned'/'not_watching' choice. No-op for TV (per-episode deletes don't
+// affect the show's own "Смотрю" status — see EnsureImpliedStatus).
+func clearWatchedStatusIfMovie(ctx context.Context, deviceID int64, profileID, cardID string) {
+	if !strings.HasSuffix(cardID, "_movie") {
+		return
+	}
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`DELETE FROM subjective_statuses WHERE device_id=$1 AND profile_id=$2 AND card_id=$3 AND status=$4`,
+		deviceID, profileID, cardID, StatusWatched,
+	)
 }
 
 // CardProgress holds aggregated watch progress for one card.
@@ -350,6 +366,7 @@ func MarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID,
 	)
 	if err == nil {
 		notifyWatchedChanged(deviceID, profileID)
+		EnsureImpliedStatus(ctx, deviceID, profileID, cardID, 100)
 	}
 	return err
 }
@@ -377,6 +394,14 @@ func DeleteCardTimecodes(ctx context.Context, deviceID int64, cardID string) {
 		deviceID, cardID,
 	)
 	notifyWatchedChanged(deviceID, "") // affects all profiles of the device
+	// No profile_id here (whole-device delete) — clear 'watched' across every
+	// profile on this device for this movie, same reasoning as clearWatchedStatusIfMovie.
+	if strings.HasSuffix(cardID, "_movie") {
+		postgres.Pool.Exec(ctx, //nolint:errcheck
+			`DELETE FROM subjective_statuses WHERE device_id=$1 AND card_id=$2 AND status=$3`,
+			deviceID, cardID, StatusWatched,
+		)
+	}
 }
 
 // ExportTimecodes returns {card_id: {item: data_json}} — Lampac-compatible format.
