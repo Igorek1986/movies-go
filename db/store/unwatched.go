@@ -69,10 +69,14 @@ func unwatchedOrderBy(sortOrder string) string {
 	}
 }
 
-// UnwatchedTVShows returns TV shows the profile is actively watching (at least one
-// watched aired episode) that still have an aired episode not yet watched — the local
-// equivalent of MyShows' "Непросмотренные" list. sortOrder mirrors myshows.js's
-// myshows_sort_order values (empty/unknown = most recently watched first).
+// UnwatchedTVShows returns TV shows the profile is actively watching (subjective
+// status "watching" — explicit choice or implied from any timecode, see
+// EnsureImpliedStatus) that still have an aired episode not yet watched — the local
+// equivalent of MyShows' "Непросмотренные" list. Does NOT require any episode to
+// already be fully watched: marking "Смотрю" with zero progress (or 1% into episode 1)
+// qualifies too, matching what "watching" means everywhere else in the app. sortOrder
+// mirrors myshows.js's myshows_sort_order values (empty/unknown = most recently
+// watched first).
 func UnwatchedTVShows(ctx context.Context, deviceID int64, profileID string, percent int, sortOrder string) []UnwatchedTVShow {
 	if percent < 1 {
 		percent = 90
@@ -134,7 +138,7 @@ func UnwatchedTVShows(ctx context.Context, deviceID int64, profileID string, per
 			WHERE e.tmdb_show_id = mc.tmdb_id AND NOT e.is_special
 			  AND e.air_date IS NOT NULL AND e.air_date <= ` + cutoff + `
 		) la ON true
-		WHERE c.watched >= 1 AND c.watched < c.aired
+		WHERE c.watched < c.aired
 		ORDER BY ` + unwatchedOrderBy(sortOrder)
 	rows, err := postgres.Pool.Query(ctx, sql, deviceID, profileID, percent)
 	if err != nil {
