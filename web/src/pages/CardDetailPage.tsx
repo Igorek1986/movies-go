@@ -906,6 +906,7 @@ export default function CardDetailPage() {
                     onClick={() => toggleWatchStatus(opt.status)}
                   >
                     <opt.icon />
+                    <span className={styles.watchStatusLabel}>{opt.title}</span>
                   </button>
                 ))}
                 <button
@@ -916,6 +917,7 @@ export default function CardDetailPage() {
                   onClick={toggleFavorite}
                 >
                   <IconBookmark filled={isFavorite} />
+                  <span className={styles.watchStatusLabel}>Закладка</span>
                 </button>
               </div>
             )}

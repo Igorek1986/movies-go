@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
 import { scrollV, getGridCols } from '@/utils/scrollNav'
@@ -29,7 +29,7 @@ interface LibraryResponse {
   results: LibraryItem[]
 }
 
-type StatusKey = 'watching' | 'completed' | 'planned' | 'stopped'
+type StatusKey = 'favorite' | 'watching' | 'completed' | 'planned' | 'stopped'
 
 // Scroll the horizontal row container so el is centered (same as CatalogPage's scrollH).
 function scrollH(el: HTMLElement) {
@@ -222,15 +222,17 @@ function LibraryGrid({ status, token, profileId, onCardClick }: {
 }
 
 const STATUS_LABELS: Record<StatusKey, string> = {
+  favorite: 'Избранное',
   watching: 'Смотрю',
   planned: 'Буду смотреть',
   completed: 'Просмотрел',
   stopped: 'Брошено',
 }
-const ROW_ORDER: StatusKey[] = ['watching', 'planned', 'completed', 'stopped']
+const ROW_ORDER: StatusKey[] = ['favorite', 'watching', 'planned', 'completed', 'stopped']
 
 export default function MediaLibraryPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { activeDevice, activeProfile, loaded } = useActiveProfile()
 
   const [expanded, setExpanded] = useState<StatusKey | null>(null)
@@ -334,7 +336,10 @@ export default function MediaLibraryPage() {
 
   return (
     <Layout>
-      <div className={styles.page}>
+      {/* location.key is unique per navigation — remounts everything below on
+          every visit to this page, so a status changed elsewhere (card detail
+          page) is never shown stale without a hard refresh. */}
+      <div className={styles.page} key={location.key}>
         <div className={styles.header}>
           {expanded
             ? <button className={styles.backBtn} onClick={() => setExpanded(null)}>← Назад</button>

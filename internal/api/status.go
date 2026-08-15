@@ -105,7 +105,7 @@ func handleMediaLibrary(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	if !map[string]bool{
 		store.StatusWatching: true, store.StatusPlanned: true,
-		store.StatusStopped: true, "completed": true,
+		store.StatusStopped: true, "completed": true, "favorite": true,
 	}[status] {
 		Error(w, http.StatusBadRequest, "invalid status")
 		return
@@ -129,6 +129,8 @@ func handleMediaLibrary(w http.ResponseWriter, r *http.Request) {
 		ids = store.ListWatchingCardIDs(r.Context(), d.ID, profileID, percent)
 	case "completed":
 		ids = store.ListCompletedCardIDs(r.Context(), d.ID, profileID, percent)
+	case "favorite":
+		ids = store.ListFavoriteCardIDs(r.Context(), d.ID, profileID)
 	default:
 		ids = store.ListCardIDsByStatus(r.Context(), d.ID, profileID, status)
 	}

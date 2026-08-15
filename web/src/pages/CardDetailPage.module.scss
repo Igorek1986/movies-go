@@ -202,11 +202,15 @@
 }
 
 .watchStatusBtn {
-  @include flex-center;
-  width: 40px;
-  height: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 56px;
+  padding: $spacing-xs $spacing-sm;
   border: 1px solid $color-border;
-  border-radius: $radius-full;
+  border-radius: $radius-md;
   background: $color-bg-card;
   color: $color-text-muted;
   cursor: pointer;
@@ -214,6 +218,30 @@
 
   &:hover:not(:disabled) { border-color: $color-primary; color: $color-text; }
   &:disabled { opacity: 0.6; cursor: default; }
+
+  @media (max-width: $bp-sm) {
+    min-width: 40px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: $radius-full;
+  }
+}
+
+// Visible caption under the icon — title/hover tooltips don't work on touch
+// devices, and icon-only buttons here look too similar to tap reliably
+// without one (e.g. "Перестал смотреть" vs "Не смотрю"). Hidden on mobile
+// (looks cramped there) — the tradeoff is the mis-tap risk returns on phones.
+.watchStatusLabel {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+
+  @media (max-width: $bp-sm) {
+    display: none;
+  }
 }
 
 .watchStatusActive {

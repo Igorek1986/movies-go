@@ -2,9 +2,67 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"movies-api/db/postgres"
 )
+
+type favoriteBlob struct {
+	Book []int64 `json:"book"`
+	Card []struct {
+		ID              int64  `json:"id"`
+		MediaType       string `json:"media_type"`
+		Name            string `json:"name"`
+		FirstAirDate    string `json:"first_air_date"`
+		NumberOfSeasons int    `json:"number_of_seasons"`
+	} `json:"card"`
+}
+
+// ListFavoriteCardIDs returns card_ids from the profile's favorite "book"
+// (bookmarks) category, most recently added first. This reads the same blob
+// np_profiles.js syncs from Lampa (profiles.favorite) — a single JSON value per
+// profile, not the subjective_statuses table. The "book" array only holds tmdb
+// ids (no media_type); media_type is resolved from the accompanying "card"
+// array in the same blob. Lampa's own card objects (see utils.js's
+// card_fields) never carry an explicit "media_type" field at all — only ones
+// added through the web UI's toggleFavorite do — so entries synced natively
+// from Lampa need the same tv/movie heuristic status.js uses: presence of
+// name/first_air_date/number_of_seasons means a TV show.
+func ListFavoriteCardIDs(ctx context.Context, deviceID int64, profileID string) []string {
+	var raw *string
+	err := postgres.Pool.QueryRow(ctx,
+		`SELECT favorite FROM profiles WHERE device_id = $1 AND profile_id = $2`,
+		deviceID, profileID).Scan(&raw)
+	if err != nil || raw == nil {
+		return nil
+	}
+	var blob favoriteBlob
+	if json.Unmarshal([]byte(*raw), &blob) != nil {
+		return nil
+	}
+	mediaTypeByID := make(map[int64]string, len(blob.Card))
+	for _, c := range blob.Card {
+		mt := c.MediaType
+		if mt == "" {
+			if c.Name != "" || c.FirstAirDate != "" || c.NumberOfSeasons > 0 {
+				mt = "tv"
+			} else {
+				mt = "movie"
+			}
+		}
+		mediaTypeByID[c.ID] = mt
+	}
+	out := make([]string, 0, len(blob.Book))
+	for _, id := range blob.Book {
+		mt := mediaTypeByID[id]
+		if mt == "" {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%d_%s", id, mt))
+	}
+	return out
+}
 
 // ListWatchingCardIDs returns TV shows with subjective status "watching" that the
 // profile is still actively following — excludes shows that have finished airing
