@@ -609,7 +609,7 @@ export default function CardDetailPage() {
     loadTimecodes(cardId, activeDevice.id)
   }, [cardId, activeDevice?.id, loadTimecodes])
 
-  // Subjective status ("Медиатека") — Смотрю/Буду смотреть/Перестал смотреть/Не
+  // Subjective status ("Моё") — Смотрю/Буду смотреть/Перестал смотреть/Не
   // смотрю for TV, Просмотрел/Буду смотреть/Не смотрю for movies.
   useEffect(() => {
     if (!cardId || !activeDevice || !defaultProfileId) return

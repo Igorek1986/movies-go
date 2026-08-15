@@ -79,7 +79,7 @@ func GetSubjectiveStatuses(ctx context.Context, deviceID int64, profileID string
 }
 
 // ListCardIDsByStatus returns card_ids with the given explicit status — the backend
-// for "Медиатека" tabs (Смотрю/Буду смотреть/Бросил). Does NOT include
+// for "Моё" tabs (Смотрю/Буду смотреть/Бросил). Does NOT include
 // implied-but-unwritten statuses; EnsureImpliedStatus/BackfillImpliedStatuses keep
 // the table caught up so this stays accurate.
 func ListCardIDsByStatus(ctx context.Context, deviceID int64, profileID, status string) []string {

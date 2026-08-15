@@ -92,7 +92,7 @@ func handleDeleteSubjectiveStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /media-library?token=&profile_id=&status=watching&page=&per_page=
-// "Медиатека" — cards with a given subjective status (Смотрю/Буду смотреть/Бросил).
+// "Моё" — cards with a given subjective status (Смотрю/Буду смотреть/Бросил).
 // "watched" (Просмотрел, movies) shares this same endpoint; "История" on the web
 // page is the existing /api/history endpoint, not this one — it's factual watch
 // data, not a subjective status.

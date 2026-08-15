@@ -470,7 +470,7 @@ CREATE TABLE IF NOT EXISTS push_notified_episodes (
     PRIMARY KEY (device_id, profile_id, card_id, season, episode)
 );
 
--- ─── Subjective statuses ("Медиатека") ─────────────────────────────────────────
+-- ─── Subjective statuses ("Моё") ─────────────────────────────────────────
 -- Personal per-profile status, independent of watch history — "Смотрю"/"Буду
 -- смотреть"/"Перестал смотреть"/"Не смотрю" for TV, "Просмотрел"/"Буду
 -- смотреть"/"Не смотрю" for movies. An explicit row here always wins over

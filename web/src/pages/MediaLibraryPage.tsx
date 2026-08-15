@@ -338,7 +338,7 @@ export default function MediaLibraryPage() {
         <div className={styles.header}>
           {expanded
             ? <button className={styles.backBtn} onClick={() => setExpanded(null)}>← Назад</button>
-            : <h1 className={styles.title}>Медиатека</h1>
+            : <h1 className={styles.title}>Моё</h1>
           }
         </div>
 
