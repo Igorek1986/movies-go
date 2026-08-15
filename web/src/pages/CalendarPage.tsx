@@ -88,7 +88,7 @@ export default function CalendarPage() {
 
   useEffect(() => {
     if (!loaded || !token) return
-    getPushStatus(token, profileId).then(setPushSubscribed)
+    getPushStatus().then(setPushSubscribed)
   }, [loaded, token, profileId])
 
   async function togglePush() {

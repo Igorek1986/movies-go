@@ -24,14 +24,19 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   return bytes
 }
 
-export async function getPushStatus(token: string, profileId: string): Promise<boolean> {
+// Whether *this* browser/PWA install currently has an active push subscription —
+// checked locally (registration + subscription object), not via the server's
+// "does any subscription exist for this profile" — those can disagree after a
+// reinstall: the old install's row lingers in the DB with no local subscription
+// to match it, which used to make the toggle show "on" while unsubscribing was
+// a silent no-op (nothing local to unsubscribe from).
+export async function getPushStatus(): Promise<boolean> {
   if (!isPushSupported()) return false
+  if (Notification.permission !== 'granted') return false
   try {
-    const params = new URLSearchParams({ token, profile_id: profileId })
-    const res = await fetch(`/push/status?${params}`)
-    if (!res.ok) return false
-    const data = await res.json()
-    return !!data.subscribed
+    const reg = await navigator.serviceWorker.getRegistration()
+    const sub = await reg?.pushManager.getSubscription()
+    return !!sub
   } catch {
     return false
   }
