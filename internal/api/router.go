@@ -53,8 +53,8 @@ func NewRouter(mode string) http.Handler {
 	r.Get("/unwatched", handleCategory)
 	r.Get("/unwatched/progress", handleUnwatchedProgress)
 	r.Get("/unwatched/episodes", handleUnwatchedEpisodes)
-	r.Get("/calendar", handleCalendar)
-	r.Get("/media-library", handleMediaLibrary)
+	r.Get("/calendar", pageOrAPI(mode, handleCalendar))
+	r.Get("/media-library", pageOrAPI(mode, handleMediaLibrary))
 	r.Get("/np_popular", cached)
 	r.Get("/np_popular_daily", handlePopularDaily)
 
@@ -384,6 +384,27 @@ func serveParserStub(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Сервис работает</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0f1117;color:#e8eaf6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}.card{background:#1a1d27;border:1px solid #2d3148;border-radius:10px;padding:32px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:16px;text-align:center}h1{font-size:1.5rem;font-weight:600}p{color:#8a8fa8;font-size:14px;line-height:1.5}</style></head><body><div class="card"><h1>Сервис работает</h1><p>Веб-интерфейс недоступен в режиме парсера.<br>Для доступа к панели управления переключитесь в режим <strong>all</strong>.</p></div></body></html>`)) //nolint:errcheck
+}
+
+// pageOrAPI resolves a path collision: /calendar and /media-library are both a
+// token-based Lampa-API endpoint (bare path, no /api/ prefix — matches
+// /unwatched and friends, so a plugin can call it too) AND a React Router page
+// at the exact same path. chi routes by path only, so without this every plain
+// browser navigation (address bar, bookmark, reload) would hit the API handler
+// and render raw JSON instead of the app shell.
+// Sec-Fetch-Dest reliably tells the two apart: "document" means a top-level
+// navigation (address bar/reload/link), anything else (or absent, e.g. an
+// older browser or a non-browser Lampa client) is a programmatic request that
+// should get the real JSON. Only relevant in "all" mode — parser mode has no
+// SPA to fall back to, so the API handler always wins there.
+func pageOrAPI(mode string, api http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if mode == "all" && r.Header.Get("Sec-Fetch-Dest") == "document" {
+			serveSPA(w, r)
+			return
+		}
+		api(w, r)
+	}
 }
 
 // serveSPA отдаёт React-приложение; неизвестные пути → index.html.

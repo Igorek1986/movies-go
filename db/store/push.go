@@ -141,10 +141,13 @@ func MarkEpisodeNotified(ctx context.Context, deviceID int64, profileID, cardID 
 }
 
 // SeedNotifiedEpisodes marks every already-aired episode of every subscription's
-// watched shows as "notified" WITHOUT sending anything — called once at startup and
-// right after a new subscription is created, so FindNewEpisodeNotifications only
-// ever surfaces genuinely new episodes instead of flooding a fresh subscription
-// with a push for its entire back catalog of aired-but-never-notified episodes.
+// watched shows as "notified" WITHOUT sending anything — called right after a new
+// subscription is created, so FindNewEpisodeNotifications only ever surfaces
+// genuinely new episodes instead of flooding a fresh subscription with a push for
+// its entire back catalog of aired-but-never-notified episodes. Deliberately NOT
+// called on every server startup: episodes can legitimately cross aired_cutoff
+// between the last periodic check and a restart, and re-seeding then would
+// silently swallow that real notification instead of sending it on the next tick.
 func SeedNotifiedEpisodes(ctx context.Context) {
 	cutoff := AiredCutoffDate(ctx)
 	//nolint:gosec // cutoff comes from AiredCutoffDate (admin setting only), not user input

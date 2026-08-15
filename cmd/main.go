@@ -75,12 +75,6 @@ func main() {
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
 
-	// Must finish (synchronously, before tasks.Start below) so the push-notify
-	// loop's first check — which can fire within moments of tasks.Start — never
-	// races it and floods every subscriber with their entire back catalog of
-	// already-aired episodes.
-	store.SeedNotifiedEpisodes(appCtx)
-
 	// Telegram бот и фоновые задачи
 	if mode == "all" {
 		if err := bot.Start(appCtx); err != nil {

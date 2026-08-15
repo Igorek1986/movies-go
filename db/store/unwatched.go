@@ -5,22 +5,34 @@ import (
 	"fmt"
 	"log"
 	"movies-api/db/postgres"
+	"strings"
 )
 
 // AiredCutoffDate returns a SQL date expression for deciding whether an episode
-// counts as "aired". By default it's just CURRENT_DATE, but the admin settings
+// counts as "aired". By default it's just today's date in the configured
+// deployment timezone (default_timezone), but the admin settings
 // aired_cutoff_days/aired_cutoff_hour let deployments delay that past midnight of
 // air_date — TMDB's air_date is date-only, and subtitles/torrents for a show
 // airing "today" often aren't actually available until later, sometimes the next
-// day. Safe to interpolate directly: both values always come from admin-only
-// settings, never from user input.
+// day. The Postgres session itself runs in UTC regardless of the user's
+// timezone, so "midnight"/"20:00" has to be computed relative to
+// default_timezone explicitly — plain now()/CURRENT_DATE would use UTC and the
+// cutoff would fire hours late (or early) for anyone not in UTC+0.
+// Safe to interpolate directly: values come from admin-only settings, never
+// from user input; the timezone name is still escaped defensively.
 func AiredCutoffDate(ctx context.Context) string {
 	d := GetSettingInt(ctx, "aired_cutoff_days")
 	h := GetSettingInt(ctx, "aired_cutoff_hour")
-	if d <= 0 && h <= 0 {
-		return "CURRENT_DATE"
+	tz, _ := GetSetting(ctx, "default_timezone")
+	if tz == "" {
+		tz = "Europe/Moscow"
 	}
-	return fmt.Sprintf("(now() - interval '%d days' - interval '%d hours')::date", d, h)
+	tz = strings.ReplaceAll(tz, "'", "''")
+	localNow := fmt.Sprintf("(now() AT TIME ZONE '%s')", tz)
+	if d <= 0 && h <= 0 {
+		return localNow + "::date"
+	}
+	return fmt.Sprintf("(%s - interval '%d days' - interval '%d hours')::date", localNow, d, h)
 }
 
 // UnwatchedTVShow is one entry of UnwatchedTVShows: a TV show the profile is
