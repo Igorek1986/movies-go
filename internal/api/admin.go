@@ -556,6 +556,66 @@ func handleWebSetStatus(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// GET /api/web/favorite?device_id=&profile_id=
+// Returns the whole Lampa favorite blob ({card:[...], book:[ids], like:[ids], ...})
+// — same shape np_profiles.js syncs, one value per profile, not per card.
+func handleWebGetFavorite(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	if u == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	q := r.URL.Query()
+	deviceID, _ := strconv.ParseInt(q.Get("device_id"), 10, 64)
+	if deviceID == 0 {
+		Error(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	var ownerID int64
+	if err := postgres.Pool.QueryRow(r.Context(),
+		`SELECT user_id FROM devices WHERE id=$1`, deviceID,
+	).Scan(&ownerID); err != nil || ownerID != u.ID {
+		Error(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	fav := store.GetFavorite(r.Context(), deviceID, q.Get("profile_id"))
+	JSON(w, http.StatusOK, map[string]any{"favorite": fav})
+}
+
+// POST /api/web/favorite
+// Body: {device_id, profile_id, favorite: <whole blob>} — caller (web UI) reads
+// the current blob via GET, mutates the right category array client-side (same
+// add/remove semantics as Lampa's own core/favorite.js), and posts the whole
+// thing back. Overwrites, doesn't merge — same as the token-based PUT.
+func handleWebSetFavorite(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	if u == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		DeviceID  int64  `json:"device_id"`
+		ProfileID string `json:"profile_id"`
+		Favorite  any    `json:"favorite"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	var ownerID int64
+	if err := postgres.Pool.QueryRow(r.Context(),
+		`SELECT user_id FROM devices WHERE id=$1`, body.DeviceID,
+	).Scan(&ownerID); err != nil || ownerID != u.ID {
+		Error(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	if err := store.SaveFavorite(r.Context(), body.DeviceID, body.ProfileID, body.Favorite); err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // DELETE /api/web/card-timecodes?device_id=&card_id=
 func handleWebDeleteCardTimecodes(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)

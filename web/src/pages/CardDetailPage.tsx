@@ -103,6 +103,13 @@ function IconCross() {
     </svg>
   )
 }
+function IconBookmark({ filled }: { filled: boolean }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'}>
+      <path d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4-7 4V4.5a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  )
+}
 
 interface WatchStatusOption { status: string; title: string; icon: () => React.ReactElement }
 const TV_STATUS_OPTIONS: WatchStatusOption[] = [
@@ -550,6 +557,8 @@ export default function CardDetailPage() {
   const [refreshed,    setRefreshed]   = useState(false)
   const [watchStatus,  setWatchStatus] = useState('')
   const [statusBusy,   setStatusBusy]  = useState(false)
+  const [isFavorite,   setIsFavorite]  = useState(false)
+  const [favoriteBusy, setFavoriteBusy] = useState(false)
 
   const activeProfileId = activeProfile?.profile_id ?? ''
 
@@ -624,6 +633,74 @@ export default function CardDetailPage() {
       if (res.ok) setWatchStatus(status)
     } finally {
       setStatusBusy(false)
+    }
+  }
+
+  // Избранное ("Закладки", Lampa's `book` category) — checked from the whole
+  // favorite blob np_profiles.js syncs (one value per profile, not per card).
+  useEffect(() => {
+    if (!card || !activeDevice || !defaultProfileId) return
+    const params = new URLSearchParams({ device_id: String(activeDevice.id), profile_id: defaultProfileId })
+    fetch(`/api/web/favorite?${params}`)
+      .then(r => r.ok ? r.json() : { favorite: null })
+      .then(d => setIsFavorite(Array.isArray(d.favorite?.book) && d.favorite.book.includes(card.tmdb_id)))
+      .catch(() => {})
+  }, [card, activeDevice, defaultProfileId])
+
+  async function toggleFavorite() {
+    if (!card || !activeDevice || !defaultProfileId || favoriteBusy) return
+    setFavoriteBusy(true)
+    try {
+      const params = new URLSearchParams({ device_id: String(activeDevice.id), profile_id: defaultProfileId })
+      const res = await fetch(`/api/web/favorite?${params}`)
+      const data = res.ok ? await res.json() : { favorite: null }
+      const fav = (data.favorite && typeof data.favorite === 'object') ? { ...data.favorite } : {}
+      const CATEGORIES = ['card', 'like', 'wath', 'book', 'history', 'look', 'viewed', 'scheduled', 'continued', 'thrown']
+      for (const c of CATEGORIES) if (!Array.isArray(fav[c])) fav[c] = []
+
+      const nowFavorite = !isFavorite
+      if (nowFavorite) {
+        if (!fav.book.includes(card.tmdb_id)) fav.book = [card.tmdb_id, ...fav.book]
+        if (!fav.card.some((c: { id: number }) => c.id === card.tmdb_id)) {
+          fav.card = [
+            {
+              id: card.tmdb_id,
+              source: 'tmdb',
+              media_type: card.media_type,
+              title: card.title,
+              original_title: card.original_title,
+              name: card.media_type === 'tv' ? card.title : undefined,
+              original_name: card.media_type === 'tv' ? card.original_title : undefined,
+              poster_path: card.poster_path,
+              backdrop_path: card.backdrop_path,
+              overview: card.overview,
+              release_date: card.release_date,
+              first_air_date: card.first_air_date,
+              vote_average: card.vote_average,
+              vote_count: card.vote_count,
+              original_language: card.original_language,
+              number_of_seasons: card.number_of_seasons,
+              number_of_episodes: card.number_of_episodes,
+              status: card.status,
+              imdb_id: card.imdb_id,
+            },
+            ...fav.card,
+          ]
+        }
+      } else {
+        fav.book = fav.book.filter((id: number) => id !== card.tmdb_id)
+        const stillReferenced = CATEGORIES.filter(c => c !== 'card').some(c => fav[c].includes(card.tmdb_id))
+        if (!stillReferenced) fav.card = fav.card.filter((c: { id: number }) => c.id !== card.tmdb_id)
+      }
+
+      const putRes = await fetch('/api/web/favorite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: activeDevice.id, profile_id: defaultProfileId, favorite: fav }),
+      })
+      if (putRes.ok) setIsFavorite(nowFavorite)
+    } finally {
+      setFavoriteBusy(false)
     }
   }
 
@@ -831,6 +908,15 @@ export default function CardDetailPage() {
                     <opt.icon />
                   </button>
                 ))}
+                <button
+                  className={`${styles.watchStatusBtn}${isFavorite ? ' ' + styles.watchStatusActive : ''}`}
+                  disabled={favoriteBusy}
+                  title={isFavorite ? 'В закладках' : 'Добавить в закладки'}
+                  aria-label={isFavorite ? 'В закладках' : 'Добавить в закладки'}
+                  onClick={toggleFavorite}
+                >
+                  <IconBookmark filled={isFavorite} />
+                </button>
               </div>
             )}
 
