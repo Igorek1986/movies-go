@@ -425,7 +425,12 @@ func serveSPA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// SPA fallback → index.html
+	// SPA fallback → index.html. Unlike the hashed asset files above (safe to
+	// cache forever, a new build gets a new filename), index.html's own name
+	// never changes between deploys — without an explicit no-store the browser
+	// can keep serving an old index.html that still points at a stale JS/CSS
+	// bundle indefinitely, so a rebuild silently never reaches the user.
+	w.Header().Set("Cache-Control", "no-store")
 	r.URL.Path = "/"
 	fsrv.ServeHTTP(w, r)
 }

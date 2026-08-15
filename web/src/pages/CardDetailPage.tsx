@@ -111,18 +111,22 @@ function IconBookmark({ filled }: { filled: boolean }) {
   )
 }
 
-interface WatchStatusOption { status: string; title: string; icon: () => React.ReactElement }
+// A distinct color per status — always applied to the icon (not just when
+// active) so the buttons are told apart at a glance instead of only by a
+// hover tooltip that doesn't exist on touch devices.
+interface WatchStatusOption { status: string; title: string; icon: () => React.ReactElement; color: string }
 const TV_STATUS_OPTIONS: WatchStatusOption[] = [
-  { status: 'watching',     title: 'Смотрю',            icon: IconEye },
-  { status: 'planned',      title: 'Буду смотреть',      icon: IconCheck },
-  { status: 'stopped',      title: 'Перестал смотреть', icon: IconMinus },
-  { status: 'not_watching', title: 'Не смотрю',          icon: IconCross },
+  { status: 'watching',     title: 'Смотрю',            icon: IconEye,   color: '#4CAF50' },
+  { status: 'planned',      title: 'Буду смотреть',      icon: IconCheck, color: '#2196F3' },
+  { status: 'stopped',      title: 'Перестал смотреть', icon: IconMinus, color: '#FF9800' },
+  { status: 'not_watching', title: 'Не смотрю',          icon: IconCross, color: '#F44336' },
 ]
 const MOVIE_STATUS_OPTIONS: WatchStatusOption[] = [
-  { status: 'watched',      title: 'Просмотрел',    icon: IconEye },
-  { status: 'planned',      title: 'Буду смотреть', icon: IconCheck },
-  { status: 'not_watching', title: 'Не смотрю',      icon: IconCross },
+  { status: 'watched',      title: 'Просмотрел',    icon: IconEye,   color: '#4CAF50' },
+  { status: 'planned',      title: 'Буду смотреть', icon: IconCheck, color: '#2196F3' },
+  { status: 'not_watching', title: 'Не смотрю',      icon: IconCross, color: '#F44336' },
 ]
+const FAVORITE_COLOR = '#f5c518' // same gold as the ★ rating elsewhere on this page
 
 // ── Drum Column ───────────────────────────────────────────────────────────────
 
@@ -896,21 +900,37 @@ export default function CardDetailPage() {
 
             {activeDevice && (
               <div className={styles.watchStatusRow}>
-                {(isTV ? TV_STATUS_OPTIONS : MOVIE_STATUS_OPTIONS).map(opt => (
-                  <button
-                    key={opt.status}
-                    className={`${styles.watchStatusBtn}${watchStatus === opt.status ? ' ' + styles.watchStatusActive : ''}`}
-                    disabled={statusBusy}
-                    title={opt.title}
-                    aria-label={opt.title}
-                    onClick={() => toggleWatchStatus(opt.status)}
-                  >
-                    <opt.icon />
-                    <span className={styles.watchStatusLabel}>{opt.title}</span>
-                  </button>
-                ))}
+                {(isTV ? TV_STATUS_OPTIONS : MOVIE_STATUS_OPTIONS).map(opt => {
+                  // No status set at all (never touched) displays as "Не смотрю" —
+                  // that's the implicit default, just not written to the DB
+                  // until the user actually picks something.
+                  const active = watchStatus === opt.status || (!watchStatus && opt.status === 'not_watching')
+                  return (
+                    <button
+                      key={opt.status}
+                      className={styles.watchStatusBtn}
+                      style={active ? {
+                        color: opt.color,
+                        borderColor: opt.color,
+                        backgroundColor: opt.color + '26',
+                      } : undefined}
+                      disabled={statusBusy}
+                      title={opt.title}
+                      aria-label={opt.title}
+                      onClick={() => toggleWatchStatus(opt.status)}
+                    >
+                      <opt.icon />
+                      <span className={styles.watchStatusLabel}>{opt.title}</span>
+                    </button>
+                  )
+                })}
                 <button
-                  className={`${styles.watchStatusBtn}${isFavorite ? ' ' + styles.watchStatusActive : ''}`}
+                  className={styles.watchStatusBtn}
+                  style={isFavorite ? {
+                    color: FAVORITE_COLOR,
+                    borderColor: FAVORITE_COLOR,
+                    backgroundColor: FAVORITE_COLOR + '26',
+                  } : undefined}
                   disabled={favoriteBusy}
                   title={isFavorite ? 'В закладках' : 'Добавить в закладки'}
                   aria-label={isFavorite ? 'В закладках' : 'Добавить в закладки'}
