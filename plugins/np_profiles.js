@@ -35,7 +35,19 @@
     if (window.profiles_plugin) return;
     window.profiles_plugin = true;
 
-    var VERSION = '1.0.0';
+    var VERSION = '1.0.3';
+
+    // Идентификатор ЭТОЙ вкладки/сессии — только в памяти, НЕ в Storage. Сюда
+    // намеренно не годится persisted lampa_uid: один и тот же токен может быть
+    // открыт на нескольких физических экранах одновременно (TV/телефон/ПК), и
+    // lampa_uid у них общий (клонируется вместе с остальными данными). Нужен
+    // серверу, чтобы не возвращать устройству эхо его же изменений по WS, но
+    // при этом доставлять их ДРУГИМ экранам с тем же токеном — как device_id
+    // в нативном Lampa-сокете (core/socket.js), который тоже генерируется в
+    // памяти при каждой загрузке страницы, а не берётся из Storage.
+    // window.* — чтобы np.js/np_unwatched.js переиспользовали то же значение.
+    window.__npClientId = window.__npClientId ||
+        ((window.Lampa && Lampa.Utils && Lampa.Utils.uid) ? Lampa.Utils.uid() : (Date.now() + '_' + Math.random()));
 
     // ── Синхронизация настроек плагинов (window.__NMSync) ─────────────────────
     if (!window.__NMSync) {
@@ -161,13 +173,17 @@
                 var token   = _token();
                 var baseUrl = _baseUrl();
                 if (!token || !baseUrl || !window.IS_NP || _ws) return;
-                var wsUrl = baseUrl.replace(/^http/, 'ws') + '/api/plugin-settings/ws?token=' + encodeURIComponent(token);
+                var wsUrl = baseUrl.replace(/^http/, 'ws') + '/api/plugin-settings/ws?token=' + encodeURIComponent(token) +
+                    '&client_id=' + encodeURIComponent(window.__npClientId || '');
                 try { _ws = new WebSocket(wsUrl); } catch (e) { return; }
                 _ws.onmessage = function (e) {
                     try {
                         var msg = JSON.parse(e.data);
                         if (msg.plugin && msg.key !== undefined) {
-                            _applyMsg(msg.plugin, msg.key, msg.value, msg.lampa_profile_id || '');
+                            // Сервер шлёт "profile_id" (см. handlePatchPluginSettings) — раньше
+                            // тут читали несуществующее msg.lampa_profile_id, из-за чего сверка
+                            // профиля в _applyMsg никогда не проходила.
+                            _applyMsg(msg.plugin, msg.key, msg.value, msg.profile_id || '');
                         }
                     } catch (ex) {}
                 };
@@ -185,7 +201,7 @@
                 var url = baseUrl + '/api/plugin-settings'
                     + '?token=' + encodeURIComponent(token)
                     + '&plugin=' + encodeURIComponent(plugin)
-                    + '&lampa_profile_id=' + encodeURIComponent(profileId);
+                    + '&profile_id=' + encodeURIComponent(profileId);
                 fetch(url)
                     .then(function (r) { return r.ok ? r.json() : null; })
                     .then(function (data) {
@@ -231,7 +247,8 @@
                     var url = baseUrl + '/api/plugin-settings'
                         + '?token=' + encodeURIComponent(token)
                         + '&plugin=' + encodeURIComponent(plugin)
-                        + '&lampa_profile_id=' + encodeURIComponent(profileId);
+                        + '&profile_id=' + encodeURIComponent(profileId)
+                        + '&client_id=' + encodeURIComponent(window.__npClientId || '');
                     var send = function (val) {
                         fetch(url, {
                             method: 'PATCH',
@@ -305,7 +322,8 @@
     }
 
     function apiUrl(path) {
-        return BASE_URL + '/timecode/' + path + '?token=' + encodeURIComponent(getToken());
+        return BASE_URL + '/timecode/' + path + '?token=' + encodeURIComponent(getToken()) +
+            '&client_id=' + encodeURIComponent(window.__npClientId || '');
     }
 
     /** GET /timecode/profiles → {profiles: [{profile_id, name, timecodes_count}], limit} */
@@ -398,12 +416,16 @@
 
         clearTimeout(_wsReconnectTimer);
 
-        var wsUrl = BASE_URL.replace(/^http/, 'ws') + '/timecode/ws?token=' + encodeURIComponent(getToken());
+        var wsUrl = BASE_URL.replace(/^http/, 'ws') + '/timecode/ws?token=' + encodeURIComponent(getToken()) +
+            '&client_id=' + encodeURIComponent(window.__npClientId || '');
         try {
             _ws = new WebSocket(wsUrl);
 
             _ws.onopen = function () {
-                // соединение установлено
+                // Пока соединение было разорвано (например, приложение висело в фоне
+                // на TV), могли потеряться broadcast-сообщения — подтягиваем актуальные
+                // имя/иконку активного профиля напрямую с сервера.
+                resyncActiveProfile();
             };
 
             _ws.onmessage = function (event) {
@@ -433,19 +455,33 @@
         var active = getActiveProfile();
         var activeId = active ? String(active.profile_id) : '';
         if (String(msg.profile_id || '') !== activeId) return;
+        if (!msg.item) return;
 
         try {
             var tc = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
-            var key = timelineKey();
-            var fv = Lampa.Storage.get(key, {});
-            fv[String(msg.item)] = {
-                percent:  tc.percent  || 0,
-                time:     tc.time     || 0,
-                duration: tc.duration || 0,
-                profile:  0,
-            };
-            Lampa.Storage.set(key, fv);
-            if (Lampa.Timeline && Lampa.Timeline.read) Lampa.Timeline.read();
+
+            // Timeline.update() (не read()!) — единственное, что реально
+            // перерисовывает уже отрисованную полоску прогресса (.time-line) на
+            // экране, а не только освежает данные в памяти на будущее. Но это то
+            // же самое событие, что и при настоящем локальном просмотре — на него
+            // подписаны np.js/np_unwatched.js/myshows.js и слали бы таймкод
+            // обратно на сервер, думая, что это устройство сейчас смотрит. Флаг
+            // ниже — сигнал для них "это применили чужие данные, не пересылать".
+            window.__npRemoteTimelineUpdate = true;
+            try {
+                if (Lampa.Timeline && Lampa.Timeline.update) {
+                    Lampa.Timeline.update({
+                        hash: msg.item,
+                        percent: tc.percent || 0,
+                        time: tc.time || 0,
+                        duration: tc.duration || 0,
+                        profile: 0,
+                        received: true,
+                    });
+                }
+            } finally {
+                window.__npRemoteTimelineUpdate = false;
+            }
         } catch (e) {}
     }
 
@@ -468,6 +504,26 @@
         active.name = msg.name || active.name;
         setActiveProfile(active);
         renderButton(active);
+    }
+
+    /** Подстраховка на случай пропущенного profile_updated (WS был разорван, пока сервер его слал). */
+    function resyncActiveProfile() {
+        var active = getActiveProfile();
+        if (!active || !active.profile_id) return;
+
+        fetchProfiles(function (data) {
+            var list = data.profiles || [];
+            for (var i = 0; i < list.length; i++) {
+                if (list[i].profile_id !== active.profile_id) continue;
+                if (list[i].icon !== active.icon || list[i].name !== active.name) {
+                    active.icon = list[i].icon || null;
+                    active.name = list[i].name || active.name;
+                    setActiveProfile(active);
+                    renderButton(active);
+                }
+                break;
+            }
+        }, function () {});
     }
 
     var _saveFavTimer = null;
