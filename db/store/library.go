@@ -72,7 +72,7 @@ func ListFavoriteCardIDs(ctx context.Context, deviceID int64, profileID string) 
 // Sorted by last watched date, most recent first.
 func ListWatchingCardIDs(ctx context.Context, deviceID int64, profileID string, percent int) []string {
 	if percent < 1 {
-		percent = 90
+		percent = WatchedThreshold(ctx)
 	}
 	cutoff := AiredCutoffDate(ctx)
 	//nolint:gosec // cutoff comes from AiredCutoffDate (admin setting only), not user input
@@ -127,7 +127,7 @@ func ListWatchingCardIDs(ctx context.Context, deviceID int64, profileID string, 
 // with subjective status "watched". Sorted by last watched date, most recent first.
 func ListCompletedCardIDs(ctx context.Context, deviceID int64, profileID string, percent int) []string {
 	if percent < 1 {
-		percent = 90
+		percent = WatchedThreshold(ctx)
 	}
 	cutoff := AiredCutoffDate(ctx)
 	//nolint:gosec // cutoff comes from AiredCutoffDate (admin setting only), not user input

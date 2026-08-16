@@ -32,7 +32,7 @@ func GetContinues(ctx context.Context, deviceID int64, profileID, mediaFilter st
 		perPage = 20
 	}
 	if minPct < 1 {
-		minPct = 90
+		minPct = WatchedThreshold(ctx)
 	}
 
 	// Aggregate timecodes: card_id → {max_pct, last_watched}

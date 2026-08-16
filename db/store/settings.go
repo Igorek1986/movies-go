@@ -55,13 +55,13 @@ var SettingDefaults = map[string]string{
 	"vapid_public_key":  "",
 	"vapid_private_key": "",
 	// General
-	"watched_threshold":         "90",
-	"popular_period_days":       "30",
+	"watched_threshold":   "90",
+	"popular_period_days": "30",
 	// Весовые коэффициенты для ранжирования «Популярного» (movie/tv) — сериал
 	// накапливает зрителей быстрее фильма (много серий/дней), коэффициент < 1
 	// уравновешивает это. 1.0 = без поправки.
-	"popular_weight_movie": "1.0",
-	"popular_weight_tv":    "0.7",
+	"popular_weight_movie":      "1.0",
+	"popular_weight_tv":         "0.7",
 	"daily_task_hour":           "2",
 	"default_timezone":          "Europe/Moscow",
 	"session_ttl_days":          "30",
@@ -211,6 +211,14 @@ func GetSettingInt(ctx context.Context, key string) int {
 		}
 	}
 	return 0
+}
+
+// WatchedThreshold returns the admin-configured "considered watched" percent
+// (setting "watched_threshold", default 90) — the single source of truth for every
+// >=90%-style check in this codebase. Never hardcode 90 for that purpose; call this
+// instead so changing the setting actually takes effect everywhere.
+func WatchedThreshold(ctx context.Context) int {
+	return GetSettingInt(ctx, "watched_threshold")
 }
 
 // GetSettingFloat returns a numeric setting value with a fallback default.

@@ -140,9 +140,10 @@ func handleAppConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	botName, _ := store.GetSetting(r.Context(), "telegram_bot_name")
 	JSON(w, http.StatusOK, map[string]any{
-		"image_proxy_url": imgProxy,
-		"bot_name":        botName,
-		"plugin_url":      pluginURL,
+		"image_proxy_url":   imgProxy,
+		"bot_name":          botName,
+		"plugin_url":        pluginURL,
+		"watched_threshold": store.WatchedThreshold(r.Context()),
 	})
 }
 

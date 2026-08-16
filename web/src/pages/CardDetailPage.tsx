@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useLayoutEffect, useCallback, useMemo } fr
 import { useParams, Link, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl, tmdbUrl } from '@/utils/poster'
+import { watchedThreshold } from '@/utils/config'
 import { useAuth } from '@/hooks/useAuth'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import styles from './CardDetailPage.module.scss'
@@ -383,7 +384,7 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
       const hasUnwatched = regular.some(ep => {
         if (ep.user_special) return false
         const tc = tcMap[ep.hash]
-        return !tc || (tc.percent < 90 && !tc.special)
+        return !tc || (tc.percent < watchedThreshold() && !tc.special)
       })
       if (hasUnwatched) { setExpanded(new Set([sn])); return }
     }
@@ -407,7 +408,7 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
       const watched = eps.filter(ep => {
         if (ep.user_special) return true
         const tc = tcMap[ep.hash]
-        return tc != null && (tc.percent >= 90 || tc.special)
+        return tc != null && (tc.percent >= watchedThreshold() || tc.special)
       }).length
       return [watched, eps.length]
     }
@@ -416,7 +417,7 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
     let n = 0
     for (let ep = 1; ep <= season.episode_count; ep++) {
       const tc = tcMap[episodeItem(sn, ep, card.original_title)]
-      if (tc && (tc.percent >= 90 || tc.special)) n++
+      if (tc && (tc.percent >= watchedThreshold() || tc.special)) n++
     }
     return [n, season.episode_count]
   }
@@ -478,7 +479,7 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
       // Show "спец" only for catalog specials; user-watched (via MyShows sync) shows as green bar
       const isCatalogSpecial = ep.catalog_special
       const isUserMarked = ep.user_special
-      const isWatched = pct >= 90 || isUserMarked
+      const isWatched = pct >= watchedThreshold() || isUserMarked
       return (
         <div key={ep.episode} className={`${styles.epRow} ${isCatalogSpecial ? styles.epRowSpecial : ''} ${ep.future ? styles.epRowFuture : ''}`}>
           <div className={styles.epTop}>
@@ -627,7 +628,7 @@ export default function CardDetailPage() {
   const epIsWatched = useCallback((ep: EpisodeData) => {
     if (ep.user_special) return true
     const tc = tcMap[ep.hash]
-    return tc != null && (tc.percent >= 90 || tc.special)
+    return tc != null && (tc.percent >= watchedThreshold() || tc.special)
   }, [tcMap])
 
   const loadTimecodes = useCallback((cid: string, devId: number) => {
@@ -818,7 +819,7 @@ export default function CardDetailPage() {
     // Percent≥90 can imply "Просмотрел" (movie) server-side (EnsureImpliedStatus) —
     // watchStatus is separate local state, doesn't refresh on its own.
     loadWatchStatus()
-    if (card?.media_type === 'tv' && percent >= 90) checkForwardCascade(ctx.item, ctx.profileId)
+    if (card?.media_type === 'tv' && percent >= watchedThreshold()) checkForwardCascade(ctx.item, ctx.profileId)
   }
 
   async function markAllWatched(items: Array<{ item: string; profileId: string }>) {
@@ -988,7 +989,7 @@ export default function CardDetailPage() {
     return (card.seasons ?? []).filter(s => s.season_number > 0).reduce((s, ss) => s + ss.episode_count, 0)
   })() : 0
   const tvWatchedEps = isTV
-    ? profileTimecodes.filter(tc => tc.percent >= 90 || tc.special).length
+    ? profileTimecodes.filter(tc => tc.percent >= watchedThreshold() || tc.special).length
     : 0
   const tvProgress = tvTotalEps > 0 ? Math.min(100, tvWatchedEps * 100 / tvTotalEps) : 0
 
@@ -1083,8 +1084,8 @@ export default function CardDetailPage() {
             {showMovieProgress && (
               <div className={styles.progressWrap}>
                 <div className={styles.progressTop}>
-                  <span className={`${styles.progressLabel} ${moviePct >= 90 ? styles.progressComplete : ''}`}>
-                    {moviePct >= 90
+                  <span className={`${styles.progressLabel} ${moviePct >= watchedThreshold() ? styles.progressComplete : ''}`}>
+                    {moviePct >= watchedThreshold()
                       ? 'Просмотрено'
                       : `Просмотрено ${Math.round(moviePct)}%`}
                     {movieDur > 0 && ` · ${fmtTime(Math.round(movieDur * moviePct / 100))} / ${fmtTime(movieDur)}`}

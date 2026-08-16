@@ -1163,7 +1163,7 @@ func WatchedCardIDs(deviceID int64, profileID string, percent int) []string {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if percent < 1 {
-		percent = 90
+		percent = WatchedThreshold(ctx)
 	}
 	cutoff := AiredCutoffDate(ctx)
 	rows, err := postgres.Pool.Query(ctx, `

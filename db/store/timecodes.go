@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"movies-api/db/models"
-	"movies-api/db/postgres"
 	"log"
 	"math"
+	"movies-api/db/models"
+	"movies-api/db/postgres"
 	"sort"
 	"strings"
 	"time"
@@ -81,11 +81,12 @@ func UpsertTimecodes(ctx context.Context, deviceID int64, profileID string, rows
 	}
 
 	today := time.Now().Format("2006-01-02")
+	threshold := float64(WatchedThreshold(ctx))
 	saved := 0
 	for _, r := range rows {
 		pct := ParsePercent(r.Data)
 		var countedAt *string
-		if pct >= 90 {
+		if pct >= threshold {
 			countedAt = &today
 		}
 
@@ -192,6 +193,7 @@ func GetCardProgress(ctx context.Context, deviceID int64, profileID, cardID stri
 	}
 	defer rows.Close()
 
+	threshold := float64(WatchedThreshold(ctx))
 	var p CardProgress
 	for rows.Next() {
 		var data string
@@ -203,7 +205,7 @@ func GetCardProgress(ctx context.Context, deviceID int64, profileID, cardID stri
 		if pct > p.MaxPercent {
 			p.MaxPercent = pct
 		}
-		if pct >= 90 {
+		if pct >= threshold {
 			p.WatchedItems++
 		}
 	}
@@ -306,7 +308,7 @@ func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, ite
 
 	today := time.Now().Format("2006-01-02")
 	var countedAt *string
-	if percent >= 90 {
+	if percent >= float64(WatchedThreshold(ctx)) {
 		countedAt = &today
 	}
 
@@ -454,7 +456,7 @@ type HistoryFilter struct {
 	ProfileID  string // "" = all profiles of device
 	UserID     int64  // used when DeviceID == 0
 	MediaType  string // "", "movie", "tv"
-	InProgress bool   // only items with percent < 90
+	InProgress bool   // only items below watched_threshold
 	Search     string // substring match on title / original_title
 	Sort       string // "watched"(default),"release","progress_asc","progress_desc"
 	Page       int
@@ -477,13 +479,14 @@ func GetHistoryFiltered(ctx context.Context, f HistoryFilter) ([]HistoryEntry, H
 	if f.PerPage < 1 {
 		f.PerPage = 24
 	}
+	threshold := WatchedThreshold(ctx)
 
 	baseSelect := `
 		SELECT t.card_id,
 		       MAX(t.updated_at)                                                                                                    AS last_watched,
 		       MAX((t.data::jsonb->>'percent')::float)                                                                              AS max_pct,
 		       COUNT(*)                                                                                                             AS total_items,
-		       COUNT(*) FILTER (WHERE ((t.data::jsonb->>'percent')::float >= 90 OR (t.data::jsonb->>'special')::boolean IS TRUE)
+		       COUNT(*) FILTER (WHERE ((t.data::jsonb->>'percent')::float >= ` + fmt.Sprintf("%d", threshold) + ` OR (t.data::jsonb->>'special')::boolean IS TRUE)
 		                          AND NOT EXISTS (SELECT 1 FROM episodes e_sp WHERE e_sp.hash = t.item AND e_sp.is_special)) AS watched_items,
 		       COALESCE(
 		         (SELECT COUNT(*)::int FROM episodes e2
@@ -562,7 +565,7 @@ func GetHistoryFiltered(ctx context.Context, f HistoryFilter) ([]HistoryEntry, H
 			}
 		} else {
 			e.Progress = e.MaxPercent
-			e.IsComplete = e.MaxPercent >= 90
+			e.IsComplete = e.MaxPercent >= float64(threshold)
 		}
 		if releaseDate != nil && len(*releaseDate) >= 4 {
 			e.ReleaseDate = *releaseDate
@@ -704,11 +707,11 @@ func CountProfiles(ctx context.Context, deviceID int64) int {
 
 func CreateProfile(ctx context.Context, deviceID int64, profileID, name, icon string) (*models.Profile, error) {
 	lp := &models.Profile{
-		DeviceID:       deviceID,
+		DeviceID:  deviceID,
 		ProfileID: profileID,
-		Name:           name,
-		Icon:           icon,
-		Params:         "{}",
+		Name:      name,
+		Icon:      icon,
+		Params:    "{}",
 	}
 	err := postgres.Pool.QueryRow(ctx, `
 		INSERT INTO profiles (device_id, profile_id, name, icon)

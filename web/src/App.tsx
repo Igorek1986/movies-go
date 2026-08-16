@@ -9,6 +9,7 @@ function ScrollToTop() {
 import { useAuth } from '@/hooks/useAuth'
 import { ActiveProfileProvider } from '@/contexts/ActiveProfileContext'
 import { setImgProxy } from '@/utils/poster'
+import { setWatchedThreshold } from '@/utils/config'
 import footerStyles from '@/components/AppFooter.module.scss'
 
 import LoginPage from '@/pages/LoginPage'
@@ -87,7 +88,10 @@ export default function App() {
   useEffect(() => {
     fetch('/api/config')
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.image_proxy_url) setImgProxy(d.image_proxy_url) })
+      .then(d => {
+        if (d?.image_proxy_url) setImgProxy(d.image_proxy_url)
+        if (d?.watched_threshold) setWatchedThreshold(d.watched_threshold)
+      })
       .catch(() => {})
   }, [])
 

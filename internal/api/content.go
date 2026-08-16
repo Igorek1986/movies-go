@@ -547,7 +547,7 @@ func applyHideWatched(r *http.Request, f *store.CategoryFilter, profileID string
 	if d := deviceFromRequest(r); d != nil && hideWatched {
 		pct, _ := strconv.Atoi(q.Get("percent"))
 		if pct < 1 {
-			pct = 90
+			pct = store.WatchedThreshold(r.Context())
 		}
 		f.HideWatched = true
 		f.DeviceID = d.ID
@@ -587,7 +587,7 @@ func handleContinues(w http.ResponseWriter, r *http.Request, category, profileID
 
 	minPct, _ := strconv.Atoi(r.URL.Query().Get("min_progress"))
 	if minPct < 1 {
-		minPct = 90
+		minPct = store.WatchedThreshold(r.Context())
 	}
 
 	var mediaFilter string
@@ -626,7 +626,7 @@ func handleUnwatched(w http.ResponseWriter, r *http.Request, profileID string, p
 
 	percent, _ := strconv.Atoi(r.URL.Query().Get("percent"))
 	if percent < 1 {
-		percent = 90
+		percent = store.WatchedThreshold(r.Context())
 	}
 	sortOrder := r.URL.Query().Get("sort")
 	shows := cachedUnwatchedShows(d.ID, profileID, percent, sortOrder)
@@ -692,7 +692,7 @@ func handleUnwatchedProgress(w http.ResponseWriter, r *http.Request) {
 
 	percent, _ := strconv.Atoi(r.URL.Query().Get("percent"))
 	if percent < 1 {
-		percent = 90
+		percent = store.WatchedThreshold(r.Context())
 	}
 	profileID := r.URL.Query().Get("profile_id")
 
@@ -728,7 +728,7 @@ func handleUnwatchedEpisodes(w http.ResponseWriter, r *http.Request) {
 
 	percent, _ := strconv.Atoi(r.URL.Query().Get("percent"))
 	if percent < 1 {
-		percent = 90
+		percent = store.WatchedThreshold(r.Context())
 	}
 	profileID := r.URL.Query().Get("profile_id")
 

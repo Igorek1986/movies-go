@@ -3,10 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
 	"movies-api/internal/myshows"
-	"log"
 	"net/http"
 	"strconv"
 	"sync"
@@ -61,7 +61,7 @@ func handleEpisodes(w http.ResponseWriter, r *http.Request) {
 	// Try episodes table first
 	dbEps := store.GetEpisodes(ctx, mc.TmdbID)
 	if len(dbEps) > 0 {
-		JSON(w, http.StatusOK, buildFromTable(mc, dbEps, timecodeData, includeSpecials))
+		JSON(w, http.StatusOK, buildFromTable(ctx, mc, dbEps, timecodeData, includeSpecials))
 		return
 	}
 
@@ -228,21 +228,22 @@ func loadCardTimecodes(ctx context.Context, deviceID int64, profileID, cardID st
 }
 
 type episodeOut struct {
-	Season          int16   `json:"season"`
-	Episode         int16   `json:"episode"`
-	Title           *string `json:"title,omitempty"`
-	Hash            string  `json:"hash"`
-	Watched         bool    `json:"watched"`
-	Special         bool    `json:"special"`
-	UserSpecial     bool    `json:"user_special"`      // user-marked (not MyShows is_special)
-	CatalogSpecial  bool    `json:"catalog_special"`   // is_special from episodes table (real catalog special)
-	Percent         float64 `json:"percent"`
-	DurationSec     *int    `json:"duration_sec,omitempty"`
-	AirDate         *string `json:"air_date,omitempty"`
+	Season         int16   `json:"season"`
+	Episode        int16   `json:"episode"`
+	Title          *string `json:"title,omitempty"`
+	Hash           string  `json:"hash"`
+	Watched        bool    `json:"watched"`
+	Special        bool    `json:"special"`
+	UserSpecial    bool    `json:"user_special"`    // user-marked (not MyShows is_special)
+	CatalogSpecial bool    `json:"catalog_special"` // is_special from episodes table (real catalog special)
+	Percent        float64 `json:"percent"`
+	DurationSec    *int    `json:"duration_sec,omitempty"`
+	AirDate        *string `json:"air_date,omitempty"`
 }
 
-func buildFromTable(mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[string]timecodeInfo, includeSpecials bool) map[string]any {
+func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[string]timecodeInfo, includeSpecials bool) map[string]any {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
+	threshold := float64(store.WatchedThreshold(ctx))
 	var out []episodeOut
 
 	for _, ep := range eps {
@@ -271,7 +272,7 @@ func buildFromTable(mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[st
 			Episode:        ep.Episode,
 			Title:          ep.Title,
 			Hash:           ep.Hash,
-			Watched:        td.percent >= 90 || td.special,
+			Watched:        td.percent >= threshold || td.special,
 			Special:        ep.IsSpecial || td.special,
 			UserSpecial:    td.special,
 			CatalogSpecial: ep.IsSpecial,
@@ -287,6 +288,7 @@ func buildFromTable(mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[st
 }
 
 func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string]timecodeInfo, includeSpecials bool) map[string]any {
+	threshold := float64(store.WatchedThreshold(ctx))
 	var seasonsJSON []byte
 	var lastEpSeason, lastEpNumber *int
 
@@ -326,7 +328,7 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 					Season:      int16(lastS),
 					Episode:     int16(ep),
 					Hash:        h,
-					Watched:     td.percent >= 90 || td.special,
+					Watched:     td.percent >= threshold || td.special,
 					Special:     td.special,
 					UserSpecial: td.special,
 					Percent:     td.percent,
@@ -398,7 +400,7 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 				Season:      int16(snum),
 				Episode:     int16(ep),
 				Hash:        h,
-				Watched:     td.percent >= 90 || td.special,
+				Watched:     td.percent >= threshold || td.special,
 				Special:     td.special,
 				UserSpecial: td.special,
 				Percent:     td.percent,
@@ -411,4 +413,3 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 	}
 	return map[string]any{"episodes": out, "original_title": mc.OriginalTitle, "source": "tmdb"}
 }
-

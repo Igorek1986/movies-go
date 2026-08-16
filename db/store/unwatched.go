@@ -79,7 +79,7 @@ func unwatchedOrderBy(sortOrder string) string {
 // watched first).
 func UnwatchedTVShows(ctx context.Context, deviceID int64, profileID string, percent int, sortOrder string) []UnwatchedTVShow {
 	if percent < 1 {
-		percent = 90
+		percent = WatchedThreshold(ctx)
 	}
 	cutoff := AiredCutoffDate(ctx)
 	//nolint:gosec // unwatchedOrderBy only returns literals from a fixed whitelist; cutoff comes from AiredCutoffDate (admin setting only)
@@ -164,7 +164,7 @@ func UnwatchedTVShows(ctx context.Context, deviceID int64, profileID string, per
 // all (e.g. unknown show or not a TV card).
 func UnwatchedTVShowProgress(ctx context.Context, deviceID int64, profileID, cardID string, percent int) (show UnwatchedTVShow, ok bool) {
 	if percent < 1 {
-		percent = 90
+		percent = WatchedThreshold(ctx)
 	}
 	show.CardID = cardID
 	cutoff := AiredCutoffDate(ctx)
@@ -224,7 +224,7 @@ type WatchedEpisode struct {
 // myshows.js's per-episode checkmark feature.
 func WatchedEpisodes(ctx context.Context, deviceID int64, profileID, cardID string, percent int) []WatchedEpisode {
 	if percent < 1 {
-		percent = 90
+		percent = WatchedThreshold(ctx)
 	}
 	rows, err := postgres.Pool.Query(ctx, `
 		SELECT e.hash, e.season, e.episode
