@@ -378,12 +378,17 @@ CREATE INDEX IF NOT EXISTS idx_torrents_created_at   ON torrents (created_at DES
 CREATE TABLE IF NOT EXISTS proxy_configs (
     id         SERIAL      PRIMARY KEY,
     name       TEXT        NOT NULL,
-    type       TEXT        NOT NULL CHECK (type IN ('socks5')),
+    type       TEXT        NOT NULL CHECK (type IN ('socks5', 'vless')),
     config     TEXT        NOT NULL,
     enabled    BOOLEAN     NOT NULL DEFAULT true,
     priority   INT         NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Migration: allow type='vless' (proxied through a local xray sidecar — see
+-- internal/proxy/xray) — table originally only allowed 'socks5'.
+ALTER TABLE proxy_configs DROP CONSTRAINT IF EXISTS proxy_configs_type_check;
+ALTER TABLE proxy_configs ADD CONSTRAINT proxy_configs_type_check CHECK (type IN ('socks5', 'vless'));
 
 CREATE TABLE IF NOT EXISTS proxy_routing (
     route      TEXT      PRIMARY KEY,

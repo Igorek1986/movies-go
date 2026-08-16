@@ -162,7 +162,7 @@
   display: flex;
   flex-direction: column;
   gap: $spacing-md;
-  max-width: 600px;
+  max-width: 720px;
 }
 
 .formRow {
@@ -170,6 +170,13 @@
   align-items: center;
   gap: $spacing-md;
   flex-wrap: wrap;
+}
+
+.formColumn {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  align-items: stretch;
 }
 
 .label {
@@ -195,6 +202,38 @@
   @extend .input;
   flex: none;
   width: 80px;
+}
+
+.textarea {
+  @extend .input;
+  width: 100%;
+  resize: vertical;
+  font-family: monospace;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.typeToggle {
+  display: flex;
+  gap: $spacing-xs;
+}
+
+.typeBtn {
+  padding: 6px $spacing-md;
+  background: transparent;
+  color: $color-text-muted;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  &:hover { color: $color-text; border-color: $color-text-muted; }
+}
+
+.typeBtnActive {
+  @extend .typeBtn;
+  color: $color-primary;
+  border-color: $color-primary;
+  background: rgba($color-primary, 0.1);
 }
 
 

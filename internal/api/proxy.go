@@ -6,6 +6,7 @@ import (
 	"movies-api/db/models"
 	"movies-api/db/store"
 	"movies-api/internal/proxy"
+	"movies-api/internal/proxy/xray"
 	"net/http"
 	"strconv"
 	"time"
@@ -17,12 +18,12 @@ import (
 
 // proxyRouteOrder defines display order; labels are looked up from this slice.
 var proxyRouteOrder = []struct{ key, label string }{
-	{proxy.RouteTelegram,      "Telegram бот"},
-	{proxy.RouteTMDB,          "TMDB API"},
-	{proxy.RouteImages,        "Картинки TMDB"},
+	{proxy.RouteTelegram, "Telegram бот"},
+	{proxy.RouteTMDB, "TMDB API"},
+	{proxy.RouteImages, "Картинки TMDB"},
 	{proxy.RouteParserKinozal, "Парсер Kinozal"},
 	{proxy.RouteParserNNMClub, "Парсер NNMClub"},
-	{proxy.RouteParserRutor,   "Парсер Rutor"},
+	{proxy.RouteParserRutor, "Парсер Rutor"},
 }
 
 // proxyRouteLabels is used for quick key → label lookup and save validation.
@@ -80,8 +81,8 @@ func handleAPIProxiesCreate(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if body.Type != "socks5" {
-		Error(w, http.StatusBadRequest, "type must be socks5")
+	if body.Type != "socks5" && body.Type != "vless" {
+		Error(w, http.StatusBadRequest, "type must be socks5 or vless")
 		return
 	}
 	if body.Name == "" || body.Config == "" {
@@ -111,8 +112,8 @@ func handleAPIProxiesUpdate(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if body.Type != "socks5" {
-		Error(w, http.StatusBadRequest, "type must be socks5")
+	if body.Type != "socks5" && body.Type != "vless" {
+		Error(w, http.StatusBadRequest, "type must be socks5 or vless")
 		return
 	}
 	body.ID = id
@@ -139,6 +140,7 @@ func handleAPIProxiesDelete(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	xray.Default.Stop(id)
 	proxy.Default.Invalidate()
 	w.WriteHeader(http.StatusNoContent)
 }

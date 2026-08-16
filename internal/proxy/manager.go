@@ -7,6 +7,7 @@ import (
 	"log"
 	"movies-api/db/models"
 	"movies-api/db/store"
+	"movies-api/internal/proxy/xray"
 	"net"
 	"net/http"
 	"net/url"
@@ -156,9 +157,21 @@ func BuildClient(proxies []models.ProxyConfig) *http.Client { return buildClient
 func buildClient(proxies []models.ProxyConfig) *http.Client {
 	dialers := make([]func(ctx context.Context, network, addr string) (net.Conn, error), 0, len(proxies))
 	for _, p := range proxies {
-		if p.Type == "socks5" {
-			d := socks5Dialer(p.Config)
-			if d != nil {
+		switch p.Type {
+		case "socks5":
+			if d := socks5Dialer(p.Config); d != nil {
+				dialers = append(dialers, d)
+			}
+		case "vless":
+			// The VLESS/Reality protocol itself lives entirely in a local xray-core
+			// sidecar process (see internal/proxy/xray) — here we just dial the plain
+			// SOCKS5 port it exposes on 127.0.0.1, same as any other socks5 proxy.
+			addr, err := xray.Default.EnsureRunning(p.ID, p.Config)
+			if err != nil {
+				log.Printf("proxy: vless sidecar for %q: %v", p.Name, err)
+				continue
+			}
+			if d := socks5Dialer("socks5://" + addr); d != nil {
 				dialers = append(dialers, d)
 			}
 		}

@@ -4,10 +4,12 @@ import Layout from '@/components/Layout'
 import PasswordInput from '@/components/PasswordInput'
 import styles from './ProxiesPage.module.scss'
 
+type ProxyType = 'socks5' | 'vless'
+
 interface ProxyConfig {
   id: number
   name: string
-  type: 'socks5'
+  type: ProxyType
   config: string
   enabled: boolean
   priority: number
@@ -36,11 +38,12 @@ interface Toast {
 
 interface FormState {
   name: string
-  type: 'socks5'
+  type: ProxyType
   s5host: string
   s5port: string
   s5login: string
   s5password: string
+  vlessUri: string
   enabled: boolean
   priority: number
 }
@@ -48,6 +51,7 @@ interface FormState {
 const EMPTY_FORM: FormState = {
   name: '', type: 'socks5',
   s5host: '', s5port: '1080', s5login: '', s5password: '',
+  vlessUri: '',
   enabled: true, priority: 0,
 }
 
@@ -78,15 +82,29 @@ function buildSocks5Url(host: string, port: string, login: string, password: str
 }
 
 function formToConfig(f: FormState): string {
-  return buildSocks5Url(f.s5host, f.s5port, f.s5login, f.s5password)
+  return f.type === 'vless' ? f.vlessUri.trim() : buildSocks5Url(f.s5host, f.s5port, f.s5login, f.s5password)
 }
 
 function configToForm(c: ProxyConfig): FormState {
+  if (c.type === 'vless') {
+    return { ...EMPTY_FORM, name: c.name, type: 'vless', vlessUri: c.config, enabled: c.enabled, priority: c.priority }
+  }
   const { host, port, login, password } = parseSocks5(c.config)
-  return { name: c.name, type: 'socks5', s5host: host, s5port: port, s5login: login, s5password: password, enabled: c.enabled, priority: c.priority }
+  return { ...EMPTY_FORM, name: c.name, type: 'socks5', s5host: host, s5port: port, s5login: login, s5password: password, enabled: c.enabled, priority: c.priority }
+}
+
+function vlessLabel(config: string): string {
+  try {
+    const u = new URL(config)
+    const remark = u.hash ? decodeURIComponent(u.hash.slice(1)) : ''
+    return remark ? `${u.hostname}:${u.port} (${remark})` : `${u.hostname}:${u.port}`
+  } catch {
+    return 'vless (некорректная ссылка)'
+  }
 }
 
 function configDisplay(c: ProxyConfig): string {
+  if (c.type === 'vless') return vlessLabel(c.config)
   const { host, port, login } = parseSocks5(c.config)
   return login ? `${host}:${port} (${login})` : `${host}:${port}`
 }
@@ -264,21 +282,46 @@ export default function ProxiesPage() {
                 <input className={styles.input} value={form.name} onChange={e => sf({ name: e.target.value })} placeholder="Мой прокси" required />
               </div>
               <div className={styles.formRow}>
-                <label className={styles.label}>Хост</label>
-                <input className={styles.input} value={form.s5host} onChange={e => sf({ s5host: e.target.value })} placeholder="vps.example.com" required />
+                <label className={styles.label}>Тип</label>
+                <div className={styles.typeToggle}>
+                  <button type="button" className={form.type === 'socks5' ? styles.typeBtnActive : styles.typeBtn} onClick={() => sf({ type: 'socks5' })}>SOCKS5</button>
+                  <button type="button" className={form.type === 'vless' ? styles.typeBtnActive : styles.typeBtn} onClick={() => sf({ type: 'vless' })}>VLESS</button>
+                </div>
               </div>
-              <div className={styles.formRow}>
-                <label className={styles.label}>Порт</label>
-                <input className={styles.inputSmall} type="number" value={form.s5port} onChange={e => sf({ s5port: e.target.value })} placeholder="1080" required min="1" max="65535" />
-              </div>
-              <div className={styles.formRow}>
-                <label className={styles.label}>Логин</label>
-                <input className={styles.input} value={form.s5login} onChange={e => sf({ s5login: e.target.value })} placeholder="необязательно" autoComplete="off" />
-              </div>
-              <div className={styles.formRow}>
-                <label className={styles.label}>Пароль</label>
-                <PasswordInput className={styles.input} value={form.s5password} onChange={e => sf({ s5password: e.target.value })} placeholder="необязательно" autoComplete="new-password" />
-              </div>
+
+              {form.type === 'vless' ? (
+                <div className={styles.formColumn}>
+                  <label className={styles.label}>Ссылка</label>
+                  <textarea
+                    className={styles.textarea}
+                    value={form.vlessUri}
+                    onChange={e => sf({ vlessUri: e.target.value })}
+                    placeholder="vless://uuid@host:port?security=reality&..."
+                    rows={3}
+                    required
+                  />
+                  <span className={styles.hint}>Вставьте ссылку целиком — из любой панели, которая её экспортирует</span>
+                </div>
+              ) : (
+                <>
+                  <div className={styles.formRow}>
+                    <label className={styles.label}>Хост</label>
+                    <input className={styles.input} value={form.s5host} onChange={e => sf({ s5host: e.target.value })} placeholder="vps.example.com" required />
+                  </div>
+                  <div className={styles.formRow}>
+                    <label className={styles.label}>Порт</label>
+                    <input className={styles.inputSmall} type="number" value={form.s5port} onChange={e => sf({ s5port: e.target.value })} placeholder="1080" required min="1" max="65535" />
+                  </div>
+                  <div className={styles.formRow}>
+                    <label className={styles.label}>Логин</label>
+                    <input className={styles.input} value={form.s5login} onChange={e => sf({ s5login: e.target.value })} placeholder="необязательно" autoComplete="off" />
+                  </div>
+                  <div className={styles.formRow}>
+                    <label className={styles.label}>Пароль</label>
+                    <PasswordInput className={styles.input} value={form.s5password} onChange={e => sf({ s5password: e.target.value })} placeholder="необязательно" autoComplete="new-password" />
+                  </div>
+                </>
+              )}
 
               <div className={styles.formRow}>
                 <label className={styles.label}>Приоритет</label>
