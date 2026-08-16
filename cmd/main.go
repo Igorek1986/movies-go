@@ -9,6 +9,7 @@ import (
 	"movies-api/db/store"
 	"strings"
 
+	"log"
 	"movies-api/internal/api"
 	"movies-api/internal/auth"
 	"movies-api/internal/bot"
@@ -16,7 +17,6 @@ import (
 	"movies-api/internal/tasks"
 	"movies-api/movies/tmdb"
 	"movies-api/parser"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -102,8 +102,9 @@ func main() {
 
 	api.InitCategorySettings()
 	parser.OnComplete = api.InvalidateCategoryCache
-	go api.RecomputeCategoryCounts() // warm random-collection totals before first request
-	go store.BackfillImpliedStatuses(appCtx) // catch up subjective statuses for pre-existing timecodes
+	go api.RecomputeCategoryCounts()             // warm random-collection totals before first request
+	go store.BackfillImpliedStatuses(appCtx)     // catch up subjective statuses for pre-existing timecodes
+	api.StartUnwatchedCutoffInvalidation(appCtx) // refresh "Непросмотренные" cache when the aired cutoff crosses
 	// Drop the cached watched-set whenever a profile's progress changes (timecode write/
 	// delete, special toggle, profile/device clear). profileID "" means the whole device.
 	store.OnWatchedChanged = func(deviceID int64, profileID string) {
@@ -170,7 +171,6 @@ func ensureSuperuser(cfg *config.ConfigParser) {
 		log.Printf("Superuser %q ready", cfg.SuperUsername)
 	}
 }
-
 
 func scanReleases() {
 	parser.RunAll()
