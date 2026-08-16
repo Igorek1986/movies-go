@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.9.3';
+    var VERSION = '1.9.4';
 
     var DEBUG = false;
     function log(message, data) {
