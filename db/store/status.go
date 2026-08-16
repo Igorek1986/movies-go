@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"movies-api/db/postgres"
+	"strconv"
+	"strings"
 )
 
 // Subjective status values. TV shows use Watching/Planned/Stopped/NotWatching;
@@ -112,18 +114,62 @@ func ListCardIDsByStatus(ctx context.Context, deviceID int64, profileID, status 
 	return out
 }
 
+// watchingThresholdOverride looks up a per-profile override for watching_threshold
+// from plugin_settings (plugin "np_unwatched", written client-side by
+// np_unwatched.js via window.__NMSync — see its setProfileSetting/getProfileKey) —
+// mirrors myshows.js's per-profile myshows_add_threshold: different profiles on
+// the same server may want different sensitivity for "does watching an episode
+// count as actually watching the show". ok is false if the profile never set one,
+// so callers fall back to the deployment-wide watching_threshold setting.
+//
+// profile_id in plugin_settings is stored WITHOUT a leading "_" (np_profiles.js's
+// __NMSync strips it before sending), while subjective_statuses/timecodes keep the
+// raw Lampa profile id (which sometimes does start with "_") — the same profile
+// otherwise looks like two different ones across these tables unless normalized here.
+func watchingThresholdOverride(ctx context.Context, deviceID int64, profileID string) (int, bool) {
+	var userID int64
+	if err := postgres.Pool.QueryRow(ctx, `SELECT user_id FROM devices WHERE id = $1`, deviceID).Scan(&userID); err != nil {
+		return 0, false
+	}
+	settings := GetPluginSettings(ctx, userID, strings.TrimPrefix(profileID, "_"), "np_unwatched")
+	key := "np_unwatched_watching_threshold"
+	if profileID != "" {
+		key += "_profile_" + strings.TrimPrefix(profileID, "_")
+	}
+	v, ok := settings[key]
+	if !ok {
+		return 0, false
+	}
+	switch t := v.(type) {
+	case string:
+		n, err := strconv.Atoi(t)
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	case float64:
+		return int(t), true
+	default:
+		return 0, false
+	}
+}
+
 // EnsureImpliedStatus re-derives status on every real watch event — "watching" for
-// a TV show once its percent crosses watching_threshold (default 0 — any timecode
-// at all, matching the original behavior), "watched" for a movie once its percent
-// crosses watched_threshold. Real watch activity always wins, INCLUDING over an
-// explicit choice ("не смотрю"/"брошено") — a status set a while ago is weaker
-// evidence than "just actually watched an episode". Called from live timecode
-// writes only (not from BackfillImpliedStatuses, which stays ON CONFLICT DO
-// NOTHING — it replays historical data in bulk on every startup and must not
-// stomp on statuses the user set after that old activity happened).
+// a TV show once its percent crosses watching_threshold (per-profile override if
+// set, else the deployment-wide default — see watchingThresholdOverride; default 0
+// means any timecode at all, matching the original behavior), "watched" for a
+// movie once its percent crosses watched_threshold. Real watch activity always
+// wins, INCLUDING over an explicit choice ("не смотрю"/"брошено") — a status set a
+// while ago is weaker evidence than "just actually watched an episode". Called
+// from live timecode writes only (not from BackfillImpliedStatuses, which stays ON
+// CONFLICT DO NOTHING — it replays historical data in bulk on every startup and
+// must not stomp on statuses the user set after that old activity happened).
 func EnsureImpliedStatus(ctx context.Context, deviceID int64, profileID, cardID string, percent float64) {
 	watchedThreshold := GetSettingInt(ctx, "watched_threshold")
 	watchingThreshold := GetSettingInt(ctx, "watching_threshold")
+	if override, ok := watchingThresholdOverride(ctx, deviceID, profileID); ok {
+		watchingThreshold = override
+	}
 	_, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO subjective_statuses (device_id, profile_id, card_id, status)
 		SELECT $1, $2, $3::varchar, CASE WHEN mc.media_type = 'movie' THEN 'watched' ELSE 'watching' END
