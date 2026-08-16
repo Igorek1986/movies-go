@@ -120,11 +120,27 @@ export default function ProxiesPage() {
   const [showForm, setShowForm] = useState(false)
   const [testing, setTesting] = useState<number | null>(null)
   const [testResults, setTestResults] = useState<Record<number, TestResult>>({})
+  const [autoTesting, setAutoTesting] = useState<Set<number>>(new Set())
 
   function toast(text: string, ok = true) {
     const id = Date.now()
     setToasts(prev => [...prev, { id, text, ok }])
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000)
+  }
+
+  // Silent per-row test (no shared "testing" spinner/button-disable — that's
+  // reserved for the manual "Тест" click) — just fills in the status dot.
+  async function testSilently(id: number) {
+    setAutoTesting(prev => new Set(prev).add(id))
+    try {
+      const r = await fetch(`/api/admin/proxies/${id}/test`, { method: 'POST' })
+      const d = await r.json()
+      setTestResults(prev => ({ ...prev, [id]: d }))
+    } catch {
+      setTestResults(prev => ({ ...prev, [id]: { ok: false, error: 'network error', ms: 0 } }))
+    } finally {
+      setAutoTesting(prev => { const n = new Set(prev); n.delete(id); return n })
+    }
   }
 
   const load = useCallback(async () => {
@@ -133,8 +149,12 @@ export default function ProxiesPage() {
       const r = await fetch('/api/admin/proxies/')
       if (!r.ok) throw new Error()
       const d = await r.json()
-      setConfigs(d.configs ?? [])
+      const loaded: ProxyConfig[] = d.configs ?? []
+      setConfigs(loaded)
       setRoutes(d.routes ?? [])
+      // Auto-check every enabled proxy on open so a red/green dot is visible
+      // right away, without needing to click "Тест" per row.
+      loaded.filter(c => c.enabled).forEach(c => { testSilently(c.id) })
     } catch {
       toast('Ошибка загрузки', false)
     } finally {
@@ -247,9 +267,19 @@ export default function ProxiesPage() {
 
           {configs.map(c => {
             const tr = testResults[c.id]
+            const checking = testing === c.id || autoTesting.has(c.id)
+            const dotClass = !c.enabled ? styles.dotOff
+              : checking ? styles.dotChecking
+              : tr === undefined ? styles.dotUnknown
+              : tr.ok ? styles.dotOk : styles.dotFail
+            const dotTitle = !c.enabled ? 'Отключен'
+              : checking ? 'Проверка…'
+              : tr === undefined ? 'Ещё не проверялся'
+              : tr.ok ? `Работает (${tr.ms}ms)` : `Не работает: ${tr.error ?? tr.status}`
             return (
               <div key={c.id} className={`${styles.proxyRow}${!c.enabled ? ' ' + styles.disabled : ''}`}>
                 <div className={styles.proxyInfo}>
+                  <span className={styles.dot + ' ' + dotClass} title={dotTitle} />
                   <span className={styles.proxyName}>{c.name}</span>
                   <span className={styles.proxyConfig}>{configDisplay(c)}</span>
                   {!c.enabled && <span className={styles.disabledBadge}>выкл</span>}

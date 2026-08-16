@@ -98,6 +98,25 @@
   min-width: 0;
 }
 
+@keyframes proxyDotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.dotOk       { background: $color-success; }
+.dotFail     { background: $color-danger; }
+.dotUnknown  { background: $color-text-muted; opacity: 0.4; }
+.dotOff      { background: $color-text-muted; opacity: 0.2; }
+.dotChecking { background: $color-text-muted; animation: proxyDotPulse 1s ease-in-out infinite; }
+
 .proxyName {
   font-weight: 600;
   color: $color-text;
