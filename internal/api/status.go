@@ -69,6 +69,7 @@ func handleSetSubjectiveStatus(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	go broadcastStatus(d.UserID, d.ID, r.URL.Query().Get("client_id"), profileID, cardID, body.Status)
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -88,6 +89,7 @@ func handleDeleteSubjectiveStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	profileID := r.URL.Query().Get("profile_id")
 	store.ClearSubjectiveStatus(r.Context(), d.ID, profileID, cardID)
+	go broadcastStatus(d.UserID, d.ID, r.URL.Query().Get("client_id"), profileID, cardID, "")
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

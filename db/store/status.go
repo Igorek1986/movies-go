@@ -27,7 +27,14 @@ func SetSubjectiveStatus(ctx context.Context, deviceID int64, profileID, cardID,
 		ON CONFLICT (device_id, profile_id, card_id) DO UPDATE
 		SET status = EXCLUDED.status, updated_at = now()`,
 		deviceID, profileID, cardID, status)
-	return err
+	if err != nil {
+		return err
+	}
+	// A status change alone (no timecode write) can move a show in/out of
+	// "Непросмотренные" (its "watching" gate) — e.g. "Перестал смотреть" must
+	// drop it immediately, not just on the next timecode-driven invalidation.
+	notifyWatchedChanged(deviceID, profileID)
+	return nil
 }
 
 // ClearSubjectiveStatus removes the status row entirely, going back to "no
@@ -38,7 +45,9 @@ func ClearSubjectiveStatus(ctx context.Context, deviceID int64, profileID, cardI
 		`DELETE FROM subjective_statuses WHERE device_id = $1 AND profile_id = $2 AND card_id = $3`,
 		deviceID, profileID, cardID); err != nil {
 		log.Printf("store: clear subjective status: %v", err)
+		return
 	}
+	notifyWatchedChanged(deviceID, profileID)
 }
 
 // GetSubjectiveStatus returns the explicit status for one card, or "" if none is set.

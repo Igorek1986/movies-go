@@ -378,6 +378,16 @@ func broadcastTimecode(userID, deviceID int64, clientID, profileID, cardID, item
 	TimecodeHub.Broadcast(userID, deviceID, clientID, msg)
 }
 
+func broadcastStatus(userID, deviceID int64, clientID, profileID, cardID, status string) {
+	msg, _ := json.Marshal(map[string]any{
+		"type":       "status",
+		"profile_id": profileID,
+		"card_id":    cardID,
+		"status":     status,
+	})
+	TimecodeHub.Broadcast(userID, deviceID, clientID, msg)
+}
+
 func broadcastFavorite(userID, deviceID int64, clientID, profileID string, favorite any) {
 	msg, _ := json.Marshal(map[string]any{
 		"type":       "favorite",
