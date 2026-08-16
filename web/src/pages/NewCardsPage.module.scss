@@ -76,7 +76,7 @@
 
   .row {
     cursor: pointer;
-    &:hover td { background: rgba($color-border, 0.2); }
+    &:hover td { background: rgba($color-border-rgb, 0.2); }
   }
 }
 
@@ -111,7 +111,7 @@
       margin-bottom: $spacing-sm;
       cursor: pointer;
 
-      &:hover { background: lighten($color-bg-card, 3%); }
+      &:hover { background: $color-bg-card-hover; }
     }
 
     td {

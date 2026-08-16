@@ -1,15 +1,27 @@
-// Цвета
-$color-bg:            #0f1117;
-$color-bg-card:       #1a1d27;
-$color-bg-input:      #252836;
-$color-border:        #2d3148;
-$color-primary:       #6c63ff;
-$color-primary-hover: #5a52e0;
-$color-danger:        #e05252;
-$color-success:       #52c752;
-$color-warning:       #e0a052;
-$color-text:          #e8eaf6;
-$color-text-muted:    #8a8fa8;
+// Цвета — CSS custom properties (см. themes.scss), чтобы тема переключалась
+// в рантайме через [data-theme] без пересборки. *-rgb используются там, где
+// нужен rgba() с произвольной прозрачностью — CSS не умеет разложить hex/var
+// на компоненты, поэтому храним готовый триплет "R, G, B" отдельно.
+$color-bg:            var(--color-bg);
+$color-bg-rgb:        var(--color-bg-rgb);
+$color-bg-card:       var(--color-bg-card);
+$color-bg-card-rgb:   var(--color-bg-card-rgb);
+$color-bg-card-hover: var(--color-bg-card-hover);
+$color-bg-input:      var(--color-bg-input);
+$color-border:        var(--color-border);
+$color-border-rgb:    var(--color-border-rgb);
+$color-primary:       var(--color-primary);
+$color-primary-rgb:   var(--color-primary-rgb);
+$color-primary-hover: var(--color-primary-hover);
+$color-danger:        var(--color-danger);
+$color-danger-rgb:    var(--color-danger-rgb);
+$color-success:       var(--color-success);
+$color-success-rgb:   var(--color-success-rgb);
+$color-warning:       var(--color-warning);
+$color-warning-rgb:   var(--color-warning-rgb);
+$color-text:          var(--color-text);
+$color-text-muted:    var(--color-text-muted);
+$color-text-muted-rgb: var(--color-text-muted-rgb);
 
 // Типографика
 $font-family:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -27,11 +39,11 @@ $spacing-lg:  24px;
 $spacing-xl:  32px;
 $spacing-2xl: 48px;
 
-// Радиусы
-$radius-sm:   6px;
-$radius-md:   10px;
-$radius-lg:   16px;
-$radius-full: 9999px;
+// Радиусы — тоже темизируются (Apple-тема заметно круглее)
+$radius-sm:   var(--radius-sm);
+$radius-md:   var(--radius-md);
+$radius-lg:   var(--radius-lg);
+$radius-full: 9999px; // уже максимально скруглён в любой теме — не темизируем
 
 // Переходы
 $transition-fast:   150ms ease;
@@ -61,12 +73,13 @@ $bp-xl: 1280px;
   border: 1px solid $color-border;
   border-radius: $radius-md;
   padding: $spacing-lg;
+  box-shadow: var(--shadow-card, none);
 }
 
 // Shimmering placeholder bar for loading states (stat cards, table rows).
 @mixin skeleton-bar {
   border-radius: $radius-sm;
-  background: linear-gradient(90deg, rgba($color-border, 0.4) 25%, rgba($color-border, 0.7) 37%, rgba($color-border, 0.4) 63%);
+  background: linear-gradient(90deg, rgba($color-border-rgb, 0.4) 25%, rgba($color-border-rgb, 0.7) 37%, rgba($color-border-rgb, 0.4) 63%);
   background-size: 400% 100%;
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
 }

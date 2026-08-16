@@ -35,7 +35,7 @@
   border-radius: $radius-full;
   font-size: $font-size-xs;
   font-weight: 500;
-  background: rgba($color-primary, 0.15);
+  background: rgba($color-primary-rgb, 0.15);
   color: $color-primary;
 }
 
@@ -90,7 +90,7 @@
   cursor: pointer;
   padding: 2px $spacing-xs;
   border-radius: $radius-sm;
-  background: rgba($color-border, 0.5);
+  background: rgba($color-border-rgb, 0.5);
   transition: color $transition-fast;
 
   &:hover { color: $color-primary; }
@@ -130,16 +130,16 @@
   &:hover {
     border-color: $color-primary;
     color: #fff;
-    background: rgba($color-primary, 0.25);
+    background: rgba($color-primary-rgb, 0.25);
   }
 
   &.warning {
     color: $color-warning;
-    border-color: rgba($color-warning, 0.5);
+    border-color: rgba($color-warning-rgb, 0.5);
     &:hover {
       border-color: $color-warning;
       color: #fff;
-      background: rgba($color-warning, 0.25);
+      background: rgba($color-warning-rgb, 0.25);
     }
   }
 
@@ -147,14 +147,14 @@
     &:hover {
       border-color: $color-danger;
       color: #fff;
-      background: rgba($color-danger, 0.25);
+      background: rgba($color-danger-rgb, 0.25);
     }
   }
 
   &.active {
     border-color: $color-primary;
     color: $color-primary;
-    background: rgba($color-primary, 0.1);
+    background: rgba($color-primary-rgb, 0.1);
   }
 }
 
@@ -192,8 +192,8 @@
 }
 
 .profileCard {
-  background: rgba($color-border, 0.25);
-  border: 1px solid rgba($color-border, 0.6);
+  background: rgba($color-border-rgb, 0.25);
+  border: 1px solid rgba($color-border-rgb, 0.6);
   border-radius: $radius-sm;
   padding: $spacing-sm $spacing-md;
   display: flex;
@@ -215,9 +215,9 @@
 .profileIconBtn {
   width: 36px;
   height: 36px;
-  border: 1px solid rgba($color-border, 0.6);
+  border: 1px solid rgba($color-border-rgb, 0.6);
   border-radius: $radius-sm;
-  background: rgba($color-border, 0.25);
+  background: rgba($color-border-rgb, 0.25);
   padding: 3px;
   cursor: pointer;
   display: flex;
@@ -229,7 +229,7 @@
 
   &:hover {
     border-color: $color-primary;
-    background: rgba($color-primary, 0.1);
+    background: rgba($color-primary-rgb, 0.1);
   }
 }
 
@@ -263,12 +263,12 @@
 
   img { width: 100%; height: 100%; object-fit: contain; display: block; }
 
-  &:hover { background: rgba($color-primary, 0.12); border-color: $color-primary; }
+  &:hover { background: rgba($color-primary-rgb, 0.12); border-color: $color-primary; }
 }
 
 .iconPickerBtnActive {
   border-color: $color-primary;
-  background: rgba($color-primary, 0.18);
+  background: rgba($color-primary-rgb, 0.18);
 }
 
 .profileCardTop {
@@ -303,7 +303,7 @@
   font-family: monospace;
   font-size: $font-size-xs;
   color: $color-text-muted;
-  background: rgba($color-border, 0.5);
+  background: rgba($color-border-rgb, 0.5);
   padding: 1px 5px;
   border-radius: 3px;
 }
@@ -323,7 +323,7 @@
 }
 
 .newProfileForm {
-  border-top: 1px dashed rgba($color-border, 0.8);
+  border-top: 1px dashed rgba($color-border-rgb, 0.8);
   padding-top: $spacing-md;
   margin-top: $spacing-xs;
 }
@@ -396,14 +396,14 @@
 .codeSnippet {
   font-family: 'Courier New', monospace;
   font-size: $font-size-xs;
-  background: rgba($color-border, 0.6);
+  background: rgba($color-border-rgb, 0.6);
   padding: 2px 6px;
   border-radius: $radius-sm;
   cursor: pointer;
   color: $color-primary;
   white-space: nowrap;
 
-  &:hover { background: rgba($color-primary, 0.15); }
+  &:hover { background: rgba($color-primary-rgb, 0.15); }
 }
 
 .jsonTextarea {
@@ -663,7 +663,7 @@
   font-family: 'Courier New', monospace;
   font-size: $font-size-sm;
   word-break: break-all;
-  background: rgba($color-border, 0.5);
+  background: rgba($color-border-rgb, 0.5);
   padding: $spacing-sm $spacing-md;
   border-radius: $radius-sm;
   color: $color-text;

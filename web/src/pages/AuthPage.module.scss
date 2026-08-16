@@ -27,8 +27,8 @@
 .error {
   margin: 0;
   padding: $spacing-sm $spacing-md;
-  background: rgba($color-danger, 0.12);
-  border: 1px solid rgba($color-danger, 0.4);
+  background: rgba($color-danger-rgb, 0.12);
+  border: 1px solid rgba($color-danger-rgb, 0.4);
   border-radius: $radius-sm;
   color: $color-danger;
   font-size: $font-size-sm;
@@ -123,7 +123,7 @@
   font-size: $font-size-sm;
   letter-spacing: 0.1em;
   word-break: break-all;
-  background: rgba($color-border, 0.5);
+  background: rgba($color-border-rgb, 0.5);
   padding: $spacing-sm;
   border-radius: $radius-sm;
   color: $color-text;
@@ -140,8 +140,8 @@
 .success {
   margin: 0;
   padding: $spacing-sm $spacing-md;
-  background: rgba($color-success, 0.12);
-  border: 1px solid rgba($color-success, 0.4);
+  background: rgba($color-success-rgb, 0.12);
+  border: 1px solid rgba($color-success-rgb, 0.4);
   border-radius: $radius-sm;
   color: $color-success;
   font-size: $font-size-sm;
@@ -163,7 +163,7 @@
 .backupCode {
   font-family: 'Courier New', monospace;
   font-size: $font-size-sm;
-  background: rgba($color-border, 0.5);
+  background: rgba($color-border-rgb, 0.5);
   padding: $spacing-xs $spacing-sm;
   border-radius: $radius-sm;
   text-align: center;

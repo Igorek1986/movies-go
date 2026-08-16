@@ -152,7 +152,7 @@
 .btnPrimary {
   border-color: $color-primary;
   color: $color-primary;
-  &:hover:not(:disabled) { background: rgba($color-primary, 0.1); }
+  &:hover:not(:disabled) { background: rgba($color-primary-rgb, 0.1); }
 }
 
 .actionStatus {
@@ -206,7 +206,7 @@
   white-space: pre-wrap;
   word-break: break-all;
   padding: 1px 0;
-  border-bottom: 1px solid rgba($color-border, 0.3);
+  border-bottom: 1px solid rgba($color-border-rgb, 0.3);
 
   &:last-child { border-bottom: none; }
 }

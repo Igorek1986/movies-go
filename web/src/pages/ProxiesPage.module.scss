@@ -132,7 +132,7 @@
   font-size: $font-size-xs;
   padding: 2px 6px;
   border-radius: $radius-sm;
-  background: rgba($color-primary, 0.15);
+  background: rgba($color-primary-rgb, 0.15);
   color: $color-primary;
   font-weight: 500;
   text-transform: uppercase;
@@ -152,7 +152,7 @@
   font-size: $font-size-xs;
   padding: 2px 6px;
   border-radius: $radius-sm;
-  background: rgba($color-text-muted, 0.15);
+  background: rgba($color-text-muted-rgb, 0.15);
   color: $color-text-muted;
 }
 
@@ -257,7 +257,7 @@
   @extend .typeBtn;
   color: $color-primary;
   border-color: $color-primary;
-  background: rgba($color-primary, 0.1);
+  background: rgba($color-primary-rgb, 0.1);
 }
 
 
@@ -343,7 +343,7 @@
   input[type="checkbox"] { cursor: pointer; }
   &:has(input:checked) {
     border-color: $color-primary;
-    background: rgba($color-primary, 0.1);
+    background: rgba($color-primary-rgb, 0.1);
   }
 }
 
@@ -418,11 +418,11 @@
   padding: 4px $spacing-sm;
   background: transparent;
   color: $color-danger;
-  border: 1px solid rgba($color-danger, 0.3);
+  border: 1px solid rgba($color-danger-rgb, 0.3);
   border-radius: $radius-sm;
   font-size: $font-size-xs;
   cursor: pointer;
-  &:hover { background: rgba($color-danger, 0.08); border-color: $color-danger; }
+  &:hover { background: rgba($color-danger-rgb, 0.08); border-color: $color-danger; }
 }
 
 // ── Toasts ────────────────────────────────────────────────────────────────────

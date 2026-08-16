@@ -117,7 +117,7 @@
   transition: background $transition-fast, color $transition-fast;
 
   &:last-child { border-right: none; }
-  &:hover { background: rgba($color-primary, 0.08); color: $color-text; }
+  &:hover { background: rgba($color-primary-rgb, 0.08); color: $color-text; }
 }
 
 .filterTabActive {
@@ -161,7 +161,7 @@
 
   &:hover {
     transform: translateY(-5px);
-    outline: 2px solid rgba($color-primary, 0.55);
+    outline: 2px solid rgba($color-primary-rgb, 0.55);
     outline-offset: 0;
   }
 
@@ -236,7 +236,7 @@
   right: $spacing-xs;
   padding: 2px $spacing-xs;
   border-radius: $radius-sm;
-  background: rgba($color-primary, 0.85);
+  background: rgba($color-primary-rgb, 0.85);
   color: #fff;
   font-size: $font-size-xs;
   font-weight: 600;

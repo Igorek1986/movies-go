@@ -120,13 +120,13 @@
   }
 
   &:hover {
-    background: rgba($color-primary, 0.08);
+    background: rgba($color-primary-rgb, 0.08);
     color: $color-primary;
   }
 }
 
 .tabActive {
-  background: rgba($color-primary, 0.15);
+  background: rgba($color-primary-rgb, 0.15);
   color: $color-primary;
   font-weight: 600;
 }
@@ -151,7 +151,7 @@
 
   td {
     padding: $spacing-sm;
-    border-bottom: 1px solid rgba($color-border, 0.4);
+    border-bottom: 1px solid rgba($color-border-rgb, 0.4);
     color: $color-text;
     vertical-align: middle;
   }
@@ -161,7 +161,7 @@
   }
 
   tr:hover td {
-    background: rgba($color-border, 0.15);
+    background: rgba($color-border-rgb, 0.15);
   }
 }
 
@@ -183,7 +183,7 @@
   border-radius: $radius-full;
   font-size: $font-size-xs;
   font-weight: 600;
-  background: rgba($color-primary, 0.15);
+  background: rgba($color-primary-rgb, 0.15);
   color: $color-primary;
 }
 

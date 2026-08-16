@@ -1,0 +1,70 @@
+// Темы — чистые CSS custom properties, без Sass-логики. Импортируется один
+// раз из global.scss (НЕ из variables.scss — иначе блок задублируется в
+// каждый CSS-модуль, использующий variables.scss через @use).
+//
+// *-rgb хранит готовый триплет "R, G, B" (без alpha) для мест, где нужен
+// rgba($var, alpha) — CSS не умеет разложить var()/hex на компоненты.
+// $color-text/$color-text-muted нигде не используются внутри rgba(), поэтому
+// им -rgb не нужен — в Apple-теме они сразу заданы как rgba(255,255,255,N).
+
+:root {
+  --color-bg:            #0f1117;
+  --color-bg-rgb:        15, 17, 23;
+  --color-bg-card:       #1a1d27;
+  --color-bg-card-rgb:   26, 29, 39;
+  --color-bg-card-hover: #202430;
+  --color-bg-input:      #252836;
+  --color-border:        #2d3148;
+  --color-border-rgb:    45, 49, 72;
+  --color-primary:       #6c63ff;
+  --color-primary-rgb:   108, 99, 255;
+  --color-primary-hover: #5a52e0;
+  --color-danger:        #e05252;
+  --color-danger-rgb:    224, 82, 82;
+  --color-success:       #52c752;
+  --color-success-rgb:   82, 199, 82;
+  --color-warning:       #e0a052;
+  --color-warning-rgb:   224, 160, 82;
+  --color-text:          #e8eaf6;
+  --color-text-muted:    #8a8fa8;
+  --color-text-muted-rgb: 138, 143, 168;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --shadow-card: none;
+}
+
+// "Стекло" — тёмная "стеклянная" тема в духе AppleTV-плагина (см.
+// dev/plugins/appletv_agnative для источника токенов: полупрозрачные тёмные
+// поверхности, крупные скругления, мягкие многослойные тени, синий акцент,
+// текст белым с прозрачностью).
+:root[data-theme='glass'] {
+  --color-bg:            #16181c;
+  --color-bg-rgb:        22, 24, 28;
+  --color-bg-card:       #24262a;
+  --color-bg-card-rgb:   36, 38, 42;
+  --color-bg-card-hover: #2b2d32;
+  --color-bg-input:      #2a2c31;
+  --color-border:        #323437;
+  --color-border-rgb:    50, 52, 55;
+  --color-primary:       #568dff;
+  --color-primary-rgb:   86, 141, 255;
+  --color-primary-hover: #3d75f0;
+  --color-danger:        #ff3b30;
+  --color-danger-rgb:    255, 59, 48;
+  --color-success:       #30d158;
+  --color-success-rgb:   48, 209, 88;
+  --color-warning:       #ff9f0a;
+  --color-warning-rgb:   255, 159, 10;
+  --color-text:          rgba(255, 255, 255, 0.95);
+  --color-text-muted:    rgba(255, 255, 255, 0.55);
+  --color-text-muted-rgb: 255, 255, 255;
+
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}

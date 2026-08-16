@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { ProfileSwitcher } from '@/components/ProfileSwitcher'
+import { applyTheme, getStoredTheme, THEMES, type ThemeId } from '@/utils/theme'
 import styles from './Layout.module.scss'
 
 export default function Layout({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
@@ -9,6 +10,13 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   const nav = useNavigate()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [theme, setTheme] = useState<ThemeId>(() => getStoredTheme())
+
+  function handleThemeChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const next = e.target.value as ThemeId
+    applyTheme(next)
+    setTheme(next)
+  }
 
   useEffect(() => {
     setMenuOpen(false)
@@ -82,6 +90,11 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
           {links}
           <span className={styles.navUser}>{user?.username}</span>
           <ProfileSwitcher />
+          <select className={styles.themeSelect} value={theme} onChange={handleThemeChange} aria-label="Тема">
+            {THEMES.map(t => (
+              <option key={t.id} value={t.id}>{t.label}</option>
+            ))}
+          </select>
           <button className={styles.btnLogout} onClick={handleLogout}>Выйти</button>
         </div>
 
@@ -102,6 +115,11 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
         <div className={styles.drawerLinks}>
           {links}
         </div>
+        <select className={styles.drawerThemeSelect} value={theme} onChange={handleThemeChange} aria-label="Тема">
+          {THEMES.map(t => (
+            <option key={t.id} value={t.id}>{t.label}</option>
+          ))}
+        </select>
         <button className={styles.drawerLogout} onClick={handleLogout}>Выйти</button>
       </div>
 

@@ -136,7 +136,7 @@
   transition: background $transition-fast;
 
   &:hover {
-    background: rgba($color-primary, 0.1);
+    background: rgba($color-primary-rgb, 0.1);
   }
 }
 
@@ -198,7 +198,7 @@
   transition: background $transition-fast, border-color $transition-fast;
 
   &:hover {
-    background: rgba($color-primary, 0.07);
+    background: rgba($color-primary-rgb, 0.07);
     border-color: $color-primary;
   }
 }
@@ -264,7 +264,7 @@
   @media (hover: hover) {
     &:hover {
       transform: translateY(-5px);
-      outline: 2px solid rgba($color-primary, 0.55);
+      outline: 2px solid rgba($color-primary-rgb, 0.55);
       outline-offset: 0;
     }
   }
@@ -319,7 +319,7 @@
   left: $spacing-xs;
   padding: 2px $spacing-xs;
   border-radius: $radius-sm;
-  background: rgba($color-primary, 0.85);
+  background: rgba($color-primary-rgb, 0.85);
   color: #fff;
   font-size: $font-size-xs;
   font-weight: 600;
@@ -332,7 +332,7 @@
   right: $spacing-xs;
   padding: 2px $spacing-xs;
   border-radius: $radius-sm;
-  background: rgba($color-success, 0.9);
+  background: rgba($color-success-rgb, 0.9);
   color: #fff;
   font-size: $font-size-xs;
   font-weight: 700;
@@ -511,7 +511,7 @@
   padding: $spacing-xs $spacing-md;
   border: 1px solid $color-border;
   border-radius: $radius-full;
-  background: rgba($color-bg-card, 0.92);
+  background: rgba($color-bg-card-rgb, 0.92);
   backdrop-filter: blur(8px);
   color: $color-text-muted;
   font-size: $font-size-sm;
@@ -523,7 +523,7 @@
   &:hover {
     border-color: $color-primary;
     color: $color-primary;
-    background: rgba($color-bg-card, 1);
+    background: rgba($color-bg-card-rgb, 1);
   }
 
   @media (min-width: 1200px) {

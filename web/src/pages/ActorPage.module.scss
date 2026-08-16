@@ -21,7 +21,7 @@
   align-items: center;
   gap: $spacing-xs;
   padding: $spacing-xs $spacing-md;
-  background: rgba($color-bg-card, 0.92);
+  background: rgba($color-bg-card-rgb, 0.92);
   backdrop-filter: blur(8px);
   border: 1px solid $color-border;
   border-radius: $radius-full;
@@ -35,7 +35,7 @@
   &:hover {
     border-color: $color-primary;
     color: $color-primary;
-    background: rgba($color-bg-card, 1);
+    background: rgba($color-bg-card-rgb, 1);
   }
 
   @media (max-width: $bp-sm) {
@@ -167,7 +167,7 @@
   @media (hover: hover) {
     &:hover {
       transform: translateY(-3px);
-      border-color: rgba($color-primary, 0.5);
+      border-color: rgba($color-primary-rgb, 0.5);
     }
   }
 
@@ -203,7 +203,7 @@
   right: $spacing-xs;
   padding: 2px $spacing-xs;
   border-radius: $radius-sm;
-  background: rgba($color-primary, 0.85);
+  background: rgba($color-primary-rgb, 0.85);
   color: #fff;
   font-size: $font-size-xs;
   font-weight: 600;

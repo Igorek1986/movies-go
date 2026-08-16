@@ -70,13 +70,13 @@
 .btnPrimary {
   border-color: $color-primary;
   color: $color-primary;
-  &:hover { background: rgba($color-primary, 0.1); }
+  &:hover { background: rgba($color-primary-rgb, 0.1); }
 }
 
 .btnWarn {
   border-color: $color-warning;
   color: $color-warning;
-  &:hover:not(:disabled) { background: rgba($color-warning, 0.1); }
+  &:hover:not(:disabled) { background: rgba($color-warning-rgb, 0.1); }
   &:disabled { opacity: 0.5; cursor: default; }
 }
 
@@ -92,8 +92,8 @@
   font-size: $font-size-sm;
 }
 
-.statusRunning { border-color: rgba($color-warning, 0.4); background: rgba($color-warning, 0.06); }
-.statusIdle    { border-color: rgba($color-success, 0.3); background: rgba($color-success, 0.04); }
+.statusRunning { border-color: rgba($color-warning-rgb, 0.4); background: rgba($color-warning-rgb, 0.06); }
+.statusIdle    { border-color: rgba($color-success-rgb, 0.3); background: rgba($color-success-rgb, 0.04); }
 
 .statusDot {
   width: 8px;
@@ -172,19 +172,19 @@
   height: 18px;
   padding: 0 5px;
   border-radius: $radius-full;
-  background: rgba($color-text-muted, 0.15);
+  background: rgba($color-text-muted-rgb, 0.15);
   font-size: $font-size-xs;
   line-height: 1;
   color: $color-text-muted;
   transition: background $transition-fast, color $transition-fast;
 
-  &.badge_success { background: rgba($color-success, 0.1); color: rgba($color-success, 0.7); }
-  &.badge_error   { background: rgba($color-danger, 0.1);  color: rgba($color-danger, 0.7); }
-  &.badge_info    { background: rgba($color-primary, 0.1); color: rgba($color-primary, 0.7); }
+  &.badge_success { background: rgba($color-success-rgb, 0.1); color: rgba($color-success-rgb, 0.7); }
+  &.badge_error   { background: rgba($color-danger-rgb, 0.1);  color: rgba($color-danger-rgb, 0.7); }
+  &.badge_info    { background: rgba($color-primary-rgb, 0.1); color: rgba($color-primary-rgb, 0.7); }
 
-  .tab_success.tabActive & { background: rgba($color-success, 0.2); color: $color-success; }
-  .tab_error.tabActive &   { background: rgba($color-danger, 0.2);  color: $color-danger; }
-  .tab_info.tabActive &    { background: rgba($color-primary, 0.2); color: $color-primary; }
+  .tab_success.tabActive & { background: rgba($color-success-rgb, 0.2); color: $color-success; }
+  .tab_error.tabActive &   { background: rgba($color-danger-rgb, 0.2);  color: $color-danger; }
+  .tab_info.tabActive &    { background: rgba($color-primary-rgb, 0.2); color: $color-primary; }
 }
 
 // ── Terminal ──────────────────────────────────────────────────────────────────

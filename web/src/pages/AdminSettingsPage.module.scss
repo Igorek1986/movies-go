@@ -50,14 +50,14 @@
 }
 
 .alertSuccess {
-  background: rgba($color-success, 0.12);
-  border: 1px solid rgba($color-success, 0.4);
+  background: rgba($color-success-rgb, 0.12);
+  border: 1px solid rgba($color-success-rgb, 0.4);
   color: $color-success;
 }
 
 .alertError {
-  background: rgba($color-danger, 0.12);
-  border: 1px solid rgba($color-danger, 0.4);
+  background: rgba($color-danger-rgb, 0.12);
+  border: 1px solid rgba($color-danger-rgb, 0.4);
   color: $color-danger;
 }
 
@@ -206,7 +206,7 @@ details[open] .groupArrow {
   font-weight: 600;
   cursor: pointer;
   transition: background $transition-fast, color $transition-fast;
-  &:hover { background: rgba($color-warning, 0.15); }
+  &:hover { background: rgba($color-warning-rgb, 0.15); }
   &:disabled { opacity: 0.6; cursor: default; }
 }
 

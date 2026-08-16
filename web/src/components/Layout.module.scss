@@ -65,12 +65,12 @@ $nav-height: 52px;
 
   &:hover {
     color: $color-text;
-    background: rgba($color-border, 0.5);
+    background: rgba($color-border-rgb, 0.5);
   }
 
   &.active {
     color: $color-primary;
-    background: rgba($color-primary, 0.12);
+    background: rgba($color-primary-rgb, 0.12);
   }
 }
 
@@ -95,6 +95,28 @@ $nav-height: 52px;
   &:hover {
     color: $color-danger;
     border-color: $color-danger;
+  }
+}
+
+.themeSelect {
+  padding: $spacing-xs $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color $transition-fast, border-color $transition-fast;
+
+  &:hover, &:focus {
+    color: $color-primary;
+    border-color: $color-primary;
+  }
+
+  option {
+    background: $color-bg-card;
+    color: $color-text;
   }
 }
 
@@ -221,6 +243,29 @@ $nav-height: 52px;
   &:hover {
     color: $color-danger;
     border-color: $color-danger;
+  }
+}
+
+.drawerThemeSelect {
+  width: 100%;
+  padding: $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  text-align: center;
+  transition: color $transition-fast, border-color $transition-fast;
+
+  &:hover, &:focus {
+    color: $color-primary;
+    border-color: $color-primary;
+  }
+
+  option {
+    background: $color-bg-card;
+    color: $color-text;
   }
 }
 

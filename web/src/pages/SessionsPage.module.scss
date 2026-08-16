@@ -89,7 +89,7 @@
   }
 
   &.danger {
-    border-color: rgba($color-danger, 0.4);
+    border-color: rgba($color-danger-rgb, 0.4);
     color: $color-danger;
 
     &:hover {
