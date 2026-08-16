@@ -58,6 +58,11 @@
   color: $color-text;
 }
 
+.headerButtons {
+  display: flex;
+  gap: $spacing-sm;
+}
+
 .empty {
   color: $color-text-muted;
   font-size: $font-size-sm;

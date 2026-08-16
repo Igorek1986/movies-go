@@ -34,6 +34,8 @@ func ParseLink(raw string) (name string, node map[string]any, err error) {
 		return parseHysteria2(s)
 	case strings.HasPrefix(low, "tuic://"):
 		return parseTUIC(s)
+	case strings.HasPrefix(low, "warp://"):
+		return parseWarp(s)
 	case strings.Contains(s, "[Interface]"):
 		return parseWireGuard(s)
 	default:
@@ -359,6 +361,70 @@ func parseWireGuard(raw string) (string, map[string]any, error) {
 		if len(list) > 0 {
 			node["dns"] = list
 		}
+	}
+	return name, node, nil
+}
+
+// ─── Cloudflare WARP (internal/proxy/warp registration → wireguard node) ───
+
+// warpBlob is the on-disk encoding for proxy_configs.config when type=warp —
+// produced by EncodeWarpConfig right after internal/proxy/warp.Register,
+// decoded back here into a mihomo wireguard node. Kept in this package (not
+// warp) so the encoder and its matching parseWarp decoder can't drift apart.
+type warpBlob struct {
+	PrivateKey string  `json:"private_key"`
+	Address4   string  `json:"address4"`
+	Endpoint   string  `json:"endpoint"`
+	PeerPubKey string  `json:"peer_pub_key"`
+	Reserved   [3]byte `json:"reserved"`
+}
+
+// EncodeWarpConfig serializes a registered WARP account into the "warp://"
+// string stored as proxy_configs.config.
+func EncodeWarpConfig(privateKey, address4, endpoint, peerPubKey string, reserved [3]byte) (string, error) {
+	b, err := json.Marshal(warpBlob{
+		PrivateKey: privateKey, Address4: address4, Endpoint: endpoint,
+		PeerPubKey: peerPubKey, Reserved: reserved,
+	})
+	if err != nil {
+		return "", err
+	}
+	return "warp://" + base64.StdEncoding.EncodeToString(b), nil
+}
+
+func parseWarp(raw string) (string, map[string]any, error) {
+	payload := strings.TrimPrefix(raw, "warp://")
+	b, err := decodeB64(payload)
+	if err != nil {
+		return "", nil, fmt.Errorf("warp: base64 decode: %w", err)
+	}
+	var blob warpBlob
+	if err := json.Unmarshal(b, &blob); err != nil {
+		return "", nil, fmt.Errorf("warp: invalid payload: %w", err)
+	}
+	host, portStr, err := net.SplitHostPort(blob.Endpoint)
+	if err != nil {
+		return "", nil, fmt.Errorf("warp: invalid endpoint: %w", err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return "", nil, fmt.Errorf("warp: invalid endpoint port: %w", err)
+	}
+
+	name := "warp-" + blob.Address4
+	node := map[string]any{
+		"name":        name,
+		"type":        "wireguard",
+		"server":      host,
+		"port":        port,
+		"ip":          blob.Address4,
+		"private-key": blob.PrivateKey,
+		"public-key":  blob.PeerPubKey,
+		// WARP's peer silently drops handshakes whose first 3 header bytes
+		// don't match this per-account value — see internal/proxy/warp.
+		"reserved": []int{int(blob.Reserved[0]), int(blob.Reserved[1]), int(blob.Reserved[2])},
+		"udp":      true,
+		"mtu":      1280,
 	}
 	return name, node, nil
 }

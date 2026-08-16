@@ -385,16 +385,19 @@ CREATE TABLE IF NOT EXISTS proxy_configs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Migration: allow type='vless' (proxied through a local xray sidecar — see
--- internal/proxy/xray) — table originally only allowed 'socks5'.
-ALTER TABLE proxy_configs DROP CONSTRAINT IF EXISTS proxy_configs_type_check;
-ALTER TABLE proxy_configs ADD CONSTRAINT proxy_configs_type_check CHECK (type IN ('socks5', 'vless'));
-
--- Migration: allow the mihomo-driven types (internal/proxy/mihomo) — protocols
--- xray-core doesn't speak: VMess, Trojan, Shadowsocks, Hysteria2, TUIC, WireGuard.
+-- Migration: widen the allowed types beyond the original 'socks5'/'vless' —
+-- xray-core-driven 'vless' (internal/proxy/xray), then the mihomo-driven
+-- protocols xray-core doesn't speak (internal/proxy/mihomo): VMess, Trojan,
+-- Shadowsocks, Hysteria2, TUIC, WireGuard, and 'warp' (a WireGuard node under
+-- the hood, registered via internal/proxy/warp). Collapsed into a single
+-- DROP+ADD (not one pair per historical step) — re-applying a series of
+-- progressively narrower CHECKs on every startup would reject rows added
+-- under a *later* migration before that migration's own ALTER got a chance
+-- to widen it again (broke a live deploy: a saved 'hysteria2' row got
+-- rejected by the earlier 'socks5'/'vless'-only ALTER that still ran first).
 ALTER TABLE proxy_configs DROP CONSTRAINT IF EXISTS proxy_configs_type_check;
 ALTER TABLE proxy_configs ADD CONSTRAINT proxy_configs_type_check
-    CHECK (type IN ('socks5', 'vless', 'vmess', 'trojan', 'ss', 'hysteria2', 'tuic', 'wireguard'));
+    CHECK (type IN ('socks5', 'vless', 'vmess', 'trojan', 'ss', 'hysteria2', 'tuic', 'wireguard', 'warp'));
 
 -- Migration: background healthcheck result (internal/tasks/proxy_healthcheck.go) —
 -- lets /admin/proxies show the last known status immediately, without waiting for

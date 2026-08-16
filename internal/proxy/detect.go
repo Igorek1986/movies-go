@@ -28,6 +28,8 @@ func DetectType(raw string) (string, error) {
 		return "hysteria2", nil
 	case strings.HasPrefix(low, "tuic://"):
 		return "tuic", nil
+	case strings.HasPrefix(low, "warp://"):
+		return "warp", nil
 	case strings.Contains(s, "[Interface]"):
 		return "wireguard", nil
 	default:
@@ -37,8 +39,10 @@ func DetectType(raw string) (string, error) {
 
 // mihomoTypes are the proxy_configs.type values driven by the mihomo sidecar
 // (internal/proxy/mihomo) — everything except socks5 (dialed directly) and
-// vless (driven by the xray sidecar, internal/proxy/xray).
+// vless (driven by the xray sidecar, internal/proxy/xray). "warp" is a
+// wireguard node under the hood (see mihomo.EncodeWarpConfig) but keeps its
+// own type so the admin UI can label/handle it distinctly.
 var mihomoTypes = map[string]bool{
 	"vmess": true, "trojan": true, "ss": true,
-	"hysteria2": true, "tuic": true, "wireguard": true,
+	"hysteria2": true, "tuic": true, "wireguard": true, "warp": true,
 }

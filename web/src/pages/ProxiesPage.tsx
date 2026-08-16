@@ -4,11 +4,12 @@ import Layout from '@/components/Layout'
 import PasswordInput from '@/components/PasswordInput'
 import styles from './ProxiesPage.module.scss'
 
-type ProxyType = 'socks5' | 'vless' | 'vmess' | 'trojan' | 'ss' | 'hysteria2' | 'tuic' | 'wireguard'
+type ProxyType = 'socks5' | 'vless' | 'vmess' | 'trojan' | 'ss' | 'hysteria2' | 'tuic' | 'wireguard' | 'warp'
 
 const PROTOCOL_LABELS: Record<ProxyType, string> = {
   socks5: 'SOCKS5', vless: 'VLESS', vmess: 'VMess', trojan: 'Trojan',
   ss: 'Shadowsocks', hysteria2: 'Hysteria2', tuic: 'TUIC', wireguard: 'WireGuard',
+  warp: 'Cloudflare WARP',
 }
 
 interface ProxyConfig {
@@ -114,7 +115,21 @@ function wireGuardEndpoint(config: string): string {
   return m ? m[1] : 'WireGuard'
 }
 
+// warp:// holds a base64 JSON blob (private key included) — never run it
+// through url.Parse (base64's own '/' characters confuse authority parsing)
+// and never show the raw payload; just pull the assigned tunnel address out
+// for display.
+function warpLabel(config: string): string {
+  try {
+    const blob = JSON.parse(atob(config.replace(/^warp:\/\//, '')))
+    return blob.address4 ? `WARP · ${blob.address4}` : 'Cloudflare WARP'
+  } catch {
+    return 'Cloudflare WARP'
+  }
+}
+
 function linkLabel(config: string): string {
+  if (config.toLowerCase().startsWith('warp://')) return warpLabel(config)
   try {
     const u = new URL(config)
     const remark = u.hash ? decodeURIComponent(u.hash.slice(1)) : ''
@@ -161,6 +176,7 @@ export default function ProxiesPage() {
   const [testing, setTesting] = useState<number | null>(null)
   const [testResults, setTestResults] = useState<Record<number, TestResult>>({})
   const [autoTesting, setAutoTesting] = useState<Set<number>>(new Set())
+  const [warpRegistering, setWarpRegistering] = useState(false)
 
   function toast(text: string, ok = true) {
     const id = Date.now()
@@ -219,6 +235,20 @@ export default function ProxiesPage() {
     setForm(EMPTY_FORM)
     setEditId(null)
     setShowForm(true)
+  }
+
+  async function handleAddWarp() {
+    setWarpRegistering(true)
+    try {
+      const r = await fetch('/api/admin/proxies/warp', { method: 'POST' })
+      if (!r.ok) throw new Error()
+      toast('WARP зарегистрирован')
+      load()
+    } catch {
+      toast('Ошибка регистрации WARP', false)
+    } finally {
+      setWarpRegistering(false)
+    }
   }
 
   function openEdit(c: ProxyConfig) {
@@ -310,7 +340,12 @@ export default function ProxiesPage() {
         <div className={styles.section}>
           <div className={styles.sectionHeader}>
             <h2 className={styles.sectionTitle}>Конфигурации прокси</h2>
-            <button className={styles.btnAdd} onClick={openAdd}>+ Добавить</button>
+            <div className={styles.headerButtons}>
+              <button className={styles.btnAdd} onClick={handleAddWarp} disabled={warpRegistering}>
+                {warpRegistering ? 'Регистрация…' : '+ WARP'}
+              </button>
+              <button className={styles.btnAdd} onClick={openAdd}>+ Добавить</button>
+            </div>
           </div>
 
           {loading && <p className={styles.empty}>Загрузка…</p>}
@@ -348,7 +383,9 @@ export default function ProxiesPage() {
                   <button className={styles.btnTest} onClick={() => handleTest(c.id)} disabled={testing === c.id}>
                     {testing === c.id ? '…' : 'Тест'}
                   </button>
-                  <button className={styles.btnEdit} onClick={() => openEdit(c)}>Изменить</button>
+                  {c.type !== 'warp' && (
+                    <button className={styles.btnEdit} onClick={() => openEdit(c)}>Изменить</button>
+                  )}
                   <button className={styles.btnDel} onClick={() => handleDelete(c.id)}>Удалить</button>
                 </div>
               </div>

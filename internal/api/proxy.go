@@ -7,6 +7,7 @@ import (
 	"movies-api/db/store"
 	"movies-api/internal/proxy"
 	"movies-api/internal/proxy/mihomo"
+	"movies-api/internal/proxy/warp"
 	"movies-api/internal/proxy/xray"
 	"net/http"
 	"strconv"
@@ -149,6 +150,46 @@ func handleAPIProxiesDelete(w http.ResponseWriter, r *http.Request) {
 	mihomo.Default.Stop(id)
 	proxy.Default.Invalidate()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ─── Cloudflare WARP registration ───────────────────────────────────────────
+
+// handleAPIProxiesRegisterWarp registers a brand-new WARP device (each call —
+// no "reuse an existing account" concept here, same as wgcf/the official
+// client on first run) and saves it as a proxy config.
+func handleAPIProxiesRegisterWarp(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck // body is optional
+	name := body.Name
+	if name == "" {
+		name = "Cloudflare WARP"
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	acc, err := warp.Register(ctx)
+	if err != nil {
+		Error(w, http.StatusBadGateway, "warp register: "+err.Error())
+		return
+	}
+	config, err := mihomo.EncodeWarpConfig(acc.PrivateKey, acc.Address4, acc.Endpoint, acc.PeerPubKey, acc.Reserved)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "encode warp config")
+		return
+	}
+
+	created, err := store.CreateProxyConfig(ctx, models.ProxyConfig{
+		Name: name, Type: "warp", Config: config, Enabled: true,
+	})
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	proxy.Default.Invalidate()
+	JSON(w, http.StatusCreated, created)
 }
 
 // ─── Routing ──────────────────────────────────────────────────────────────────

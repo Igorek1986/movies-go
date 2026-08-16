@@ -238,6 +238,7 @@ func NewRouter(mode string) http.Handler {
 		r.Delete("/{id}", handleAPIProxiesDelete)
 		r.Post("/{id}/test", handleAPIProxiesTest)
 		r.Post("/routing", handleAPIProxyRoutingSave)
+		r.Post("/warp", handleAPIProxiesRegisterWarp)
 	})
 
 	if mode != "all" {

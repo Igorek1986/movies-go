@@ -5,11 +5,13 @@ import "time"
 type ProxyConfig struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
-	// "socks5" | "vless" | "vmess" | "trojan" | "ss" | "hysteria2" | "tuic" | "wireguard".
+	// "socks5" | "vless" | "vmess" | "trojan" | "ss" | "hysteria2" | "tuic" | "wireguard" | "warp".
 	// Always server-derived from Config via proxy.DetectType — never trust a
 	// client-supplied value here except for the socks5 host/port form.
-	Type      string    `json:"type"`
-	Config    string    `json:"config"` // socks5://..., a protocol link (vless/vmess/trojan/ss/hysteria2/tuic), or a raw WireGuard .conf
+	Type string `json:"type"`
+	// socks5://..., a protocol link (vless/vmess/trojan/ss/hysteria2/tuic), a raw
+	// WireGuard .conf, or (type=warp) mihomo.EncodeWarpConfig's "warp://" blob.
+	Config    string    `json:"config"`
 	Enabled   bool      `json:"enabled"`
 	Priority  int       `json:"priority"`
 	CreatedAt time.Time `json:"created_at"`
