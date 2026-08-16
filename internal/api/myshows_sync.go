@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"movies-api/db/models"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
 	"movies-api/internal/myshows"
 	"movies-api/movies/tmdb"
-	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -22,8 +22,8 @@ import (
 
 var (
 	syncMu      sync.Mutex
-	syncState   = map[int64]syncDay{} // userID → daily counter
-	syncRunning = map[int64]bool{}    // userID → sync currently in progress
+	syncState   = map[int64]syncDay{}   // userID → daily counter
+	syncRunning = map[int64]bool{}      // userID → sync currently in progress
 	syncLastAt  = map[int64]time.Time{} // userID → last successful sync time
 )
 
@@ -507,6 +507,31 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 			item = res.card.CardID
 		}
 		store.SetCardTimecodeWatched(ctx, deviceID, profileID, res.card.CardID, item, res.mv.WatchedAt) //nolint:errcheck
+		// "Просмотрел" — SetCardTimecodeWatched's own EnsureImpliedStatus(...,100)
+		// call already sets this unconditionally, no separate call needed here.
+	}
+
+	// ── Movie watchlist ("Буду смотреть") — status only, no timecode ─────────
+	sse.status("Загрузка списка «Буду посмотреть» (фильмы)…")
+	watchlistMovies, err := myshows.GetUnwatchedMovies(ctx, token)
+	if err != nil {
+		log.Printf("myshows sync: GetUnwatchedMovies: %v", err)
+	}
+	for _, mv := range watchlistMovies {
+		if ctx.Err() != nil {
+			return
+		}
+		st, ok := mapMovieWatchlistStatus(mv.WatchStatus)
+		if !ok {
+			continue
+		}
+		mvCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		card := findOrFetchCard(mvCtx, mv.TmdbID, mv.ImdbID, mv.OrigTitle, mv.Title, "movie", mv.Year)
+		cancel()
+		if card == nil || card.MediaType != "movie" {
+			continue
+		}
+		store.SetSubjectiveStatus(ctx, deviceID, profileID, card.CardID, st) //nolint:errcheck
 	}
 
 	// ── Shows — parallel episode fetch + card lookup, stream SSE as each completes ─
@@ -538,10 +563,15 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 				showResultCh <- showStreamResult{sl: sl}
 				return
 			}
-			var card *cardBasic
+			// Resolve the card regardless of watched-episode data — a show with
+			// zero watched episodes (pure "Буду смотреть"/"Брошено", nothing ever
+			// watched) still needs a card to carry its subjective status; only the
+			// episode-import step below is skipped for it (sh == nil).
+			tmdbID, imdbID, origTitle, title, year := sl.TmdbID, sl.ImdbID, sl.OrigTitle, sl.Title, sl.Year
 			if sh != nil {
-				card = findOrFetchCard(ctx, sh.TmdbID, sh.ImdbID, sh.OrigTitle, sh.Title, "tv", sh.Year)
+				tmdbID, imdbID, origTitle, title, year = sh.TmdbID, sh.ImdbID, sh.OrigTitle, sh.Title, sh.Year
 			}
+			card := findOrFetchCard(ctx, tmdbID, imdbID, origTitle, title, "tv", year)
 			showResultCh <- showStreamResult{sl: sl, sh: sh, card: card}
 		}(sl)
 	}
@@ -564,13 +594,23 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 			"name":    res.sl.Title,
 		})
 		sh := res.sh
-		if sh == nil {
-			continue
-		}
 		card := res.card
 		if card == nil || card.MediaType != "tv" {
-			if sh.Title != "" {
-				notFound = append(notFound, sh.Title)
+			title := res.sl.Title
+			if sh != nil && sh.Title != "" {
+				title = sh.Title
+			}
+			if title != "" {
+				notFound = append(notFound, title)
+			}
+			continue
+		}
+
+		if sh == nil {
+			// No episodes to import — set the explicit status right away (nothing
+			// below would overwrite it).
+			if st, ok := mapShowStatus(res.sl.WatchStatus); ok {
+				store.SetSubjectiveStatus(ctx, deviceID, profileID, card.CardID, st) //nolint:errcheck
 			}
 			continue
 		}
@@ -625,6 +665,15 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 			h := myshows.EpisodeHash(ep.Season, ep.Episode, origTitle)
 			store.SetCardTimecodeWatched(ctx, deviceID, profileID, card.CardID, h, ep.WatchedAt) //nolint:errcheck
 		}
+
+		// Смотрю/Буду смотреть/Брошено — set AFTER the episode timecodes above:
+		// each SetCardTimecodeWatched call implies "watching" via its own
+		// EnsureImpliedStatus(...,100), which would otherwise clobber a
+		// "cancelled"/"later" MyShows status set beforehand (e.g. a show watched
+		// partway through and then dropped still has real watched episodes).
+		if st, ok := mapShowStatus(res.sl.WatchStatus); ok {
+			store.SetSubjectiveStatus(ctx, deviceID, profileID, card.CardID, st) //nolint:errcheck
+		}
 	}
 
 	// ── Trim and done ─────────────────────────────────────────────────────────
@@ -639,6 +688,35 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 		"not_found": notFound,
 		"trimmed":   trimmed,
 	})
+}
+
+// mapShowStatus maps a MyShows show watchStatus to our subjective_statuses
+// vocabulary. "finished" also lands on StatusWatching — TV has no separate
+// "finished" bucket in our vocab; a fully-watched Ended show is promoted to
+// "Просмотрел" separately by ListCompletedCardIDs, not by this field. ok=false
+// for an empty/unrecognized status — callers should skip setting anything
+// rather than clobber with a guessed default.
+func mapShowStatus(myshowsStatus string) (status string, ok bool) {
+	switch myshowsStatus {
+	case "watching", "finished":
+		return store.StatusWatching, true
+	case "later":
+		return store.StatusPlanned, true
+	case "cancelled":
+		return store.StatusStopped, true
+	default:
+		return "", false
+	}
+}
+
+// mapMovieWatchlistStatus maps a MyShows movie watchStatus (from
+// GetUnwatchedMovies) — "later" is the only status that endpoint returns in
+// practice, but map defensively rather than assume.
+func mapMovieWatchlistStatus(myshowsStatus string) (status string, ok bool) {
+	if myshowsStatus == "later" {
+		return store.StatusPlanned, true
+	}
+	return "", false
 }
 
 // medianRuntime returns the median of a list of runtimes (in minutes), or 0 if empty.

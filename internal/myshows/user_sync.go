@@ -93,7 +93,9 @@ func LoginUser(ctx context.Context, login, password string) (string, error) {
 	return data.Token, nil
 }
 
-// WatchedMovie is a movie the user has marked as watched on MyShows.
+// WatchedMovie is a movie from the user's MyShows profile — despite the name,
+// also used for GetUnwatchedMovies (the "Буду смотреть" list); WatchedAt is
+// empty and RuntimeMin/WatchStatus carry the meaningful data in that case.
 type WatchedMovie struct {
 	Title      string // Russian title from MyShows
 	OrigTitle  string // Original title (used for hash computation)
@@ -102,6 +104,10 @@ type WatchedMovie struct {
 	Year       int
 	RuntimeMin int    // minutes; 0 if unknown
 	WatchedAt  string // ISO date string, e.g. "2024-03-15" (empty if unknown)
+	// MyShows userMovie.watchStatus ("finished"/"later"/...), defaulted per
+	// endpoint (see fetchMovies) when MyShows omits it — mirrors
+	// plugins/myshows.js's processMovieData default-status fallback.
+	WatchStatus string
 }
 
 // WatchedEpisode is a single watched episode with season/episode numbers.
@@ -117,7 +123,7 @@ type EpisodeInfo struct {
 	Season      int
 	Episode     int
 	Title       string
-	RuntimeMin  int    // minutes; 0 if unknown
+	RuntimeMin  int // minutes; 0 if unknown
 	IsSpecial   bool
 	AirDate     string // "YYYY-MM-DD"; empty if unknown
 }
@@ -142,12 +148,31 @@ type ShowListItem struct {
 	ImdbID    string
 	TmdbID    int64
 	Year      int
+	// MyShows watchStatus for this show: "watching" | "later" | "cancelled" |
+	// "finished" (mirrors plugins/myshows.js reading item.watchStatus off
+	// profile.Shows — top-level on the entry, unlike movies where it's nested
+	// under userMovie). Empty if MyShows didn't send one.
+	WatchStatus string
 }
 
-// GetWatchedMovies returns all movies the user has marked as watched on MyShows.
-// Uses the profile.WatchedMovies method.
+// GetWatchedMovies returns all movies the user has marked as watched on MyShows
+// (profile.WatchedMovies).
 func GetWatchedMovies(ctx context.Context, token string) ([]WatchedMovie, error) {
-	res, err := rpcAuth(ctx, token, "profile.WatchedMovies", map[string]any{})
+	return fetchMovies(ctx, token, "profile.WatchedMovies", "finished")
+}
+
+// GetUnwatchedMovies returns the user's MyShows movie watchlist ("Буду
+// смотреть", profile.UnwatchedMovies) — no watch date/runtime is meaningful
+// here, only enough to resolve the card and set its subjective status.
+func GetUnwatchedMovies(ctx context.Context, token string) ([]WatchedMovie, error) {
+	return fetchMovies(ctx, token, "profile.UnwatchedMovies", "later")
+}
+
+// fetchMovies is shared by GetWatchedMovies/GetUnwatchedMovies — same response
+// shape for both MyShows methods. defaultStatus fills in when MyShows omits
+// userMovie.watchStatus, matching plugins/myshows.js's processMovieData.
+func fetchMovies(ctx context.Context, token, method, defaultStatus string) ([]WatchedMovie, error) {
+	res, err := rpcAuth(ctx, token, method, map[string]any{})
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +192,8 @@ func GetWatchedMovies(ctx context.Context, token string) ([]WatchedMovie, error)
 			Year          int    `json:"year"`
 			Runtime       int    `json:"runtime"`
 			UserMovie     struct {
-				WatchDate string `json:"watchDate"` // "2025-09-26T21:49:15+0300"
+				WatchDate   string `json:"watchDate"` // "2025-09-26T21:49:15+0300"
+				WatchStatus string `json:"watchStatus"`
 			} `json:"userMovie"`
 		}
 		if err := json.Unmarshal(item, &m); err != nil {
@@ -178,14 +204,19 @@ func GetWatchedMovies(ctx context.Context, token string) ([]WatchedMovie, error)
 		if len(m.UserMovie.WatchDate) >= 10 {
 			watchedDate = m.UserMovie.WatchDate[:10]
 		}
+		status := m.UserMovie.WatchStatus
+		if status == "" {
+			status = defaultStatus
+		}
 		movies = append(movies, WatchedMovie{
-			Title:      m.Title,
-			OrigTitle:  m.TitleOriginal,
-			ImdbID:     formatImdbID(m.ImdbID),
-			TmdbID:     m.TmdbID,
-			Year:       m.Year,
-			RuntimeMin: m.Runtime,
-			WatchedAt:  watchedDate,
+			Title:       m.Title,
+			OrigTitle:   m.TitleOriginal,
+			ImdbID:      formatImdbID(m.ImdbID),
+			TmdbID:      m.TmdbID,
+			Year:        m.Year,
+			RuntimeMin:  m.Runtime,
+			WatchedAt:   watchedDate,
+			WatchStatus: status,
 		})
 	}
 	return movies, nil
@@ -212,7 +243,8 @@ func GetShowList(ctx context.Context, token string) ([]ShowListItem, error) {
 	var shows []ShowListItem
 	for _, item := range raw {
 		var entry struct {
-			Show struct {
+			WatchStatus string `json:"watchStatus"` // top-level, unlike movies' nested userMovie.watchStatus
+			Show        struct {
 				ID            int    `json:"id"`
 				Title         string `json:"title"`
 				TitleOriginal string `json:"titleOriginal"`
@@ -225,12 +257,13 @@ func GetShowList(ctx context.Context, token string) ([]ShowListItem, error) {
 			continue
 		}
 		shows = append(shows, ShowListItem{
-			MyshowsID: entry.Show.ID,
-			Title:     entry.Show.Title,
-			OrigTitle: entry.Show.TitleOriginal,
-			ImdbID:    formatImdbID(entry.Show.ImdbID),
-			TmdbID:    entry.Show.TmdbID,
-			Year:      entry.Show.Year,
+			MyshowsID:   entry.Show.ID,
+			Title:       entry.Show.Title,
+			OrigTitle:   entry.Show.TitleOriginal,
+			ImdbID:      formatImdbID(entry.Show.ImdbID),
+			TmdbID:      entry.Show.TmdbID,
+			Year:        entry.Show.Year,
+			WatchStatus: entry.WatchStatus,
 		})
 	}
 	return shows, nil
