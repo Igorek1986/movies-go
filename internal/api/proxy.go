@@ -194,21 +194,11 @@ func handleAPIProxiesTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := buildTestClient(cfg)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.themoviedb.org/3/configuration", nil)
-	start := time.Now()
-	resp, err := client.Do(req)
-	elapsed := time.Since(start)
-	if err != nil {
-		JSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error(), "ms": elapsed.Milliseconds()})
+	res := proxy.TestConfig(ctx, *cfg)
+	store.UpdateProxyHealthcheck(ctx, id, res.OK, res.ErrorString()) //nolint:errcheck
+	if res.Err != nil {
+		JSON(w, http.StatusOK, map[string]any{"ok": false, "error": res.Err.Error(), "ms": res.MS})
 		return
 	}
-	resp.Body.Close()
-	JSON(w, http.StatusOK, map[string]any{"ok": resp.StatusCode < 500, "status": resp.StatusCode, "ms": elapsed.Milliseconds()})
-}
-
-func buildTestClient(cfg *models.ProxyConfig) *http.Client {
-	from := []models.ProxyConfig{*cfg}
-	// reuse manager's buildClient via the exported package
-	return proxy.BuildClient(from)
+	JSON(w, http.StatusOK, map[string]any{"ok": res.OK, "status": res.Status, "ms": res.MS})
 }

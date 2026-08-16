@@ -14,6 +14,9 @@ interface ProxyConfig {
   enabled: boolean
   priority: number
   created_at: string
+  last_ok?: boolean
+  last_checked_at?: string
+  last_error?: string
 }
 
 interface ProxyRoute {
@@ -152,6 +155,17 @@ export default function ProxiesPage() {
       const loaded: ProxyConfig[] = d.configs ?? []
       setConfigs(loaded)
       setRoutes(d.routes ?? [])
+      // Seed dots from the last background healthcheck result immediately —
+      // no flash of "unknown" while the fresh on-open test below is in flight.
+      setTestResults(prev => {
+        const next = { ...prev }
+        for (const c of loaded) {
+          if (c.last_ok !== undefined && !(c.id in next)) {
+            next[c.id] = { ok: c.last_ok, error: c.last_error, ms: 0 }
+          }
+        }
+        return next
+      })
       // Auto-check every enabled proxy on open so a red/green dot is visible
       // right away, without needing to click "Тест" per row.
       loaded.filter(c => c.enabled).forEach(c => { testSilently(c.id) })

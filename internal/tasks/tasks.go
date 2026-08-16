@@ -23,6 +23,7 @@ func Start(ctx context.Context) {
 	go runDailyLoop(ctx)
 	go runDeliveryLoop(ctx)
 	go runPushNotifyLoop(ctx)
+	go runProxyHealthcheckLoop(ctx)
 }
 
 // ─── Daily loop ───────────────────────────────────────────────────────────────

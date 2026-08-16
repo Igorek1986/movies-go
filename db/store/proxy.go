@@ -8,7 +8,7 @@ import (
 
 func ListProxyConfigs(ctx context.Context) ([]models.ProxyConfig, error) {
 	rows, err := postgres.Pool.Query(ctx,
-		`SELECT id, name, type, config, enabled, priority, created_at
+		`SELECT id, name, type, config, enabled, priority, created_at, last_ok, last_checked_at, last_error
 		 FROM proxy_configs ORDER BY priority, id`)
 	if err != nil {
 		return nil, err
@@ -17,7 +17,8 @@ func ListProxyConfigs(ctx context.Context) ([]models.ProxyConfig, error) {
 	var out []models.ProxyConfig
 	for rows.Next() {
 		var c models.ProxyConfig
-		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Config, &c.Enabled, &c.Priority, &c.CreatedAt); err == nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Config, &c.Enabled, &c.Priority, &c.CreatedAt,
+			&c.LastOK, &c.LastCheckedAt, &c.LastError); err == nil {
 			out = append(out, c)
 		}
 	}
@@ -27,13 +28,27 @@ func ListProxyConfigs(ctx context.Context) ([]models.ProxyConfig, error) {
 func GetProxyConfig(ctx context.Context, id int) (*models.ProxyConfig, error) {
 	var c models.ProxyConfig
 	err := postgres.Pool.QueryRow(ctx,
-		`SELECT id, name, type, config, enabled, priority, created_at
+		`SELECT id, name, type, config, enabled, priority, created_at, last_ok, last_checked_at, last_error
 		 FROM proxy_configs WHERE id = $1`, id).
-		Scan(&c.ID, &c.Name, &c.Type, &c.Config, &c.Enabled, &c.Priority, &c.CreatedAt)
+		Scan(&c.ID, &c.Name, &c.Type, &c.Config, &c.Enabled, &c.Priority, &c.CreatedAt,
+			&c.LastOK, &c.LastCheckedAt, &c.LastError)
 	if err != nil {
 		return nil, err
 	}
 	return &c, nil
+}
+
+// UpdateProxyHealthcheck records the result of a background healthcheck run
+// (internal/tasks/proxy_healthcheck.go). errMsg is stored only when !ok.
+func UpdateProxyHealthcheck(ctx context.Context, id int, ok bool, errMsg string) error {
+	var errPtr *string
+	if !ok && errMsg != "" {
+		errPtr = &errMsg
+	}
+	_, err := postgres.Pool.Exec(ctx,
+		`UPDATE proxy_configs SET last_ok=$1, last_checked_at=now(), last_error=$2 WHERE id=$3`,
+		ok, errPtr, id)
+	return err
 }
 
 func CreateProxyConfig(ctx context.Context, c models.ProxyConfig) (*models.ProxyConfig, error) {

@@ -55,8 +55,9 @@ var SettingDefaults = map[string]string{
 	"vapid_public_key":  "",
 	"vapid_private_key": "",
 	// General
-	"watched_threshold":   "90",
-	"popular_period_days": "30",
+	"watched_threshold":              "90",
+	"popular_period_days":            "30",
+	"proxy_healthcheck_interval_min": "5",
 	// Весовые коэффициенты для ранжирования «Популярного» (movie/tv) — сериал
 	// накапливает зрителей быстрее фильма (много серий/дней), коэффициент < 1
 	// уравновешивает это. 1.0 = без поправки.

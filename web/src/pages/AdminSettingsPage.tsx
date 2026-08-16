@@ -504,6 +504,7 @@ const LABELS: Record<string, string> = {
   premium_warn_days:        'Предупреждение об истечении Premium (дней)',
   premium_extend_all_days:  'Продлить всем Premium (дней)',
   watched_threshold:        'Порог «просмотрено» (%)',
+  proxy_healthcheck_interval_min: 'Проверка прокси в фоне — интервал (мин)',
   popular_period_days:      'Популярное — период (дней)',
   popular_weight_movie:     'Популярное — коэффициент: фильмы',
   popular_weight_tv:        'Популярное — коэффициент: сериалы',
@@ -583,6 +584,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   { name: 'Общие настройки', keys: [
     'inactive_delete_days', 'inactive_warn_days', 'timecode_grace_days',
     'premium_warn_days', 'premium_extend_all_days', 'watched_threshold',
+    'proxy_healthcheck_interval_min',
     'popular_period_days', 'popular_weight_movie', 'popular_weight_tv',
     'daily_task_hour', 'parser_overlap_days',
     'session_ttl_days', 'session_renew_days', 'device_token_ttl_days',
