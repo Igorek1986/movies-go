@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"movies-api/db/store"
 	"time"
@@ -20,6 +21,14 @@ import (
 //
 // aired_cutoff_days shifts which day's episodes qualify but not the
 // time-of-day the crossing happens, so only aired_cutoff_hour matters here.
+//
+// Also pushes a lightweight WS broadcast ({"type":"unwatched_stale"}) to every
+// connected client (see plugins/np_unwatched.js's connectWS) — cache-clearing
+// alone only fixes the count on the NEXT request; a card already rendered on
+// a screen that's just sitting open through the cutoff won't re-fetch on its
+// own without this nudge. No payload beyond the type: each client re-checks
+// its own visible cards against the (uncached) /unwatched/progress endpoint,
+// scoped by its own token — nothing about the cutoff itself is user-specific.
 func StartUnwatchedCutoffInvalidation(ctx context.Context) {
 	go func() {
 		for {
@@ -32,6 +41,9 @@ func StartUnwatchedCutoffInvalidation(ctx context.Context) {
 				unwatchedCache = map[string][]store.UnwatchedTVShow{}
 				unwatchedMu.Unlock()
 				log.Println("catcache: unwatched cache cleared (aired cutoff crossed)")
+
+				msg, _ := json.Marshal(map[string]any{"type": "unwatched_stale"})
+				TimecodeHub.BroadcastAll(msg)
 			}
 		}
 	}()

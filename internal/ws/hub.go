@@ -94,3 +94,22 @@ func (h *Hub) Broadcast(userID, exceptDeviceID int64, exceptClientID string, msg
 		c.WriteMessage(websocket.TextMessage, msg) //nolint:errcheck
 	}
 }
+
+// BroadcastAll sends msg to every currently connected client across every
+// user, with no exclusions — for events with no single originating user (e.g.
+// a scheduled server-side aired-cutoff crossing), unlike Broadcast which is
+// scoped to one user and excludes the sender. Safe to call concurrently.
+func (h *Hub) BroadcastAll(msg []byte) {
+	h.mu.Lock()
+	conns := make([]*Conn, 0)
+	for _, m := range h.clients {
+		for c := range m {
+			conns = append(conns, c)
+		}
+	}
+	h.mu.Unlock()
+
+	for _, c := range conns {
+		c.WriteMessage(websocket.TextMessage, msg) //nolint:errcheck
+	}
+}
