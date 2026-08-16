@@ -14,7 +14,7 @@ COPY --from=frontend /internal/web/dist ./internal/web/dist
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o movies-api ./cmd/
 
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates tzdata postgresql16-client curl unzip
+RUN apk add --no-cache ca-certificates tzdata postgresql16-client curl unzip jq
 
 # xray-core — sidecar binary for VLESS/Reality proxy configs (internal/proxy/xray).
 # Not needed at all if no proxy config ever uses type=vless, but cheap to always have.
@@ -30,8 +30,26 @@ RUN set -eux; \
     chmod +x /usr/local/bin/xray && \
     rm /tmp/xray.zip
 
+# mihomo (Clash Meta fork) — sidecar for VMess/Trojan/Shadowsocks/Hysteria2/TUIC/
+# WireGuard proxy configs (internal/proxy/mihomo, protocols xray-core can't do).
+# Release filenames are versioned (no stable "latest" URL), so resolve via the
+# GitHub API first.
+RUN set -eux; \
+    case "$TARGETARCH" in \
+      amd64) MIHOMO_ARCH="amd64" ;; \
+      arm64) MIHOMO_ARCH="arm64" ;; \
+      *) echo "unsupported arch for mihomo: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    MIHOMO_URL="$(curl -fsSL https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
+      | jq -r --arg arch "$MIHOMO_ARCH" '.assets[] | select(.name | test("linux-" + $arch + "-v[0-9.]+\\.gz$")) | .browser_download_url')"; \
+    curl -fsSL -o /tmp/mihomo.gz "$MIHOMO_URL" && \
+    gunzip -c /tmp/mihomo.gz > /usr/local/bin/mihomo && \
+    chmod +x /usr/local/bin/mihomo && \
+    rm /tmp/mihomo.gz
+
 WORKDIR /app
 COPY --from=builder /app/movies-api .
 ENV XRAY_BIN=/usr/local/bin/xray
+ENV MIHOMO_BIN=/usr/local/bin/mihomo
 EXPOSE 8888
 ENTRYPOINT ["./movies-api"]

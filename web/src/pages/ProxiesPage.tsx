@@ -4,7 +4,12 @@ import Layout from '@/components/Layout'
 import PasswordInput from '@/components/PasswordInput'
 import styles from './ProxiesPage.module.scss'
 
-type ProxyType = 'socks5' | 'vless'
+type ProxyType = 'socks5' | 'vless' | 'vmess' | 'trojan' | 'ss' | 'hysteria2' | 'tuic' | 'wireguard'
+
+const PROTOCOL_LABELS: Record<ProxyType, string> = {
+  socks5: 'SOCKS5', vless: 'VLESS', vmess: 'VMess', trojan: 'Trojan',
+  ss: 'Shadowsocks', hysteria2: 'Hysteria2', tuic: 'TUIC', wireguard: 'WireGuard',
+}
 
 interface ProxyConfig {
   id: number
@@ -39,22 +44,28 @@ interface Toast {
   ok: boolean
 }
 
+// formMode is a UI-only concept — the actual protocol (vless/vmess/trojan/ss/
+// hysteria2/tuic/wireguard) is auto-detected server-side from the pasted link
+// (see proxy.DetectType), so the form only needs to distinguish "SOCKS5 host/
+// port form" from "paste any other link/config".
+type FormMode = 'socks5' | 'link'
+
 interface FormState {
   name: string
-  type: ProxyType
+  formMode: FormMode
   s5host: string
   s5port: string
   s5login: string
   s5password: string
-  vlessUri: string
+  linkConfig: string
   enabled: boolean
   priority: number
 }
 
 const EMPTY_FORM: FormState = {
-  name: '', type: 'socks5',
+  name: '', formMode: 'socks5',
   s5host: '', s5port: '1080', s5login: '', s5password: '',
-  vlessUri: '',
+  linkConfig: '',
   enabled: true, priority: 0,
 }
 
@@ -85,31 +96,57 @@ function buildSocks5Url(host: string, port: string, login: string, password: str
 }
 
 function formToConfig(f: FormState): string {
-  return f.type === 'vless' ? f.vlessUri.trim() : buildSocks5Url(f.s5host, f.s5port, f.s5login, f.s5password)
+  return f.formMode === 'link' ? f.linkConfig.trim() : buildSocks5Url(f.s5host, f.s5port, f.s5login, f.s5password)
 }
 
 function configToForm(c: ProxyConfig): FormState {
-  if (c.type === 'vless') {
-    return { ...EMPTY_FORM, name: c.name, type: 'vless', vlessUri: c.config, enabled: c.enabled, priority: c.priority }
+  if (c.type === 'socks5') {
+    const { host, port, login, password } = parseSocks5(c.config)
+    return { ...EMPTY_FORM, name: c.name, formMode: 'socks5', s5host: host, s5port: port, s5login: login, s5password: password, enabled: c.enabled, priority: c.priority }
   }
-  const { host, port, login, password } = parseSocks5(c.config)
-  return { ...EMPTY_FORM, name: c.name, type: 'socks5', s5host: host, s5port: port, s5login: login, s5password: password, enabled: c.enabled, priority: c.priority }
+  return { ...EMPTY_FORM, name: c.name, formMode: 'link', linkConfig: c.config, enabled: c.enabled, priority: c.priority }
 }
 
-function vlessLabel(config: string): string {
+// WireGuard configs are raw multi-line .conf text, not a URI — pull the peer
+// Endpoint out with a regex instead of trying url.Parse on it.
+function wireGuardEndpoint(config: string): string {
+  const m = config.match(/Endpoint\s*=\s*(\S+)/i)
+  return m ? m[1] : 'WireGuard'
+}
+
+function linkLabel(config: string): string {
   try {
     const u = new URL(config)
     const remark = u.hash ? decodeURIComponent(u.hash.slice(1)) : ''
     return remark ? `${u.hostname}:${u.port} (${remark})` : `${u.hostname}:${u.port}`
   } catch {
-    return 'vless (некорректная ссылка)'
+    return config.includes('[Interface]') ? wireGuardEndpoint(config) : 'некорректная ссылка'
   }
 }
 
+// Client-side mirror of the server's proxy.DetectType, purely for the "you're
+// about to save a Trojan link" preview badge in the form — the server always
+// re-derives the real type from the saved config independently.
+function detectProtocolPreview(text: string): ProxyType | null {
+  const s = text.trim()
+  const low = s.toLowerCase()
+  if (low.startsWith('socks5://') || low.startsWith('socks5h://')) return 'socks5'
+  if (low.startsWith('vless://')) return 'vless'
+  if (low.startsWith('vmess://')) return 'vmess'
+  if (low.startsWith('trojan://')) return 'trojan'
+  if (low.startsWith('ss://')) return 'ss'
+  if (low.startsWith('hysteria2://') || low.startsWith('hy2://')) return 'hysteria2'
+  if (low.startsWith('tuic://')) return 'tuic'
+  if (s.includes('[Interface]')) return 'wireguard'
+  return null
+}
+
 function configDisplay(c: ProxyConfig): string {
-  if (c.type === 'vless') return vlessLabel(c.config)
-  const { host, port, login } = parseSocks5(c.config)
-  return login ? `${host}:${port} (${login})` : `${host}:${port}`
+  if (c.type === 'socks5') {
+    const { host, port, login } = parseSocks5(c.config)
+    return login ? `${host}:${port} (${login})` : `${host}:${port}`
+  }
+  return linkLabel(c.config)
 }
 
 export default function ProxiesPage() {
@@ -201,7 +238,9 @@ export default function ProxiesPage() {
       const r = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, type: form.type, config, enabled: form.enabled, priority: form.priority }),
+        // No `type` here — the server derives it from `config` (proxy.DetectType);
+        // sending a client-guessed type would be redundant and could go stale.
+        body: JSON.stringify({ name: form.name, config, enabled: form.enabled, priority: form.priority }),
       })
       if (!r.ok) throw new Error()
       toast(editId ? 'Сохранено' : 'Добавлено')
@@ -295,6 +334,7 @@ export default function ProxiesPage() {
                 <div className={styles.proxyInfo}>
                   <span className={styles.dot + ' ' + dotClass} title={dotTitle} />
                   <span className={styles.proxyName}>{c.name}</span>
+                  <span className={styles.proxyBadge}>{PROTOCOL_LABELS[c.type] ?? c.type}</span>
                   <span className={styles.proxyConfig}>{configDisplay(c)}</span>
                   {!c.enabled && <span className={styles.disabledBadge}>выкл</span>}
                   <span className={styles.priorityLabel}>p:{c.priority}</span>
@@ -328,23 +368,30 @@ export default function ProxiesPage() {
               <div className={styles.formRow}>
                 <label className={styles.label}>Тип</label>
                 <div className={styles.typeToggle}>
-                  <button type="button" className={form.type === 'socks5' ? styles.typeBtnActive : styles.typeBtn} onClick={() => sf({ type: 'socks5' })}>SOCKS5</button>
-                  <button type="button" className={form.type === 'vless' ? styles.typeBtnActive : styles.typeBtn} onClick={() => sf({ type: 'vless' })}>VLESS</button>
+                  <button type="button" className={form.formMode === 'socks5' ? styles.typeBtnActive : styles.typeBtn} onClick={() => sf({ formMode: 'socks5' })}>SOCKS5</button>
+                  <button type="button" className={form.formMode === 'link' ? styles.typeBtnActive : styles.typeBtn} onClick={() => sf({ formMode: 'link' })}>Ссылка / конфиг</button>
                 </div>
               </div>
 
-              {form.type === 'vless' ? (
+              {form.formMode === 'link' ? (
                 <div className={styles.formColumn}>
-                  <label className={styles.label}>Ссылка</label>
+                  <label className={styles.label}>Ссылка / конфиг</label>
                   <textarea
                     className={styles.textarea}
-                    value={form.vlessUri}
-                    onChange={e => sf({ vlessUri: e.target.value })}
-                    placeholder="vless://uuid@host:port?security=reality&..."
-                    rows={3}
+                    value={form.linkConfig}
+                    onChange={e => sf({ linkConfig: e.target.value })}
+                    placeholder="vless:// | vmess:// | trojan:// | ss:// | hysteria2:// | tuic:// | WireGuard .conf"
+                    rows={4}
                     required
                   />
-                  <span className={styles.hint}>Вставьте ссылку целиком — из любой панели, которая её экспортирует</span>
+                  <span className={styles.hint}>
+                    {(() => {
+                      const detected = detectProtocolPreview(form.linkConfig)
+                      return detected
+                        ? `Распознано: ${PROTOCOL_LABELS[detected]}`
+                        : 'Вставьте ссылку целиком (VLESS/VMess/Trojan/Shadowsocks/Hysteria2/TUIC) или WireGuard .conf — протокол определится сам'
+                    })()}
+                  </span>
                 </div>
               ) : (
                 <>

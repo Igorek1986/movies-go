@@ -3,10 +3,13 @@ package models
 import "time"
 
 type ProxyConfig struct {
-	ID        int       `json:"id"`
-	Name      string    `json:"name"`
-	Type      string    `json:"type"`   // "socks5" | "vless"
-	Config    string    `json:"config"` // socks5://... or vless://... (see internal/proxy/xray for vless)
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+	// "socks5" | "vless" | "vmess" | "trojan" | "ss" | "hysteria2" | "tuic" | "wireguard".
+	// Always server-derived from Config via proxy.DetectType — never trust a
+	// client-supplied value here except for the socks5 host/port form.
+	Type      string    `json:"type"`
+	Config    string    `json:"config"` // socks5://..., a protocol link (vless/vmess/trojan/ss/hysteria2/tuic), or a raw WireGuard .conf
 	Enabled   bool      `json:"enabled"`
 	Priority  int       `json:"priority"`
 	CreatedAt time.Time `json:"created_at"`

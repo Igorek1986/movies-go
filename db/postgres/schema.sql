@@ -390,6 +390,12 @@ CREATE TABLE IF NOT EXISTS proxy_configs (
 ALTER TABLE proxy_configs DROP CONSTRAINT IF EXISTS proxy_configs_type_check;
 ALTER TABLE proxy_configs ADD CONSTRAINT proxy_configs_type_check CHECK (type IN ('socks5', 'vless'));
 
+-- Migration: allow the mihomo-driven types (internal/proxy/mihomo) — protocols
+-- xray-core doesn't speak: VMess, Trojan, Shadowsocks, Hysteria2, TUIC, WireGuard.
+ALTER TABLE proxy_configs DROP CONSTRAINT IF EXISTS proxy_configs_type_check;
+ALTER TABLE proxy_configs ADD CONSTRAINT proxy_configs_type_check
+    CHECK (type IN ('socks5', 'vless', 'vmess', 'trojan', 'ss', 'hysteria2', 'tuic', 'wireguard'));
+
 -- Migration: background healthcheck result (internal/tasks/proxy_healthcheck.go) —
 -- lets /admin/proxies show the last known status immediately, without waiting for
 -- a fresh on-open test.

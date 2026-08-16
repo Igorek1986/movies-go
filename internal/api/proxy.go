@@ -6,6 +6,7 @@ import (
 	"movies-api/db/models"
 	"movies-api/db/store"
 	"movies-api/internal/proxy"
+	"movies-api/internal/proxy/mihomo"
 	"movies-api/internal/proxy/xray"
 	"net/http"
 	"strconv"
@@ -81,14 +82,16 @@ func handleAPIProxiesCreate(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if body.Type != "socks5" && body.Type != "vless" {
-		Error(w, http.StatusBadRequest, "type must be socks5 or vless")
-		return
-	}
 	if body.Name == "" || body.Config == "" {
 		Error(w, http.StatusBadRequest, "name and config are required")
 		return
 	}
+	detected, err := proxy.DetectType(body.Config)
+	if err != nil {
+		Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	body.Type = detected
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -112,10 +115,12 @@ func handleAPIProxiesUpdate(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if body.Type != "socks5" && body.Type != "vless" {
-		Error(w, http.StatusBadRequest, "type must be socks5 or vless")
+	detected, err := proxy.DetectType(body.Config)
+	if err != nil {
+		Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	body.Type = detected
 	body.ID = id
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -141,6 +146,7 @@ func handleAPIProxiesDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	xray.Default.Stop(id)
+	mihomo.Default.Stop(id)
 	proxy.Default.Invalidate()
 	w.WriteHeader(http.StatusNoContent)
 }

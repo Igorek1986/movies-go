@@ -7,6 +7,7 @@ import (
 	"log"
 	"movies-api/db/models"
 	"movies-api/db/store"
+	"movies-api/internal/proxy/mihomo"
 	"movies-api/internal/proxy/xray"
 	"net"
 	"net/http"
@@ -169,6 +170,21 @@ func buildClient(proxies []models.ProxyConfig) *http.Client {
 			addr, err := xray.Default.EnsureRunning(p.ID, p.Config)
 			if err != nil {
 				log.Printf("proxy: vless sidecar for %q: %v", p.Name, err)
+				continue
+			}
+			if d := socks5Dialer("socks5://" + addr); d != nil {
+				dialers = append(dialers, d)
+			}
+		default:
+			if !mihomoTypes[p.Type] {
+				continue
+			}
+			// VMess/Trojan/Shadowsocks/Hysteria2/TUIC/WireGuard all run through a
+			// local mihomo sidecar (see internal/proxy/mihomo) — xray-core doesn't
+			// speak any of these, same local-SOCKS5-bridge pattern as vless/xray above.
+			addr, err := mihomo.Default.EnsureRunning(p.ID, p.Config)
+			if err != nil {
+				log.Printf("proxy: %s sidecar for %q: %v", p.Type, p.Name, err)
 				continue
 			}
 			if d := socks5Dialer("socks5://" + addr); d != nil {
