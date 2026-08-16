@@ -472,6 +472,7 @@ const DESCRIPTIONS: Record<string, string> = {
   nnmclub_host: 'Домен трекера NNMClub.to. Меняйте на зеркало, если основной домен заблокирован.',
   popular_weight_movie: 'Множитель к числу зрителей при ранжировании «Популярного» (1.0 = без поправки).',
   popular_weight_tv: 'Множитель к числу зрителей при ранжировании «Популярного». Сериал набирает зрителей быстрее фильма (много серий/дней) — коэффициент < 1 уравновешивает это.',
+  watching_threshold: 'Процент прогресса текущей серии, после которого сериал получает статус «Смотрю» (0 = сразу на любой прогресс).',
 }
 
 const LABELS: Record<string, string> = {
@@ -504,6 +505,7 @@ const LABELS: Record<string, string> = {
   premium_warn_days:        'Предупреждение об истечении Premium (дней)',
   premium_extend_all_days:  'Продлить всем Premium (дней)',
   watched_threshold:        'Порог «просмотрено» (%)',
+  watching_threshold:       'Порог «начал смотреть» (%)',
   proxy_healthcheck_interval_min: 'Проверка прокси в фоне — интервал (мин)',
   popular_period_days:      'Популярное — период (дней)',
   popular_weight_movie:     'Популярное — коэффициент: фильмы',
@@ -583,7 +585,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   ]},
   { name: 'Общие настройки', keys: [
     'inactive_delete_days', 'inactive_warn_days', 'timecode_grace_days',
-    'premium_warn_days', 'premium_extend_all_days', 'watched_threshold',
+    'premium_warn_days', 'premium_extend_all_days', 'watched_threshold', 'watching_threshold',
     'proxy_healthcheck_interval_min',
     'popular_period_days', 'popular_weight_movie', 'popular_weight_tv',
     'daily_task_hour', 'parser_overlap_days',

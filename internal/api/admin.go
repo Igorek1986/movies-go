@@ -1886,7 +1886,7 @@ var settingsGroupDefs = []struct {
 	}},
 	{"Общие настройки", []string{
 		"inactive_delete_days", "inactive_warn_days", "timecode_grace_days",
-		"premium_warn_days", "premium_extend_all_days", "watched_threshold",
+		"premium_warn_days", "premium_extend_all_days", "watched_threshold", "watching_threshold",
 		"popular_period_days", "popular_weight_movie", "popular_weight_tv", "daily_task_hour",
 		"session_ttl_days", "session_renew_days", "device_token_ttl_days",
 		"device_code_ttl_minutes", "telegram_link_ttl_minutes",

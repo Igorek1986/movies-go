@@ -56,6 +56,7 @@ var SettingDefaults = map[string]string{
 	"vapid_private_key": "",
 	// General
 	"watched_threshold":              "90",
+	"watching_threshold":             "0",
 	"popular_period_days":            "30",
 	"proxy_healthcheck_interval_min": "5",
 	// Весовые коэффициенты для ранжирования «Популярного» (movie/tv) — сериал
@@ -220,6 +221,17 @@ func GetSettingInt(ctx context.Context, key string) int {
 // instead so changing the setting actually takes effect everywhere.
 func WatchedThreshold(ctx context.Context) int {
 	return GetSettingInt(ctx, "watched_threshold")
+}
+
+// WatchingThreshold returns the admin-configured percent of the current episode's
+// progress required before a TV show gets the implied "watching" status (setting
+// "watching_threshold", default 0 — any progress at all, preserving the original
+// behavior). Mirrors myshows.js's per-profile myshows_add_threshold, but as a
+// single deployment-wide setting like WatchedThreshold, not a per-profile one —
+// EnsureImpliedStatus runs server-side on every timecode write and has no per-
+// profile client setting to read.
+func WatchingThreshold(ctx context.Context) int {
+	return GetSettingInt(ctx, "watching_threshold")
 }
 
 // GetSettingFloat returns a numeric setting value with a fallback default.

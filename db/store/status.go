@@ -113,24 +113,29 @@ func ListCardIDsByStatus(ctx context.Context, deviceID int64, profileID, status 
 }
 
 // EnsureImpliedStatus re-derives status on every real watch event — "watching" for
-// a TV show (any timecode at all), "watched" for a movie once its percent crosses
-// watched_threshold. Real watch activity always wins, INCLUDING over an explicit
-// choice ("не смотрю"/"брошено") — a status set a while ago is weaker evidence than
-// "just actually watched an episode". Called from live timecode writes only (not
-// from BackfillImpliedStatuses, which stays ON CONFLICT DO NOTHING — it replays
-// historical data in bulk on every startup and must not stomp on statuses the user
-// set after that old activity happened).
+// a TV show once its percent crosses watching_threshold (default 0 — any timecode
+// at all, matching the original behavior), "watched" for a movie once its percent
+// crosses watched_threshold. Real watch activity always wins, INCLUDING over an
+// explicit choice ("не смотрю"/"брошено") — a status set a while ago is weaker
+// evidence than "just actually watched an episode". Called from live timecode
+// writes only (not from BackfillImpliedStatuses, which stays ON CONFLICT DO
+// NOTHING — it replays historical data in bulk on every startup and must not
+// stomp on statuses the user set after that old activity happened).
 func EnsureImpliedStatus(ctx context.Context, deviceID int64, profileID, cardID string, percent float64) {
-	threshold := GetSettingInt(ctx, "watched_threshold")
+	watchedThreshold := GetSettingInt(ctx, "watched_threshold")
+	watchingThreshold := GetSettingInt(ctx, "watching_threshold")
 	_, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO subjective_statuses (device_id, profile_id, card_id, status)
 		SELECT $1, $2, $3::varchar, CASE WHEN mc.media_type = 'movie' THEN 'watched' ELSE 'watching' END
 		FROM media_cards mc
 		WHERE mc.card_id = $3::varchar
-		  AND (mc.media_type != 'movie' OR $4::float8 >= $5::int)
+		  AND (
+		        (mc.media_type = 'movie' AND $4::float8 >= $5::int)
+		     OR (mc.media_type != 'movie' AND $4::float8 >= $6::int)
+		      )
 		ON CONFLICT (device_id, profile_id, card_id) DO UPDATE
 		SET status = EXCLUDED.status, updated_at = now()`,
-		deviceID, profileID, cardID, percent, threshold)
+		deviceID, profileID, cardID, percent, watchedThreshold, watchingThreshold)
 	if err != nil {
 		log.Printf("store: ensure implied status: %v", err)
 	}
@@ -141,17 +146,18 @@ func EnsureImpliedStatus(ctx context.Context, deviceID int64, profileID, cardID 
 // profiles that were watching shows before this feature existed. Safe to call on
 // every startup: it only inserts rows that don't exist yet.
 func BackfillImpliedStatuses(ctx context.Context) {
-	threshold := GetSettingInt(ctx, "watched_threshold")
+	watchedThreshold := GetSettingInt(ctx, "watched_threshold")
+	watchingThreshold := GetSettingInt(ctx, "watching_threshold")
 	tag, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO subjective_statuses (device_id, profile_id, card_id, status)
 		SELECT DISTINCT tc.device_id, tc.profile_id, tc.card_id,
 		       CASE WHEN mc.media_type = 'movie' THEN 'watched' ELSE 'watching' END
 		FROM timecodes tc
 		JOIN media_cards mc ON mc.card_id = tc.card_id
-		WHERE mc.media_type != 'movie'
-		   OR (tc.data::jsonb->>'percent')::numeric >= $1
+		WHERE (mc.media_type = 'movie' AND (tc.data::jsonb->>'percent')::numeric >= $1::int)
+		   OR (mc.media_type != 'movie' AND (tc.data::jsonb->>'percent')::numeric >= $2::int)
 		ON CONFLICT (device_id, profile_id, card_id) DO NOTHING`,
-		threshold)
+		watchedThreshold, watchingThreshold)
 	if err != nil {
 		log.Printf("store: backfill implied statuses: %v", err)
 		return
