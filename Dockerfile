@@ -36,12 +36,12 @@ RUN set -eux; \
 # GitHub API first.
 RUN set -eux; \
     case "$TARGETARCH" in \
-      amd64) MIHOMO_ARCH="amd64" ;; \
-      arm64) MIHOMO_ARCH="arm64" ;; \
+      amd64) MIHOMO_PATTERN="linux-amd64-compatible-v[0-9.]+\\.gz$" ;; \
+      arm64) MIHOMO_PATTERN="linux-arm64-v[0-9.]+\\.gz$" ;; \
       *) echo "unsupported arch for mihomo: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     MIHOMO_URL="$(curl -fsSL https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
-      | jq -r --arg arch "$MIHOMO_ARCH" '.assets[] | select(.name | test("linux-" + $arch + "-v[0-9.]+\\.gz$")) | .browser_download_url')"; \
+      | jq -r --arg pattern "$MIHOMO_PATTERN" '.assets[] | select(.name | test($pattern)) | .browser_download_url')"; \
     curl -fsSL -o /tmp/mihomo.gz "$MIHOMO_URL" && \
     gunzip -c /tmp/mihomo.gz > /usr/local/bin/mihomo && \
     chmod +x /usr/local/bin/mihomo && \
