@@ -2,10 +2,12 @@ package releases
 
 import (
 	"context"
-	"movies-api/client"
+	"io"
+	"log"
 	"movies-api/db/models"
 	"movies-api/db/store"
-	"log"
+	"movies-api/internal/proxy"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -36,18 +38,13 @@ func GetBodyLink(torr *models.TorrentDetails) string {
 func fetchPage(link string) (string, error) {
 	link = strings.TrimSpace(link)
 	link = strings.ReplaceAll(link, "\t", "%20")
+	c := proxy.Default.ClientFor(context.Background(), proxy.RouteParserRutor)
 	var (
 		body string
 		err  error
 	)
-	for i := 0; i < 10; i++ {
-		_, bodyS, errs := client.Get(link).End()
-		body = bodyS
-		if len(errs) > 0 {
-			err = errs[0]
-		} else {
-			err = nil
-		}
+	for i := range 10 {
+		body, err = httpGetString(c, link)
 		if err == nil {
 			break
 		}
@@ -59,4 +56,22 @@ func fetchPage(link string) (string, error) {
 		}
 	}
 	return body, err
+}
+
+func httpGetString(c *http.Client, link string) (string, error) {
+	req, err := http.NewRequest("GET", link, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	resp, err := c.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
