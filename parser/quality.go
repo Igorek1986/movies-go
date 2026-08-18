@@ -6,6 +6,13 @@ import (
 	"movies-api/db/models"
 )
 
+// isHDR reports HDR mastering not just from an explicit "HDR" tag but also from
+// the 10-bit color depth markers releases commonly carry instead (2160p releases
+// mastered without HDR are rare, so bare 10-bit is a reliable proxy).
+func isHDR(info string) bool {
+	return strings.Contains(info, "hdr") || strings.Contains(info, "10bit") || strings.Contains(info, "10 бит")
+}
+
 func ParseVQuality(params string) int {
 	info := clear(strings.ToLower(params))
 	info = strings.ReplaceAll(info, "вdrip", "bdrip")
@@ -14,7 +21,7 @@ func ParseVQuality(params string) int {
 	if strings.Contains(info, "2160") && (strings.Contains(info, "bdremux") || strings.Contains(info, "bluray")) {
 		if strings.Contains(info, "dolby vision") {
 			return models.Q_UHD_BDREMUX_DV
-		} else if strings.Contains(info, "hdr") {
+		} else if isHDR(info) {
 			return models.Q_UHD_BDREMUX_HDR
 		} else {
 			return models.Q_UHD_BDREMUX_SDR
@@ -23,7 +30,7 @@ func ParseVQuality(params string) int {
 	if strings.Contains(info, "2160") && strings.Contains(info, "bdrip") {
 		if strings.Contains(info, "dolby vision") {
 			return models.Q_BDRIP_DV_2160
-		} else if strings.Contains(info, "hdr") {
+		} else if isHDR(info) {
 			return models.Q_BDRIP_HDR_2160
 		} else {
 			return models.Q_BDRIP_SDR_2160
@@ -32,7 +39,7 @@ func ParseVQuality(params string) int {
 	if strings.Contains(info, "2160") && (strings.Contains(info, "webdl") || strings.Contains(info, "webrip")) {
 		if strings.Contains(info, "dolby vision") {
 			return models.Q_WEBDL_DV_2160
-		} else if strings.Contains(info, "hdr") {
+		} else if isHDR(info) {
 			return models.Q_WEBDL_HDR_2160
 		} else {
 			return models.Q_WEBDL_SDR_2160
