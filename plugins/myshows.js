@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.0.7';
+    var VERSION = '1.0.8';
 
     var DEFAULT_ADD_THRESHOLD = '0';
     var DEFAULT_MIN_PROGRESS = 90;
