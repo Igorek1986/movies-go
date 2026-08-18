@@ -505,3 +505,60 @@ CREATE TABLE IF NOT EXISTS subjective_statuses (
     PRIMARY KEY (device_id, profile_id, card_id)
 );
 CREATE INDEX IF NOT EXISTS idx_subjective_statuses_lookup ON subjective_statuses (device_id, profile_id, status);
+
+-- ─── Device plugins ─────────────────────────────────────────────────────
+-- Dynamic list of Lampa plugin URLs to load for a device, fetched by the
+-- lampainit-invc.js bootstrap module via GET /device/plugins on appload().
+-- Replaces a hardcoded script list that required editing that file and
+-- restarting Lampac for every change.
+CREATE TABLE IF NOT EXISTS device_plugins (
+    id         BIGSERIAL    PRIMARY KEY,
+    device_id  BIGINT       NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    url        TEXT         NOT NULL,
+    name       VARCHAR(100) NOT NULL DEFAULT '',
+    enabled    BOOLEAN      NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_device_plugins_url UNIQUE (device_id, url)
+);
+CREATE INDEX IF NOT EXISTS idx_device_plugins_device_id ON device_plugins (device_id);
+
+-- Per-profile override: explicitly enable/disable a URL just for one profile.
+-- No row for a given (device_id, profile_id, url) means the profile inherits
+-- the device-level `enabled` flag above.
+CREATE TABLE IF NOT EXISTS device_plugin_profile_overrides (
+    device_id  BIGINT       NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    profile_id VARCHAR(100) NOT NULL DEFAULT '',
+    url        TEXT         NOT NULL,
+    enabled    BOOLEAN      NOT NULL,
+    name       VARCHAR(100) NOT NULL DEFAULT '',
+    PRIMARY KEY (device_id, profile_id, url)
+);
+
+-- Migration: name for profile-only plugins (not in the device's list, so they
+-- have no name to inherit — see store.ListProfilePlugins).
+ALTER TABLE device_plugin_profile_overrides ADD COLUMN IF NOT EXISTS name VARCHAR(100) NOT NULL DEFAULT '';
+
+-- Admin-configured default plugin set (empty on a fresh install — this repo
+-- ships with no hardcoded plugin URLs). Managed via the admin settings page
+-- ("Плагины по умолчанию"); applied to devices by the backfill below and by
+-- store.SeedDefaultDevicePlugins on new device creation.
+CREATE TABLE IF NOT EXISTS default_device_plugins (
+    id         BIGSERIAL    PRIMARY KEY,
+    url        TEXT         NOT NULL UNIQUE,
+    name       VARCHAR(100) NOT NULL DEFAULT '',
+    enabled    BOOLEAN      NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+-- Migration: backfill device_plugins for any device with zero rows, from the
+-- current default_device_plugins set. Re-evaluated on every start, so it
+-- picks up admin changes to the defaults — but only for devices that still
+-- have no plugins at all. A device with at least one row (curated via the
+-- "Плагины" panel, or already backfilled once) is never touched again, so
+-- removing a default or editing e.g. its base_url sticks.
+INSERT INTO device_plugins (device_id, url, name, enabled)
+SELECT d.id, p.url, p.name, p.enabled
+FROM devices d
+CROSS JOIN default_device_plugins p
+WHERE NOT EXISTS (SELECT 1 FROM device_plugins dp WHERE dp.device_id = d.id)
+ON CONFLICT (device_id, url) DO NOTHING;

@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth'
 import Layout from '@/components/Layout'
 import PasswordInput from '@/components/PasswordInput'
 import { PROFILE_ICON_IDS, profileIconSrc } from '@/utils/profileIcon'
-import { useActiveProfile } from '@/contexts/ActiveProfileContext'
+import { useActiveProfile, profileUrlParam } from '@/contexts/ActiveProfileContext'
 import styles from './ProfilesPage.module.scss'
 
 interface TelegramStatus {
@@ -35,6 +35,22 @@ interface Profile {
   child_birth_year?: number | null
   params: Record<string, unknown>
   timecodes_count: number
+}
+
+interface DevicePluginItem {
+  id: number
+  url: string
+  name: string
+  enabled: boolean
+  created_at: string
+}
+
+interface ProfilePluginItem {
+  url: string
+  name: string
+  in_device_list: boolean
+  device_enabled: boolean
+  override: boolean | null
 }
 
 interface SyncLogEntry {
@@ -179,6 +195,17 @@ export default function ProfilesPage() {
   const [newProfileId, setNewProfileId] = useState('')
   const [profileError, setProfileError] = useState('')
   const [iconPickerFor, setIconPickerFor] = useState<string | null>(null)
+  // Plugins per device (global)
+  const [openPluginsFor, setOpenPluginsFor] = useState<number | null>(null)
+  const [devicePlugins, setDevicePlugins] = useState<DevicePluginItem[]>([])
+  const [newPluginUrl, setNewPluginUrl] = useState('')
+  const [newPluginName, setNewPluginName] = useState('')
+  const [pluginError, setPluginError] = useState('')
+  // Plugin overrides per profile
+  const [profilePluginsFor, setProfilePluginsFor] = useState<string | null>(null)
+  const [profilePlugins, setProfilePlugins] = useState<ProfilePluginItem[]>([])
+  const [newProfilePluginUrl, setNewProfilePluginUrl] = useState('')
+  const [newProfilePluginName, setNewProfilePluginName] = useState('')
   // Telegram
   const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null)
   const [tgCode, setTgCode] = useState<{ code: string; link: string; ttl_min: number } | null>(null)
@@ -472,6 +499,8 @@ export default function ProfilesPage() {
     setOpenProfilesFor(id)
     setProfileError('')
     setNewProfileName('')
+    setProfilePluginsFor(null)
+    setOpenPluginsFor(null)
     const res = await fetch(`/api/devices/${id}/profiles`)
     if (res.ok) {
       const data = await res.json()
@@ -492,6 +521,147 @@ export default function ProfilesPage() {
     if (importDeviceId === openProfilesFor) setImportDeviceProfiles(filtered)
     if (fileDeviceId === openProfilesFor) setFileDeviceProfiles(filtered)
     refreshActiveProfile()
+  }
+
+  async function openDevicePlugins(id: number) {
+    if (openPluginsFor === id) { setOpenPluginsFor(null); return }
+    setOpenPluginsFor(id)
+    setPluginError('')
+    setNewPluginUrl('')
+    setNewPluginName('')
+    setProfilePluginsFor(null)
+    setOpenProfilesFor(null)
+    const res = await fetch(`/api/devices/${id}/plugins`)
+    if (res.ok) {
+      const data = await res.json()
+      setDevicePlugins(data.plugins || [])
+    }
+  }
+
+  async function reloadDevicePlugins() {
+    if (!openPluginsFor) return
+    const res = await fetch(`/api/devices/${openPluginsFor}/plugins`)
+    if (!res.ok) return
+    const data = await res.json()
+    setDevicePlugins(data.plugins || [])
+  }
+
+  async function handleAddPlugin(e: React.FormEvent) {
+    e.preventDefault()
+    if (!openPluginsFor) return
+    setPluginError('')
+    const res = await fetch(`/api/devices/${openPluginsFor}/plugins`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: newPluginUrl.trim(), name: newPluginName.trim() }),
+    })
+    if (res.ok) {
+      setNewPluginUrl('')
+      setNewPluginName('')
+      reloadDevicePlugins()
+    } else {
+      const d = await res.json().catch(() => ({}))
+      setPluginError(d.error || 'Ошибка добавления плагина')
+    }
+  }
+
+  async function handleToggleDevicePlugin(p: DevicePluginItem) {
+    if (!openPluginsFor) return
+    await fetch(`/api/devices/${openPluginsFor}/plugins/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !p.enabled }),
+    })
+    reloadDevicePlugins()
+  }
+
+  async function handleRenamePlugin(p: DevicePluginItem) {
+    if (!openPluginsFor) return
+    const name = window.prompt('Название плагина:', p.name)
+    if (name === null || name.trim() === p.name) return
+    await fetch(`/api/devices/${openPluginsFor}/plugins/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() }),
+    })
+    reloadDevicePlugins()
+  }
+
+  async function handleEditPluginUrl(p: DevicePluginItem) {
+    if (!openPluginsFor) return
+    const url = window.prompt('URL плагина:', p.url)
+    if (url === null || url.trim() === p.url) return
+    const res = await fetch(`/api/devices/${openPluginsFor}/plugins/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url.trim() }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      alert(d.error || 'Ошибка изменения URL')
+    }
+    reloadDevicePlugins()
+  }
+
+  async function handleDeletePlugin(p: DevicePluginItem) {
+    if (!openPluginsFor) return
+    if (!confirm(`Удалить плагин «${p.name || p.url}»?`)) return
+    await fetch(`/api/devices/${openPluginsFor}/plugins/${p.id}`, { method: 'DELETE' })
+    reloadDevicePlugins()
+  }
+
+  async function openProfilePlugins(profileId: string) {
+    if (profilePluginsFor === profileId) { setProfilePluginsFor(null); return }
+    if (!openProfilesFor) return
+    setProfilePluginsFor(profileId)
+    setNewProfilePluginUrl('')
+    setNewProfilePluginName('')
+    const res = await fetch(`/api/devices/${openProfilesFor}/profiles/${profileUrlParam(profileId)}/plugins`)
+    if (res.ok) {
+      const data = await res.json()
+      setProfilePlugins(data.plugins || [])
+    }
+  }
+
+  async function reloadProfilePlugins() {
+    if (!openProfilesFor || profilePluginsFor === null) return
+    const res = await fetch(`/api/devices/${openProfilesFor}/profiles/${profileUrlParam(profilePluginsFor)}/plugins`)
+    if (!res.ok) return
+    const data = await res.json()
+    setProfilePlugins(data.plugins || [])
+  }
+
+  async function handleSetProfileOverride(url: string, enabled: boolean, name?: string) {
+    if (!openProfilesFor || profilePluginsFor === null) return
+    await fetch(`/api/devices/${openProfilesFor}/profiles/${profileUrlParam(profilePluginsFor)}/plugins`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(name === undefined ? { url, enabled } : { url, enabled, name }),
+    })
+    reloadProfilePlugins()
+  }
+
+  async function handleClearProfileOverride(url: string) {
+    if (!openProfilesFor || profilePluginsFor === null) return
+    await fetch(`/api/devices/${openProfilesFor}/profiles/${profileUrlParam(profilePluginsFor)}/plugins?url=${encodeURIComponent(url)}`, {
+      method: 'DELETE',
+    })
+    reloadProfilePlugins()
+  }
+
+  async function handleRenameProfilePlugin(pp: ProfilePluginItem) {
+    const value = window.prompt('Название плагина (только для этого профиля):', pp.name)
+    if (value === null || value.trim() === pp.name) return
+    const effective = pp.override ?? pp.device_enabled
+    await handleSetProfileOverride(pp.url, effective, value.trim())
+  }
+
+  async function handleEditProfilePluginUrl(pp: ProfilePluginItem) {
+    const value = window.prompt('URL плагина (только для этого профиля):', pp.url)
+    if (value === null || value.trim() === pp.url || !value.trim()) return
+    const effective = pp.override ?? pp.device_enabled
+    await handleClearProfileOverride(pp.url)
+    await handleSetProfileOverride(value.trim(), effective, pp.name)
   }
 
   async function handleCreateProfile(e: React.FormEvent) {
@@ -956,6 +1126,9 @@ export default function ProfilesPage() {
                     <button className={styles.btnSm} onClick={() => openProfiles(d.id)}>
                       Профили{openProfilesFor === d.id ? ' ▲' : ' ▼'}
                     </button>
+                    <button className={styles.btnSm} onClick={() => openDevicePlugins(d.id)}>
+                      Плагины{openPluginsFor === d.id ? ' ▲' : ' ▼'}
+                    </button>
                     <button className={styles.btnSm} onClick={() => handleRename(d.id, d.name)}>Переименовать</button>
                     <button className={styles.btnSm} onClick={() => handleRegenToken(d.id, d.name)}>Новый токен</button>
                     <button className={`${styles.btnSm} ${styles.warning}`} onClick={() => handleClearTimecodes(d.id, d.name)}>Очистить</button>
@@ -1021,7 +1194,94 @@ export default function ProfilesPage() {
                             <button className={styles.btnSm} onClick={() => handleEditParams(p)}>
                               Параметры
                             </button>
+                            <button className={styles.btnSm} onClick={() => openProfilePlugins(p.profile_id)}>
+                              Плагины{profilePluginsFor === p.profile_id ? ' ▲' : ' ▼'}
+                            </button>
                           </div>
+                          {profilePluginsFor === p.profile_id && (
+                            <div className={styles.profilesPanel}>
+                              {profilePlugins.length === 0 && (
+                                <p className={styles.empty}>Нет плагинов устройства — добавьте их в разделе «Плагины» устройства</p>
+                              )}
+                              {profilePlugins.map(pp => {
+                                const effective = pp.override ?? pp.device_enabled
+                                return (
+                                  <div key={pp.url} style={{
+                                    display: 'flex', flexDirection: 'column', gap: '4px',
+                                    border: '1px solid var(--color-border)', borderRadius: '6px', padding: '6px 10px',
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                                      <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+                                        {pp.name || (pp.in_device_list ? pp.url : 'Без названия')}
+                                        {!pp.in_device_list && (
+                                          <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}> (только для профиля)</span>
+                                        )}
+                                      </span>
+                                      <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                                        <button
+                                          className={`${styles.btnSm} ${effective ? styles.active : ''}`}
+                                          onClick={() => handleSetProfileOverride(pp.url, !effective)}
+                                        >
+                                          {effective ? 'Вкл ✓' : 'Выкл'}
+                                        </button>
+                                        {!pp.in_device_list && (
+                                          <>
+                                            <button className={styles.btnIcon} title="Переименовать" onClick={() => handleRenameProfilePlugin(pp)}>✏️</button>
+                                            <button className={styles.btnIcon} title="Изменить URL" onClick={() => handleEditProfilePluginUrl(pp)}>🔗</button>
+                                          </>
+                                        )}
+                                        {pp.override !== null && pp.in_device_list && (
+                                          <button className={styles.btnSm} onClick={() => handleClearProfileOverride(pp.url)}>
+                                            Сброс
+                                          </button>
+                                        )}
+                                        {!pp.in_device_list && (
+                                          <button className={`${styles.btnSm} ${styles.danger}`} onClick={() => handleClearProfileOverride(pp.url)}>
+                                            Удалить
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {!pp.in_device_list && (
+                                      <code
+                                        style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', wordBreak: 'break-all', cursor: 'pointer' }}
+                                        title="Нажмите, чтобы изменить URL"
+                                        onClick={() => handleEditProfilePluginUrl(pp)}
+                                      >
+                                        {pp.url}
+                                      </code>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                              <form
+                                className={styles.formRow}
+                                onSubmit={e => {
+                                  e.preventDefault()
+                                  const url = newProfilePluginUrl.trim()
+                                  if (!url) return
+                                  handleSetProfileOverride(url, true, newProfilePluginName.trim())
+                                  setNewProfilePluginUrl('')
+                                  setNewProfilePluginName('')
+                                }}
+                              >
+                                <input
+                                  className={styles.input}
+                                  placeholder="Доп. URL плагина только для этого профиля"
+                                  value={newProfilePluginUrl}
+                                  onChange={e => setNewProfilePluginUrl(e.target.value)}
+                                />
+                                <input
+                                  className={styles.input}
+                                  placeholder="Название (необязательно)"
+                                  value={newProfilePluginName}
+                                  onChange={e => setNewProfilePluginName(e.target.value)}
+                                  style={{ maxWidth: '180px' }}
+                                />
+                                <button className={styles.btnSm} type="submit">Добавить</button>
+                              </form>
+                            </div>
+                          )}
                         </div>
                       ))}
                       {profileError && <p className={styles.errorText}>{profileError}</p>}
@@ -1044,6 +1304,64 @@ export default function ProfilesPage() {
                           <button className={styles.btnPrimary} type="submit">Добавить профиль</button>
                         </form>
                       )}
+                    </div>
+                  )}
+
+                  {openPluginsFor === d.id && (
+                    <div className={styles.profilesPanel}>
+                      <h4 className={styles.profilesTitle}>Плагины Lampa</h4>
+                      <p className={styles.hint}>
+                        Загружаются в Lampa через bootstrap-модуль (lampainit-invc.js) на этом устройстве. Изменения применяются без перезапуска Lampac.
+                      </p>
+                      {devicePlugins.length === 0 && <p className={styles.empty}>Плагинов ещё нет</p>}
+                      {devicePlugins.map(p => (
+                        <div key={p.id} className={styles.profileCard}>
+                          <div className={styles.profileCardTop}>
+                            <div className={styles.profileCardLeft}>
+                              <strong className={styles.profileName}>{p.name || 'Без названия'}</strong>
+                              <div className={styles.profileMeta}>
+                                <code
+                                  className={styles.profileId}
+                                  style={{ wordBreak: 'break-all', cursor: 'pointer' }}
+                                  title="Нажмите, чтобы изменить URL"
+                                  onClick={() => handleEditPluginUrl(p)}
+                                >
+                                  {p.url}
+                                </code>
+                              </div>
+                            </div>
+                            <div className={styles.profileCardActions}>
+                              <button
+                                className={`${styles.btnSm} ${p.enabled ? styles.active : ''}`}
+                                onClick={() => handleToggleDevicePlugin(p)}
+                              >
+                                {p.enabled ? 'Включён ✓' : 'Выключен'}
+                              </button>
+                              <button className={styles.btnIcon} title="Переименовать" onClick={() => handleRenamePlugin(p)}>✏️</button>
+                              <button className={styles.btnIcon} title="Изменить URL" onClick={() => handleEditPluginUrl(p)}>🔗</button>
+                              <button className={`${styles.btnSm} ${styles.danger}`} onClick={() => handleDeletePlugin(p)}>Удалить</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {pluginError && <p className={styles.errorText}>{pluginError}</p>}
+                      <form className={`${styles.formCol} ${styles.newProfileForm}`} onSubmit={handleAddPlugin}>
+                        <input
+                          className={styles.input}
+                          placeholder="URL плагина (https://...)"
+                          value={newPluginUrl}
+                          onChange={e => setNewPluginUrl(e.target.value)}
+                          required
+                        />
+                        <input
+                          className={styles.input}
+                          placeholder="Название (необязательно)"
+                          value={newPluginName}
+                          onChange={e => setNewPluginName(e.target.value)}
+                          maxLength={100}
+                        />
+                        <button className={styles.btnPrimary} type="submit">Добавить плагин</button>
+                      </form>
                     </div>
                   )}
                 </div>

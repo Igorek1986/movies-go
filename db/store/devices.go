@@ -126,6 +126,7 @@ func CreateDevice(ctx context.Context, userID int64, name string) (*models.Devic
 			userID, candidateName, token,
 		).Scan(&d.ID, &d.UserID, &d.Name, &d.Token, &d.CreatedAt)
 		if err == nil {
+			SeedDefaultDevicePlugins(ctx, d.ID)
 			return &d, nil
 		}
 		if !strings.Contains(err.Error(), "uq_devices_user_name") && !strings.Contains(err.Error(), "duplicate key") {

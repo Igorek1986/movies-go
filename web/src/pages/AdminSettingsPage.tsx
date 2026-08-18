@@ -437,6 +437,213 @@ function BannedPatterns() {
   )
 }
 
+interface DefaultPluginItem {
+  id: number
+  url: string
+  name: string
+  enabled: boolean
+}
+
+function DefaultDevicePlugins() {
+  const [list, setList] = useState<DefaultPluginItem[]>([])
+  const [url, setUrl] = useState('')
+  const [name, setName] = useState('')
+  const [importMsg, setImportMsg] = useState('')
+  const urlRef = useRef<HTMLInputElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/default-plugins').then(r => r.json()).then(setList).catch(() => {})
+  }, [])
+
+  async function reload() {
+    const r = await fetch('/api/admin/default-plugins')
+    if (r.ok) setList(await r.json())
+  }
+
+  function handleExport() {
+    const data = list.map(p => ({ url: p.url, name: p.name, enabled: p.enabled }))
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const href = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = href
+    a.download = 'lampa-default-plugins.json'
+    a.click()
+    URL.revokeObjectURL(href)
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImportMsg('')
+    let parsed: Array<{ url: string; name?: string; enabled?: boolean }>
+    try {
+      parsed = JSON.parse(await file.text())
+      if (!Array.isArray(parsed)) throw new Error()
+    } catch {
+      setImportMsg('Неверный JSON')
+      return
+    }
+    let added = 0, skipped = 0
+    for (const p of parsed) {
+      if (!p.url) continue
+      const r = await fetch('/api/admin/default-plugins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: p.url, name: p.name || '', enabled: p.enabled ?? true }),
+      })
+      if (r.ok) added++
+      else skipped++
+    }
+    setImportMsg(`Импортировано: ${added}${skipped ? `, пропущено (уже есть): ${skipped}` : ''}`)
+    reload()
+  }
+
+  async function handleAdd() {
+    const trimmed = url.trim()
+    if (!trimmed) return
+    const r = await fetch('/api/admin/default-plugins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: trimmed, name: name.trim() }),
+    })
+    if (r.ok) { setUrl(''); setName(''); reload() } else {
+      const d = await r.json().catch(() => ({}))
+      alert(d.error || 'Ошибка добавления')
+    }
+    urlRef.current?.focus()
+  }
+
+  async function handleToggle(p: DefaultPluginItem) {
+    await fetch(`/api/admin/default-plugins/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !p.enabled }),
+    })
+    reload()
+  }
+
+  async function handleRename(p: DefaultPluginItem) {
+    const value = window.prompt('Название:', p.name)
+    if (value === null || value.trim() === p.name) return
+    await fetch(`/api/admin/default-plugins/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: value.trim() }),
+    })
+    reload()
+  }
+
+  async function handleEditUrl(p: DefaultPluginItem) {
+    const value = window.prompt('URL:', p.url)
+    if (value === null || value.trim() === p.url) return
+    const r = await fetch(`/api/admin/default-plugins/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: value.trim() }),
+    })
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}))
+      alert(d.error || 'Ошибка изменения URL')
+    }
+    reload()
+  }
+
+  async function handleDelete(p: DefaultPluginItem) {
+    if (!confirm(`Удалить «${p.name || p.url}» из плагинов по умолчанию?`)) return
+    await fetch(`/api/admin/default-plugins/${p.id}`, { method: 'DELETE' })
+    reload()
+  }
+
+  return (
+    <details open>
+      <summary className={styles.groupSummary}>
+        <span className={styles.groupName}>Плагины Lampa по умолчанию для новых устройств</span>
+        <span className={styles.groupArrow}>▶</span>
+      </summary>
+      <div className={styles.groupBody} style={{ gridColumn: '1 / -1' }}>
+        <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+            Список плагинов, которые Lampa на устройстве подгружает через bootstrap-модуль
+            (lampainit-invc.js → <code>/device/plugins</code>). Применяется новому устройству
+            при создании/привязке, а также однократно к устройствам, у которых ещё нет ни одного
+            плагина. Пусто по умолчанию — заполни своими URL.
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <input
+              ref={urlRef}
+              type="text"
+              className={styles.rowInput}
+              placeholder="https://..."
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAdd())}
+              autoComplete="off"
+              style={{ flex: 1, minWidth: '200px' }}
+            />
+            <input
+              type="text"
+              className={styles.rowInput}
+              placeholder="Название (необязательно)"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAdd())}
+              autoComplete="off"
+              style={{ maxWidth: '220px' }}
+            />
+            <button type="button" className={styles.btnSave} style={{ whiteSpace: 'nowrap' }} onClick={handleAdd}>
+              Добавить
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <button type="button" className={styles.btnReset} onClick={handleExport} disabled={list.length === 0}>
+              Экспорт в файл
+            </button>
+            <button type="button" className={styles.btnReset} onClick={() => fileRef.current?.click()}>
+              Импорт из файла
+            </button>
+            <input ref={fileRef} type="file" accept="application/json" onChange={handleImportFile} style={{ display: 'none' }} />
+            {importMsg && <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>{importMsg}</span>}
+          </div>
+
+          {list.length === 0 ? (
+            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Список пуст</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {list.map(p => (
+                <div key={p.id} style={{
+                  display: 'flex', flexDirection: 'column', gap: '6px',
+                  border: '1px solid var(--color-border)', borderRadius: '6px', padding: '8px 10px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                    <strong style={{ fontSize: '0.85rem' }}>{p.name || 'Без названия'}</strong>
+                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                      <button type="button" className={styles.btnSave} onClick={() => handleToggle(p)}>
+                        {p.enabled ? 'Включён ✓' : 'Выключен'}
+                      </button>
+                      <button type="button" className={styles.btnReset} onClick={() => handleRename(p)}>✏️</button>
+                      <button type="button" className={styles.btnReset} onClick={() => handleDelete(p)}>Удалить</button>
+                    </div>
+                  </div>
+                  <code
+                    style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', wordBreak: 'break-all', cursor: 'pointer', display: 'block' }}
+                    title="Нажмите, чтобы изменить URL"
+                    onClick={() => handleEditUrl(p)}
+                  >
+                    {p.url}
+                  </code>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </details>
+  )
+}
+
 // ── Schema (mirrors Go settingsGroupDefs / settingLabels) ─────────────────────
 
 const TEXTAREA_KEYS = new Set(['privacy_policy_content', 'consent_content'])
@@ -869,6 +1076,7 @@ export default function AdminSettingsPage() {
             ))}
 
             <BannedPatterns />
+            <DefaultDevicePlugins />
             <ChildKeywords />
             <ChildTextKeywords />
 
