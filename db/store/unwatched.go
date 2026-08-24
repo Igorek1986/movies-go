@@ -213,6 +213,32 @@ func UnwatchedTVShowProgress(ctx context.Context, deviceID int64, profileID, car
 	return show, show.AiredCount > 0
 }
 
+// CardIDsAiringOn returns tv card_ids that have a non-special episode with the
+// given air_date (YYYY-MM-DD) — used right after an aired-cutoff crossing to find
+// exactly which shows just became "newly aired" and need their watched/unwatched
+// cache dropped, instead of wiping every profile's cache.
+func CardIDsAiringOn(ctx context.Context, date string) []string {
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT DISTINCT mc.card_id
+		FROM episodes e
+		JOIN media_cards mc ON mc.tmdb_id = e.tmdb_show_id AND mc.media_type = 'tv'
+		WHERE NOT e.is_special AND e.air_date = $1::date`,
+		date)
+	if err != nil {
+		log.Printf("store: card ids airing on %s: %v", date, err)
+		return nil
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 // WatchedEpisode is one entry of WatchedEpisodes.
 type WatchedEpisode struct {
 	Hash    string

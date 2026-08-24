@@ -14,6 +14,7 @@ import (
 	"movies-api/internal/auth"
 	"movies-api/internal/bot"
 	"movies-api/internal/logbuf"
+	"movies-api/internal/myshows"
 	"movies-api/internal/tasks"
 	"movies-api/movies/tmdb"
 	"movies-api/parser"
@@ -102,6 +103,7 @@ func main() {
 
 	api.InitCategorySettings()
 	parser.OnComplete = api.InvalidateCategoryCache
+	myshows.OnEpisodesUpdated = api.InvalidateWatchedForCard
 	go api.RecomputeCategoryCounts()             // warm random-collection totals before first request
 	go store.BackfillImpliedStatuses(appCtx)     // catch up subjective statuses for pre-existing timecodes
 	api.StartUnwatchedCutoffInvalidation(appCtx) // refresh "Непросмотренные" cache when the aired cutoff crosses

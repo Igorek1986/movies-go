@@ -56,9 +56,10 @@ func InvalidateCategoryCache() {
 	childTextAgesLoaded = false
 	childTextAgesMu.Unlock()
 
-	watchedMu.Lock()
-	watchedCache = map[string][]string{}
-	watchedMu.Unlock()
+	// watchedCache/unwatchedCache are NOT wiped here: a parser run never changes
+	// episode air dates or completion status (that data comes from MyShows sync,
+	// see InvalidateWatchedForCard) — only the catalog (new cards/torrents), which
+	// is what catCache/catCount above cover.
 
 	log.Println("catcache: invalidated")
 
@@ -77,7 +78,23 @@ var (
 	watchedMu    sync.RWMutex
 	watchedCache = map[string][]string{}
 	watchedSF    singleflight.Group // dedupe concurrent computations of the same key
+
+	// watchedCardIndex maps card_id -> set of watchedCache keys whose cached set
+	// contained that card at some point. Used by InvalidateWatchedForCard to drop
+	// just the affected entries instead of wiping every profile. Entries are only
+	// ever added, never pruned when a key's set changes — a stale association just
+	// means an occasional harmless extra invalidation, not a correctness issue.
+	watchedCardIndex = map[string]map[string]struct{}{}
 )
+
+func indexWatchedCard(cardID, key string) {
+	set, ok := watchedCardIndex[cardID]
+	if !ok {
+		set = map[string]struct{}{}
+		watchedCardIndex[cardID] = set
+	}
+	set[key] = struct{}{}
+}
 
 func watchedKey(deviceID int64, profileID string, percent int) string {
 	return strconv.FormatInt(deviceID, 10) + ":" + profileID + ":" + strconv.Itoa(percent)
@@ -104,6 +121,9 @@ func cachedWatchedCardIDs(deviceID int64, profileID string, percent int) []strin
 		computed := store.WatchedCardIDs(deviceID, profileID, percent)
 		watchedMu.Lock()
 		watchedCache[k] = computed
+		for _, id := range computed {
+			indexWatchedCard(id, k)
+		}
 		watchedMu.Unlock()
 		return computed, nil
 	})
@@ -144,7 +164,19 @@ var (
 	unwatchedMu    sync.RWMutex
 	unwatchedCache = map[string][]store.UnwatchedTVShow{}
 	unwatchedSF    singleflight.Group
+
+	// unwatchedCardIndex mirrors watchedCardIndex above, for unwatchedCache entries.
+	unwatchedCardIndex = map[string]map[string]struct{}{}
 )
+
+func indexUnwatchedCard(cardID, key string) {
+	set, ok := unwatchedCardIndex[cardID]
+	if !ok {
+		set = map[string]struct{}{}
+		unwatchedCardIndex[cardID] = set
+	}
+	set[key] = struct{}{}
+}
 
 func unwatchedKey(deviceID int64, profileID string, percent int, sortOrder string) string {
 	return strconv.FormatInt(deviceID, 10) + ":" + profileID + ":" + strconv.Itoa(percent) + ":" + sortOrder
@@ -173,6 +205,9 @@ func cachedUnwatchedShows(deviceID int64, profileID string, percent int, sortOrd
 		computed := store.UnwatchedTVShows(ctx, deviceID, profileID, percent, sortOrder)
 		unwatchedMu.Lock()
 		unwatchedCache[k] = computed
+		for _, show := range computed {
+			indexUnwatchedCard(show.CardID, k)
+		}
 		unwatchedMu.Unlock()
 		return computed, nil
 	})
@@ -198,6 +233,28 @@ func invalidateUnwatchedPrefix(prefix string) {
 			delete(unwatchedCache, k)
 		}
 	}
+	unwatchedMu.Unlock()
+}
+
+// InvalidateWatchedForCard drops watchedCache/unwatchedCache entries for every
+// profile whose cached set referenced cardID, via the reverse indexes built in
+// cachedWatchedCardIDs/cachedUnwatchedShows. Wired to myshows.OnEpisodesUpdated —
+// the show's aired-episode count just changed, so its watched/unwatched status may
+// have too. Cheaper than a full wipe: only profiles that actually track this show
+// pay for a recompute, and only on their next request.
+func InvalidateWatchedForCard(cardID string) {
+	watchedMu.Lock()
+	for k := range watchedCardIndex[cardID] {
+		delete(watchedCache, k)
+	}
+	delete(watchedCardIndex, cardID)
+	watchedMu.Unlock()
+
+	unwatchedMu.Lock()
+	for k := range unwatchedCardIndex[cardID] {
+		delete(unwatchedCache, k)
+	}
+	delete(unwatchedCardIndex, cardID)
 	unwatchedMu.Unlock()
 }
 

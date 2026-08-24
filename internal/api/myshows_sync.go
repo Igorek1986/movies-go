@@ -650,6 +650,7 @@ func handleMyshowsSync(w http.ResponseWriter, r *http.Request) {
 				})
 			}
 			store.UpsertEpisodes(ctx, card.TmdbID, rows) //nolint:errcheck
+			InvalidateWatchedForCard(card.CardID)
 			if sh.MyshowsID > 0 {
 				store.SetMyshowsID(ctx, card.CardID, sh.MyshowsID) //nolint:errcheck
 			}

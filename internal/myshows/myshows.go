@@ -25,6 +25,12 @@ import (
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
+// OnEpisodesUpdated is called after SyncEpisodes successfully upserts episode data
+// for a show, with the affected card_id — lets the caller (wired in cmd/main.go)
+// invalidate any per-profile watched/unwatched cache entries for that show instead
+// of waiting for them to go stale on their own.
+var OnEpisodesUpdated func(cardID string)
+
 // ─── JSON-RPC client ──────────────────────────────────────────────────────────
 
 func rpc(ctx context.Context, method string, params map[string]any) (json.RawMessage, error) {
@@ -422,6 +428,10 @@ func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 
 	if err := store.UpsertEpisodes(ctx, mc.TmdbID, rows); err != nil {
 		return fmt.Errorf("upsert episodes: %w", err)
+	}
+
+	if OnEpisodesUpdated != nil {
+		OnEpisodesUpdated(mc.CardID)
 	}
 
 	log.Printf("myshows: synced %d episodes for %s", len(rows), mc.CardID)
