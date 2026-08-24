@@ -44,12 +44,15 @@ func NewRouter(mode string) http.Handler {
 	r.Get("/movies_id_{year:[0-9]+}", cached)
 	r.Get("/actor_{person_id:[0-9]+}", cached)
 	r.Get("/director_{person_id:[0-9]+}", cached)
-	r.Get("/continues", cached)
-	r.Get("/continues_movie", cached)
-	r.Get("/continues_tv", cached)
-	r.Get("/continues_anime", cached)
-	// Not wrapped in the generic URL cache (withCategoryCache only invalidates on
-	// parser runs) — handleUnwatched uses its own cache invalidated by OnWatchedChanged.
+	// continues/unwatched are NOT wrapped in the generic URL cache (withCategoryCache
+	// only invalidates on parser runs) — both depend on per-user timecodes/subjective
+	// status that change far more often than that. Each has its own cache instead
+	// (cachedContinuesAgg/cachedUnwatchedShows in catcache.go), invalidated via
+	// OnWatchedChanged the moment the relevant profile's data actually changes.
+	r.Get("/continues", handleCategory)
+	r.Get("/continues_movie", handleCategory)
+	r.Get("/continues_tv", handleCategory)
+	r.Get("/continues_anime", handleCategory)
 	r.Get("/unwatched", handleCategory)
 	r.Get("/unwatched/progress", handleUnwatchedProgress)
 	r.Get("/unwatched/episodes", handleUnwatchedEpisodes)

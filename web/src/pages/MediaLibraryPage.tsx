@@ -29,7 +29,18 @@ interface LibraryResponse {
   results: LibraryItem[]
 }
 
-type StatusKey = 'favorite' | 'watching' | 'completed' | 'planned' | 'stopped'
+type StatusKey = 'favorite' | 'continues' | 'watching' | 'completed' | 'planned' | 'stopped'
+
+// «Продолжить просмотр» — не subjective_statuses, а прогресс по таймкодам (карточки
+// с прогрессом ниже watched_threshold), отдаётся отдельным эндпоинтом /continues
+// (см. handleContinues в internal/api/content.go), не /media-library.
+function libraryUrl(status: StatusKey, params: { token: string; profile_id: string; page: string; per_page: string }): string {
+  if (status === 'continues') {
+    const { token, profile_id, page, per_page } = params
+    return `/continues?${new URLSearchParams({ token, profile_id, page, per_page })}`
+  }
+  return `/media-library?${new URLSearchParams({ ...params, status })}`
+}
 
 // Scroll the horizontal row container so el is centered (same as CatalogPage's scrollH).
 function scrollH(el: HTMLElement) {
@@ -77,8 +88,7 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick }: 
   const loadItems = useCallback(() => {
     if (loadedRef.current || !token) return
     loadedRef.current = true
-    const params = new URLSearchParams({ token, profile_id: profileId, status, page: '1', per_page: '20' })
-    fetch(`/media-library?${params}`)
+    fetch(libraryUrl(status, { token, profile_id: profileId, page: '1', per_page: '20' }))
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((data: LibraryResponse) => {
         setItems(data.results || [])
@@ -181,8 +191,7 @@ function LibraryGrid({ status, token, profileId, onCardClick }: {
     loadingRef.current = true
     setLoading(true)
     setError(false)
-    const params = new URLSearchParams({ token, profile_id: profileId, status, page: String(pg), per_page: '24' })
-    fetch(`/media-library?${params}`)
+    fetch(libraryUrl(status, { token, profile_id: profileId, page: String(pg), per_page: '24' }))
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((data: LibraryResponse) => {
         setItems(prev => reset ? (data.results || []) : [...prev, ...(data.results || [])])
@@ -223,12 +232,13 @@ function LibraryGrid({ status, token, profileId, onCardClick }: {
 
 const STATUS_LABELS: Record<StatusKey, string> = {
   favorite: 'Избранное',
-  watching: 'Смотрю',
+  continues: 'Продолжить просмотр',
   planned: 'Буду смотреть',
+  watching: 'Смотрю',
   completed: 'Просмотрел',
   stopped: 'Брошено',
 }
-const ROW_ORDER: StatusKey[] = ['favorite', 'watching', 'planned', 'completed', 'stopped']
+const ROW_ORDER: StatusKey[] = ['favorite', 'continues', 'planned', 'watching', 'completed', 'stopped']
 
 export default function MediaLibraryPage() {
   const navigate = useNavigate()

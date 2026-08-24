@@ -201,6 +201,74 @@ func invalidateUnwatchedPrefix(prefix string) {
 	unwatchedMu.Unlock()
 }
 
+// ─── Continues cache (per device+profile) ─────────────────────────────────────
+//
+// Same shape and reasoning as the unwatched-shows cache above: "Продолжить
+// просмотр" depends on per-user timecodes/subjective_statuses, not the catalog, so
+// it must not sit behind the generic full-URL category cache (that one only goes
+// stale on parser runs — a card just marked "Брошено" would keep showing here for
+// hours). Only the timecode/status scan (store.ContinuesAggregate) is cached;
+// pagination and the media_cards fetch (store.GetContinues) stay uncached, same
+// split as cachedUnwatchedShows/ListCategory.
+
+var (
+	continuesMu    sync.RWMutex
+	continuesCache = map[string][]store.ContinuesAgg{}
+	continuesSF    singleflight.Group
+)
+
+func continuesKey(deviceID int64, profileID, mediaFilter string, minPct int) string {
+	return strconv.FormatInt(deviceID, 10) + ":" + profileID + ":" + mediaFilter + ":" + strconv.Itoa(minPct)
+}
+
+// cachedContinuesAgg returns the profile's in-progress card aggregate, computing
+// and caching it on a miss.
+func cachedContinuesAgg(ctx context.Context, deviceID int64, profileID, mediaFilter string, minPct int) []store.ContinuesAgg {
+	k := continuesKey(deviceID, profileID, mediaFilter, minPct)
+	continuesMu.RLock()
+	agg, ok := continuesCache[k]
+	continuesMu.RUnlock()
+	if ok {
+		return agg
+	}
+	v, _, _ := continuesSF.Do(k, func() (any, error) {
+		continuesMu.RLock()
+		cached, hit := continuesCache[k]
+		continuesMu.RUnlock()
+		if hit {
+			return cached, nil
+		}
+		computed := store.ContinuesAggregate(ctx, deviceID, profileID, mediaFilter, minPct)
+		continuesMu.Lock()
+		continuesCache[k] = computed
+		continuesMu.Unlock()
+		return computed, nil
+	})
+	return v.([]store.ContinuesAgg)
+}
+
+// InvalidateContinues drops the cached "Продолжить просмотр" aggregate for one
+// profile after its progress or status changes.
+func InvalidateContinues(deviceID int64, profileID string) {
+	invalidateContinuesPrefix(strconv.FormatInt(deviceID, 10) + ":" + profileID + ":")
+}
+
+// InvalidateContinuesDevice drops cached "Продолжить просмотр" aggregates for all
+// profiles of a device.
+func InvalidateContinuesDevice(deviceID int64) {
+	invalidateContinuesPrefix(strconv.FormatInt(deviceID, 10) + ":")
+}
+
+func invalidateContinuesPrefix(prefix string) {
+	continuesMu.Lock()
+	for k := range continuesCache {
+		if strings.HasPrefix(k, prefix) {
+			delete(continuesCache, k)
+		}
+	}
+	continuesMu.Unlock()
+}
+
 // ─── Per-category totals (random collections) ────────────────────────────────
 //
 // genre_* / genre_random are served via an indexed rand_key seek (no COUNT in the

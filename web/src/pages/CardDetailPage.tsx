@@ -128,12 +128,13 @@ interface WatchStatusOption { status: string; title: string; icon: () => React.R
 const TV_STATUS_OPTIONS: WatchStatusOption[] = [
   { status: 'watching',     title: 'Смотрю',            icon: IconEye,   color: '#4CAF50' },
   { status: 'planned',      title: 'Буду смотреть',      icon: IconCheck, color: '#2196F3' },
-  { status: 'stopped',      title: 'Перестал смотреть', icon: IconMinus, color: '#FF9800' },
+  { status: 'stopped',      title: 'Брошено',           icon: IconMinus, color: '#FF9800' },
   { status: 'not_watching', title: 'Не смотрю',          icon: IconCross, color: '#F44336' },
 ]
 const MOVIE_STATUS_OPTIONS: WatchStatusOption[] = [
   { status: 'watched',      title: 'Просмотрел',    icon: IconEye,   color: '#4CAF50' },
   { status: 'planned',      title: 'Буду смотреть', icon: IconCheck, color: '#2196F3' },
+  { status: 'stopped',      title: 'Брошено',       icon: IconMinus, color: '#FF9800' },
   { status: 'not_watching', title: 'Не смотрю',      icon: IconCross, color: '#F44336' },
 ]
 const FAVORITE_COLOR = '#f5c518' // same gold as the ★ rating elsewhere on this page
@@ -664,8 +665,8 @@ export default function CardDetailPage() {
     loadTimecodes(cardId, activeDevice.id)
   }, [cardId, activeDevice?.id, loadTimecodes])
 
-  // Subjective status ("Моё") — Смотрю/Буду смотреть/Перестал смотреть/Не
-  // смотрю for TV, Просмотрел/Буду смотреть/Не смотрю for movies.
+  // Subjective status ("Моё") — Смотрю/Буду смотреть/Брошено/Не смотрю for
+  // TV, Просмотрел/Буду смотреть/Брошено/Не смотрю for movies.
   useEffect(() => {
     if (!cardId || !activeDevice || !defaultProfileId) return
     const params = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, profile_id: defaultProfileId })

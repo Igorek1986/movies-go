@@ -17,7 +17,7 @@ func validStatusesFor(cardID string) map[string]bool {
 		return nil
 	}
 	if m[2] == "movie" {
-		return map[string]bool{store.StatusWatched: true, store.StatusPlanned: true, store.StatusNotWatching: true}
+		return map[string]bool{store.StatusWatched: true, store.StatusPlanned: true, store.StatusStopped: true, store.StatusNotWatching: true}
 	}
 	return map[string]bool{store.StatusWatching: true, store.StatusPlanned: true, store.StatusStopped: true, store.StatusNotWatching: true}
 }
@@ -41,6 +41,7 @@ func handleGetSubjectiveStatus(w http.ResponseWriter, r *http.Request) {
 
 // PUT /timecode/status?token=&profile_id=&card_id=
 // Body: {"status": "watching"|"planned"|"stopped"|"watched"|"not_watching"}
+// (movies allow watched/planned/stopped/not_watching; tv shows allow watching/planned/stopped/not_watching)
 func handleSetSubjectiveStatus(w http.ResponseWriter, r *http.Request) {
 	d := deviceFromRequest(r)
 	if d == nil {

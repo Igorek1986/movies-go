@@ -111,9 +111,11 @@ func main() {
 		if profileID == "" {
 			api.InvalidateWatchedDevice(deviceID)
 			api.InvalidateUnwatchedDevice(deviceID)
+			api.InvalidateContinuesDevice(deviceID)
 		} else {
 			api.InvalidateWatched(deviceID, profileID)
 			api.InvalidateUnwatched(deviceID, profileID)
+			api.InvalidateContinues(deviceID, profileID)
 		}
 	}
 

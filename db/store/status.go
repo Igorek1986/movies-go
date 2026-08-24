@@ -9,13 +9,13 @@ import (
 )
 
 // Subjective status values. TV shows use Watching/Planned/Stopped/NotWatching;
-// movies use Watched/Planned/NotWatching. An empty string means "no explicit
-// status" — callers should treat that as NotWatching unless EnsureImpliedStatus
-// has since implied one from actual watch activity.
+// movies use Watched/Planned/Stopped/NotWatching. An empty string means "no
+// explicit status" — callers should treat that as NotWatching unless
+// EnsureImpliedStatus has since implied one from actual watch activity.
 const (
 	StatusWatching    = "watching"     // Смотрю (tv)
 	StatusPlanned     = "planned"      // Буду смотреть (tv + movie)
-	StatusStopped     = "stopped"      // Перестал смотреть (tv)
+	StatusStopped     = "stopped"      // Брошено (tv + movie)
 	StatusWatched     = "watched"      // Просмотрел (movie)
 	StatusNotWatching = "not_watching" // Не смотрю (tv + movie) — explicit opt-out
 )
@@ -33,7 +33,7 @@ func SetSubjectiveStatus(ctx context.Context, deviceID int64, profileID, cardID,
 		return err
 	}
 	// A status change alone (no timecode write) can move a show in/out of
-	// "Непросмотренные" (its "watching" gate) — e.g. "Перестал смотреть" must
+	// "Непросмотренные" (its "watching" gate) — e.g. "Брошено" must
 	// drop it immediately, not just on the next timecode-driven invalidation.
 	notifyWatchedChanged(deviceID, profileID)
 	return nil

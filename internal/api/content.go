@@ -598,7 +598,8 @@ func handleContinues(w http.ResponseWriter, r *http.Request, category, profileID
 		mediaFilter = "tv"
 	}
 
-	entries, total := store.GetContinues(r.Context(), d.ID, profileID, mediaFilter, minPct, page, perPage)
+	agg := cachedContinuesAgg(r.Context(), d.ID, profileID, mediaFilter, minPct)
+	entries, total := store.GetContinues(r.Context(), agg, page, perPage)
 	totalPages := (total + perPage - 1) / perPage
 	if totalPages < 1 {
 		totalPages = 1
@@ -930,12 +931,22 @@ func toMediaItem(row store.MediaRow) map[string]any {
 		certUS = *row.CertificationUS
 	}
 
+	// name/original_name are TMDB's TV-only fields — several plugins (and Lampa's
+	// own client) infer tv-vs-movie from their mere presence (no explicit
+	// media_type field on native Lampa card objects), so a movie must not carry a
+	// truthy "name" here or it gets misdetected as a TV show (e.g. status.js's
+	// "Сериал" badge). See isMovieContent()/isTv() heuristics across plugins.
+	name, originalName := "", ""
+	if row.MediaType == "tv" {
+		name, originalName = row.Title, row.OriginalTitle
+	}
+
 	return map[string]any{
 		"id":                  row.TmdbID,
 		"media_type":          row.MediaType,
-		"name":                row.Title,
+		"name":                name,
 		"title":               row.Title,
-		"original_name":       row.OriginalTitle,
+		"original_name":       originalName,
 		"original_title":      row.OriginalTitle,
 		"overview":            row.Overview,
 		"poster_path":         row.PosterPath,

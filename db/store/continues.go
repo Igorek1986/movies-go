@@ -23,19 +23,24 @@ type ContinuesEntry struct {
 	MaxPercent    float64 `json:"max_percent"`
 }
 
-// GetContinues returns items that are in-progress (not fully watched).
-func GetContinues(ctx context.Context, deviceID int64, profileID, mediaFilter string, minPct, page, perPage int) ([]ContinuesEntry, int) {
-	if page < 1 {
-		page = 1
-	}
-	if perPage < 1 {
-		perPage = 20
-	}
+// ContinuesAgg is one card's in-progress timecode aggregate — the expensive,
+// change-prone part of GetContinues (scans timecodes + subjective_statuses),
+// split out so callers can cache it per device+profile (see cachedContinuesAgg
+// in internal/api/catcache.go) instead of recomputing it, or worse caching the
+// whole response, by full URL like the generic category cache does.
+type ContinuesAgg struct {
+	CardID      string
+	MaxPercent  float64
+	LastWatched time.Time
+}
+
+// ContinuesAggregate returns in-progress card_ids (max watch percent below minPct,
+// excluding cards explicitly marked "Брошено"), most recently watched first.
+func ContinuesAggregate(ctx context.Context, deviceID int64, profileID, mediaFilter string, minPct int) []ContinuesAgg {
 	if minPct < 1 {
 		minPct = WatchedThreshold(ctx)
 	}
 
-	// Aggregate timecodes: card_id → {max_pct, last_watched}
 	mediaWhere := ""
 	if mediaFilter != "" {
 		mediaWhere = fmt.Sprintf(" AND t.card_id LIKE '%%_%s'", mediaFilter)
@@ -48,30 +53,42 @@ func GetContinues(ctx context.Context, deviceID int64, profileID, mediaFilter st
 		WHERE t.device_id = $1
 		  AND t.profile_id = $2
 		  AND t.card_id ~ '^[0-9]+_(movie|tv)$'
+		  AND NOT EXISTS (
+		      SELECT 1 FROM subjective_statuses ss
+		      WHERE ss.device_id = t.device_id AND ss.profile_id = t.profile_id
+		        AND ss.card_id = t.card_id AND ss.status = '%s'
+		  )
 		  %s
 		GROUP BY t.card_id
 		HAVING MAX((t.data::jsonb->>'percent')::float) < $3
-		ORDER BY MAX(t.updated_at) DESC`, mediaWhere),
+		ORDER BY MAX(t.updated_at) DESC`, StatusStopped, mediaWhere),
 		deviceID, profileID, float64(minPct),
 	)
 	if err != nil {
-		return nil, 0
+		return nil
 	}
 	defer rows.Close()
 
-	type agg struct {
-		cardID      string
-		maxPct      float64
-		lastWatched time.Time
-	}
-	var all []agg
+	var all []ContinuesAgg
 	for rows.Next() {
-		var a agg
-		if rows.Scan(&a.cardID, &a.maxPct, &a.lastWatched) == nil {
+		var a ContinuesAgg
+		if rows.Scan(&a.CardID, &a.MaxPercent, &a.LastWatched) == nil {
 			all = append(all, a)
 		}
 	}
-	rows.Close()
+	return all
+}
+
+// GetContinues paginates and fetches card details for an already-computed
+// ContinuesAggregate result (see cachedContinuesAgg — callers should not call
+// ContinuesAggregate directly outside of that cache).
+func GetContinues(ctx context.Context, all []ContinuesAgg, page, perPage int) ([]ContinuesEntry, int) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 20
+	}
 
 	total := len(all)
 	if total == 0 {
@@ -90,7 +107,7 @@ func GetContinues(ctx context.Context, deviceID int64, profileID, mediaFilter st
 	// Fetch media cards.
 	cardIDs := make([]string, len(page_items))
 	for i, a := range page_items {
-		cardIDs[i] = a.cardID
+		cardIDs[i] = a.CardID
 	}
 	placeholders := make([]string, len(cardIDs))
 	pargs := make([]any, len(cardIDs))
@@ -128,7 +145,7 @@ func GetContinues(ctx context.Context, deviceID int64, profileID, mediaFilter st
 
 	var result []ContinuesEntry
 	for _, a := range page_items {
-		m := mcMap[a.cardID]
+		m := mcMap[a.CardID]
 		release := ""
 		if m.releaseDate != nil {
 			release = *m.releaseDate
@@ -148,7 +165,7 @@ func GetContinues(ctx context.Context, deviceID int64, profileID, mediaFilter st
 			ReleaseDate:   release,
 			FirstAirDate:  firstAir,
 			VoteAverage:   m.voteAvg,
-			MaxPercent:    a.maxPct,
+			MaxPercent:    a.MaxPercent,
 		})
 	}
 	return result, total
