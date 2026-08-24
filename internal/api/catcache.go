@@ -77,6 +77,12 @@ func InvalidateCategoryCache() {
 	childTextAgesLoaded = false
 	childTextAgesMu.Unlock()
 
+	popularMu.Lock()
+	popularActors = popularPool{}
+	popularActorsRu = popularPool{}
+	popularDirectors = popularPool{}
+	popularMu.Unlock()
+
 	// watchedCache/unwatchedCache are NOT wiped here: a parser run never changes
 	// episode air dates or completion status (that data comes from MyShows sync,
 	// see InvalidateWatchedForCard) — only the catalog (new cards/torrents), which
@@ -676,4 +682,63 @@ func cachedChildTextAges() []int {
 	}
 	childTextAgesCached = ages
 	return childTextAgesCached
+}
+
+// ─── Popular actors/directors pool cache ──────────────────────────────────────
+//
+// handleAPICategories (GET /api/categories) fetches a wide candidate pool via
+// store.GetPopularActors/GetPopularDirectors and picks a random subset per
+// request for menu variety (store.PickRandomActors) — but the pool itself is a
+// full aggregation over media_card_cast/media_card_crew (measured ~300ms+ each,
+// called up to 3x per request: actors, actors_ru, directors — GROUP BY + disk
+// sort over ~1M rows) that only changes when the catalog does. Caching just the
+// pool (not the picked subset) keeps the per-request randomness while cutting
+// the DB cost. Reset by InvalidateCategoryCache.
+
+type popularPool struct {
+	limit int
+	pool  []store.PopularActor
+}
+
+var (
+	popularMu        sync.RWMutex
+	popularActors    popularPool
+	popularActorsRu  popularPool
+	popularDirectors popularPool
+)
+
+func cachedPopularActors(ctx context.Context, limit int, ruOnly bool) []store.PopularActor {
+	slot := &popularActors
+	if ruOnly {
+		slot = &popularActorsRu
+	}
+	popularMu.RLock()
+	if slot.pool != nil && slot.limit == limit {
+		p := slot.pool
+		popularMu.RUnlock()
+		return p
+	}
+	popularMu.RUnlock()
+
+	pool := store.GetPopularActors(ctx, limit, ruOnly)
+	popularMu.Lock()
+	*slot = popularPool{limit: limit, pool: pool}
+	popularMu.Unlock()
+	return pool
+}
+
+func cachedPopularDirectors(ctx context.Context, limit int) []store.PopularActor {
+	popularMu.RLock()
+	if popularDirectors.pool != nil && popularDirectors.limit == limit {
+		p := popularDirectors.pool
+		popularMu.RUnlock()
+		return p
+	}
+	popularMu.RUnlock()
+
+	pool := store.GetPopularDirectors(ctx, limit)
+	popularMu.Lock()
+	popularDirectors = popularPool{limit: limit, pool: pool}
+	popularMu.Unlock()
+	return pool
 }

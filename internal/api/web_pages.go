@@ -239,7 +239,7 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 	directorCount := store.GetSettingInt(r.Context(), "catalog_director_count")
 	seen := map[int64]bool{}
 	if directorCount > 0 {
-		pool := store.GetPopularDirectors(r.Context(), directorCount)
+		pool := cachedPopularDirectors(r.Context(), directorCount)
 		for _, d := range store.PickRandomActors(pool, directorCount) {
 			seen[d.PersonID] = true
 			genres = append(genres, cat{
@@ -249,7 +249,7 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if actorCount > 0 {
-		pool := store.GetPopularActors(r.Context(), actorCount, false)
+		pool := cachedPopularActors(r.Context(), actorCount, false)
 		for _, a := range store.PickRandomActors(pool, actorCount) {
 			seen[a.PersonID] = true
 			genres = append(genres, cat{
@@ -259,7 +259,7 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if actorRuCount > 0 {
-		pool := store.GetPopularActors(r.Context(), actorRuCount, true)
+		pool := cachedPopularActors(r.Context(), actorRuCount, true)
 		for _, a := range store.PickRandomActors(pool, actorRuCount) {
 			if seen[a.PersonID] {
 				continue
