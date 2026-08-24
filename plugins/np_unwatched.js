@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.12.0';
+    var VERSION = '1.13.0';
 
     // Флаг для других плагинов (см. full_hero.js): по нему можно решить, ждать
     // ли событие np-unwatched-progress ниже, или сразу считать свой лёгкий
