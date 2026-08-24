@@ -104,6 +104,15 @@ func main() {
 	api.InitCategorySettings()
 	parser.OnComplete = api.InvalidateCategoryCache
 	myshows.OnEpisodesUpdated = api.InvalidateWatchedForCard
+
+	// Cache snapshot: survive restarts without every profile/category paying a cold
+	// miss again. Loaded before serving traffic; saved periodically and once more on
+	// graceful shutdown below.
+	os.MkdirAll("cache", 0o755) //nolint:errcheck
+	const cacheSnapshotPath = "cache/snapshot.gob"
+	api.LoadCacheSnapshot(appCtx, cacheSnapshotPath)
+	api.StartCacheSnapshotLoop(appCtx, cacheSnapshotPath, 10*time.Minute)
+
 	go api.RecomputeCategoryCounts()             // warm random-collection totals before first request
 	go store.BackfillImpliedStatuses(appCtx)     // catch up subjective statuses for pre-existing timecodes
 	api.StartUnwatchedCutoffInvalidation(appCtx) // refresh "Непросмотренные" cache when the aired cutoff crosses
@@ -155,6 +164,9 @@ func main() {
 	shutCtx, shutCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutCancel()
 	srv.Shutdown(shutCtx) //nolint:errcheck
+	if err := api.SaveCacheSnapshot(cacheSnapshotPath); err != nil {
+		log.Printf("catcache: snapshot save on shutdown failed: %v", err)
+	}
 	log.Println("Done")
 }
 

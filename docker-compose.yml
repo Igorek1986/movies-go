@@ -31,6 +31,7 @@ services:
     volumes:
       - ./plugins:/app/plugins
       - logs_data:/app/logs
+      - cache_data:/app/cache
       - /etc/localtime:/etc/localtime:ro
     depends_on:
       db:
@@ -39,3 +40,4 @@ services:
 volumes:
   pg_data:
   logs_data:
+  cache_data:

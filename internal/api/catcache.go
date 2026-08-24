@@ -19,9 +19,9 @@ import (
 // ─── Response cache ───────────────────────────────────────────────────────────
 
 type cachedResp struct {
-	contentType string
-	body        []byte
-	generation  int64
+	ContentType string
+	Body        []byte
+	Generation  int64
 }
 
 // maxCatCacheEntries caps catCache size. The key is the full request URI including
@@ -405,7 +405,7 @@ func getCached(key string) (entry cachedResp, ok bool, stale bool) {
 	if !ok {
 		return entry, false, false
 	}
-	return entry, true, entry.generation != gen
+	return entry, true, entry.Generation != gen
 }
 
 // setCached stores an entry and touches its LRU position (moved to front on
@@ -416,7 +416,7 @@ func getCached(key string) (entry cachedResp, ok bool, stale bool) {
 // bookkeeping — an approximation of true LRU, not exact, but cheap.
 func setCached(key string, r cachedResp) {
 	catCacheMu.Lock()
-	r.generation = catGeneration
+	r.Generation = catGeneration
 	catCache[key] = r
 	if elem, ok := catCacheElems[key]; ok {
 		catCacheOrder.MoveToFront(elem)
@@ -446,9 +446,9 @@ func withCategoryCache(h http.HandlerFunc) http.HandlerFunc {
 		key := r.URL.RequestURI()
 
 		if entry, ok, stale := getCached(key); ok {
-			w.Header().Set("Content-Type", entry.contentType)
+			w.Header().Set("Content-Type", entry.ContentType)
 			w.WriteHeader(http.StatusOK)
-			w.Write(entry.body) //nolint:errcheck
+			w.Write(entry.Body) //nolint:errcheck
 			if stale {
 				go refreshCatCache(key, h, r.Clone(context.Background()))
 			}
@@ -460,7 +460,7 @@ func withCategoryCache(h http.HandlerFunc) http.HandlerFunc {
 
 		if cap.status == http.StatusOK && cap.buf.Len() > 0 {
 			ct := cap.ResponseWriter.Header().Get("Content-Type")
-			setCached(key, cachedResp{contentType: ct, body: cap.buf.Bytes()})
+			setCached(key, cachedResp{ContentType: ct, Body: cap.buf.Bytes()})
 		}
 	}
 }
@@ -476,7 +476,7 @@ func refreshCatCache(key string, h http.HandlerFunc, req *http.Request) {
 		h.ServeHTTP(rec, req)
 		if rec.Code == http.StatusOK && rec.Body.Len() > 0 {
 			ct := rec.Header().Get("Content-Type")
-			setCached(key, cachedResp{contentType: ct, body: rec.Body.Bytes()})
+			setCached(key, cachedResp{ContentType: ct, Body: rec.Body.Bytes()})
 		}
 		return nil, nil
 	})
