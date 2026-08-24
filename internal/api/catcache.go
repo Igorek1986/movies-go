@@ -6,6 +6,7 @@ import (
 	"log"
 	"movies-api/db/store"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,18 +20,30 @@ import (
 type cachedResp struct {
 	contentType string
 	body        []byte
+	generation  int64
 }
 
 var (
-	catCacheMu sync.RWMutex
-	catCache   = map[string]cachedResp{}
+	catCacheMu    sync.RWMutex
+	catCache      = map[string]cachedResp{}
+	catGeneration int64
+	catRefreshSF  singleflight.Group // dedupes concurrent background refreshes of the same stale key
 )
 
-// InvalidateCategoryCache drops all cached category responses and the tracker setting.
-// Called after each parser run so fresh data is served immediately.
+// InvalidateCategoryCache marks every cached category response stale and refreshes
+// the tracker setting. Called after each parser run.
+//
+// Does NOT clear catCache: a request for a now-stale key still gets served
+// immediately from the old value (withCategoryCache checks the generation and
+// kicks off a background refresh) instead of blocking on a synchronous recompute —
+// the "first request after a parser run pays full price" problem this used to cause.
+// Trade-off: entries for URLs nobody revisits after going stale just sit there
+// unbounded (no periodic wipe to garbage-collect them anymore); fine at this
+// project's scale, but worth revisiting with an LRU cap if catCache ever grows
+// large enough to matter.
 func InvalidateCategoryCache() {
 	catCacheMu.Lock()
-	catCache = map[string]cachedResp{}
+	catGeneration++
 	catCacheMu.Unlock()
 
 	trackerMu.Lock()
@@ -373,15 +386,23 @@ func RecomputeCategoryCounts() {
 	}
 }
 
-func getCached(key string) (cachedResp, bool) {
+// getCached returns the cached entry (if any) and whether it's stale — computed
+// in a generation older than the current one, i.e. a parser run happened since it
+// was cached.
+func getCached(key string) (entry cachedResp, ok bool, stale bool) {
 	catCacheMu.RLock()
-	v, ok := catCache[key]
+	entry, ok = catCache[key]
+	gen := catGeneration
 	catCacheMu.RUnlock()
-	return v, ok
+	if !ok {
+		return entry, false, false
+	}
+	return entry, true, entry.generation != gen
 }
 
 func setCached(key string, r cachedResp) {
 	catCacheMu.Lock()
+	r.generation = catGeneration
 	catCache[key] = r
 	catCacheMu.Unlock()
 }
@@ -389,14 +410,19 @@ func setCached(key string, r cachedResp) {
 // withCategoryCache wraps a category handler with in-memory response caching.
 // Cache key = full request URI (path + query string).
 // On a cache miss the handler response is captured, cached, and forwarded normally.
+// On a stale hit (see InvalidateCategoryCache), the old value is still served
+// immediately and a background refresh recomputes it via refreshCatCache.
 func withCategoryCache(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.RequestURI()
 
-		if entry, ok := getCached(key); ok {
+		if entry, ok, stale := getCached(key); ok {
 			w.Header().Set("Content-Type", entry.contentType)
 			w.WriteHeader(http.StatusOK)
 			w.Write(entry.body) //nolint:errcheck
+			if stale {
+				go refreshCatCache(key, h, r.Clone(context.Background()))
+			}
 			return
 		}
 
@@ -408,6 +434,23 @@ func withCategoryCache(h http.HandlerFunc) http.HandlerFunc {
 			setCached(key, cachedResp{contentType: ct, body: cap.buf.Bytes()})
 		}
 	}
+}
+
+// refreshCatCache recomputes a stale category response in the background and
+// swaps it into catCache, deduping concurrent refreshes of the same key (several
+// requests can all observe the same stale entry before the first refresh lands).
+// Runs against a detached context — the request that triggered it may finish (and
+// its context get canceled) well before this completes.
+func refreshCatCache(key string, h http.HandlerFunc, req *http.Request) {
+	_, _, _ = catRefreshSF.Do(key, func() (any, error) {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code == http.StatusOK && rec.Body.Len() > 0 {
+			ct := rec.Header().Get("Content-Type")
+			setCached(key, cachedResp{contentType: ct, body: rec.Body.Bytes()})
+		}
+		return nil, nil
+	})
 }
 
 // responseCapture records what the handler writes while forwarding to w normally.
