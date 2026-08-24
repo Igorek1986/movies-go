@@ -118,9 +118,10 @@ func UnwatchedTVShows(ctx context.Context, deviceID int64, profileID string, per
 			       ) AS aired,
 			       COUNT(*) FILTER (
 					WHERE e.air_date IS NOT NULL AND e.air_date <= ` + cutoff + `
-					  AND EXISTS (SELECT 1 FROM watched_hashes wh WHERE wh.hash = e.hash)
+					  AND wh.hash IS NOT NULL
 			       ) AS watched
 			FROM episodes e
+			LEFT JOIN watched_hashes wh ON wh.hash = e.hash
 			WHERE e.tmdb_show_id = mc.tmdb_id AND NOT e.is_special
 		) c ON true
 		LEFT JOIN LATERAL (
@@ -184,9 +185,10 @@ func UnwatchedTVShowProgress(ctx context.Context, deviceID int64, profileID, car
 			       ) AS aired,
 			       COUNT(*) FILTER (
 					WHERE e.air_date IS NOT NULL AND e.air_date <= `+cutoff+`
-					  AND EXISTS (SELECT 1 FROM watched_hashes wh WHERE wh.hash = e.hash)
+					  AND wh.hash IS NOT NULL
 			       ) AS watched
 			FROM episodes e
+			LEFT JOIN watched_hashes wh ON wh.hash = e.hash
 			WHERE e.tmdb_show_id = mc.tmdb_id AND NOT e.is_special
 		) c ON true
 		LEFT JOIN LATERAL (
