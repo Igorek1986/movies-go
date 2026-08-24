@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"container/list"
 	"context"
 	"log"
 	"movies-api/db/store"
@@ -23,9 +24,18 @@ type cachedResp struct {
 	generation  int64
 }
 
+// maxCatCacheEntries caps catCache size. The key is the full request URI including
+// the device token (see withCategoryCache), so this is effectively per-device, not
+// per-category — measured ~43KB per (device, category page) entry under synthetic
+// load, so a 10000-entry cap bounds worst case around ~400MB, well above any
+// realistic working set for this project's scale.
+const maxCatCacheEntries = 10000
+
 var (
 	catCacheMu    sync.RWMutex
 	catCache      = map[string]cachedResp{}
+	catCacheOrder = list.New()                  // front = most recently written; back = eviction candidate
+	catCacheElems = map[string]*list.Element{}   // key -> its node in catCacheOrder
 	catGeneration int64
 	catRefreshSF  singleflight.Group // dedupes concurrent background refreshes of the same stale key
 )
@@ -37,10 +47,8 @@ var (
 // immediately from the old value (withCategoryCache checks the generation and
 // kicks off a background refresh) instead of blocking on a synchronous recompute —
 // the "first request after a parser run pays full price" problem this used to cause.
-// Trade-off: entries for URLs nobody revisits after going stale just sit there
-// unbounded (no periodic wipe to garbage-collect them anymore); fine at this
-// project's scale, but worth revisiting with an LRU cap if catCache ever grows
-// large enough to matter.
+// catCache no longer self-cleans via a periodic wipe, so setCached enforces
+// maxCatCacheEntries itself (LRU by last-write, see there) instead.
 func InvalidateCategoryCache() {
 	catCacheMu.Lock()
 	catGeneration++
@@ -400,10 +408,31 @@ func getCached(key string) (entry cachedResp, ok bool, stale bool) {
 	return entry, true, entry.generation != gen
 }
 
+// setCached stores an entry and touches its LRU position (moved to front on
+// every write — including background refreshes of a stale entry, so anything
+// still being requested stays warm). Evicts the least-recently-written entry
+// once catCache exceeds maxCatCacheEntries. Recency is only tracked on writes,
+// not on plain reads (getCached), to keep the hot read path lock-free of list
+// bookkeeping — an approximation of true LRU, not exact, but cheap.
 func setCached(key string, r cachedResp) {
 	catCacheMu.Lock()
 	r.generation = catGeneration
 	catCache[key] = r
+	if elem, ok := catCacheElems[key]; ok {
+		catCacheOrder.MoveToFront(elem)
+	} else {
+		catCacheElems[key] = catCacheOrder.PushFront(key)
+	}
+	for catCacheOrder.Len() > maxCatCacheEntries {
+		oldest := catCacheOrder.Back()
+		if oldest == nil {
+			break
+		}
+		oldKey := oldest.Value.(string)
+		catCacheOrder.Remove(oldest)
+		delete(catCacheElems, oldKey)
+		delete(catCache, oldKey)
+	}
 	catCacheMu.Unlock()
 }
 
