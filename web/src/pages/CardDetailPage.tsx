@@ -1150,9 +1150,9 @@ export default function CardDetailPage() {
                   <p className={styles.origTitle}>{card.original_title}</p>
                 )}
                 {card.overview && <p className={styles.heroDescr}>{card.overview}</p>}
-                {watchStatusRow}
                 {movieProgressBlock}
                 {tvProgressBlock}
+                {watchStatusRow}
               </div>
             </div>
 

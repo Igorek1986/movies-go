@@ -130,6 +130,13 @@
   max-width: 900px;
 }
 
+// .progressWrap's own max-width: 360px (below) suits the classic layout's
+// narrower text column — the hero's full-width bottom-pinned block has
+// plenty of room, so let it span it.
+.heroFullContent .progressWrap {
+  max-width: none;
+}
+
 // ── Hero (classic card layout) ────────────────────────────────────────────────
 
 .hero {
