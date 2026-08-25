@@ -97,16 +97,17 @@ func UnwatchedTVShows(ctx context.Context, deviceID int64, profileID string, per
 			-- touched over the years (only the count, not correctness, changes: a
 			-- show untouched in ages behind 300 more-recent ones wouldn't realistically
 			-- still be "actively watching" anyway).
-			-- subjective_statuses gates this to status='watching' — EnsureImpliedStatus
-			-- sets that the moment a timecode is saved, unless the profile already chose
-			-- "Брошено"/"Не смотрю" explicitly, in which case badges stop.
-			SELECT tc.card_id, MAX(tc.updated_at) AS last_watched
-			FROM timecodes tc
-			JOIN subjective_statuses ss ON ss.device_id = tc.device_id AND ss.profile_id = tc.profile_id
-			                            AND ss.card_id = tc.card_id AND ss.status = 'watching'
-			WHERE tc.device_id = $1 AND tc.profile_id = $2
-			GROUP BY tc.card_id
-			ORDER BY MAX(tc.updated_at) DESC
+			-- Starts from subjective_statuses (not timecodes) so a show marked
+			-- "watching" with zero progress — no timecode saved yet — still
+			-- qualifies, per the doc comment above. timecodes is only joined to
+			-- refine the recency ordering when available.
+			SELECT ss.card_id, COALESCE(MAX(tc.updated_at), ss.updated_at) AS last_watched
+			FROM subjective_statuses ss
+			LEFT JOIN timecodes tc ON tc.device_id = ss.device_id AND tc.profile_id = ss.profile_id
+			                       AND tc.card_id = ss.card_id
+			WHERE ss.device_id = $1 AND ss.profile_id = $2 AND ss.status = 'watching'
+			GROUP BY ss.card_id, ss.updated_at
+			ORDER BY COALESCE(MAX(tc.updated_at), ss.updated_at) DESC
 			LIMIT 300
 		)
 		SELECT mc.card_id, c.aired, c.watched, ne.season, ne.episode
