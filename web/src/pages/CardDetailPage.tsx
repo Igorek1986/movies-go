@@ -1150,17 +1150,18 @@ export default function CardDetailPage() {
                   <p className={styles.origTitle}>{card.original_title}</p>
                 )}
                 {card.overview && <p className={styles.heroDescr}>{card.overview}</p>}
-                {tagsRow}
                 {watchStatusRow}
-                {genresRow}
                 {movieProgressBlock}
                 {tvProgressBlock}
               </div>
             </div>
 
-            {/* ── Details: full description + status/date + admin refresh —
-                same content as the teaser above, not clamped this time ── */}
+            {/* ── Details: tags/genres, full description, status/date,
+                admin refresh — description repeats the teaser above,
+                not clamped this time ── */}
             <div className={styles.heroDetails}>
+              {tagsRow}
+              {genresRow}
               {card.overview && <p className={styles.overview}>{card.overview}</p>}
               {statusLines}
               {refreshBtn}
