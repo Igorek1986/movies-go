@@ -162,6 +162,13 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   // it closes via the opposite arrow or Escape, so the row-edge bridge
   // (CardDetailPage) feels like a detour rather than a one-way trip.
   const preOpenFocusRef = useRef<HTMLElement | null>(null)
+  // Mirrors desktopPanel/location.pathname for the keydown effect below,
+  // which must never re-subscribe (see the long comment there) — updated by
+  // plain assignment during render instead of via that effect's own deps.
+  const desktopPanelStateRef = useRef(desktopPanel)
+  desktopPanelStateRef.current = desktopPanel
+  const pathnameRef = useRef(location.pathname)
+  pathnameRef.current = location.pathname
 
   useEffect(() => {
     if (!desktopPanel) return
@@ -193,6 +200,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       // "focus isn't on a card → jump to the first one" fallback.
       if (onTopNav && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault()
+        e.stopImmediatePropagation()
         const topLinks = Array.from(document.querySelectorAll<HTMLElement>('[data-top-nav] a'))
         const i = topLinks.indexOf(activeEl!)
         const next = Math.min(Math.max(i + (e.key === 'ArrowRight' ? 1 : -1), 0), topLinks.length - 1)
@@ -205,7 +213,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       // itself (collapses an expanded category first) and owns all four
       // arrows for its own grid navigation — wiring both up would
       // double-fire history or fight over the arrow keys.
-      if (location.pathname === '/catalog') return
+      if (pathnameRef.current === '/catalog') return
 
       const panelHasFocus = !!desktopPanelRef.current?.contains(document.activeElement)
       // A page can opt into owning Left/Right itself by marking its rows
@@ -235,31 +243,42 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
         }
       }
 
+      // Every branch below that takes an action also calls
+      // stopImmediatePropagation — preventDefault alone only suppresses the
+      // browser's own default behavior, it does NOT stop a page's own
+      // window keydown listener (e.g. CardDetailPage's row nav) from also
+      // firing for the same event. Without it, closing the panel here and
+      // restoring focus to a row item was immediately followed, same
+      // keypress, by that page's handler ALSO moving focus one more step —
+      // each open/close silently ate an extra Left/Right press.
       if (e.key === 'Backspace') {
         e.preventDefault()
+        e.stopImmediatePropagation()
         setDesktopPanel(null)
         handleBottomBack()
         return
       }
 
-      if (e.key === 'Escape' && desktopPanel) {
+      if (e.key === 'Escape' && desktopPanelStateRef.current) {
         e.preventDefault()
+        e.stopImmediatePropagation()
         setDesktopPanel(null)
         preOpenFocusRef.current?.focus()
         return
       }
 
       if (e.key === 'ArrowRight') {
-        if (desktopPanel === 'left') { e.preventDefault(); setDesktopPanel(null); preOpenFocusRef.current?.focus(); return }
-        if (!desktopPanel && !onPageRowNav) { e.preventDefault(); preOpenFocusRef.current = activeEl; setDesktopPanel('right'); return }
+        if (desktopPanelStateRef.current === 'left') { e.preventDefault(); e.stopImmediatePropagation(); setDesktopPanel(null); preOpenFocusRef.current?.focus(); return }
+        if (!desktopPanelStateRef.current && !onPageRowNav) { e.preventDefault(); e.stopImmediatePropagation(); preOpenFocusRef.current = activeEl; setDesktopPanel('right'); return }
       }
       if (e.key === 'ArrowLeft') {
-        if (desktopPanel === 'right') { e.preventDefault(); setDesktopPanel(null); preOpenFocusRef.current?.focus(); return }
-        if (!desktopPanel && !onPageRowNav) { e.preventDefault(); preOpenFocusRef.current = activeEl; setDesktopPanel('left'); return }
+        if (desktopPanelStateRef.current === 'right') { e.preventDefault(); e.stopImmediatePropagation(); setDesktopPanel(null); preOpenFocusRef.current?.focus(); return }
+        if (!desktopPanelStateRef.current && !onPageRowNav) { e.preventDefault(); e.stopImmediatePropagation(); preOpenFocusRef.current = activeEl; setDesktopPanel('left'); return }
       }
 
       if (panelHasFocus && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault()
+        e.stopImmediatePropagation()
         const focusable = Array.from(desktopPanelRef.current?.querySelectorAll('button, a') ?? []) as HTMLElement[]
         const i = focusable.indexOf(document.activeElement as HTMLElement)
         const next = Math.min(Math.max(i + (e.key === 'ArrowDown' ? 1 : -1), 0), focusable.length - 1)
@@ -269,7 +288,21 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [location.pathname, desktopPanel]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Deliberately []: this must subscribe exactly once and never
+    // re-subscribe. addEventListener preserves registration order, and
+    // CardDetailPage (also a window keydown listener, added once on ITS
+    // mount) never moves — but this effect used to list desktopPanel as a
+    // dep, so opening/closing the panel re-ran it, which REMOVES the old
+    // listener and ADDS a new one at the END of the list. After that first
+    // toggle, CardDetailPage's listener — added before this one existed in
+    // its new slot — started firing FIRST instead of second. That meant
+    // this handler's "was that row edge?" check ran on the DOM state AFTER
+    // CardDetailPage had already moved focus for the same keypress, not
+    // before — so arriving at index 0 via a normal in-row move (already
+    // correctly handled) looked identical to "user is AT the edge, open the
+    // panel" and fired a second, unwanted open. current desktopPanel/
+    // pathname come from the refs above instead, kept in sync every render.
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleDesktopPanelBlur(e: React.FocusEvent<HTMLElement>) {
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
