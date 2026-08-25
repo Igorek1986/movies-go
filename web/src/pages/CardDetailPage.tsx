@@ -691,8 +691,15 @@ export default function CardDetailPage() {
         const items = Array.from(currentRow.querySelectorAll<HTMLElement>('[data-nav-item]'))
         const idx = items.indexOf(focused as HTMLElement)
         if (idx === -1) return
+        // At the outward edge of a row (leftmost item + Left, rightmost +
+        // Right) — leave the event alone (no preventDefault) so Layout's
+        // desktop side-panel-summon can claim it, same idea as ArrowUp from
+        // the first row bridging to the top menu. Matching check lives in
+        // Layout (it runs first and needs to decide independently — see the
+        // comment there).
+        if ((e.key === 'ArrowLeft' && idx === 0) || (e.key === 'ArrowRight' && idx === items.length - 1)) return
         e.preventDefault()
-        const next = Math.min(Math.max(idx + (e.key === 'ArrowRight' ? 1 : -1), 0), items.length - 1)
+        const next = idx + (e.key === 'ArrowRight' ? 1 : -1)
         rowFocusIdx.current.set(currentRow.dataset.rowId!, next)
         items[next]?.focus()
         return

@@ -205,9 +205,31 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
 
       const panelHasFocus = !!desktopPanelRef.current?.contains(document.activeElement)
       // A page can opt into owning Left/Right itself by marking its rows
-      // with data-row-id (see CardDetailPage) — skip summoning the panel
-      // from there so the two don't fight over the same keys.
-      const onPageRowNav = !!activeEl?.closest('[data-row-id]')
+      // with data-row-id + data-nav-item (see CardDetailPage) — skip
+      // summoning the panel while focus is inside one, EXCEPT exactly at
+      // its outward edge (leftmost item + Left, rightmost + Right), which
+      // bridges to the panel instead — same idea as ArrowUp from the first
+      // row bridging to the top menu. This runs before the page's own
+      // handler (Layout's effect commits first), so it has to work out the
+      // edge case itself from the same data-row-id/data-nav-item markup
+      // rather than relying on the page to have already decided.
+      const row = activeEl?.closest<HTMLElement>('[data-row-id]') ?? null
+      let onPageRowNav = false
+      if (row) {
+        // The progress bar's own scrub (Left/Right adjusts the value, see
+        // CardDetailPage) always owns these keys — as a single-item row
+        // it'd otherwise look like it's permanently "at both edges" and
+        // bridge to the panel on every press instead of scrubbing.
+        if (activeEl?.hasAttribute('data-progress-slider')) {
+          onPageRowNav = true
+        } else {
+          const items = Array.from(row.querySelectorAll<HTMLElement>('[data-nav-item]'))
+          const idx = items.indexOf(activeEl!)
+          const atOuterEdge = idx !== -1 &&
+            ((e.key === 'ArrowLeft' && idx === 0) || (e.key === 'ArrowRight' && idx === items.length - 1))
+          onPageRowNav = !atOuterEdge
+        }
+      }
 
       if (e.key === 'Backspace') {
         e.preventDefault()
