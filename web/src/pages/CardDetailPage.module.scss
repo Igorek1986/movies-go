@@ -70,10 +70,14 @@
   position: relative;
   width: calc(100% + $spacing-lg * 2);
   margin: -$spacing-xl (-$spacing-lg) 0;
-  // Full first-screen height reads fine on desktop, but on a narrow phone a
-  // wide landscape backdrop crammed into that tall a box gets cropped down
-  // to an unrecognizable, over-zoomed sliver (object-fit: cover) — shorter
-  // on narrow viewports so the aspect ratio stays reasonable.
+  // Full first-screen height, pinning the buttons/progress right above the
+  // bottom nav (or the true viewport edge on desktop) — matches
+  // full_hero.js's own pinBodyHeight. Cropping a wide backdrop into this
+  // tall a box on a narrow phone does zoom in more than on desktop, but
+  // that's the tradeoff of the full-bleed pinned-bottom look itself (same
+  // one Netflix/etc. mobile hero screens make) — reducing the height to
+  // soften it instead put daylight between the buttons and the screen edge,
+  // which read as "not pinned" and was the more concrete complaint.
   min-height: calc(100vh - #{$nav-height} - env(safe-area-inset-top));
   display: flex;
   overflow: hidden;
@@ -90,13 +94,11 @@
   @media (max-width: $bp-md) {
     width: calc(100% + $spacing-md * 2);
     margin: -$spacing-lg (-$spacing-md) 0;
-    min-height: calc(65vh - #{$bottom-nav-height} - env(safe-area-inset-bottom));
   }
 
   @media (max-width: $bp-sm) {
     width: calc(100% + $spacing-sm * 2);
     margin: -$spacing-md (-$spacing-sm) 0;
-    min-height: calc(55vh - #{$bottom-nav-height} - env(safe-area-inset-bottom));
   }
 }
 
