@@ -88,6 +88,11 @@
     color: $color-primary;
     background: rgba($color-primary-rgb, 0.12);
   }
+
+  &:focus-visible {
+    outline: 2px solid $color-primary;
+    outline-offset: 2px;
+  }
 }
 
 .navUser {
