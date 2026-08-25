@@ -673,7 +673,6 @@ const CHECKBOX_KEYS: Record<string, string> = {
   yandex_metrika_enabled:   'yandex_metrika_id',
   google_analytics_enabled: 'google_analytics_id',
   catalog_require_poster:   '',
-  images_via_server:        '',
   images_cache_enabled:     '',
 }
 
@@ -758,7 +757,6 @@ const LABELS: Record<string, string> = {
   movies_4k_year_delta:    'Новые 4K фильмы — за сколько лет (YearDelta)',
   movies_new_min_quality:  'Новые фильмы — мин. качество (0=любое, 100=720p+, 200=1080p+, 300=4K+)',
   catalog_require_poster:  'Скрывать карточки без постера',
-  images_via_server:       'Картинки через сервер (проксировать TMDB)',
   images_cache_enabled:    'Дисковый кеш картинок',
   images_cache_limit_mb:   'Лимит дискового кеша картинок (МБ)',
   poster_size:             'Качество постеров',
@@ -844,7 +842,6 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   ], requiresRestart: true },
   { name: 'Настройки каталога', keys: [
     'catalog_require_poster',
-    'images_via_server',
     'images_cache_enabled',
     'images_cache_limit_mb',
     'poster_size',

@@ -126,13 +126,11 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 // GET /api/config — public non-sensitive config for the frontend
 func handleAppConfig(w http.ResponseWriter, r *http.Request) {
 	imgProxy := ""
-	// Через сервер: если включена настройка images_via_server, либо для картинок
-	// настроен прокси (socks5/vless/... — обход блокировки), либо включён
-	// дисковый кеш — кешировать нечего, пока картинки не проходят через наш
-	// сервер, так что кеш сам по себе включает маршрутизацию независимо от
-	// того, нужен ли обход блокировки.
-	if store.GetSettingInt(r.Context(), "images_via_server") == 1 ||
-		store.GetSettingInt(r.Context(), "images_cache_enabled") == 1 ||
+	// Через сервер: если для картинок настроен прокси (socks5/vless/... —
+	// обход блокировки, см. страницу «Прокси») либо включён дисковый кеш —
+	// кешировать нечего, пока картинки не проходят через наш сервер, так что
+	// кеш сам по себе включает маршрутизацию независимо от обхода блокировки.
+	if store.GetSettingInt(r.Context(), "images_cache_enabled") == 1 ||
 		proxy.Default.HasProxy(r.Context(), proxy.RouteImages) {
 		imgProxy = "/imgproxy"
 	}

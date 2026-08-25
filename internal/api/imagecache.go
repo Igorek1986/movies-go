@@ -20,15 +20,16 @@ import (
 
 // ─── Disk cache for /imgproxy ──────────────────────────────────────────────
 //
-// On by default (images_cache_enabled=1), but only takes effect once
-// images_via_server routes the web UI's images through /imgproxy in the
-// first place (that setting defaults off). When active, a poster/backdrop
-// is fetched from TMDB once and served from local disk on every subsequent
-// request, instead of re-proxying through the (DPI-bypass) proxy client
-// every time. Keyed by the
-// TMDB path itself (e.g. t/p/w342/abc.jpg) — TMDB assigns a new path when an
-// image is genuinely replaced, so entries never need explicit invalidation,
-// only size-based eviction (see StartImageCacheEvictionLoop).
+// On by default (images_cache_enabled=1). Enabling it also makes
+// handleAppConfig route the web UI's images through /imgproxy in the first
+// place (see auth.go) — caching only matters once images actually pass
+// through our server, so the setting drives its own routing rather than
+// depending on a separate toggle. When active, a poster/backdrop is fetched
+// from TMDB once and served from local disk on every subsequent request,
+// instead of re-proxying through the (DPI-bypass) proxy client every time.
+// Keyed by the TMDB path itself (e.g. t/p/w342/abc.jpg) — TMDB assigns a new
+// path when an image is genuinely replaced, so entries never need explicit
+// invalidation, only size-based eviction (see StartImageCacheEvictionLoop).
 
 const imageCacheDir = "cache/images"
 

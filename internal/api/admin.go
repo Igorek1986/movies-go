@@ -1898,7 +1898,6 @@ var checkboxSettingKeys = map[string]string{
 }
 var boolSettingKeys = map[string]bool{
 	"catalog_require_poster": true,
-	"images_via_server":      true,
 	"images_cache_enabled":   true,
 }
 
@@ -1970,7 +1969,6 @@ var settingsGroupDefs = []struct {
 	}},
 	{"Настройки каталога", []string{
 		"catalog_require_poster",
-		"images_via_server",
 		"images_cache_enabled",
 		"images_cache_limit_mb",
 		"poster_size",
