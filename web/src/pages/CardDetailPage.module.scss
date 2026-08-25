@@ -436,6 +436,24 @@
   cursor: pointer;
   user-select: none;
   &:hover { opacity: 0.85; }
+
+  // overflow: hidden (above, for movieBarFill's rounded corners) clips a
+  // normal outline sitting outside the box — inset box-shadow instead, same
+  // idea as the shared [data-nav-item] focus ring elsewhere. Extra
+  // [data-nav-item] in the selector beats that shared rule's specificity
+  // regardless of source order (it's defined later in this same file).
+  &[data-nav-item]:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px $color-primary;
+  }
+}
+
+// Actively being scrubbed via keyboard (Left/Right) — taller + brighter fill
+// while a preview is pending, so it reads as "in progress, not yet saved".
+.movieBarScrubbing {
+  height: 12px;
+
+  .movieBarFill { background: $color-primary-hover; }
 }
 
 .movieBarFill {

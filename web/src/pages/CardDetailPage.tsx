@@ -599,6 +599,9 @@ export default function CardDetailPage() {
   const [favoriteBusy, setFavoriteBusy] = useState(false)
   const [confirmState, setConfirmState] = useState<PendingConfirm | null>(null)
   const [descrExpanded, setDescrExpanded] = useState(false)
+  // Keyboard scrub preview for the movie progress bar (Left/Right while
+  // focused) — null = not currently scrubbing, showing the real moviePct.
+  const [progressPreviewPct, setProgressPreviewPct] = useState<number | null>(null)
 
   // Site-wide keyboard nav rollout (see Layout/CatalogPage): rows are
   // marked with data-row-id (progress/status/refresh/cast/similar, in DOM
@@ -631,9 +634,39 @@ export default function CardDetailPage() {
 
     function onKeyDown(e: KeyboardEvent) {
       if (isTypingTarget(document.activeElement)) return
-      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return
 
       const focused = document.activeElement as HTMLElement | null
+
+      // Movie progress bar: Left/Right scrubs a local preview (doesn't save
+      // yet), Enter commits it (calls saveTimecodeForItem directly — the
+      // scrubbing itself already is the fine-tuning step, unlike the mouse
+      // click which opens the TimePicker for that), Escape discards back to
+      // the real saved position. Losing focus without confirming (the
+      // bar's own onBlur) discards the same way.
+      if (focused?.hasAttribute('data-progress-slider')) {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault()
+          const STEP_PCT = 2
+          const base = progressPreviewPct ?? moviePct
+          const next = Math.min(100, Math.max(0, base + (e.key === 'ArrowRight' ? STEP_PCT : -STEP_PCT)))
+          setProgressPreviewPct(next)
+          return
+        }
+        if (e.key === 'Enter' && progressPreviewPct != null) {
+          e.preventDefault()
+          if (card) commitProgressPreview(progressPreviewPct, card)
+          setProgressPreviewPct(null)
+          return
+        }
+        if (e.key === 'Escape' && progressPreviewPct != null) {
+          e.preventDefault()
+          setProgressPreviewPct(null)
+          return
+        }
+      }
+
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return
+
       const currentRow = focused?.closest<HTMLElement>('[data-row-id]') ?? null
 
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -673,7 +706,14 @@ export default function CardDetailPage() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+    // card/progressPreviewPct only — moviePct/movieDur are declared further
+    // down (after the loading/!card early-returns) so referencing them here
+    // would throw (TDZ) at the moment this array is evaluated; reading them
+    // from inside onKeyDown's own body is fine (deferred until a real
+    // keypress, by which time that render has already finished executing
+    // top to bottom). Re-subscribing on `card` picks up a closure from a
+    // render where they're safely initialized.
+  }, [progressPreviewPct, card]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeProfileId = activeProfile?.profile_id ?? ''
 
@@ -1024,6 +1064,18 @@ export default function CardDetailPage() {
     setTpCtx({ initialSec: initSec, maxSec: dur, item, profileId: bestTc?.profile_id ?? defaultProfileId })
   }
 
+  // Keyboard scrub commit — Enter on the focused progress bar saves the
+  // previewed position directly (skips the TimePicker modal the mouse click
+  // opens; arrow-scrubbing already IS the fine-tuning step here).
+  function commitProgressPreview(pct: number, card: CardDetail) {
+    if (!activeDevice) return
+    const item = bestTc?.item ?? card.movie_item
+    if (!item) return
+    const dur = bestTc?.duration_sec ?? (card.runtime ? card.runtime * 60 : 0)
+    const sec = dur > 0 ? Math.round(dur * pct / 100) : Math.round(pct)
+    saveTimecodeForItem({ initialSec: sec, maxSec: dur, item, profileId: bestTc?.profile_id ?? defaultProfileId }, sec)
+  }
+
   if (loading) return <Layout><div className={styles.loading}>Загрузка…</div></Layout>
 
   if (!card) return (
@@ -1146,23 +1198,36 @@ export default function CardDetailPage() {
     <div className={styles.progressWrap} data-row-id="progress">
       <div className={styles.progressTop}>
         <span className={`${styles.progressLabel} ${moviePct >= watchedThreshold() ? styles.progressComplete : ''}`}>
-          {moviePct >= watchedThreshold()
-            ? 'Просмотрено'
-            : `Просмотрено ${Math.round(moviePct)}%`}
-          {movieDur > 0 && ` · ${fmtTime(Math.round(movieDur * moviePct / 100))} / ${fmtTime(movieDur)}`}
+          {progressPreviewPct != null ? (
+            `${Math.round(progressPreviewPct)}%${movieDur > 0 ? ` · ${fmtTime(Math.round(movieDur * progressPreviewPct / 100))} / ${fmtTime(movieDur)}` : ''}`
+          ) : (
+            <>
+              {moviePct >= watchedThreshold() ? 'Просмотрено' : `Просмотрено ${Math.round(moviePct)}%`}
+              {movieDur > 0 && ` · ${fmtTime(Math.round(movieDur * moviePct / 100))} / ${fmtTime(movieDur)}`}
+            </>
+          )}
         </span>
         {moviePct > 0 && (
           <button className={styles.deleteBtn} data-nav-item onClick={() => setConfirmState({ kind: 'deleteMovie' })}>✕</button>
         )}
       </div>
       <div
-        className={styles.movieBar}
+        className={`${styles.movieBar}${progressPreviewPct != null ? ' ' + styles.movieBarScrubbing : ''}`}
+        data-nav-item
+        data-progress-slider
+        tabIndex={0}
+        role="slider"
+        aria-label="Просмотрено"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(progressPreviewPct ?? moviePct)}
+        onBlur={() => setProgressPreviewPct(null)}
         onClick={e => {
           const r = e.currentTarget.getBoundingClientRect()
           onMovieBarClick(Math.min(100, Math.max(0, (e.clientX - r.left) / r.width * 100)), card)
         }}
       >
-        <div className={styles.movieBarFill} style={{ width: `${Math.min(moviePct, 100)}%` }} />
+        <div className={styles.movieBarFill} style={{ width: `${Math.min(progressPreviewPct ?? moviePct, 100)}%` }} />
       </div>
     </div>
   )
