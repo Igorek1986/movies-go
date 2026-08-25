@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import DailyChart, { type DailyPoint } from '@/components/DailyChart'
@@ -30,43 +30,73 @@ interface SourceData {
 
 type RawCard = Omit<SourceCard, 'rank'>
 
-// Fetches page 1 immediately (onFirstPage), then the remaining pages
-// (2..total_pages) concurrently in the background, delivering each as it
-// arrives via onMorePage — so the table renders right away and fills in
-// rather than blocking on all ~37 pages up front. A page that fails is
-// dropped (best-effort), matching the backend's own behavior.
-async function loadPopularSourceProgressively(
-  date: string | null,
-  onFirstPage: (data: SourceData) => void,
-  onMorePage: (results: RawCard[]) => void,
-  isCancelled: () => boolean,
-): Promise<void> {
-  const dateQS = date ? `date=${date}` : ''
-  const first: SourceData = await fetch(`/api/admin/popular-source${dateQS ? `?${dateQS}` : ''}`)
-    .then(r => (r.ok ? r.json() : Promise.reject()))
-  if (isCancelled()) return
-  onFirstPage(first)
+function pageURL(page: number, date: string | null): string {
+  const qs = [page > 1 ? `page=${page}` : '', date ? `date=${date}` : ''].filter(Boolean).join('&')
+  return page > 1 ? `/api/admin/popular-source/page?${qs}` : `/api/admin/popular-source${qs ? `?${qs}` : ''}`
+}
 
-  const totalPages = first.total_pages ?? 1
-  if (totalPages <= 1) return
-  const pending = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-  const concurrency = 6
-  async function worker() {
-    while (pending.length > 0) {
-      if (isCancelled()) return
-      const page = pending.shift()
-      if (page === undefined) return
-      try {
-        const qs = ['page=' + page, dateQS].filter(Boolean).join('&')
-        const d: { results: RawCard[] } = await fetch(`/api/admin/popular-source/page?${qs}`)
-          .then(r => (r.ok ? r.json() : Promise.reject()))
-        if (!isCancelled()) onMorePage(d.results ?? [])
-      } catch {
-        // best-effort — skip a failed page rather than aborting the rest
-      }
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(concurrency, pending.length) }, worker))
+// Loads the popular-source list a couple pages at a time instead of eagerly
+// fetching everything in the background: page 1 renders immediately with a
+// known, stable total (so the header count never jumps around), page 2 is
+// prefetched right after so there's enough content to fill the viewport, and
+// further pages load only when the caller's `loadMore()` is invoked — driven
+// by scroll position in the component below.
+function usePaginatedPopularSource(date: string | null, enabled: boolean) {
+  const [data, setData] = useState<SourceData | null>(null)
+  const [loading, setLoading] = useState(enabled)
+  const [error, setError] = useState(false)
+  const [pagesLoaded, setPagesLoaded] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
+
+  useEffect(() => {
+    if (!enabled) return
+    let cancelled = false
+    setLoading(true)
+    setError(false)
+    setData(null)
+    setPagesLoaded(0)
+
+    fetch(pageURL(1, date))
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then(async (first: SourceData) => {
+        if (cancelled) return
+        setData(first)
+        setPagesLoaded(1)
+        setLoading(false)
+        if ((first.total_pages ?? 1) <= 1) return
+        try {
+          const second: { results: RawCard[] } = await fetch(pageURL(2, date))
+            .then(r => (r.ok ? r.json() : Promise.reject()))
+          if (!cancelled) {
+            setData(d => (d ? { ...d, results: [...d.results, ...(second.results ?? [])] } : d))
+            setPagesLoaded(2)
+          }
+        } catch {
+          // best-effort prefetch — page 1 alone is still a usable result
+        }
+      })
+      .catch(() => { if (!cancelled) { setError(true); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [date, enabled])
+
+  const totalPages = data?.total_pages ?? 1
+  const hasMore = pagesLoaded < totalPages
+
+  const loadMore = useCallback(() => {
+    if (!enabled || loadingMore || !hasMore) return
+    setLoadingMore(true)
+    const next = pagesLoaded + 1
+    fetch(pageURL(next, date))
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then((d: { results: RawCard[] }) => {
+        setData(cur => (cur ? { ...cur, results: [...cur.results, ...(d.results ?? [])] } : cur))
+        setPagesLoaded(p => p + 1)
+      })
+      .catch(() => { /* best-effort — next scroll trigger retries the same page */ })
+      .finally(() => setLoadingMore(false))
+  }, [enabled, loadingMore, hasMore, pagesLoaded, date])
+
+  return { data, loading, error, loadingMore, hasMore, loadMore }
 }
 
 type SortKey = 'rank' | 'title' | 'year' | 'viewers' | 'plays' | 'avg_percent' | 'finished_rate'
@@ -106,50 +136,25 @@ function SortableTh({ label, k, sort, onSort, className }: {
 
 export default function PopularSourcePage() {
   const navigate = useNavigate()
-  const [data, setData] = useState<SourceData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => loadPrefs().type ?? 'all')
   const [sort, setSort] = useState<SortState>(() => loadPrefs().sort ?? { key: 'rank', dir: 'asc' })
   // Daily-chart filter: a selected day restricts the list to that date. The
   // source must support the date param; older sources ignore it (see note).
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [dayData, setDayData] = useState<SourceData | null>(null)
-  const [dayLoading, setDayLoading] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    loadPopularSourceProgressively(
-      null,
-      first => { if (!cancelled) { setData(first); setLoading(false) } },
-      more => { if (!cancelled) setData(d => (d ? { ...d, results: [...d.results, ...more] } : d)) },
-      () => cancelled,
-    ).catch(() => { if (!cancelled) { setError(true); setLoading(false) } })
-    return () => { cancelled = true }
-  }, [])
-
-  // Refetch the source list for the selected day (chart filter) — same
-  // page-1-first-then-fill-in behavior as the main list.
-  useEffect(() => {
-    if (!selectedDate) { setDayData(null); return }
-    setDayLoading(true)
-    let cancelled = false
-    loadPopularSourceProgressively(
-      selectedDate,
-      first => { if (!cancelled) { setDayData(first); setDayLoading(false) } },
-      more => { if (!cancelled) setDayData(d => (d ? { ...d, results: [...d.results, ...more] } : d)) },
-      () => cancelled,
-    ).catch(() => { if (!cancelled) { setDayData({ source_url: '', results: [], total_results: 0 }); setDayLoading(false) } })
-    return () => { cancelled = true }
-  }, [selectedDate])
+  const main = usePaginatedPopularSource(null, true)
+  const dayFiltered = usePaginatedPopularSource(selectedDate, !!selectedDate)
+  const { data } = main // keeps the daily chart fed even while a date filter is active
 
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify({ sort, type: typeFilter }))
   }, [sort, typeFilter])
 
-  // Attach a stable popularity rank from the source order.
-  const activeData = selectedDate ? dayData : data
+  const active = selectedDate ? dayFiltered : main
+  const activeData = active.data
+  const loading = active.loading
+  const error = active.error
   const results = activeData?.results ?? []
   const allCards: SourceCard[] = useMemo(
     () => results.map((c, idx) => ({ ...c, rank: idx + 1 })),
@@ -158,10 +163,48 @@ export default function PopularSourcePage() {
   const hasCounts = allCards.some(c => typeof c.viewers === 'number')
   const hasMetrics = allCards.some(c => typeof c.avg_percent === 'number')
   const daily = data?.daily ?? []
-  // Remaining pages still filling in the background (lazy-loaded, see
-  // loadPopularSourceProgressively) — non-blocking, the table is already
-  // interactive with what's loaded so far.
-  const loadingMore = !!activeData && results.length < activeData.total_results
+
+  // Scroll-triggered pagination: load the next page once the sentinel below
+  // the table comes into view. The sentinel only mounts once loading finishes
+  // (it's inside the same conditional block as the table), so this uses a
+  // state-backed callback ref rather than useRef+empty-deps-useEffect — a
+  // plain ref would miss the node entirely since the effect that attaches
+  // the observer would already have run (and found nothing) before the
+  // sentinel div ever existed in the DOM.
+  const [sentinelEl, setSentinelEl] = useState<HTMLDivElement | null>(null)
+  const [sentinelVisible, setSentinelVisible] = useState(false)
+  useEffect(() => {
+    if (!sentinelEl) return
+    const obs = new IntersectionObserver(([entry]) => setSentinelVisible(entry.isIntersecting), { rootMargin: '600px' })
+    obs.observe(sentinelEl)
+    return () => obs.disconnect()
+  }, [sentinelEl])
+  // Plain scroll/resize fallback alongside the IntersectionObserver above —
+  // belt and suspenders, since IO delivery can be throttled/deferred in some
+  // browser states (backgrounded or non-composited tabs) and this is the
+  // core interaction the whole feature hinges on.
+  useEffect(() => {
+    if (!sentinelEl) return
+    function check() {
+      if (!sentinelEl) return
+      const r = sentinelEl.getBoundingClientRect()
+      setSentinelVisible(r.top < window.innerHeight + 600)
+    }
+    check()
+    window.addEventListener('scroll', check, { passive: true })
+    window.addEventListener('resize', check)
+    return () => {
+      window.removeEventListener('scroll', check)
+      window.removeEventListener('resize', check)
+    }
+  }, [sentinelEl])
+  // Search/filter only match loaded cards — while either is active, keep
+  // loading the rest in the background (not just on scroll) so results stay
+  // accurate instead of silently missing cards further down the list.
+  const searching = search.trim() !== '' || typeFilter !== 'all'
+  useEffect(() => {
+    if ((sentinelVisible || searching) && active.hasMore && !active.loadingMore) active.loadMore()
+  }, [sentinelVisible, searching, active.hasMore, active.loadingMore, active.loadMore])
 
   function toggleSort(key: SortKey) {
     setSort(prev => prev.key === key
@@ -195,16 +238,10 @@ export default function PopularSourcePage() {
       <div className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>
-            Популярное (источник){data ? ` (${cards.length}/${allCards.length})` : ''}
+            Популярное (источник){activeData ? ` (${cards.length}/${activeData.total_results.toLocaleString('ru')})` : ''}
           </h1>
           <Link to="/admin" className={styles.backLink}>Админ</Link>
         </div>
-
-        {loadingMore && (
-          <p className={styles.filterNote}>
-            Догружаем ещё {(activeData!.total_results - results.length).toLocaleString('ru')} карточек…
-          </p>
-        )}
 
         <p className={styles.desc}>
           Список от внешнего источника (Popular Source URL{data?.source_url ? `: ${data.source_url}` : ''}).
@@ -235,14 +272,13 @@ export default function PopularSourcePage() {
           </p>
         )}
 
-        {!loading && !error && dayLoading && <div className={styles.empty}>Загрузка…</div>}
-        {!loading && !error && !dayLoading && allCards.length === 0 && (
+        {!loading && !error && allCards.length === 0 && (
           <div className={styles.empty}>
             {selectedDate ? 'В этот день просмотров не было' : 'Источник вернул пустой список'}
           </div>
         )}
 
-        {!loading && !error && !dayLoading && allCards.length > 0 && (
+        {!loading && !error && allCards.length > 0 && (
           <>
             <div className={styles.toolbar}>
               <input
@@ -336,6 +372,12 @@ export default function PopularSourcePage() {
               </tbody>
             </table>
             {cards.length === 0 && <div className={styles.empty}>Ничего не найдено</div>}
+            {active.hasMore && (search || typeFilter !== 'all') && (
+              <p className={styles.filterNote}>
+                Догружаем остальные карточки для поиска/фильтра: {results.length.toLocaleString('ru')} из {activeData!.total_results.toLocaleString('ru')}…
+              </p>
+            )}
+            {active.hasMore && <div ref={setSentinelEl} className={styles.empty}>{active.loadingMore ? 'Загрузка…' : ''}</div>}
           </>
         )}
       </div>
