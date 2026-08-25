@@ -634,6 +634,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   width: 100%;
+  transition: color $transition-fast;
 
   .castCard:hover &,
   .castCard:focus-visible & { color: $color-primary; }
@@ -647,6 +648,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   width: 100%;
+  transition: color $transition-fast;
 
   .castCard:hover &,
   .castCard:focus-visible & { color: $color-primary; }
