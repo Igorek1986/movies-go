@@ -39,26 +39,26 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       .catch(() => { /* best-effort prefetch */ })
   }, [user?.is_admin])
 
+  // Scroll-lock while the drawer is open. Deliberately NOT the classic
+  // `body { position: fixed; top: -scrollY }` + restore-scroll trick — that
+  // repositions body's own box, and iOS Safari/PWA (standalone especially)
+  // has known bugs where other `position: fixed` descendants (BottomNav)
+  // visually shift/jump along with it instead of staying viewport-anchored
+  // as the spec says they should. Plain `overflow: hidden` + `overscroll-
+  // behavior: contain` doesn't touch body's box at all, so nothing else on
+  // the page can be dragged along with it — the modern recommended pattern
+  // for this exact class of bug.
   useEffect(() => {
     if (menuOpen) {
-      const scrollY = window.scrollY
-      document.body.style.position = 'fixed'
-      document.body.style.top = `-${scrollY}px`
-      document.body.style.width = '100%'
-      document.body.style.overflowY = 'scroll'
+      document.body.style.overflow = 'hidden'
+      document.body.style.overscrollBehavior = 'contain'
     } else {
-      const top = parseFloat(document.body.style.top || '0')
-      document.body.style.position = ''
-      document.body.style.top = ''
-      document.body.style.width = ''
-      document.body.style.overflowY = ''
-      if (top !== 0) window.scrollTo(0, Math.abs(top))
+      document.body.style.overflow = ''
+      document.body.style.overscrollBehavior = ''
     }
     return () => {
-      document.body.style.position = ''
-      document.body.style.top = ''
-      document.body.style.width = ''
-      document.body.style.overflowY = ''
+      document.body.style.overflow = ''
+      document.body.style.overscrollBehavior = ''
     }
   }, [menuOpen])
 

@@ -178,6 +178,7 @@ $nav-height: 52px;
   background: rgba(0, 0, 0, 0.5);
   z-index: 150;
   backdrop-filter: blur(2px);
+  touch-action: none;
 }
 
 // ── Mobile drawer (slides from top-left / full width) ────────────────────────
@@ -195,10 +196,12 @@ $nav-height: 52px;
   flex-direction: column;
   padding: $spacing-xl $spacing-lg $spacing-lg;
   padding-top: calc(#{$spacing-xl} + env(safe-area-inset-top));
+  padding-bottom: calc(#{$spacing-lg} + env(safe-area-inset-bottom));
   gap: $spacing-md;
   transform: translateX(-100%);
   transition: transform $transition-normal;
   overflow-y: auto;
+  overscroll-behavior: contain;
 
   &.drawerOpen {
     transform: translateX(0);
