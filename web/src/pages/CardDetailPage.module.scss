@@ -125,26 +125,42 @@
   flex-direction: column;
   justify-content: flex-end;
   gap: $spacing-sm;
-  padding: $spacing-2xl;
+  // Horizontal value must match Layout's .main padding exactly (same
+  // reasoning as .heroFull's own negative margin) — otherwise the title/
+  // teaser here land at a different indent than the tags/description in
+  // .heroDetails right below, which sits in .main's normal padding.
+  // Vertical value is a free design choice (top/bottom breathing room).
+  padding: $spacing-2xl $spacing-lg;
   // Fades from solid page background at the bottom (guaranteed contrast for
   // the text/buttons/tags below, unchanged from the classic layout — same
   // components, don't need their own restyle) up to the plain image at top.
   background: linear-gradient(to top, $color-bg 0%, rgba($color-bg-rgb, 0.92) 40%, rgba($color-bg-rgb, 0.35) 70%, transparent 100%);
 
-  @media (max-width: $bp-md) { padding: $spacing-lg; }
-  @media (max-width: $bp-sm) { padding: $spacing-md; }
+  @media (max-width: $bp-md) { padding: $spacing-lg $spacing-md; }
+  @media (max-width: $bp-sm) { padding: $spacing-md $spacing-sm; }
 }
 
+// Clickable — toggles .heroDescrExpanded to show the full text in place,
+// so it doesn't need repeating lower down the page (was duplicated before).
 .heroDescr {
   margin: 0;
   max-width: 46em;
   color: $color-text-muted;
   font-size: $font-size-sm;
   line-height: 1.5;
+  cursor: pointer;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+
+  &:hover { color: $color-text; }
+}
+
+.heroDescrExpanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
 }
 
 .heroDetails {

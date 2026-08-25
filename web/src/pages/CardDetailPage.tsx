@@ -598,6 +598,7 @@ export default function CardDetailPage() {
   const [isFavorite,   setIsFavorite]  = useState(false)
   const [favoriteBusy, setFavoriteBusy] = useState(false)
   const [confirmState, setConfirmState] = useState<PendingConfirm | null>(null)
+  const [descrExpanded, setDescrExpanded] = useState(false)
 
   const activeProfileId = activeProfile?.profile_id ?? ''
 
@@ -1149,20 +1150,26 @@ export default function CardDetailPage() {
                 {card.original_title && card.original_title !== card.title && (
                   <p className={styles.origTitle}>{card.original_title}</p>
                 )}
-                {card.overview && <p className={styles.heroDescr}>{card.overview}</p>}
+                {card.overview && (
+                  <p
+                    className={`${styles.heroDescr}${descrExpanded ? ' ' + styles.heroDescrExpanded : ''}`}
+                    onClick={() => setDescrExpanded(v => !v)}
+                  >
+                    {card.overview}
+                  </p>
+                )}
                 {movieProgressBlock}
                 {tvProgressBlock}
                 {watchStatusRow}
               </div>
             </div>
 
-            {/* ── Details: tags/genres, full description, status/date,
-                admin refresh — description repeats the teaser above,
-                not clamped this time ── */}
+            {/* ── Details: tags/genres, status/date, admin refresh — the
+                description itself stays only in the hero teaser above
+                (click to expand in place), not repeated here ── */}
             <div className={styles.heroDetails}>
               {tagsRow}
               {genresRow}
-              {card.overview && <p className={styles.overview}>{card.overview}</p>}
               {statusLines}
               {refreshBtn}
             </div>
