@@ -573,6 +573,11 @@
   text-decoration: none;
   flex-shrink: 0;
   width: 80px;
+
+  // Same ring as :hover below (the round photo's own border going primary-
+  // colored) instead of the generic [data-nav-item] rectangle — reads much
+  // better against a circular avatar.
+  &[data-nav-item]:focus-visible { outline: none; }
 }
 
 .castPhoto {
@@ -585,7 +590,8 @@
   border: 2px solid $color-border;
   transition: border-color $transition-fast;
 
-  .castCard:hover & { border-color: $color-primary; }
+  .castCard:hover &,
+  .castCard:focus-visible & { border-color: $color-primary; }
 }
 
 .castPhotoPlaceholder {
@@ -1058,17 +1064,18 @@ $drum-visible: 5;
   width: 120px;
   transition: transform $transition-fast, border-color $transition-fast;
 
-  &:hover {
+  &:hover,
+  &[data-nav-item]:focus-visible {
     transform: translateY(-2px);
     border-color: rgba($color-primary-rgb, 0.4);
   }
 
-  // overflow: hidden above (clips the poster to the card's rounded corners)
-  // also clips a normal outline sitting outside the box — inset box-shadow
-  // instead, same fix as .movieBar/.heroFull's cast/similar row padding.
+  // Same reasoning as .castCard — match the existing :hover treatment
+  // instead of the generic [data-nav-item] rectangle. outline: none since
+  // overflow: hidden above (clips the poster to the card's rounded
+  // corners) would clip a real outline anyway.
   &[data-nav-item]:focus-visible {
     outline: none;
-    box-shadow: inset 0 0 0 2px $color-primary;
   }
 }
 
