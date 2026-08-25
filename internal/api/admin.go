@@ -3038,26 +3038,39 @@ func handleAPIAdminChildKeywordsResolve(w http.ResponseWriter, r *http.Request) 
 		ID   int    `json:"id"`
 		Name string `json:"name"`
 	}
-	out := make([]kw, 0, len(ids))
-	for _, id := range ids {
-		name := ""
-		if token != "" {
-			url := fmt.Sprintf("https://api.themoviedb.org/3/keyword/%d", id)
-			if req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil); err == nil {
+	out := make([]kw, len(ids))
+	for i, id := range ids {
+		out[i].ID = id
+	}
+	if token != "" {
+		// One TMDB round-trip per keyword (~200ms) — fetch them concurrently
+		// instead of one at a time, same fix as /api/admin/stats.
+		var wg sync.WaitGroup
+		for i, id := range ids {
+			wg.Add(1)
+			go func(i, id int) {
+				defer wg.Done()
+				url := fmt.Sprintf("https://api.themoviedb.org/3/keyword/%d", id)
+				req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
+				if err != nil {
+					return
+				}
 				req.Header.Set("Authorization", token)
 				req.Header.Set("Accept", "application/json")
-				if resp, err := tmdb.HTTPClient().Do(req); err == nil && resp.StatusCode == http.StatusOK {
-					var res struct {
-						Name string `json:"name"`
-					}
-					if json.NewDecoder(resp.Body).Decode(&res) == nil {
-						name = res.Name
-					}
-					resp.Body.Close()
+				resp, err := tmdb.HTTPClient().Do(req)
+				if err != nil || resp.StatusCode != http.StatusOK {
+					return
 				}
-			}
+				defer resp.Body.Close()
+				var res struct {
+					Name string `json:"name"`
+				}
+				if json.NewDecoder(resp.Body).Decode(&res) == nil {
+					out[i].Name = res.Name
+				}
+			}(i, id)
 		}
-		out = append(out, kw{ID: id, Name: name})
+		wg.Wait()
 	}
 	JSON(w, http.StatusOK, out)
 }
