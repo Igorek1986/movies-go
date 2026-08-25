@@ -92,63 +92,98 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	var noRuntimeMovies, noRuntimeTV int
 	var tmdbRefreshedToday, tmdbNotFound int
 	var actorCount, directorCount int
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&users)                                                                                             //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE created_at::date = CURRENT_DATE`).Scan(&usersToday)                                                  //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&devices)                                                                                         //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices WHERE created_at::date = CURRENT_DATE`).Scan(&devicesToday)                                              //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards`).Scan(&cards)                                                                                       //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE created_at::date = CURRENT_DATE`).Scan(&cardsToday)                                            //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes`).Scan(&timecodes)                                                                                     //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes WHERE created_at::date = CURRENT_DATE`).Scan(&timecodesToday)                                          //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='movie' AND (runtime IS NULL OR runtime=0)`).Scan(&noRuntimeMovies)                 //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='tv' AND (episode_run_time IS NULL OR episode_run_time=0)`).Scan(&noRuntimeTV)      //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_updated_at::date = CURRENT_DATE AND tmdb_not_found_at IS NULL`).Scan(&tmdbRefreshedToday) //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_not_found_at IS NOT NULL`).Scan(&tmdbNotFound)                                            //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_cast`).Scan(&actorCount)                                                             //nolint:errcheck
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_crew WHERE job='Director'`).Scan(&directorCount)                                     //nolint:errcheck
-
-	popularDays := store.GetSettingInt(ctx, "popular_period_days")
-	popularCards := store.CountPopularCards(ctx, popularDays)
-
-	// External popular source (if configured): show its card count too.
-	popularSourceURL := getPopularSourceURL(ctx)
+	var popularCards int
+	var popularSourceURL string
 	popularSourceCount := -1 // -1 = unknown/unreachable
-	if popularSourceURL != "" {
-		sctx, scancel := context.WithTimeout(ctx, 4*time.Second)
-		if resp, err := fetchPopularSource(sctx, 1, 1, ""); err == nil {
-			popularSourceCount = resp.TotalResults
-		}
-		scancel()
-	}
 
 	type newUser struct {
 		Username  string `json:"username"`
 		CreatedAt string `json:"created_at"`
 	}
 	var newUsersToday []newUser
-	if rows, err := postgres.Pool.Query(ctx,
-		`SELECT username, created_at FROM users WHERE created_at::date = CURRENT_DATE ORDER BY created_at DESC`,
-	); err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var u newUser
-			var t time.Time
-			if rows.Scan(&u.Username, &t) == nil {
-				u.CreatedAt = t.Format("15:04:05")
-				newUsersToday = append(newUsersToday, u)
+	var apiToday, apiTotal, catsToday, catsTotal, myshowsToday, myshowsTotal []store.StatRow
+	var apiIPsToday, apiReqsToday int
+
+	// All of the below are independent reads (different tables/rows, no shared
+	// mutable state per goroutine) — run concurrently instead of one round-trip
+	// at a time. pgxpool is safe for concurrent use. This is what actually cut
+	// handler latency: none of the individual queries is slow on its own, but
+	// ~20 of them run sequentially added up to 1-1.6s.
+	var wg sync.WaitGroup
+	run := func(f func()) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			f()
+		}()
+	}
+
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&users) })                                                                                //nolint:errcheck
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE created_at::date = CURRENT_DATE`).Scan(&usersToday) })                                     //nolint:errcheck
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&devices) })                                                                             //nolint:errcheck
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices WHERE created_at::date = CURRENT_DATE`).Scan(&devicesToday) })                                 //nolint:errcheck
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards`).Scan(&cards) })                                                                           //nolint:errcheck
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE created_at::date = CURRENT_DATE`).Scan(&cardsToday) })                               //nolint:errcheck
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes`).Scan(&timecodes) })                                                                         //nolint:errcheck
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes WHERE created_at::date = CURRENT_DATE`).Scan(&timecodesToday) })                             //nolint:errcheck
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='movie' AND (runtime IS NULL OR runtime=0)`).Scan(&noRuntimeMovies) //nolint:errcheck
+	})
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='tv' AND (episode_run_time IS NULL OR episode_run_time=0)`).Scan(&noRuntimeTV) //nolint:errcheck
+	})
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_updated_at::date = CURRENT_DATE AND tmdb_not_found_at IS NULL`).Scan(&tmdbRefreshedToday) //nolint:errcheck
+	})
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_not_found_at IS NOT NULL`).Scan(&tmdbNotFound) //nolint:errcheck
+	})
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_cast`).Scan(&actorCount) })                                //nolint:errcheck
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_crew WHERE job='Director'`).Scan(&directorCount) //nolint:errcheck
+	})
+	run(func() {
+		popularDays := store.GetSettingInt(ctx, "popular_period_days")
+		popularCards = store.CountPopularCards(ctx, popularDays)
+	})
+	run(func() {
+		// External popular source (if configured): show its card count too.
+		popularSourceURL = getPopularSourceURL(ctx)
+		if popularSourceURL != "" {
+			sctx, scancel := context.WithTimeout(ctx, 4*time.Second)
+			defer scancel()
+			if resp, err := fetchPopularSource(sctx, 1, 1, ""); err == nil {
+				popularSourceCount = resp.TotalResults
 			}
 		}
-	}
+	})
+	run(func() {
+		if rows, err := postgres.Pool.Query(ctx,
+			`SELECT username, created_at FROM users WHERE created_at::date = CURRENT_DATE ORDER BY created_at DESC`,
+		); err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var u newUser
+				var t time.Time
+				if rows.Scan(&u.Username, &t) == nil {
+					u.CreatedAt = t.Format("15:04:05")
+					newUsersToday = append(newUsersToday, u)
+				}
+			}
+		}
+	})
+	run(func() { apiToday, apiIPsToday, apiReqsToday = store.GetAPIUserStats(true) })
+	run(func() { apiTotal, _, _ = store.GetAPIUserStats(false) })
+	run(func() { catsToday = store.GetCategoryStats(true) })
+	run(func() { catsTotal = store.GetCategoryStats(false) })
+	run(func() { myshowsToday = store.GetMyShowsStats(true) })
+	run(func() { myshowsTotal = store.GetMyShowsStats(false) })
+
+	wg.Wait()
+
 	if newUsersToday == nil {
 		newUsersToday = []newUser{}
 	}
-
-	apiToday, apiIPsToday, apiReqsToday := store.GetAPIUserStats(true)
-	apiTotal, _, _ := store.GetAPIUserStats(false)
-	catsToday := store.GetCategoryStats(true)
-	catsTotal := store.GetCategoryStats(false)
-	myshowsToday := store.GetMyShowsStats(true)
-	myshowsTotal := store.GetMyShowsStats(false)
 
 	if apiToday == nil {
 		apiToday = []store.StatRow{}
