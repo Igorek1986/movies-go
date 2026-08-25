@@ -57,6 +57,14 @@ interface UsersPaged {
   items: AdminUser[]
 }
 
+// Module-level (not React state) so it survives unmount/remount — navigating
+// away from /admin and back re-mounts the component and would otherwise
+// refetch from scratch every time, showing the skeleton cards again for the
+// ~1s round-trip even though nothing actually changed. Seeding from this
+// cache shows the last known values instantly while refresh() still runs in
+// the background to catch up.
+let statsCache: Stats | null = null
+
 export default function AdminPage() {
   const [usersPaged, setUsersPaged] = useState<UsersPaged | null>(null)
   const [usersPage, setUsersPage]   = useState(1)
@@ -66,7 +74,7 @@ export default function AdminPage() {
   const [usersSortDir, setUsersSortDir] = useState<'asc' | 'desc'>('desc')
   const [usersPerPage, setUsersPerPage] = useState(10)
   const usersTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [stats, setStats] = useState<Stats | null>(null)
+  const [stats, setStats] = useState<Stats | null>(statsCache)
   const [sysStats, setSysStats] = useState<SystemStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -109,7 +117,11 @@ export default function AdminPage() {
   // Silent refresh — stats only, no user list reset
   const refresh = useCallback(async () => {
     const res = await fetch('/api/admin/stats')
-    if (res.ok) setStats(await res.json())
+    if (res.ok) {
+      const data = await res.json()
+      statsCache = data
+      setStats(data)
+    }
   }, [])
 
   async function fetchFixRtStatus() {
@@ -224,8 +236,11 @@ export default function AdminPage() {
     setLoading(true)
     // fetch meId once
     fetch('/api/me').then(r => r.ok ? r.json() : null).then(d => { if (d?.id) meId.current = d.id })
+    // Stats render independently (skeleton vs cards gated by `stats`, seeded
+    // from statsCache) — kept out of this Promise.all so the users table
+    // doesn't sit on "Загрузка…" waiting for the stats round-trip too.
+    refresh()
     Promise.all([
-      refresh(),
       fetchUsers(1, '', 'created_at', 'desc', 10),
       fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchSysStats(), fetchApiKey(),
     ]).finally(() => setLoading(false))

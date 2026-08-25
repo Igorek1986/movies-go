@@ -42,6 +42,15 @@ interface UserRow {
 
 type Tab = 'today' | 'all'
 
+// Module-level (not React state) so it survives unmount/remount — leaving
+// /stats and coming back re-mounts the component and would otherwise show
+// the full-page "Загрузка…" and refetch from scratch every time, even though
+// nothing actually changed. Seeding from this cache renders the last known
+// values instantly while fetchStats() still runs in the background to
+// refresh them.
+let statsCache: StatsData | null = null
+let allUsersCache: UserRow[] | null = null
+
 function StatTable({ rows, cols }: { rows: StatRow[]; cols: [string, string] }) {
   const total = rows.reduce((s, r) => s + r.requests, 0)
   if (rows.length === 0) {
@@ -111,13 +120,13 @@ function Section({
 export default function StatsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [stats, setStats] = useState<StatsData | null>(null)
-  const [allUsers, setAllUsers] = useState<UserRow[]>([])
+  const [stats, setStats] = useState<StatsData | null>(statsCache)
+  const [allUsers, setAllUsers] = useState<UserRow[]>(allUsersCache ?? [])
   const [usersTab, setUsersTab] = useState<Tab>('today')
   const [apiTab, setApiTab] = useState<Tab>('today')
   const [catsTab, setCatsTab] = useState<Tab>('today')
   const [myshowsTab, setMyshowsTab] = useState<Tab>('today')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(statsCache === null)
   const [lastUpdate, setLastUpdate] = useState('')
 
   const fetchStats = useCallback(async () => {
@@ -126,10 +135,16 @@ export default function StatsPage() {
         fetch('/api/admin/stats'),
         fetch('/api/admin/users?per_page=0'),
       ])
-      if (sRes.ok) setStats(await sRes.json())
+      if (sRes.ok) {
+        const data = await sRes.json()
+        statsCache = data
+        setStats(data)
+      }
       if (uRes.ok) {
         const data = await uRes.json()
-        setAllUsers(Array.isArray(data) ? data : (data.items ?? []))
+        const items = Array.isArray(data) ? data : (data.items ?? [])
+        allUsersCache = items
+        setAllUsers(items)
       }
       setLastUpdate(new Date().toLocaleTimeString('ru'))
     } finally {
