@@ -94,7 +94,8 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	var actorCount, directorCount int
 	var popularCards int
 	var popularSourceURL string
-	popularSourceCount := -1 // -1 = unknown/unreachable
+	popularSourceCount := -1                                    // -1 = unknown/unreachable
+	imageCacheBytesVal, imageCacheFilesVal := ImageCacheStats() // in-memory counters, no disk scan
 
 	type newUser struct {
 		Username  string `json:"username"`
@@ -118,14 +119,22 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
-	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&users) })                                                                                //nolint:errcheck
-	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE created_at::date = CURRENT_DATE`).Scan(&usersToday) })                                     //nolint:errcheck
-	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&devices) })                                                                             //nolint:errcheck
-	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices WHERE created_at::date = CURRENT_DATE`).Scan(&devicesToday) })                                 //nolint:errcheck
-	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards`).Scan(&cards) })                                                                           //nolint:errcheck
-	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE created_at::date = CURRENT_DATE`).Scan(&cardsToday) })                               //nolint:errcheck
-	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes`).Scan(&timecodes) })                                                                         //nolint:errcheck
-	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes WHERE created_at::date = CURRENT_DATE`).Scan(&timecodesToday) })                             //nolint:errcheck
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&users) }) //nolint:errcheck
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE created_at::date = CURRENT_DATE`).Scan(&usersToday)
+	}) //nolint:errcheck
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&devices) }) //nolint:errcheck
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices WHERE created_at::date = CURRENT_DATE`).Scan(&devicesToday)
+	}) //nolint:errcheck
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards`).Scan(&cards) }) //nolint:errcheck
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE created_at::date = CURRENT_DATE`).Scan(&cardsToday)
+	}) //nolint:errcheck
+	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes`).Scan(&timecodes) }) //nolint:errcheck
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM timecodes WHERE created_at::date = CURRENT_DATE`).Scan(&timecodesToday)
+	}) //nolint:errcheck
 	run(func() {
 		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='movie' AND (runtime IS NULL OR runtime=0)`).Scan(&noRuntimeMovies) //nolint:errcheck
 	})
@@ -224,6 +233,8 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"popular_cards":        popularCards,
 		"popular_source_url":   popularSourceURL,
 		"popular_source_count": popularSourceCount,
+		"image_cache_bytes":    imageCacheBytesVal,
+		"image_cache_files":    imageCacheFilesVal,
 	})
 }
 
@@ -1383,10 +1394,10 @@ func handleAPIAdminDevicesList(w http.ResponseWriter, r *http.Request) {
 
 	// sort_by: username | name | profiles | timecodes | created_at (default: id desc)
 	sortCol := map[string]string{
-		"username":  "u.username",
-		"name":      "d.name",
-		"profiles":  "profile_count",
-		"timecodes": "timecode_count",
+		"username":   "u.username",
+		"name":       "d.name",
+		"profiles":   "profile_count",
+		"timecodes":  "timecode_count",
 		"created_at": "d.created_at",
 	}
 	sortBy := "d.id"
@@ -1888,6 +1899,7 @@ var checkboxSettingKeys = map[string]string{
 var boolSettingKeys = map[string]bool{
 	"catalog_require_poster": true,
 	"images_via_server":      true,
+	"images_cache_enabled":   true,
 }
 
 // settingsGroupDefs mirrors FastAPI GROUPS.
@@ -1959,6 +1971,8 @@ var settingsGroupDefs = []struct {
 	{"Настройки каталога", []string{
 		"catalog_require_poster",
 		"images_via_server",
+		"images_cache_enabled",
+		"images_cache_limit_mb",
 		"catalog_actor_count",
 		"catalog_actor_ru_count",
 		"catalog_director_count",

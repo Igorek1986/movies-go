@@ -35,6 +35,8 @@ interface Stats {
   popular_cards: number
   popular_source_url: string
   popular_source_count: number
+  image_cache_bytes: number
+  image_cache_files: number
 }
 
 interface SystemStats {
@@ -676,6 +678,12 @@ export default function AdminPage() {
                   <p className={styles.statLabel}>Режиссёров</p>
 
                 </Link>
+              </div>
+            )}
+            {stats.image_cache_files > 0 && (
+              <div className={styles.statCard}>
+                <p className={styles.statValue}>{(stats.image_cache_bytes / 1024 / 1024).toFixed(1)} МБ</p>
+                <p className={styles.statLabel}>Кеш картинок ({stats.image_cache_files.toLocaleString()} файлов)</p>
               </div>
             )}
           </div>

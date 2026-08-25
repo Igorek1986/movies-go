@@ -113,6 +113,13 @@ func main() {
 	api.LoadCacheSnapshot(appCtx, cacheSnapshotPath)
 	api.StartCacheSnapshotLoop(appCtx, cacheSnapshotPath, 10*time.Minute)
 
+	// Disk cache for /imgproxy (opt-in, see images_cache_enabled) — seed the
+	// in-memory size counters from whatever's already on disk, then start
+	// trimming it back to images_cache_limit_mb periodically.
+	os.MkdirAll("cache/images", 0o755) //nolint:errcheck
+	api.LoadImageCacheStats()
+	api.StartImageCacheEvictionLoop(appCtx, 10*time.Minute)
+
 	go api.RecomputeCategoryCounts()             // warm random-collection totals before first request
 	go store.BackfillImpliedStatuses(appCtx)     // catch up subjective statuses for pre-existing timecodes
 	api.StartUnwatchedCutoffInvalidation(appCtx) // refresh "Непросмотренные" cache when the aired cutoff crosses

@@ -670,6 +670,7 @@ const CHECKBOX_KEYS: Record<string, string> = {
   google_analytics_enabled: 'google_analytics_id',
   catalog_require_poster:   '',
   images_via_server:        '',
+  images_cache_enabled:     '',
 }
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -680,6 +681,8 @@ const DESCRIPTIONS: Record<string, string> = {
   popular_weight_movie: 'Множитель к числу зрителей при ранжировании «Популярного» (1.0 = без поправки).',
   popular_weight_tv: 'Множитель к числу зрителей при ранжировании «Популярного». Сериал набирает зрителей быстрее фильма (много серий/дней) — коэффициент < 1 уравновешивает это.',
   watching_threshold: 'Процент прогресса текущей серии, после которого сериал получает статус «Смотрю» (0 = сразу на любой прогресс).',
+  images_cache_enabled: 'Постеры/фоны с TMDB сохраняются на диск при первом запросе и дальше отдаются локально, без похода на TMDB. Работает только для веб-интерфейса (плагин Lampa не проксирует через сервер).',
+  images_cache_limit_mb: 'При превышении лимита старые файлы (по дате записи) вытесняются автоматически.',
 }
 
 const LABELS: Record<string, string> = {
@@ -750,6 +753,8 @@ const LABELS: Record<string, string> = {
   movies_new_min_quality:  'Новые фильмы — мин. качество (0=любое, 100=720p+, 200=1080p+, 300=4K+)',
   catalog_require_poster:  'Скрывать карточки без постера',
   images_via_server:       'Картинки через сервер (проксировать TMDB)',
+  images_cache_enabled:    'Дисковый кеш картинок',
+  images_cache_limit_mb:   'Лимит дискового кеша картинок (МБ)',
   catalog_actor_count:      'Актёры в каталоге — глобальных (0 = выкл)',
   catalog_actor_ru_count:   'Актёры в каталоге — русскоязычных (0 = выкл)',
   catalog_director_count:   'Режиссёры в каталоге (0 = выкл)',
@@ -832,6 +837,8 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   { name: 'Настройки каталога', keys: [
     'catalog_require_poster',
     'images_via_server',
+    'images_cache_enabled',
+    'images_cache_limit_mb',
     'catalog_actor_count',
     'catalog_actor_ru_count',
     'catalog_director_count',
