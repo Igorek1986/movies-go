@@ -128,10 +128,12 @@
 
 // Visible focus ring while navigating the desktop panel with the keyboard
 // (arrows summon it, see Layout.tsx) — the app has no global :focus-visible
-// treatment to inherit, so give it one here explicitly.
+// treatment to inherit, so give it one here explicitly. Rounded to match
+// the pill's own curve (plain sharp corners looked jarring inside it).
 .bottomNavItem:focus-visible {
   outline: 2px solid $color-primary;
-  outline-offset: -2px;
+  outline-offset: -4px;
+  border-radius: $radius-md;
 }
 
 .bottomNavItemActive {

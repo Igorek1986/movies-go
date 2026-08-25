@@ -650,6 +650,13 @@ export default function CardDetailPage() {
 
       const focused = document.activeElement as HTMLElement | null
 
+      // Focus moved into Layout's desktop side panel (summoned from a row
+      // edge, see Layout) — that panel owns Up/Down/Left/Right/Escape
+      // entirely while it has focus; without this, the fallback below
+      // ("not on a row + ArrowDown → jump to the first row") would yank
+      // focus straight back out to the page on every key press.
+      if (focused?.closest('nav[aria-label="Быстрая навигация"]')) return
+
       // Movie progress bar: Left/Right scrubs a local preview (doesn't save
       // yet), Enter commits it (calls saveTimecodeForItem directly — the
       // scrubbing itself already is the fine-tuning step, unlike the mouse

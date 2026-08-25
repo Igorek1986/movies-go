@@ -158,6 +158,10 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   // panel, is NOT skipped on /catalog — see the onTopNav branch.)
   const [desktopPanel, setDesktopPanel] = useState<'left' | 'right' | null>(null)
   const desktopPanelRef = useRef<HTMLElement>(null)
+  // Where keyboard focus was right before the panel opened — restored when
+  // it closes via the opposite arrow or Escape, so the row-edge bridge
+  // (CardDetailPage) feels like a detour rather than a one-way trip.
+  const preOpenFocusRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!desktopPanel) return
@@ -241,16 +245,17 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       if (e.key === 'Escape' && desktopPanel) {
         e.preventDefault()
         setDesktopPanel(null)
+        preOpenFocusRef.current?.focus()
         return
       }
 
       if (e.key === 'ArrowRight') {
-        if (desktopPanel === 'left') { e.preventDefault(); setDesktopPanel(null); return }
-        if (!desktopPanel && !onPageRowNav) { e.preventDefault(); setDesktopPanel('right'); return }
+        if (desktopPanel === 'left') { e.preventDefault(); setDesktopPanel(null); preOpenFocusRef.current?.focus(); return }
+        if (!desktopPanel && !onPageRowNav) { e.preventDefault(); preOpenFocusRef.current = activeEl; setDesktopPanel('right'); return }
       }
       if (e.key === 'ArrowLeft') {
-        if (desktopPanel === 'right') { e.preventDefault(); setDesktopPanel(null); return }
-        if (!desktopPanel && !onPageRowNav) { e.preventDefault(); setDesktopPanel('left'); return }
+        if (desktopPanel === 'right') { e.preventDefault(); setDesktopPanel(null); preOpenFocusRef.current?.focus(); return }
+        if (!desktopPanel && !onPageRowNav) { e.preventDefault(); preOpenFocusRef.current = activeEl; setDesktopPanel('left'); return }
       }
 
       if (panelHasFocus && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
