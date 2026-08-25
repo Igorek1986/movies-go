@@ -509,6 +509,14 @@ export default function AdminPage() {
         <div className={styles.pageHeader}>
           <h1 className={styles.title}>Администрирование</h1>
           <div className={styles.headerNav}>
+            <button
+              type="button"
+              className={styles.navBtn}
+              title="Статистика кешируется на 5 минут — если только что менял что-то на сервере (например прогревал кеш картинок), обнови вручную"
+              onClick={() => refresh()}
+            >
+              Обновить статистику
+            </button>
             <Link to="/admin/parsers" className={styles.navBtn}>Парсеры</Link>
             <Link to="/admin/proxies" className={styles.navBtn}>Прокси</Link>
             <Link to="/admin/bot" className={styles.navBtn}>Бот</Link>
