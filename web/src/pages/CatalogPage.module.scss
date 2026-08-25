@@ -55,6 +55,9 @@
 
   @media (max-width: $bp-sm) {
     width: 150px;
+    // iOS Safari auto-zooms the page on focus for any input with a computed
+    // font-size under 16px — this is that threshold, not a visual choice.
+    font-size: 16px;
   }
 }
 

@@ -15,7 +15,7 @@ export interface BottomNavOption {
 export const BOTTOM_NAV_OPTIONS: BottomNavOption[] = [
   { key: 'back',     label: 'Назад',     to: null },
   { key: 'home',     label: 'Главная',   to: '/catalog' },
-  { key: 'search',   label: 'Поиск',     to: '/catalog' },
+  { key: 'search',   label: 'Поиск',     to: null }, // action, not a page — see Layout's onClick
   { key: 'calendar', label: 'Календарь', to: '/calendar' },
   { key: 'mine',     label: 'Моё',       to: '/media-library' },
   { key: 'history',  label: 'История',   to: '/history' },

@@ -10,6 +10,22 @@ $nav-height: 52px;
   padding-top: calc(#{$nav-height} + env(safe-area-inset-top));
 }
 
+// Off-screen input focused synchronously the instant "Поиск" is tapped from
+// another page, before the route swap — see handleBottomSearch in Layout.tsx
+// for why. Not display:none/visibility:hidden (both block focus).
+.searchWarmup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  font-size: 16px;
+  pointer-events: none;
+}
+
 // ── Nav bar ───────────────────────────────────────────────────────────────────
 
 .nav {

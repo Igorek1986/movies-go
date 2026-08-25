@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { ProfileSwitcher } from '@/components/ProfileSwitcher'
@@ -16,6 +17,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [theme, setTheme] = useState<ThemeId>(() => getStoredTheme())
+  const searchWarmupRef = useRef<HTMLInputElement>(null)
 
   function handleThemeChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = e.target.value as ThemeId
@@ -102,12 +104,39 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   // «Нижняя панель») — navKeys is the account's saved key list (or the
   // built-in default), mapped to renderable items here. "back"/"home" get
   // special-cased onClick handlers; everything else is a plain route.
+  // "Поиск" has no route of its own (BOTTOM_NAV_OPTIONS.search.to is null —
+  // it'd otherwise highlight alongside "Главная" any time either lands on
+  // /catalog). Already on /catalog: just collapse any expanded category and
+  // focus in place.
+  //
+  // From elsewhere, a plain flushSync-then-focus isn't enough on iOS PWA:
+  // even though the whole thing (route swap + CatalogPage's focus layout-
+  // effect) runs synchronously inside this click handler, WebKit's "was this
+  // focus() a direct result of a user gesture" heuristic doesn't survive a
+  // full component-tree replacement (this Layout instance and its button get
+  // torn down as part of the very navigation the click triggered). So we
+  // "warm up" the keyboard on searchWarmupRef first — a plain input that's
+  // already attached and isn't going anywhere until the navigation starts —
+  // then hand focus to the real search input once it mounts. Once the
+  // keyboard is up, moving focus between inputs doesn't need a fresh gesture
+  // to keep it open, even across the heavier work in between.
+  function handleBottomSearch() {
+    if (location.pathname === '/catalog') {
+      window.dispatchEvent(new CustomEvent('catalog:back'))
+      window.dispatchEvent(new CustomEvent('catalog:focus-search'))
+    } else {
+      searchWarmupRef.current?.focus()
+      requestFocusCatalogSearch()
+      flushSync(() => nav('/catalog'))
+    }
+  }
+
   const bottomNavItems: BottomNavItem[] = navKeys.map(key => {
     const opt = BOTTOM_NAV_OPTIONS.find(o => o.key === key)!
     const onClick =
       key === 'back' ? handleBottomBack :
       key === 'home' ? () => window.dispatchEvent(new CustomEvent('catalog:back')) :
-      key === 'search' ? () => { window.dispatchEvent(new CustomEvent('catalog:back')); requestFocusCatalogSearch() } :
+      key === 'search' ? handleBottomSearch :
       undefined
     return { key: opt.key, label: opt.label, icon: BOTTOM_NAV_ICONS[opt.key], to: opt.to ?? undefined, onClick }
   })
@@ -182,6 +211,8 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       </div>
 
       <main className={`${styles.main}${wide ? ' ' + styles.mainWide : ''}`}>{children}</main>
+
+      <input ref={searchWarmupRef} type="text" aria-hidden="true" tabIndex={-1} className={styles.searchWarmup} />
 
       <BottomNav items={bottomNavItems} />
     </div>

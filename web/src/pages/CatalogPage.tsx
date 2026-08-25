@@ -936,9 +936,14 @@ export default function CatalogPage() {
   // triggered while already on /catalog (event, no remount) and navigating
   // here from another page (flag checked once on mount, since the click's
   // event dispatch happens before this component even exists in that case).
-  // Deliberately synchronous, not requestAnimationFrame-deferred — deferring
-  // by a frame let something else win focus back first.
-  useEffect(() => {
+  // useLayoutEffect, not useEffect: Layout wraps the cross-page navigation in
+  // flushSync so this whole mount (render+commit+layout effects) happens
+  // synchronously inside the original click handler. That's required for
+  // iOS Safari to treat the resulting focus() as part of the trusted user
+  // gesture and actually raise the keyboard — a regular useEffect fires in a
+  // separate task after the gesture window closes, so focus() would "work"
+  // (activeElement changes) but the keyboard would stay closed.
+  useLayoutEffect(() => {
     function focusMainSearch() {
       mainSearchRef.current?.querySelector('input')?.focus()
     }
