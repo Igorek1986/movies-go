@@ -649,7 +649,11 @@ export default function CardDetailPage() {
       if (!items.length) return
       const idx = Math.min(rowFocusIdx.current.get(row.dataset.rowId!) ?? 0, items.length - 1)
       const target = items[idx]
-      target?.focus()
+      // preventScroll: our own scrollIntoView/scrollTo below handles the
+      // motion smoothly — without this, the browser's native focus-scroll
+      // jumps there instantly first, then our smooth scroll glides from
+      // that already-jumped spot, reading as a jerky double-motion.
+      target?.focus({ preventScroll: true })
       if (row.dataset.rowId === 'progress' || row.dataset.rowId === 'status') {
         // progress/status live inside the hero, at the very top of the
         // page — snap back to the top, matching how the page first looked
@@ -727,7 +731,7 @@ export default function CardDetailPage() {
         e.preventDefault()
         const next = idx + (e.key === 'ArrowRight' ? 1 : -1)
         rowFocusIdx.current.set(currentRow.dataset.rowId!, next)
-        items[next]?.focus()
+        items[next]?.focus({ preventScroll: true })
         // Keep horizontal focus centered in scrollable rows (cast/similar)
         // instead of the browser's default edge-alignment — block:'nearest'
         // so this doesn't also yank the page's vertical scroll position.
