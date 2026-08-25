@@ -63,11 +63,21 @@ export interface BottomNavItem {
 // default set (Назад/Главная/Моё/История), but any page/context can render
 // its own <BottomNav items={...}> with a different set if needed later.
 // `position` picks the docked edge ("bottom", default, or "right"/"left" —
-// a vertical strip, mainly meant for the tablet width range).
-export function BottomNav({ items, position = 'bottom' }: { items: BottomNavItem[]; position?: 'bottom' | 'right' | 'left' }) {
-  const navClass = `${styles.bottomNav}${position !== 'bottom' ? ' ' + styles[position] : ''}`
+// a vertical strip, mainly meant for the tablet width range). `forceShow`
+// and `navRef`/`onBlur` are for the desktop keyboard-summoned panel (see
+// Layout.tsx) — irrelevant to the normal tablet/mobile CSS-driven rendering.
+export function BottomNav({
+  items, position = 'bottom', forceShow, navRef, onBlur,
+}: {
+  items: BottomNavItem[]
+  position?: 'bottom' | 'right' | 'left'
+  forceShow?: boolean
+  navRef?: React.Ref<HTMLElement>
+  onBlur?: React.FocusEventHandler<HTMLElement>
+}) {
+  const navClass = `${styles.bottomNav}${position !== 'bottom' ? ' ' + styles[position] : ''}${forceShow ? ' ' + styles.forceShow : ''}`
   return (
-    <nav className={navClass} aria-label="Быстрая навигация">
+    <nav ref={navRef} className={navClass} aria-label="Быстрая навигация" onBlur={onBlur}>
       {items.map(item => item.to ? (
         <NavLink
           key={item.key}

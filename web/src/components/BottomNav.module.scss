@@ -26,7 +26,15 @@
 // that inset can be 44-59px: baking it into a border-box width in "right:0"
 // mode ate straight into the content area and truncated every label down to
 // 2-3 characters, which is what "iPhone-only, tablet mode" turned out to be.
+//
+// Self-contained (position/display/z-index included, not inherited from
+// .bottomNav's own media block above) because it's also used unconditionally
+// on desktop via .forceShow — summoned by the arrow keys, see Layout.tsx —
+// where .bottomNav's max-width:$bp-lg block never matches.
 @mixin vertical-nav-base {
+  display: flex;
+  position: fixed;
+  z-index: 200;
   flex-direction: column;
   top: calc(#{$nav-height} + env(safe-area-inset-top) + #{$spacing-lg});
   bottom: calc(#{$spacing-lg} + env(safe-area-inset-bottom));
@@ -40,24 +48,32 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
-// Vertical strips docked to the right/left instead of the bottom bar —
-// opt-in, tablet width range only (phones stay on the bottom bar regardless
-// of this setting, too narrow for a sidebar). Same specificity as
-// .bottomNav's media rule above, comes later in the file, so each wins on
-// every property it redeclares.
+// Vertical strips docked to the right/left instead of the bottom bar — opt-in
+// on tablet width (phones stay on the bottom bar, too narrow for a sidebar),
+// or forced open on desktop via keyboard (.forceShow, Layout.tsx). Same
+// specificity as .bottomNav's media rule above, comes later in the file, so
+// each wins on every property it redeclares.
 .right {
+  left: auto;
+  right: calc(#{$spacing-lg} + env(safe-area-inset-right));
+
   @media (min-width: $bp-md) and (max-width: $bp-lg) {
     @include vertical-nav-base;
-    left: auto;
-    right: calc(#{$spacing-lg} + env(safe-area-inset-right));
+  }
+  &.forceShow {
+    @include vertical-nav-base;
   }
 }
 
 .left {
+  right: auto;
+  left: calc(#{$spacing-lg} + env(safe-area-inset-left));
+
   @media (min-width: $bp-md) and (max-width: $bp-lg) {
     @include vertical-nav-base;
-    right: auto;
-    left: calc(#{$spacing-lg} + env(safe-area-inset-left));
+  }
+  &.forceShow {
+    @include vertical-nav-base;
   }
 }
 
@@ -104,6 +120,18 @@
   @media (min-width: $bp-md) and (max-width: $bp-lg) {
     padding: 0 $spacing-xs;
   }
+}
+.right.forceShow .bottomNavItem,
+.left.forceShow .bottomNavItem {
+  padding: 0 $spacing-xs;
+}
+
+// Visible focus ring while navigating the desktop panel with the keyboard
+// (arrows summon it, see Layout.tsx) — the app has no global :focus-visible
+// treatment to inherit, so give it one here explicitly.
+.bottomNavItem:focus-visible {
+  outline: 2px solid $color-primary;
+  outline-offset: -2px;
 }
 
 .bottomNavItemActive {

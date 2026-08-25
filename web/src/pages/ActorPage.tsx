@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { tmdbUrl } from '@/utils/poster'
 import styles from './ActorPage.module.scss'
@@ -16,7 +16,6 @@ interface ActorData {
 
 export default function ActorPage() {
   const { personId } = useParams<{ personId: string }>()
-  const navigate = useNavigate()
   const [actor, setActor] = useState<ActorData | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -34,14 +33,12 @@ export default function ActorPage() {
   if (loading) return <Layout><div className={styles.loading}>Загрузка…</div></Layout>
   if (!actor) return (
     <Layout>
-      <button className={styles.floatBack} onClick={() => navigate(-1)}>← Назад</button>
       <div className={styles.notFound}><p>Не найдено</p></div>
     </Layout>
   )
 
   return (
     <Layout>
-      <button className={styles.floatBack} onClick={() => navigate(-1)}>← Назад</button>
       <div className={styles.page}>
 
         <div className={styles.hero}>

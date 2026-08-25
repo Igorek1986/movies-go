@@ -147,6 +147,79 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
     return { key: opt.key, label: opt.label, icon: BOTTOM_NAV_ICONS[opt.key], to: opt.to ?? undefined, onClick }
   })
 
+  // Desktop keyboard nav: Backspace = "Назад" everywhere (replaces the old
+  // per-page floating back button), ArrowRight/ArrowLeft summon this same
+  // panel as a floating side pill so desktop users get one without a mouse.
+  // Skipped on /catalog: it already binds Backspace itself (collapses an
+  // expanded category first, see its own onKeyDown) and owns all four
+  // arrows for grid navigation — wiring both up would double-fire history
+  // or fight over the arrow keys. Revisit together when catalog's own
+  // keyboard nav gets reworked.
+  const [desktopPanel, setDesktopPanel] = useState<'left' | 'right' | null>(null)
+  const desktopPanelRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    if (!desktopPanel) return
+    const first = desktopPanelRef.current?.querySelector('button, a') as HTMLElement | null
+    first?.focus()
+  }, [desktopPanel])
+
+  useEffect(() => {
+    function isTypingTarget(el: Element | null) {
+      const tag = el?.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || (el as HTMLElement | null)?.isContentEditable
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      // $bp-lg in variables.scss — desktop only, matches the width where
+      // the panel isn't already shown via CSS for mobile/tablet.
+      if (window.innerWidth <= 1024) return
+      if (location.pathname === '/catalog') return
+      if (isTypingTarget(document.activeElement)) return
+
+      const panelHasFocus = !!desktopPanelRef.current?.contains(document.activeElement)
+
+      if (e.key === 'Backspace') {
+        e.preventDefault()
+        setDesktopPanel(null)
+        handleBottomBack()
+        return
+      }
+
+      if (e.key === 'Escape' && desktopPanel) {
+        e.preventDefault()
+        setDesktopPanel(null)
+        return
+      }
+
+      if (e.key === 'ArrowRight') {
+        if (desktopPanel === 'left') { e.preventDefault(); setDesktopPanel(null); return }
+        if (!desktopPanel) { e.preventDefault(); setDesktopPanel('right'); return }
+      }
+      if (e.key === 'ArrowLeft') {
+        if (desktopPanel === 'right') { e.preventDefault(); setDesktopPanel(null); return }
+        if (!desktopPanel) { e.preventDefault(); setDesktopPanel('left'); return }
+      }
+
+      if (panelHasFocus && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault()
+        const focusable = Array.from(desktopPanelRef.current?.querySelectorAll('button, a') ?? []) as HTMLElement[]
+        const i = focusable.indexOf(document.activeElement as HTMLElement)
+        const next = Math.min(Math.max(i + (e.key === 'ArrowDown' ? 1 : -1), 0), focusable.length - 1)
+        focusable[next]?.focus()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [location.pathname, desktopPanel]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleDesktopPanelBlur(e: React.FocusEvent<HTMLElement>) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDesktopPanel(null)
+    }
+  }
+
   const links = (
     <>
       <NavLink to="/catalog"  className={linkClass} onClick={() => { setMenuOpen(false); window.dispatchEvent(new CustomEvent('catalog:back')) }}>Каталог</NavLink>
@@ -221,6 +294,16 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       <input ref={searchWarmupRef} type="text" aria-hidden="true" tabIndex={-1} className={styles.searchWarmup} />
 
       <BottomNav items={bottomNavItems} position={navPosition} />
+
+      {desktopPanel && (
+        <BottomNav
+          items={bottomNavItems}
+          position={desktopPanel}
+          forceShow
+          navRef={desktopPanelRef}
+          onBlur={handleDesktopPanelBlur}
+        />
+      )}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useLayoutEffect, useCallback, useMemo } from 'react'
-import { useParams, Link, useLocation } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl, tmdbUrl } from '@/utils/poster'
 import { watchedThreshold } from '@/utils/config'
@@ -578,8 +578,6 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
 
 export default function CardDetailPage() {
   const { cardId } = useParams<{ cardId: string }>()
-  const location   = useLocation()
-  const backUrl    = (location.state as { backUrl?: string } | null)?.backUrl ?? `/catalog#${cardId}`
   const { user }   = useAuth()
 
   const { activeDevice, activeProfile } = useActiveProfile()
@@ -953,7 +951,6 @@ export default function CardDetailPage() {
 
   if (!card) return (
     <Layout>
-      <Link to={backUrl} className={styles.floatBack}>← Назад</Link>
       <div className={styles.notFound}>
         <p>Карточка не найдена</p>
       </div>
@@ -998,8 +995,6 @@ export default function CardDetailPage() {
 
   return (
     <Layout>
-      <Link to={backUrl} className={styles.floatBack}>← Назад</Link>
-
       <div className={styles.page}>
 
         {/* ── Backdrop ── */}

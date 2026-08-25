@@ -17,52 +17,6 @@
   button { margin-bottom: $spacing-md; }
 }
 
-// ── Floating back button (fixed, вне потока) ──────────────────────────────────
-
-.floatBack {
-  position: fixed;
-  bottom: $spacing-xl;
-  left: $spacing-lg;
-  z-index: 50;
-  // On wide viewports align with the content container left edge
-  @media (min-width: 1200px) {
-    left: calc((100vw - 1200px) / 2 + #{$spacing-lg});
-  }
-  display: flex;
-  align-items: center;
-  gap: $spacing-xs;
-  padding: $spacing-xs $spacing-md;
-  text-decoration: none;
-  background: rgba($color-bg-card-rgb, 0.92);
-  backdrop-filter: blur(8px);
-  border: 1px solid $color-border;
-  border-radius: $radius-full;
-  color: $color-text-muted;
-  font-size: $font-size-sm;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-
-  // Superseded by the Layout nav panel's own Назад slot on mobile/tablet
-  // (shown up to $bp-lg) — last so it wins the cascade over the
-  // unconditional `display: flex` above.
-  @media (max-width: $bp-lg) {
-    display: none;
-  }
-
-  &:hover {
-    border-color: $color-primary;
-    color: $color-primary;
-    background: rgba($color-bg-card-rgb, 1);
-  }
-
-  @media (max-width: $bp-sm) {
-    bottom: $spacing-md;
-    left: $spacing-sm;
-  }
-}
-
 // ── Backdrop ─────────────────────────────────────────────────────────────────
 
 .backdrop {
