@@ -48,7 +48,89 @@
   background: linear-gradient(to bottom, rgba($color-bg-rgb, 0.1) 0%, transparent 20%, $color-bg 90%);
 }
 
-// ── Hero ──────────────────────────────────────────────────────────────────────
+// ── Hero (full-bleed, "hero" card layout — see CardLayoutSettings) ───────────
+// Background covers the full first screen, text is pinned to the bottom via
+// flex justify-content — same idea as plugins/full_hero.js, ported to plain
+// CSS instead of hacking Lampa's own DOM.
+
+.heroFull {
+  position: relative;
+  width: calc(100% + $spacing-2xl * 2);
+  margin: -$spacing-2xl (-$spacing-2xl) 0;
+  min-height: calc(100vh - #{$nav-height} - env(safe-area-inset-top));
+  display: flex;
+  overflow: hidden;
+
+  @media (max-width: $bp-sm) {
+    width: calc(100% + $spacing-lg * 2);
+    margin: -$spacing-lg (-$spacing-lg) 0;
+  }
+}
+
+.heroFullBg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 15%;
+    display: block;
+  }
+}
+
+// No backdrop_path (fresh/obscure releases) — poster stretched into the same
+// slot instead of an empty background, blurred+darkened since a portrait
+// poster cropped this wide looks better softened than sharp (plain
+// object-fit: cover, no fallback treatment, is what full_hero.js itself
+// does — this goes a little further since we're not fighting Lampa's own
+// img element/CSS here, free to style it).
+.heroFullBgPoster img {
+  object-position: center center;
+  filter: blur(30px) brightness(0.6) saturate(1.1);
+  transform: scale(1.15);
+}
+
+.heroFullContent {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  padding: $spacing-2xl;
+  // Fades from solid page background at the bottom (guaranteed contrast for
+  // the text/buttons/tags below, unchanged from the classic layout — same
+  // components, don't need their own restyle) up to the plain image at top.
+  background: linear-gradient(to top, $color-bg 0%, rgba($color-bg-rgb, 0.92) 40%, rgba($color-bg-rgb, 0.35) 70%, transparent 100%);
+
+  @media (max-width: $bp-md) { padding: $spacing-lg; }
+  @media (max-width: $bp-sm) { padding: $spacing-md; }
+}
+
+.heroDescr {
+  margin: 0;
+  max-width: 46em;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.heroDetails {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  max-width: 900px;
+}
+
+// ── Hero (classic card layout) ────────────────────────────────────────────────
 
 .hero {
   display: flex;

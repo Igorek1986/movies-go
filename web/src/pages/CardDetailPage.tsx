@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl, tmdbUrl } from '@/utils/poster'
 import { watchedThreshold } from '@/utils/config'
+import { getStoredCardLayout } from '@/utils/cardLayout'
 import { useAuth } from '@/hooks/useAuth'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import styles from './CardDetailPage.module.scss'
@@ -993,156 +994,214 @@ export default function CardDetailPage() {
 
   const epDurSec = (card.episode_run_time || 0) * 60
 
+  // Per-device (localStorage) — see CardLayoutSettings on /profiles. Read
+  // fresh on every mount, no live-update needed (can't change it without
+  // navigating away from this page).
+  const cardLayout = getStoredCardLayout()
+  // No separate full-bleed background exists without an image — falls back
+  // to the poster (blurred/darkened, see .heroFullBgPoster) rather than
+  // leaving the hero visually empty, same idea as full_hero.js's
+  // backdropFallback for cards TMDB has no backdrop_path for.
+  const heroBgSrc = backdropSrc || posterImgUrl
+
+  // ── Shared pieces, reused by both layouts below ──────────────────────────
+
+  const tagsRow = (
+    <div className={styles.tags}>
+      {isTV && <span className={styles.tagType}>Сериал</span>}
+      {tags.map((t, i) => <span key={i} className={styles.tag}>{t}</span>)}
+      {card.vote_average > 0 && <span className={styles.tagRating}>★ {card.vote_average.toFixed(1)}</span>}
+    </div>
+  )
+
+  const watchStatusRow = activeDevice && (
+    <div className={styles.watchStatusRow}>
+      {(isTV ? TV_STATUS_OPTIONS : MOVIE_STATUS_OPTIONS).map(opt => {
+        // No status set at all (never touched) displays as "Не смотрю" —
+        // that's the implicit default, just not written to the DB
+        // until the user actually picks something.
+        const active = watchStatus === opt.status || (!watchStatus && opt.status === 'not_watching')
+        return (
+          <button
+            key={opt.status}
+            className={styles.watchStatusBtn}
+            style={active ? {
+              color: opt.color,
+              borderColor: opt.color,
+              backgroundColor: opt.color + '26',
+            } : undefined}
+            disabled={statusBusy}
+            title={opt.title}
+            aria-label={opt.title}
+            onClick={() => toggleWatchStatus(opt.status)}
+          >
+            <opt.icon />
+            <span className={styles.watchStatusLabel}>{opt.title}</span>
+          </button>
+        )
+      })}
+      <button
+        className={styles.watchStatusBtn}
+        style={isFavorite ? {
+          color: FAVORITE_COLOR,
+          borderColor: FAVORITE_COLOR,
+          backgroundColor: FAVORITE_COLOR + '26',
+        } : undefined}
+        disabled={favoriteBusy}
+        title={isFavorite ? 'В закладках' : 'Добавить в закладки'}
+        aria-label={isFavorite ? 'В закладках' : 'Добавить в закладки'}
+        onClick={toggleFavorite}
+      >
+        <IconBookmark filled={isFavorite} />
+        <span className={styles.watchStatusLabel}>Закладка</span>
+      </button>
+    </div>
+  )
+
+  const genresRow = card.genres?.length > 0 && (
+    <div className={styles.genres}>
+      {card.genres.map(g => <span key={g.id} className={styles.genre}>{g.name}</span>)}
+    </div>
+  )
+
+  const movieProgressBlock = showMovieProgress && (
+    <div className={styles.progressWrap}>
+      <div className={styles.progressTop}>
+        <span className={`${styles.progressLabel} ${moviePct >= watchedThreshold() ? styles.progressComplete : ''}`}>
+          {moviePct >= watchedThreshold()
+            ? 'Просмотрено'
+            : `Просмотрено ${Math.round(moviePct)}%`}
+          {movieDur > 0 && ` · ${fmtTime(Math.round(movieDur * moviePct / 100))} / ${fmtTime(movieDur)}`}
+        </span>
+        {moviePct > 0 && (
+          <button className={styles.deleteBtn} onClick={() => setConfirmState({ kind: 'deleteMovie' })}>✕</button>
+        )}
+      </div>
+      <div
+        className={styles.movieBar}
+        onClick={e => {
+          const r = e.currentTarget.getBoundingClientRect()
+          onMovieBarClick(Math.min(100, Math.max(0, (e.clientX - r.left) / r.width * 100)), card)
+        }}
+      >
+        <div className={styles.movieBarFill} style={{ width: `${Math.min(moviePct, 100)}%` }} />
+      </div>
+    </div>
+  )
+
+  const tvProgressBlock = isTV && tvWatchedEps > 0 && (
+    <div className={styles.progressWrap}>
+      <div className={styles.progressTop}>
+        <span className={`${styles.progressLabel} ${tvProgress >= 100 ? styles.progressComplete : ''}`}>
+          {tvTotalEps > 0
+            ? `${tvWatchedEps} / ${tvTotalEps} серий`
+            : `${tvWatchedEps} серий просмотрено`}
+        </span>
+        <button className={styles.deleteBtn} onClick={() => setConfirmState({ kind: 'deleteShow' })}>✕</button>
+      </div>
+      <div className={styles.tvBar}>
+        <div className={styles.tvBarFill} style={{ width: `${tvProgress}%` }} />
+      </div>
+    </div>
+  )
+
+  const statusLines = (
+    <>
+      {isTV && card.status && (
+        <p className={styles.statusLine}>
+          <span className={styles.statusLabel}>Статус:</span> {card.status}
+        </p>
+      )}
+      {displayDate && (
+        <p className={styles.statusLine}>
+          <span className={styles.statusLabel}>{isTV ? 'Первый выход:' : 'Дата выхода:'}</span> {displayDate}
+        </p>
+      )}
+    </>
+  )
+
+  const refreshBtn = user?.is_admin && (
+    <button
+      className={styles.refreshTmdbBtn}
+      onClick={refreshFromTMDB}
+      disabled={refreshing}
+    >
+      {refreshing ? 'Обновление…' : refreshed ? '✓ Обновлено' : '↻ Обновить из TMDB'}
+    </button>
+  )
+
   return (
     <Layout>
       <div className={styles.page}>
 
-        {/* ── Backdrop ── */}
-        {backdropSrc && (
-          <div className={styles.backdrop}>
-            <img src={backdropSrc} alt="" aria-hidden />
-            <div className={styles.backdropOverlay} />
-          </div>
-        )}
-
-        {/* ── Hero ── */}
-        <div className={`${styles.hero}${!backdropSrc ? ' ' + styles.heroNoBg : ''}`}>
-          <div className={styles.posterWrap}>
-            {posterImgUrl
-              ? <img className={styles.poster} src={posterImgUrl} alt={card.title} />
-              : <div className={styles.posterPlaceholder}>Нет постера</div>
-            }
-          </div>
-
-          <div className={styles.heroInfo}>
-            <h1 className={styles.title}>{card.title}</h1>
-            {card.original_title && card.original_title !== card.title && (
-              <p className={styles.origTitle}>{card.original_title}</p>
-            )}
-
-            <div className={styles.tags}>
-              {isTV && <span className={styles.tagType}>Сериал</span>}
-              {tags.map((t, i) => <span key={i} className={styles.tag}>{t}</span>)}
-              {card.vote_average > 0 && <span className={styles.tagRating}>★ {card.vote_average.toFixed(1)}</span>}
+        {cardLayout === 'hero' ? (
+          <>
+            {/* ── Hero: full-bleed background, text pinned to the bottom
+                (like plugins/full_hero.js) ── */}
+            <div className={styles.heroFull}>
+              {heroBgSrc && (
+                <div className={`${styles.heroFullBg}${!backdropSrc ? ' ' + styles.heroFullBgPoster : ''}`}>
+                  <img src={heroBgSrc} alt="" aria-hidden />
+                </div>
+              )}
+              <div className={styles.heroFullContent}>
+                <h1 className={styles.title}>{card.title}</h1>
+                {card.original_title && card.original_title !== card.title && (
+                  <p className={styles.origTitle}>{card.original_title}</p>
+                )}
+                {card.overview && <p className={styles.heroDescr}>{card.overview}</p>}
+                {tagsRow}
+                {watchStatusRow}
+                {genresRow}
+                {movieProgressBlock}
+                {tvProgressBlock}
+              </div>
             </div>
 
-            {activeDevice && (
-              <div className={styles.watchStatusRow}>
-                {(isTV ? TV_STATUS_OPTIONS : MOVIE_STATUS_OPTIONS).map(opt => {
-                  // No status set at all (never touched) displays as "Не смотрю" —
-                  // that's the implicit default, just not written to the DB
-                  // until the user actually picks something.
-                  const active = watchStatus === opt.status || (!watchStatus && opt.status === 'not_watching')
-                  return (
-                    <button
-                      key={opt.status}
-                      className={styles.watchStatusBtn}
-                      style={active ? {
-                        color: opt.color,
-                        borderColor: opt.color,
-                        backgroundColor: opt.color + '26',
-                      } : undefined}
-                      disabled={statusBusy}
-                      title={opt.title}
-                      aria-label={opt.title}
-                      onClick={() => toggleWatchStatus(opt.status)}
-                    >
-                      <opt.icon />
-                      <span className={styles.watchStatusLabel}>{opt.title}</span>
-                    </button>
-                  )
-                })}
-                <button
-                  className={styles.watchStatusBtn}
-                  style={isFavorite ? {
-                    color: FAVORITE_COLOR,
-                    borderColor: FAVORITE_COLOR,
-                    backgroundColor: FAVORITE_COLOR + '26',
-                  } : undefined}
-                  disabled={favoriteBusy}
-                  title={isFavorite ? 'В закладках' : 'Добавить в закладки'}
-                  aria-label={isFavorite ? 'В закладках' : 'Добавить в закладки'}
-                  onClick={toggleFavorite}
-                >
-                  <IconBookmark filled={isFavorite} />
-                  <span className={styles.watchStatusLabel}>Закладка</span>
-                </button>
+            {/* ── Details: full description + status/date + admin refresh —
+                same content as the teaser above, not clamped this time ── */}
+            <div className={styles.heroDetails}>
+              {card.overview && <p className={styles.overview}>{card.overview}</p>}
+              {statusLines}
+              {refreshBtn}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* ── Backdrop ── */}
+            {backdropSrc && (
+              <div className={styles.backdrop}>
+                <img src={backdropSrc} alt="" aria-hidden />
+                <div className={styles.backdropOverlay} />
               </div>
             )}
 
-            {card.genres?.length > 0 && (
-              <div className={styles.genres}>
-                {card.genres.map(g => <span key={g.id} className={styles.genre}>{g.name}</span>)}
+            {/* ── Hero ── */}
+            <div className={`${styles.hero}${!backdropSrc ? ' ' + styles.heroNoBg : ''}`}>
+              <div className={styles.posterWrap}>
+                {posterImgUrl
+                  ? <img className={styles.poster} src={posterImgUrl} alt={card.title} />
+                  : <div className={styles.posterPlaceholder}>Нет постера</div>
+                }
               </div>
-            )}
 
-            {/* ── Movie progress ── */}
-            {showMovieProgress && (
-              <div className={styles.progressWrap}>
-                <div className={styles.progressTop}>
-                  <span className={`${styles.progressLabel} ${moviePct >= watchedThreshold() ? styles.progressComplete : ''}`}>
-                    {moviePct >= watchedThreshold()
-                      ? 'Просмотрено'
-                      : `Просмотрено ${Math.round(moviePct)}%`}
-                    {movieDur > 0 && ` · ${fmtTime(Math.round(movieDur * moviePct / 100))} / ${fmtTime(movieDur)}`}
-                  </span>
-                  {moviePct > 0 && (
-                    <button className={styles.deleteBtn} onClick={() => setConfirmState({ kind: 'deleteMovie' })}>✕</button>
-                  )}
-                </div>
-                <div
-                  className={styles.movieBar}
-                  onClick={e => {
-                    const r = e.currentTarget.getBoundingClientRect()
-                    onMovieBarClick(Math.min(100, Math.max(0, (e.clientX - r.left) / r.width * 100)), card)
-                  }}
-                >
-                  <div className={styles.movieBarFill} style={{ width: `${Math.min(moviePct, 100)}%` }} />
-                </div>
+              <div className={styles.heroInfo}>
+                <h1 className={styles.title}>{card.title}</h1>
+                {card.original_title && card.original_title !== card.title && (
+                  <p className={styles.origTitle}>{card.original_title}</p>
+                )}
+                {tagsRow}
+                {watchStatusRow}
+                {genresRow}
+                {movieProgressBlock}
+                {tvProgressBlock}
+                {card.overview && <p className={styles.overview}>{card.overview}</p>}
+                {statusLines}
+                {refreshBtn}
               </div>
-            )}
-
-            {/* ── TV overall progress ── */}
-            {isTV && tvWatchedEps > 0 && (
-              <div className={styles.progressWrap}>
-                <div className={styles.progressTop}>
-                  <span className={`${styles.progressLabel} ${tvProgress >= 100 ? styles.progressComplete : ''}`}>
-                    {tvTotalEps > 0
-                      ? `${tvWatchedEps} / ${tvTotalEps} серий`
-                      : `${tvWatchedEps} серий просмотрено`}
-                  </span>
-                  <button className={styles.deleteBtn} onClick={() => setConfirmState({ kind: 'deleteShow' })}>✕</button>
-                </div>
-                <div className={styles.tvBar}>
-                  <div className={styles.tvBarFill} style={{ width: `${tvProgress}%` }} />
-                </div>
-              </div>
-            )}
-
-            {card.overview && <p className={styles.overview}>{card.overview}</p>}
-
-            {isTV && card.status && (
-              <p className={styles.statusLine}>
-                <span className={styles.statusLabel}>Статус:</span> {card.status}
-              </p>
-            )}
-            {displayDate && (
-              <p className={styles.statusLine}>
-                <span className={styles.statusLabel}>{isTV ? 'Первый выход:' : 'Дата выхода:'}</span> {displayDate}
-              </p>
-            )}
-
-            {user?.is_admin && (
-              <button
-                className={styles.refreshTmdbBtn}
-                onClick={refreshFromTMDB}
-                disabled={refreshing}
-              >
-                {refreshing ? 'Обновление…' : refreshed ? '✓ Обновлено' : '↻ Обновить из TMDB'}
-              </button>
-            )}
-          </div>
-        </div>
+            </div>
+          </>
+        )}
 
         {/* ── Cast ── */}
         {cast.length > 0 && (

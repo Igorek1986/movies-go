@@ -3,6 +3,7 @@ import { useAuth } from '@/hooks/useAuth'
 import Layout from '@/components/Layout'
 import PasswordInput from '@/components/PasswordInput'
 import { BottomNavSettings } from '@/components/BottomNavSettings'
+import { CardLayoutSettings } from '@/components/CardLayoutSettings'
 import { PROFILE_ICON_IDS, profileIconSrc } from '@/utils/profileIcon'
 import { useActiveProfile, profileUrlParam } from '@/contexts/ActiveProfileContext'
 import styles from './ProfilesPage.module.scss'
@@ -1772,6 +1773,7 @@ export default function ProfilesPage() {
           </details>
 
           <BottomNavSettings />
+          <CardLayoutSettings />
 
           {/* ── Account settings ── */}
           <details className={styles.details}>
