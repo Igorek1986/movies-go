@@ -138,24 +138,17 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	run(func() {
 		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_not_found_at IS NOT NULL`).Scan(&tmdbNotFound) //nolint:errcheck
 	})
-	run(func() { postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_cast`).Scan(&actorCount) })                                //nolint:errcheck
 	run(func() {
-		postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_crew WHERE job='Director'`).Scan(&directorCount) //nolint:errcheck
+		// actor/director/popular-source counts are cached (see catcache.go) —
+		// each is otherwise ~250-500ms (COUNT DISTINCT over ~1M rows, or a live
+		// HTTP round-trip) and none needs to be request-fresh: they only change
+		// when the catalog does, which is exactly when the cache gets refreshed.
+		actorCount, directorCount, popularSourceCount = cachedStatsCounts(ctx)
+		popularSourceURL = getPopularSourceURL(ctx)
 	})
 	run(func() {
 		popularDays := store.GetSettingInt(ctx, "popular_period_days")
 		popularCards = store.CountPopularCards(ctx, popularDays)
-	})
-	run(func() {
-		// External popular source (if configured): show its card count too.
-		popularSourceURL = getPopularSourceURL(ctx)
-		if popularSourceURL != "" {
-			sctx, scancel := context.WithTimeout(ctx, 4*time.Second)
-			defer scancel()
-			if resp, err := fetchPopularSource(sctx, 1, 1, ""); err == nil {
-				popularSourceCount = resp.TotalResults
-			}
-		}
 	})
 	run(func() {
 		if rows, err := postgres.Pool.Query(ctx,
