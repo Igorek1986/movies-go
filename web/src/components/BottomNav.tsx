@@ -25,16 +25,24 @@ export function CalendarIcon() {
 export function SessionsIcon() {
   return <svg {...iconProps}><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg>
 }
+export function SearchIcon() {
+  return <svg {...iconProps}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+}
+export function SettingsIcon() {
+  return <svg {...iconProps}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.96 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.96a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04Z" /></svg>
+}
 
 // key -> icon, shared by BottomNav's own default set and the settings UI
 // (SettingsBottomNav) so both stay in sync with BOTTOM_NAV_OPTIONS for free.
 export const BOTTOM_NAV_ICONS: Record<string, React.ReactNode> = {
   back: <BackIcon />,
   home: <HomeIcon />,
+  search: <SearchIcon />,
   calendar: <CalendarIcon />,
   mine: <StarIcon />,
   history: <HistoryIcon />,
   sessions: <SessionsIcon />,
+  settings: <SettingsIcon />,
 }
 
 export interface BottomNavItem {

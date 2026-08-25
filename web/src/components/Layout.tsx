@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { ProfileSwitcher } from '@/components/ProfileSwitcher'
 import { BottomNav, BOTTOM_NAV_ICONS, type BottomNavItem } from '@/components/BottomNav'
 import { BOTTOM_NAV_OPTIONS, resolveBottomNavKeys } from '@/utils/bottomNavConfig'
+import { requestFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { applyTheme, getStoredTheme, THEMES, type ThemeId } from '@/utils/theme'
 import { loadTTLCache, saveTTLCache } from '@/utils/ttlCache'
 import { ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS } from '@/utils/adminStatsCache'
@@ -106,6 +107,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
     const onClick =
       key === 'back' ? handleBottomBack :
       key === 'home' ? () => window.dispatchEvent(new CustomEvent('catalog:back')) :
+      key === 'search' ? () => { window.dispatchEvent(new CustomEvent('catalog:back')); requestFocusCatalogSearch() } :
       undefined
     return { key: opt.key, label: opt.label, icon: BOTTOM_NAV_ICONS[opt.key], to: opt.to ?? undefined, onClick }
   })

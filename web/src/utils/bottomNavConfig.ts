@@ -15,10 +15,12 @@ export interface BottomNavOption {
 export const BOTTOM_NAV_OPTIONS: BottomNavOption[] = [
   { key: 'back',     label: 'Назад',     to: null },
   { key: 'home',     label: 'Главная',   to: '/catalog' },
+  { key: 'search',   label: 'Поиск',     to: '/catalog' },
   { key: 'calendar', label: 'Календарь', to: '/calendar' },
   { key: 'mine',     label: 'Моё',       to: '/media-library' },
   { key: 'history',  label: 'История',   to: '/history' },
   { key: 'sessions', label: 'Сессии',    to: '/sessions' },
+  { key: 'settings', label: 'Настройки', to: '/profiles' },
 ]
 
 export const DEFAULT_KEYS = ['back', 'home', 'mine', 'history']

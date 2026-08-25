@@ -132,7 +132,8 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 // bottom-nav bar buttons (see BOTTOM_NAV_OPTIONS in bottomNavConfig.ts,
 // which must stay in sync with this list).
 var validBottomNavKeys = map[string]bool{
-	"back": true, "home": true, "calendar": true, "mine": true, "history": true, "sessions": true,
+	"back": true, "home": true, "search": true, "calendar": true,
+	"mine": true, "history": true, "sessions": true, "settings": true,
 }
 
 // POST /api/me/bottom-nav — save the current user's bottom-nav bar config.

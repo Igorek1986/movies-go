@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
 import { scrollV, getGridCols } from '@/utils/scrollNav'
+import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import styles from './CatalogPage.module.scss'
 
@@ -930,6 +931,21 @@ export default function CatalogPage() {
     window.addEventListener('catalog:back', onCatalogBack)
     return () => window.removeEventListener('catalog:back', onCatalogBack)
   }, [expandedCategory]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Bottom-nav "Поиск" — focus the main search input. Covers both being
+  // triggered while already on /catalog (event, no remount) and navigating
+  // here from another page (flag checked once on mount, since the click's
+  // event dispatch happens before this component even exists in that case).
+  // Deliberately synchronous, not requestAnimationFrame-deferred — deferring
+  // by a frame let something else win focus back first.
+  useEffect(() => {
+    function focusMainSearch() {
+      mainSearchRef.current?.querySelector('input')?.focus()
+    }
+    if (takePendingFocusCatalogSearch()) focusMainSearch()
+    window.addEventListener('catalog:focus-search', focusMainSearch)
+    return () => window.removeEventListener('catalog:focus-search', focusMainSearch)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stateName = (location.state as { catName?: string } | null)?.catName ?? null
   const expandedCat = categories.find(c => c.id === expandedCategory) ?? (
