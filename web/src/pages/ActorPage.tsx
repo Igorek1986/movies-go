@@ -64,7 +64,7 @@ export default function ActorPage() {
             <div className={styles.grid}>
               {actor.works.map(item => {
                 const cardId = `${item.id}_${item.media_type}`
-                const poster = item.poster_path ? tmdbUrl(item.poster_path, 'w342') : null
+                const poster = item.poster_path ? tmdbUrl(item.poster_path, 'w500') : null
                 return (
                   <Link
                     key={item.id}

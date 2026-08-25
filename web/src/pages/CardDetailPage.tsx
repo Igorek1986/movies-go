@@ -961,7 +961,7 @@ export default function CardDetailPage() {
   )
 
   const backdropSrc  = tmdbUrl(card.backdrop_path, 'w1280')
-  const posterImgUrl = tmdbUrl(card.poster_path, 'w342') || posterUrl(card.poster_path)
+  const posterImgUrl = tmdbUrl(card.poster_path, 'w500') || posterUrl(card.poster_path)
   const isTV         = card.media_type === 'tv'
   const displayDate  = isTV ? card.first_air_date : card.release_date
 

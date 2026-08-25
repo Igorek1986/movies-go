@@ -76,21 +76,21 @@ func fixEntity(ent *models.Entity) {
 		ent.ReleaseDate = ent.FirstAirDate
 	}
 
-	ent.PosterPath = ImageURL(ent.PosterPath, "w342")
-	ent.BackdropPath = ImageURL(ent.BackdropPath, "w780")
+	ent.PosterPath = ImageURL(ent.PosterPath, "w500")
+	ent.BackdropPath = ImageURL(ent.BackdropPath, "w1280")
 
 	if ent.BelongsToCollection != nil {
-		ent.BelongsToCollection.Poster = ImageURL(ent.BelongsToCollection.Poster, "w342")
-		ent.BelongsToCollection.Backdrop = ImageURL(ent.BelongsToCollection.Backdrop, "w780")
+		ent.BelongsToCollection.Poster = ImageURL(ent.BelongsToCollection.Poster, "w500")
+		ent.BelongsToCollection.Backdrop = ImageURL(ent.BelongsToCollection.Backdrop, "w1280")
 	}
 
 	if ent.Images != nil {
 		for i := range ent.Images.Backdrops {
-			ent.Images.Backdrops[i].FilePath = ImageURL(ent.Images.Backdrops[i].FilePath, "w780")
+			ent.Images.Backdrops[i].FilePath = ImageURL(ent.Images.Backdrops[i].FilePath, "w1280")
 		}
 
 		for i := range ent.Images.Posters {
-			ent.Images.Posters[i].FilePath = ImageURL(ent.Images.Posters[i].FilePath, "w342")
+			ent.Images.Posters[i].FilePath = ImageURL(ent.Images.Posters[i].FilePath, "w500")
 		}
 	}
 
@@ -103,7 +103,7 @@ func fixEntity(ent *models.Entity) {
 	}
 
 	for i := range ent.Seasons {
-		ent.Seasons[i].PosterPath = ImageURL(ent.Seasons[i].PosterPath, "w342")
+		ent.Seasons[i].PosterPath = ImageURL(ent.Seasons[i].PosterPath, "w500")
 		ent.Seasons[i].AirDate = FixDate(ent.Seasons[i].AirDate)
 	}
 

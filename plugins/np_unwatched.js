@@ -2020,7 +2020,7 @@
         fetchCalendarMonth(next.getFullYear(), next.getMonth() + 1, function (eps) { results = results.concat(eps); done(); });
     }
 
-    // /calendar отдаёт poster_path уже полным URL (http://image.tmdb.org/t/p/w342/...),
+    // /calendar отдаёт poster_path уже полным URL (http://image.tmdb.org/t/p/w500/...),
     // а и нативный timetable-рендер, и myshows.js ждут относительный TMDB-путь
     // (сами добавляют t/p/wNNN/ спереди) — обрезаем размерный сегмент обратно.
     function toRelativePosterPath(url) {
