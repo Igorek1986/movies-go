@@ -549,7 +549,13 @@
   display: flex;
   gap: $spacing-md;
   overflow-x: auto;
-  padding-bottom: $spacing-sm;
+  overflow-y: hidden;
+  // Horizontal padding isn't just spacing — without it the focus ring
+  // (outline-offset: 2px, see [data-nav-item]:focus-visible) on the
+  // first/last card gets clipped by this element's own scroll boundary,
+  // leaving just a sliver visible instead of a full ring.
+  padding: 4px 4px $spacing-sm;
+  margin: -4px -4px 0;
   scrollbar-width: thin;
   scrollbar-color: $color-border transparent;
 
@@ -1030,7 +1036,10 @@ $drum-visible: 5;
   display: flex;
   gap: $spacing-md;
   overflow-x: auto;
-  padding-bottom: $spacing-sm;
+  overflow-y: hidden;
+  // See .castRow's own comment — same clipped-focus-ring fix.
+  padding: 4px 4px $spacing-sm;
+  margin: -4px -4px 0;
   scrollbar-width: thin;
   scrollbar-color: $color-border transparent;
 
@@ -1052,6 +1061,14 @@ $drum-visible: 5;
   &:hover {
     transform: translateY(-2px);
     border-color: rgba($color-primary-rgb, 0.4);
+  }
+
+  // overflow: hidden above (clips the poster to the card's rounded corners)
+  // also clips a normal outline sitting outside the box — inset box-shadow
+  // instead, same fix as .movieBar/.heroFull's cast/similar row padding.
+  &[data-nav-item]:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px $color-primary;
   }
 }
 

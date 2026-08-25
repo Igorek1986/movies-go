@@ -1299,15 +1299,21 @@ export default function CardDetailPage() {
   )
 
   const refreshBtn = user?.is_admin && (
-    <button
-      className={styles.refreshTmdbBtn}
-      data-row-id="refresh"
-      data-nav-item
-      onClick={refreshFromTMDB}
-      disabled={refreshing}
-    >
-      {refreshing ? 'Обновление…' : refreshed ? '✓ Обновлено' : '↻ Обновить из TMDB'}
-    </button>
+    // data-row-id and data-nav-item deliberately on separate elements —
+    // querySelector(All) only matches descendants, not the row root
+    // itself, so a lone button carrying both attributes is invisible to
+    // getRows()'s "does this row have any nav items" check and gets
+    // silently skipped when moving between rows.
+    <div data-row-id="refresh">
+      <button
+        className={styles.refreshTmdbBtn}
+        data-nav-item
+        onClick={refreshFromTMDB}
+        disabled={refreshing}
+      >
+        {refreshing ? 'Обновление…' : refreshed ? '✓ Обновлено' : '↻ Обновить из TMDB'}
+      </button>
+    </div>
   )
 
   return (
