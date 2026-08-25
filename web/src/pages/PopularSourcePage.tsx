@@ -24,7 +24,49 @@ interface SourceData {
   source_url: string
   results: Omit<SourceCard, 'rank'>[]
   total_results: number
+  total_pages?: number
   daily?: DailyPoint[] | null
+}
+
+type RawCard = Omit<SourceCard, 'rank'>
+
+// Fetches page 1 immediately (onFirstPage), then the remaining pages
+// (2..total_pages) concurrently in the background, delivering each as it
+// arrives via onMorePage — so the table renders right away and fills in
+// rather than blocking on all ~37 pages up front. A page that fails is
+// dropped (best-effort), matching the backend's own behavior.
+async function loadPopularSourceProgressively(
+  date: string | null,
+  onFirstPage: (data: SourceData) => void,
+  onMorePage: (results: RawCard[]) => void,
+  isCancelled: () => boolean,
+): Promise<void> {
+  const dateQS = date ? `date=${date}` : ''
+  const first: SourceData = await fetch(`/api/admin/popular-source${dateQS ? `?${dateQS}` : ''}`)
+    .then(r => (r.ok ? r.json() : Promise.reject()))
+  if (isCancelled()) return
+  onFirstPage(first)
+
+  const totalPages = first.total_pages ?? 1
+  if (totalPages <= 1) return
+  const pending = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+  const concurrency = 6
+  async function worker() {
+    while (pending.length > 0) {
+      if (isCancelled()) return
+      const page = pending.shift()
+      if (page === undefined) return
+      try {
+        const qs = ['page=' + page, dateQS].filter(Boolean).join('&')
+        const d: { results: RawCard[] } = await fetch(`/api/admin/popular-source/page?${qs}`)
+          .then(r => (r.ok ? r.json() : Promise.reject()))
+        if (!isCancelled()) onMorePage(d.results ?? [])
+      } catch {
+        // best-effort — skip a failed page rather than aborting the rest
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, pending.length) }, worker))
 }
 
 type SortKey = 'rank' | 'title' | 'year' | 'viewers' | 'plays' | 'avg_percent' | 'finished_rate'
@@ -73,27 +115,32 @@ export default function PopularSourcePage() {
   // Daily-chart filter: a selected day restricts the list to that date. The
   // source must support the date param; older sources ignore it (see note).
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [dayResults, setDayResults] = useState<SourceData['results'] | null>(null)
+  const [dayData, setDayData] = useState<SourceData | null>(null)
   const [dayLoading, setDayLoading] = useState(false)
 
   useEffect(() => {
-    fetch('/api/admin/popular-source')
-      .then(r => (r.ok ? r.json() : Promise.reject()))
-      .then(setData)
-      .catch(() => setError(true))
-      .finally(() => setLoading(false))
+    let cancelled = false
+    loadPopularSourceProgressively(
+      null,
+      first => { if (!cancelled) { setData(first); setLoading(false) } },
+      more => { if (!cancelled) setData(d => (d ? { ...d, results: [...d.results, ...more] } : d)) },
+      () => cancelled,
+    ).catch(() => { if (!cancelled) { setError(true); setLoading(false) } })
+    return () => { cancelled = true }
   }, [])
 
-  // Refetch the source list for the selected day (chart filter).
+  // Refetch the source list for the selected day (chart filter) — same
+  // page-1-first-then-fill-in behavior as the main list.
   useEffect(() => {
-    if (!selectedDate) { setDayResults(null); return }
+    if (!selectedDate) { setDayData(null); return }
     setDayLoading(true)
     let cancelled = false
-    fetch(`/api/admin/popular-source?date=${selectedDate}`)
-      .then(r => (r.ok ? r.json() : Promise.reject()))
-      .then((d: SourceData) => { if (!cancelled) setDayResults(d.results ?? []) })
-      .catch(() => { if (!cancelled) setDayResults([]) })
-      .finally(() => { if (!cancelled) setDayLoading(false) })
+    loadPopularSourceProgressively(
+      selectedDate,
+      first => { if (!cancelled) { setDayData(first); setDayLoading(false) } },
+      more => { if (!cancelled) setDayData(d => (d ? { ...d, results: [...d.results, ...more] } : d)) },
+      () => cancelled,
+    ).catch(() => { if (!cancelled) { setDayData({ source_url: '', results: [], total_results: 0 }); setDayLoading(false) } })
     return () => { cancelled = true }
   }, [selectedDate])
 
@@ -102,7 +149,8 @@ export default function PopularSourcePage() {
   }, [sort, typeFilter])
 
   // Attach a stable popularity rank from the source order.
-  const results = selectedDate ? (dayResults ?? []) : (data?.results ?? [])
+  const activeData = selectedDate ? dayData : data
+  const results = activeData?.results ?? []
   const allCards: SourceCard[] = useMemo(
     () => results.map((c, idx) => ({ ...c, rank: idx + 1 })),
     [results],
@@ -110,6 +158,10 @@ export default function PopularSourcePage() {
   const hasCounts = allCards.some(c => typeof c.viewers === 'number')
   const hasMetrics = allCards.some(c => typeof c.avg_percent === 'number')
   const daily = data?.daily ?? []
+  // Remaining pages still filling in the background (lazy-loaded, see
+  // loadPopularSourceProgressively) — non-blocking, the table is already
+  // interactive with what's loaded so far.
+  const loadingMore = !!activeData && results.length < activeData.total_results
 
   function toggleSort(key: SortKey) {
     setSort(prev => prev.key === key
@@ -147,6 +199,12 @@ export default function PopularSourcePage() {
           </h1>
           <Link to="/admin" className={styles.backLink}>Админ</Link>
         </div>
+
+        {loadingMore && (
+          <p className={styles.filterNote}>
+            Догружаем ещё {(activeData!.total_results - results.length).toLocaleString('ru')} карточек…
+          </p>
+        )}
 
         <p className={styles.desc}>
           Список от внешнего источника (Popular Source URL{data?.source_url ? `: ${data.source_url}` : ''}).

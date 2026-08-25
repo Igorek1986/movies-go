@@ -103,11 +103,17 @@ func fetchPopularSource(ctx context.Context, page, perPage int, date string) (*p
 	return &out, nil
 }
 
-// handleAPIAdminPopularSource returns the full external source's popular list
-// (admin view), aggregating all pages so the client can sort/filter locally.
-// Uses per_page=100 to minimise round-trips, retries the first page once.
+// popularSourcePerPage is the page size used against the external source for
+// both the admin popular-source list and its per-page follow-up fetches.
+const popularSourcePerPage = 100
+
+// handleAPIAdminPopularSource returns just the first page of the external
+// source's popular list (admin view) plus pagination metadata — the client
+// fetches the remaining pages itself via handleAPIAdminPopularSourcePage and
+// appends them progressively (lazy loading), so this responds in ~1 round-trip
+// instead of blocking on up to 50 sequential/concurrent page fetches.
 func handleAPIAdminPopularSource(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
 	// Optional ?date=YYYY-MM-DD — restricts the ranking to a single day
@@ -117,59 +123,60 @@ func handleAPIAdminPopularSource(w http.ResponseWriter, r *http.Request) {
 		date = ""
 	}
 
-	const perPage = 100
-	first, err := fetchPopularSource(ctx, 1, perPage, date)
-	if err != nil { // one retry — source can be briefly slow
-		first, err = fetchPopularSource(ctx, 1, perPage, date)
-	}
-	if err != nil {
-		Error(w, http.StatusBadGateway, "popular source unavailable")
-		return
-	}
-
-	lastPage := min(first.TotalPages, 50)
-
-	// Remaining pages are independent — fetch them concurrently (bounded pool)
-	// instead of one at a time. This is what actually made the endpoint take
-	// 16-29s: ~37 sequential round-trips at ~300-500ms each, not a slow query
-	// or a slow source. A page that errors is just dropped (best-effort),
-	// unlike the old sequential version which stopped pagination entirely on
-	// the first failure.
-	pages := make([][]json.RawMessage, lastPage+1) // 1-indexed; [0] unused
-	pages[1] = first.Results
+	var first *popularSourceResp
 	var daily json.RawMessage
 	var wg sync.WaitGroup
-	const maxConcurrent = 10
-	sem := make(chan struct{}, maxConcurrent)
-
-	wg.Add(1)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		var err error
+		first, err = fetchPopularSource(ctx, 1, popularSourcePerPage, date)
+		if err != nil { // one retry — source can be briefly slow
+			first, _ = fetchPopularSource(ctx, 1, popularSourcePerPage, date)
+		}
+	}()
 	go func() {
 		defer wg.Done()
 		daily = fetchPopularSourceDaily(ctx) // best-effort: older sources may not expose it
 	}()
-	for page := 2; page <= lastPage; page++ {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(page int) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			if next, err := fetchPopularSource(ctx, page, perPage, date); err == nil {
-				pages[page] = next.Results
-			}
-		}(page)
-	}
 	wg.Wait()
 
-	results := make([]json.RawMessage, 0, first.TotalResults)
-	for page := 1; page <= lastPage; page++ {
-		results = append(results, pages[page]...)
+	if first == nil {
+		Error(w, http.StatusBadGateway, "popular source unavailable")
+		return
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"source_url":    getPopularSourceURL(r.Context()),
-		"results":       results,
+		"results":       first.Results,
 		"total_results": first.TotalResults,
+		"total_pages":   min(first.TotalPages, 50),
 		"daily":         daily,
 	})
+}
+
+// handleAPIAdminPopularSourcePage returns a single page (2..50) of the
+// external source's popular list — the follow-up fetch for the lazy-loading
+// client described above.
+func handleAPIAdminPopularSourcePage(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 2 || page > 50 {
+		Error(w, http.StatusBadRequest, "page must be between 2 and 50")
+		return
+	}
+	date := r.URL.Query().Get("date")
+	if !validDate(date) {
+		date = ""
+	}
+
+	next, err := fetchPopularSource(ctx, page, popularSourcePerPage, date)
+	if err != nil {
+		Error(w, http.StatusBadGateway, "popular source unavailable")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"results": next.Results})
 }
 
 // fetchPopularSourceDaily pulls per-day dynamics from the source. Returns nil
