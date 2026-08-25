@@ -333,14 +333,12 @@
 
   // Same border+background+color combo as the active state (inline style,
   // per-option color — see watchStatusRow in CardDetailPage.tsx) uses, just
-  // with the neutral focus color instead of that option's own. PLUS an
-  // outline, which the inline style never sets — border-color/background/
-  // color alone go invisible when this happens to be the active option
-  // too, since its inline style (higher specificity than any class) wins
-  // for those exact same properties. The outline still shows through.
+  // with the neutral focus color instead of that option's own. Only takes
+  // effect on a non-active button — when the focused one IS the active
+  // option, its inline style wins for these same properties regardless (a
+  // stronger fill in that case is computed in JS instead, see focusedStatusKey).
   &[data-nav-item]:focus-visible {
-    outline: 2px solid $color-primary;
-    outline-offset: 2px;
+    outline: none;
     border-color: $color-primary;
     background: rgba($color-primary-rgb, 0.15);
     color: $color-primary;

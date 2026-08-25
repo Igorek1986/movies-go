@@ -596,6 +596,12 @@ export default function CardDetailPage() {
   const [watchStatus,  setWatchStatus] = useState('')
   const [statusBusy,   setStatusBusy]  = useState(false)
   const [isFavorite,   setIsFavorite]  = useState(false)
+  // Which watch-status button (or 'favorite') currently has keyboard
+  // focus — the active one's color comes from an inline style (per-option,
+  // set in JS), which beats any CSS :focus-visible rule for the same
+  // properties, so a focused *and* active button needs its "also focused"
+  // cue computed here instead, not in CSS.
+  const [focusedStatusKey, setFocusedStatusKey] = useState<string | null>(null)
   const [favoriteBusy, setFavoriteBusy] = useState(false)
   const [confirmState, setConfirmState] = useState<PendingConfirm | null>(null)
   const [descrExpanded, setDescrExpanded] = useState(false)
@@ -830,6 +836,13 @@ export default function CardDetailPage() {
   async function toggleWatchStatus(next: string) {
     if (!activeDevice || !cardId || statusBusy) return
     const status = watchStatus === next ? '' : next // clicking the active one clears it
+    // disabled={statusBusy} below blurs whichever button was focused (a
+    // disabled element can't hold focus) — the browser doesn't restore it
+    // once re-enabled, so we do it ourselves once the DOM has caught up
+    // (requestAnimationFrame, not immediately after setStatusBusy(false):
+    // that state update hasn't committed to the DOM yet at that point, so
+    // the button would still actually be disabled and silently refuse it).
+    const focused = document.activeElement as HTMLElement | null
     setStatusBusy(true)
     try {
       const res = await fetch('/api/web/set-status', {
@@ -840,6 +853,7 @@ export default function CardDetailPage() {
       if (res.ok) setWatchStatus(status)
     } finally {
       setStatusBusy(false)
+      requestAnimationFrame(() => focused?.focus())
     }
   }
 
@@ -856,6 +870,9 @@ export default function CardDetailPage() {
 
   async function toggleFavorite() {
     if (!card || !activeDevice || !defaultProfileId || favoriteBusy) return
+    // See toggleWatchStatus's own comment — same disabled-during-request
+    // focus loss.
+    const focused = document.activeElement as HTMLElement | null
     setFavoriteBusy(true)
     try {
       const params = new URLSearchParams({ device_id: String(activeDevice.id), profile_id: defaultProfileId })
@@ -908,6 +925,7 @@ export default function CardDetailPage() {
       if (putRes.ok) setIsFavorite(nowFavorite)
     } finally {
       setFavoriteBusy(false)
+      requestAnimationFrame(() => focused?.focus())
     }
   }
 
@@ -1076,6 +1094,9 @@ export default function CardDetailPage() {
 
   async function refreshFromTMDB() {
     if (!cardId || refreshing) return
+    // Same disabled-during-request focus loss as toggleWatchStatus/
+    // toggleFavorite — see that comment.
+    const focused = document.activeElement as HTMLElement | null
     setRefreshing(true); setRefreshed(false)
     try {
       const r = await fetch(`/api/admin/refresh-card/${cardId}`, { method: 'POST' })
@@ -1087,6 +1108,7 @@ export default function CardDetailPage() {
       }
     } finally {
       setRefreshing(false)
+      requestAnimationFrame(() => focused?.focus())
     }
   }
 
@@ -1180,6 +1202,7 @@ export default function CardDetailPage() {
         // that's the implicit default, just not written to the DB
         // until the user actually picks something.
         const active = watchStatus === opt.status || (!watchStatus && opt.status === 'not_watching')
+        const focused = focusedStatusKey === opt.status
         return (
           <button
             key={opt.status}
@@ -1188,12 +1211,17 @@ export default function CardDetailPage() {
             style={active ? {
               color: opt.color,
               borderColor: opt.color,
-              backgroundColor: opt.color + '26',
+              // Noticeably stronger fill while also focused — the only way
+              // to show that here, since this whole style already wins
+              // over any CSS :focus-visible rule on the same properties.
+              backgroundColor: opt.color + (focused ? '4D' : '26'),
             } : undefined}
             disabled={statusBusy}
             title={opt.title}
             aria-label={opt.title}
             onClick={() => toggleWatchStatus(opt.status)}
+            onFocus={() => setFocusedStatusKey(opt.status)}
+            onBlur={() => setFocusedStatusKey(k => k === opt.status ? null : k)}
           >
             <opt.icon />
             <span className={styles.watchStatusLabel}>{opt.title}</span>
@@ -1206,12 +1234,14 @@ export default function CardDetailPage() {
         style={isFavorite ? {
           color: FAVORITE_COLOR,
           borderColor: FAVORITE_COLOR,
-          backgroundColor: FAVORITE_COLOR + '26',
+          backgroundColor: FAVORITE_COLOR + (focusedStatusKey === 'favorite' ? '4D' : '26'),
         } : undefined}
         disabled={favoriteBusy}
         title={isFavorite ? 'В закладках' : 'Добавить в закладки'}
         aria-label={isFavorite ? 'В закладках' : 'Добавить в закладки'}
         onClick={toggleFavorite}
+        onFocus={() => setFocusedStatusKey('favorite')}
+        onBlur={() => setFocusedStatusKey(k => k === 'favorite' ? null : k)}
       >
         <IconBookmark filled={isFavorite} />
         <span className={styles.watchStatusLabel}>Закладка</span>
