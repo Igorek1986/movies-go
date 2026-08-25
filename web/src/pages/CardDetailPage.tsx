@@ -835,7 +835,14 @@ export default function CardDetailPage() {
 
   async function toggleWatchStatus(next: string) {
     if (!activeDevice || !cardId || statusBusy) return
-    const status = watchStatus === next ? '' : next // clicking the active one clears it
+    // Clicking the already-active status is a no-op, not a "clear it" —
+    // it should stay exactly what it was, same as every other status.
+    // ('not_watching' is also the implicit display default when no status
+    // is set at all, see the `active` check in watchStatusRow — clicking
+    // it while THAT'S why it looks active is a no-op too.)
+    const isActive = watchStatus === next || (!watchStatus && next === 'not_watching')
+    if (isActive) return
+    const status = next
     // disabled={statusBusy} below blurs whichever button was focused (a
     // disabled element can't hold focus) — the browser doesn't restore it
     // once re-enabled, so we do it ourselves once the DOM has caught up
