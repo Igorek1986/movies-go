@@ -634,6 +634,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   width: 100%;
+
+  .castCard:hover &,
+  .castCard:focus-visible & { color: $color-primary; }
 }
 
 .castChar {
@@ -644,6 +647,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   width: 100%;
+
+  .castCard:hover &,
+  .castCard:focus-visible & { color: $color-primary; }
 }
 
 // ── TV Episode Summary ────────────────────────────────────────────────────────
