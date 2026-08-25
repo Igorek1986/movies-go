@@ -1064,8 +1064,7 @@ $drum-visible: 5;
   width: 120px;
   transition: transform $transition-fast, border-color $transition-fast;
 
-  &:hover,
-  &[data-nav-item]:focus-visible {
+  &:hover {
     transform: translateY(-2px);
     border-color: rgba($color-primary-rgb, 0.4);
   }
@@ -1073,9 +1072,13 @@ $drum-visible: 5;
   // Same reasoning as .castCard — match the existing :hover treatment
   // instead of the generic [data-nav-item] rectangle. outline: none since
   // overflow: hidden above (clips the poster to the card's rounded
-  // corners) would clip a real outline anyway.
+  // corners) would clip a real outline anyway. Solid + thicker than
+  // :hover's border — that 0.4-alpha 1px was too faint to read as a focus
+  // indicator on its own.
   &[data-nav-item]:focus-visible {
     outline: none;
+    transform: translateY(-2px);
+    border: 2px solid $color-primary;
   }
 }
 

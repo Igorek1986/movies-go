@@ -126,14 +126,13 @@
   padding: 0 $spacing-xs;
 }
 
-// Visible focus ring while navigating the desktop panel with the keyboard
-// (arrows summon it, see Layout.tsx) — the app has no global :focus-visible
-// treatment to inherit, so give it one here explicitly. Rounded to match
-// the pill's own curve (plain sharp corners looked jarring inside it).
+// Visible focus indicator while navigating the desktop panel with the
+// keyboard (arrows summon it, see Layout.tsx) — icon+label recolor to
+// primary (svg uses currentColor, so one `color` covers both) rather than
+// an outline box, same idea as matching :hover elsewhere on this page.
 .bottomNavItem:focus-visible {
-  outline: 2px solid $color-primary;
-  outline-offset: -4px;
-  border-radius: $radius-md;
+  outline: none;
+  color: $color-primary;
 }
 
 .bottomNavItemActive {
