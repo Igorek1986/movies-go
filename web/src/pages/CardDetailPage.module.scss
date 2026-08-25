@@ -78,16 +78,25 @@
   display: flex;
   overflow: hidden;
 
+  // BottomNav becomes a fixed overlay at this same $bp-lg cutoff (bottom bar
+  // by default — see Layout's navPosition; right/left tablet variants don't
+  // eat into bottom space, this covers the default) — without subtracting
+  // its height here too, the pinned buttons/progress land exactly where it
+  // covers the screen and get hidden behind it, not just "near the bottom".
+  @media (max-width: $bp-lg) {
+    min-height: calc(100vh - #{$nav-height} - env(safe-area-inset-top) - #{$bottom-nav-height} - env(safe-area-inset-bottom) - #{$spacing-lg});
+  }
+
   @media (max-width: $bp-md) {
     width: calc(100% + $spacing-md * 2);
     margin: -$spacing-lg (-$spacing-md) 0;
-    min-height: 65vh;
+    min-height: calc(65vh - #{$bottom-nav-height} - env(safe-area-inset-bottom));
   }
 
   @media (max-width: $bp-sm) {
     width: calc(100% + $spacing-sm * 2);
     margin: -$spacing-md (-$spacing-sm) 0;
-    min-height: 55vh;
+    min-height: calc(55vh - #{$bottom-nav-height} - env(safe-area-inset-bottom));
   }
 }
 
