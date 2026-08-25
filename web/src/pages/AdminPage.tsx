@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
+import { loadTTLCache, saveTTLCache } from '@/utils/ttlCache'
+import { ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS } from '@/utils/adminStatsCache'
 import styles from './AdminPage.module.scss'
 
 interface AdminUser {
@@ -57,14 +59,6 @@ interface UsersPaged {
   items: AdminUser[]
 }
 
-// Module-level (not React state) so it survives unmount/remount — navigating
-// away from /admin and back re-mounts the component and would otherwise
-// refetch from scratch every time, showing the skeleton cards again for the
-// ~1s round-trip even though nothing actually changed. Seeding from this
-// cache shows the last known values instantly while refresh() still runs in
-// the background to catch up.
-let statsCache: Stats | null = null
-
 export default function AdminPage() {
   const [usersPaged, setUsersPaged] = useState<UsersPaged | null>(null)
   const [usersPage, setUsersPage]   = useState(1)
@@ -74,7 +68,12 @@ export default function AdminPage() {
   const [usersSortDir, setUsersSortDir] = useState<'asc' | 'desc'>('desc')
   const [usersPerPage, setUsersPerPage] = useState(10)
   const usersTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [stats, setStats] = useState<Stats | null>(statsCache)
+  // Seeded from the shared localStorage cache (also warmed by Layout on any
+  // page an admin visits) — shows the last known values instantly, even
+  // slightly stale, rather than a blank skeleton. See adminStatsCache.ts.
+  const [stats, setStats] = useState<Stats | null>(
+    () => loadTTLCache<Stats>(ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS)?.data ?? null,
+  )
   const [sysStats, setSysStats] = useState<SystemStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -114,12 +113,15 @@ export default function AdminPage() {
     if (res.ok) setUsersPaged(await res.json())
   }, [])
 
-  // Silent refresh — stats only, no user list reset
+  // Silent refresh — stats only, no user list reset. Always hits the network
+  // (used by explicit calls and the status-poll intervals below, which need
+  // real-time data regardless of cache freshness); the TTL check lives at
+  // the mount effect that decides whether to call this at all on page load.
   const refresh = useCallback(async () => {
     const res = await fetch('/api/admin/stats')
     if (res.ok) {
       const data = await res.json()
-      statsCache = data
+      saveTTLCache(ADMIN_STATS_CACHE_KEY, data)
       setStats(data)
     }
   }, [])
@@ -237,9 +239,12 @@ export default function AdminPage() {
     // fetch meId once
     fetch('/api/me').then(r => r.ok ? r.json() : null).then(d => { if (d?.id) meId.current = d.id })
     // Stats render independently (skeleton vs cards gated by `stats`, seeded
-    // from statsCache) — kept out of this Promise.all so the users table
-    // doesn't sit on "Загрузка…" waiting for the stats round-trip too.
-    refresh()
+    // from the shared cache) — kept out of this Promise.all so the users
+    // table doesn't sit on "Загрузка…" waiting for the stats round-trip too.
+    // Skipped entirely when the cache (possibly warmed by Layout on a
+    // previous page) is still fresh — no point refetching on every visit.
+    const cachedStats = loadTTLCache<Stats>(ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS)
+    if (!cachedStats || cachedStats.stale) refresh()
     Promise.all([
       fetchUsers(1, '', 'created_at', 'desc', 10),
       fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchSysStats(), fetchApiKey(),

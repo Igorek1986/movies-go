@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { useAuth } from '@/hooks/useAuth'
+import { loadTTLCache, saveTTLCache } from '@/utils/ttlCache'
+import { ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS } from '@/utils/adminStatsCache'
 import styles from './StatsPage.module.scss'
 
 interface NewUser {
@@ -42,13 +44,9 @@ interface UserRow {
 
 type Tab = 'today' | 'all'
 
-// Module-level (not React state) so it survives unmount/remount — leaving
-// /stats and coming back re-mounts the component and would otherwise show
-// the full-page "Загрузка…" and refetch from scratch every time, even though
-// nothing actually changed. Seeding from this cache renders the last known
-// values instantly while fetchStats() still runs in the background to
-// refresh them.
-let statsCache: StatsData | null = null
+// User list has no TTL concept of its own (doesn't change as often as the
+// counters) — kept as a simple module-level cache so it survives unmount/
+// remount within the same tab load, same as before.
 let allUsersCache: UserRow[] | null = null
 
 function StatTable({ rows, cols }: { rows: StatRow[]; cols: [string, string] }) {
@@ -120,15 +118,20 @@ function Section({
 export default function StatsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [stats, setStats] = useState<StatsData | null>(statsCache)
+  // Seeded from the shared localStorage cache (also warmed by Layout on any
+  // page an admin visits) — see adminStatsCache.ts.
+  const cachedStats = loadTTLCache<StatsData>(ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS)
+  const [stats, setStats] = useState<StatsData | null>(cachedStats?.data ?? null)
   const [allUsers, setAllUsers] = useState<UserRow[]>(allUsersCache ?? [])
   const [usersTab, setUsersTab] = useState<Tab>('today')
   const [apiTab, setApiTab] = useState<Tab>('today')
   const [catsTab, setCatsTab] = useState<Tab>('today')
   const [myshowsTab, setMyshowsTab] = useState<Tab>('today')
-  const [loading, setLoading] = useState(statsCache === null)
+  const [loading, setLoading] = useState(!cachedStats)
   const [lastUpdate, setLastUpdate] = useState('')
 
+  // Always hits the network — used by the explicit "Обновить" button as well
+  // as the mount effect below, which only calls it when the cache is stale.
   const fetchStats = useCallback(async () => {
     try {
       const [sRes, uRes] = await Promise.all([
@@ -137,7 +140,7 @@ export default function StatsPage() {
       ])
       if (sRes.ok) {
         const data = await sRes.json()
-        statsCache = data
+        saveTTLCache(ADMIN_STATS_CACHE_KEY, data)
         setStats(data)
       }
       if (uRes.ok) {
@@ -155,6 +158,16 @@ export default function StatsPage() {
   useEffect(() => {
     if (user && !user.is_admin) {
       navigate('/', { replace: true })
+      return
+    }
+    // Skip the refetch entirely when the stats cache (possibly warmed by
+    // Layout on a previous page) is still fresh AND the user list already
+    // has something from this tab session — allUsers has no persistent
+    // cache of its own, so a fresh page load with an empty allUsersCache
+    // still needs to fetch it even if stats alone is warm.
+    const fresh = loadTTLCache<StatsData>(ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS)
+    if (fresh && !fresh.stale && allUsersCache !== null) {
+      setLoading(false)
       return
     }
     fetchStats()

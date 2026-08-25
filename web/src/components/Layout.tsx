@@ -3,6 +3,8 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { ProfileSwitcher } from '@/components/ProfileSwitcher'
 import { applyTheme, getStoredTheme, THEMES, type ThemeId } from '@/utils/theme'
+import { loadTTLCache, saveTTLCache } from '@/utils/ttlCache'
+import { ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS } from '@/utils/adminStatsCache'
 import styles from './Layout.module.scss'
 
 export default function Layout({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
@@ -21,6 +23,20 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   useEffect(() => {
     setMenuOpen(false)
   }, [location.pathname])
+
+  // Warm the admin-stats cache from whatever page the admin happens to be
+  // on, so that by the time they actually open /admin or /stats it's
+  // usually already fresh — skipped entirely if a still-valid cache exists
+  // (no point re-fetching on every page navigation).
+  useEffect(() => {
+    if (!user?.is_admin) return
+    const cached = loadTTLCache(ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS)
+    if (cached && !cached.stale) return
+    fetch('/api/admin/stats')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (data) saveTTLCache(ADMIN_STATS_CACHE_KEY, data) })
+      .catch(() => { /* best-effort prefetch */ })
+  }, [user?.is_admin])
 
   useEffect(() => {
     if (menuOpen) {
