@@ -907,7 +907,11 @@ export default function CatalogPage() {
         const allRows = Array.from(document.querySelectorAll<HTMLElement>('[data-row-id]'))
         const rowIdx = allRows.indexOf(rowInner)
         const targetRowIdx = e.key === 'ArrowDown' ? rowIdx + 1 : rowIdx - 1
-        if (targetRowIdx < 0 || targetRowIdx >= allRows.length) return
+        if (targetRowIdx < 0) {
+          mainSearchRef.current?.querySelector('input')?.focus()
+          return
+        }
+        if (targetRowIdx >= allRows.length) return
         const targetRow = allRows[targetRowIdx]
         const targetRowId = targetRow.dataset.rowId!
         const savedIdx = lastRowFocusIdx.current.get(targetRowId) ?? 0
@@ -978,6 +982,23 @@ export default function CatalogPage() {
                   placeholder="Поиск…"
                   value={searchValue}
                   onChange={e => handleSearchChange(e.target.value)}
+                  onKeyDown={e => {
+                    // Part of the site-wide keyboard-nav rollout: search sits
+                    // between the top menu and the category grid — Up/Down
+                    // move to whichever one is above/below it.
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault()
+                      const first = document.querySelector<HTMLElement>('[data-card]')
+                      first?.focus()
+                      if (first) scrollV(first)
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault()
+                      const topLink =
+                        document.querySelector<HTMLElement>('[data-top-nav] a[aria-current="page"]') ??
+                        document.querySelector<HTMLElement>('[data-top-nav] a')
+                      topLink?.focus()
+                    }
+                  }}
                 />
                 {searchValue && (
                   <button className={styles.searchClear} onClick={() => handleSearchChange('')} title="Очистить">✕</button>

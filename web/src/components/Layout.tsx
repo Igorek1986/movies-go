@@ -147,14 +147,15 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
     return { key: opt.key, label: opt.label, icon: BOTTOM_NAV_ICONS[opt.key], to: opt.to ?? undefined, onClick }
   })
 
-  // Desktop keyboard nav: Backspace = "Назад" everywhere (replaces the old
-  // per-page floating back button), ArrowRight/ArrowLeft summon this same
-  // panel as a floating side pill so desktop users get one without a mouse.
-  // Skipped on /catalog: it already binds Backspace itself (collapses an
-  // expanded category first, see its own onKeyDown) and owns all four
-  // arrows for grid navigation — wiring both up would double-fire history
-  // or fight over the arrow keys. Revisit together when catalog's own
-  // keyboard nav gets reworked.
+  // Desktop keyboard nav (site-wide rollout, in progress): Backspace =
+  // "Назад" everywhere (replaces the old per-page floating back button),
+  // ArrowRight/ArrowLeft summon this same panel as a floating side pill so
+  // desktop users get one without a mouse. Skipped on /catalog: it already
+  // binds Backspace itself (collapses an expanded category first, see its
+  // own onKeyDown) and owns all four arrows for grid navigation — wiring
+  // both up would double-fire history or fight over the arrow keys.
+  // (Top-menu Left/Right/Down navigation is handled below and, unlike this
+  // panel, is NOT skipped on /catalog — see the onTopNav branch.)
   const [desktopPanel, setDesktopPanel] = useState<'left' | 'right' | null>(null)
   const desktopPanelRef = useRef<HTMLElement>(null)
 
@@ -174,8 +175,33 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       // $bp-lg in variables.scss — desktop only, matches the width where
       // the panel isn't already shown via CSS for mobile/tablet.
       if (window.innerWidth <= 1024) return
-      if (location.pathname === '/catalog') return
       if (isTypingTarget(document.activeElement)) return
+
+      const activeEl = document.activeElement as HTMLElement | null
+      const onTopNav = !!activeEl?.closest('[data-top-nav]')
+
+      // Top menu (Каталог/Календарь/...): Left/Right moves between links,
+      // works on every page — part of the site-wide keyboard nav being
+      // rolled out incrementally, starting here + the catalog grid/search
+      // entry point (see CatalogPage). Down is deliberately left alone (no
+      // preventDefault) so a page-specific handler can decide what "back
+      // into the page" means — on /catalog that's its own onKeyDown's
+      // "focus isn't on a card → jump to the first one" fallback.
+      if (onTopNav && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault()
+        const topLinks = Array.from(document.querySelectorAll<HTMLElement>('[data-top-nav] a'))
+        const i = topLinks.indexOf(activeEl!)
+        const next = Math.min(Math.max(i + (e.key === 'ArrowRight' ? 1 : -1), 0), topLinks.length - 1)
+        topLinks[next]?.focus()
+        return
+      }
+      if (onTopNav && e.key === 'ArrowDown') return
+
+      // Everything below is skipped on /catalog: it already binds Backspace
+      // itself (collapses an expanded category first) and owns all four
+      // arrows for its own grid navigation — wiring both up would
+      // double-fire history or fight over the arrow keys.
+      if (location.pathname === '/catalog') return
 
       const panelHasFocus = !!desktopPanelRef.current?.contains(document.activeElement)
 
@@ -252,7 +278,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
         <a className={styles.brand} href="/">Movies API</a>
 
         {/* Desktop */}
-        <div className={styles.navLinks}>
+        <div className={styles.navLinks} data-top-nav>
           {links}
           <span className={styles.navUser}>{user?.username}</span>
           <ProfileSwitcher />
