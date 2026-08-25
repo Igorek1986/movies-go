@@ -271,6 +271,8 @@ $nav-height: 52px;
 
 // ── Main content ──────────────────────────────────────────────────────────────
 
+$bottom-nav-height: 56px;
+
 .main {
   flex: 1;
   padding: $spacing-xl $spacing-lg;
@@ -281,13 +283,64 @@ $nav-height: 52px;
 
   @media (max-width: $bp-md) {
     padding: $spacing-lg $spacing-md;
+    // Reserve space so the fixed bottom bar never covers page content —
+    // applied here once rather than per-page.
+    padding-bottom: calc(#{$spacing-lg} + #{$bottom-nav-height} + env(safe-area-inset-bottom));
   }
 
   @media (max-width: $bp-sm) {
     padding: $spacing-md $spacing-sm;
+    padding-bottom: calc(#{$spacing-md} + #{$bottom-nav-height} + env(safe-area-inset-bottom));
   }
 }
 
 .mainWide {
   max-width: 1800px;
+}
+
+// ── Mobile bottom bar — Назад/Главная/Моё/История ─────────────────────────────
+// Same 4 slots on every page, replacing the old page-specific floating back
+// button (see .floatBack in CardDetailPage/ActorPage, hidden on mobile now).
+
+.bottomNav {
+  display: none;
+
+  @media (max-width: $bp-md) {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 200;
+    height: calc(#{$bottom-nav-height} + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: $color-bg-card;
+    border-top: 1px solid $color-border;
+  }
+}
+
+.bottomNavItem {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: $color-text-muted;
+  text-decoration: none;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color $transition-fast;
+
+  svg { flex-shrink: 0; }
+
+  &:hover, &:active {
+    color: $color-text;
+  }
+}
+
+.bottomNavItemActive {
+  color: $color-primary;
 }

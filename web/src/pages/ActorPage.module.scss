@@ -32,6 +32,12 @@
   transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 
+  // Superseded by the Layout bottom bar's own Назад slot on mobile — last so
+  // it wins the cascade over the unconditional `display: flex` above.
+  @media (max-width: $bp-md) {
+    display: none;
+  }
+
   &:hover {
     border-color: $color-primary;
     color: $color-primary;
