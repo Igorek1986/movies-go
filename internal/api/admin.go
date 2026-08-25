@@ -1973,6 +1973,8 @@ var settingsGroupDefs = []struct {
 		"images_via_server",
 		"images_cache_enabled",
 		"images_cache_limit_mb",
+		"poster_size",
+		"backdrop_size",
 		"catalog_actor_count",
 		"catalog_actor_ru_count",
 		"catalog_director_count",
@@ -2017,6 +2019,7 @@ func handleAPIAdminSettingsSave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	store.InvalidateLimitsCache()
+	tmdb.LoadImageSizes(r.Context()) // pick up poster_size/backdrop_size immediately, no restart needed
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

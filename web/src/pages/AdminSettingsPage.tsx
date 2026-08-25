@@ -663,6 +663,10 @@ const PLACEHOLDERS: Record<string, string> = {
 
 const SELECT_KEYS: Record<string, string[]> = {
   app_mode: ['parser', 'all'],
+  // TMDB serves images only at these fixed widths (see /configuration) — no
+  // arbitrary custom sizes.
+  poster_size: ['w92', 'w154', 'w185', 'w342', 'w500', 'w780', 'original'],
+  backdrop_size: ['w300', 'w780', 'w1280', 'original'],
 }
 
 const CHECKBOX_KEYS: Record<string, string> = {
@@ -683,6 +687,8 @@ const DESCRIPTIONS: Record<string, string> = {
   watching_threshold: 'Процент прогресса текущей серии, после которого сериал получает статус «Смотрю» (0 = сразу на любой прогресс).',
   images_cache_enabled: 'Постеры/фоны с TMDB сохраняются на диск при первом запросе и дальше отдаются локально, без похода на TMDB. Работает только для веб-интерфейса (плагин Lampa не проксирует через сервер).',
   images_cache_limit_mb: 'При превышении лимита старые файлы (по дате записи) вытесняются автоматически.',
+  poster_size: 'Действует для новых/обновляемых карточек. Уже существующие карточки сохранят прежнее качество до своего следующего TMDB-обновления — нужен разовый бэкафилл в БД, чтобы поднять качество сразу у всех.',
+  backdrop_size: 'Действует для новых/обновляемых карточек, как и качество постеров.',
 }
 
 const LABELS: Record<string, string> = {
@@ -755,6 +761,8 @@ const LABELS: Record<string, string> = {
   images_via_server:       'Картинки через сервер (проксировать TMDB)',
   images_cache_enabled:    'Дисковый кеш картинок',
   images_cache_limit_mb:   'Лимит дискового кеша картинок (МБ)',
+  poster_size:             'Качество постеров',
+  backdrop_size:           'Качество фонов',
   catalog_actor_count:      'Актёры в каталоге — глобальных (0 = выкл)',
   catalog_actor_ru_count:   'Актёры в каталоге — русскоязычных (0 = выкл)',
   catalog_director_count:   'Режиссёры в каталоге (0 = выкл)',
@@ -839,6 +847,8 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'images_via_server',
     'images_cache_enabled',
     'images_cache_limit_mb',
+    'poster_size',
+    'backdrop_size',
     'catalog_actor_count',
     'catalog_actor_ru_count',
     'catalog_director_count',

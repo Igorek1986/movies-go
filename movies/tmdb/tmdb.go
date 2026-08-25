@@ -23,7 +23,40 @@ const (
 var (
 	genres      []*models.Genre
 	TMDBAuthKey string
+
+	// PosterSize/BackdropSize — TMDB size segment used when enriching cards
+	// (fixEntity). Admin-configurable (poster_size/backdrop_size settings),
+	// defaults match TMDB's own standard size lists. Package-level rather
+	// than threaded through context, same pattern as TMDBAuthKey — nothing
+	// in this fetch chain carries a context today.
+	PosterSize   = "w500"
+	BackdropSize = "w1280"
 )
+
+// TMDB only serves images at these fixed widths (see /configuration) — it
+// does not resize to arbitrary custom widths.
+var (
+	validPosterSizes = map[string]bool{
+		"w92": true, "w154": true, "w185": true, "w342": true, "w500": true, "w780": true, "original": true,
+	}
+	validBackdropSizes = map[string]bool{
+		"w300": true, "w780": true, "w1280": true, "original": true,
+	}
+)
+
+// LoadImageSizes refreshes PosterSize/BackdropSize from admin settings —
+// invalid or unset values keep whatever is already loaded (the compiled-in
+// default on first call). Call once at startup and again whenever admin
+// settings are saved, so a change takes effect on the next enrichment
+// without a restart.
+func LoadImageSizes(ctx context.Context) {
+	if v, ok := store.GetSetting(ctx, "poster_size"); ok && validPosterSizes[v] {
+		PosterSize = v
+	}
+	if v, ok := store.GetSetting(ctx, "backdrop_size"); ok && validBackdropSizes[v] {
+		BackdropSize = v
+	}
+}
 
 // HTTPClient returns an http.Client for TMDB, routed through proxy if configured.
 func HTTPClient() *http.Client {
@@ -39,6 +72,7 @@ func Init() {
 		return
 	}
 	TMDBAuthKey = strings.TrimSpace(cfg.TmdbToken)
+	LoadImageSizes(context.Background())
 
 	go func() {
 		lstmg := GetGenres("movie")

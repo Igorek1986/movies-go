@@ -99,6 +99,8 @@ var SettingDefaults = map[string]string{
 	"images_via_server":      "0", // раздавать картинки TMDB через сервер (/imgproxy)
 	"images_cache_enabled":   "0", // дисковый кеш /imgproxy — off by default, включать осознанно
 	"images_cache_limit_mb":  "1024",
+	"poster_size":            "w500",  // TMDB size сегмент для постеров при обогащении карточек
+	"backdrop_size":          "w1280", // TMDB size сегмент для фонов при обогащении карточек
 	"catalog_actor_count":    "2",
 	"catalog_actor_ru_count": "1",
 	"catalog_director_count": "3",
