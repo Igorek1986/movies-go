@@ -55,6 +55,10 @@ $bp-md: 768px;
 $bp-lg: 1024px;
 $bp-xl: 1280px;
 
+// Мобильная нижняя навигация (components/BottomNav) — используется и там,
+// и в Layout (padding-bottom контента), чтобы панель ничего не перекрывала.
+$bottom-nav-height: 56px;
+
 // Миксины
 @mixin flex-center {
   display: flex;

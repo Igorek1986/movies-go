@@ -2,27 +2,11 @@ import { useEffect, useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { ProfileSwitcher } from '@/components/ProfileSwitcher'
+import { BottomNav, BackIcon, HomeIcon, StarIcon, HistoryIcon, type BottomNavItem } from '@/components/BottomNav'
 import { applyTheme, getStoredTheme, THEMES, type ThemeId } from '@/utils/theme'
 import { loadTTLCache, saveTTLCache } from '@/utils/ttlCache'
 import { ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS } from '@/utils/adminStatsCache'
 import styles from './Layout.module.scss'
-
-// Minimal stroke icons for the mobile bottom bar — currentColor so they pick
-// up the active/inactive text color for free, no icon library needed for 4 glyphs.
-const iconProps = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
-
-function BackIcon() {
-  return <svg {...iconProps}><path d="M15 18l-6-6 6-6" /></svg>
-}
-function HomeIcon() {
-  return <svg {...iconProps}><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
-}
-function StarIcon() {
-  return <svg {...iconProps}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z" /></svg>
-}
-function HistoryIcon() {
-  return <svg {...iconProps}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>
-}
 
 export default function Layout({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
   const { user } = useAuth()
@@ -99,8 +83,15 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `${styles.navLink}${isActive ? ' ' + styles.active : ''}`
 
-  const bottomNavClass = ({ isActive }: { isActive: boolean }) =>
-    `${styles.bottomNavItem}${isActive ? ' ' + styles.bottomNavItemActive : ''}`
+  // Default mobile bottom-bar set — change/add/remove entries here (or pass
+  // a different array to <BottomNav> from elsewhere) without touching the
+  // component itself.
+  const bottomNavItems: BottomNavItem[] = [
+    { key: 'back', label: 'Назад', icon: <BackIcon />, onClick: handleBottomBack },
+    { key: 'home', label: 'Главная', icon: <HomeIcon />, to: '/catalog', onClick: () => window.dispatchEvent(new CustomEvent('catalog:back')) },
+    { key: 'mine', label: 'Моё', icon: <StarIcon />, to: '/media-library' },
+    { key: 'history', label: 'История', icon: <HistoryIcon />, to: '/history' },
+  ]
 
   const links = (
     <>
@@ -173,25 +164,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
 
       <main className={`${styles.main}${wide ? ' ' + styles.mainWide : ''}`}>{children}</main>
 
-      {/* Mobile bottom bar — hidden on desktop via CSS, see .bottomNav */}
-      <nav className={styles.bottomNav} aria-label="Быстрая навигация">
-        <button type="button" className={styles.bottomNavItem} onClick={handleBottomBack}>
-          <BackIcon />
-          <span>Назад</span>
-        </button>
-        <NavLink to="/catalog" className={bottomNavClass} onClick={() => window.dispatchEvent(new CustomEvent('catalog:back'))}>
-          <HomeIcon />
-          <span>Главная</span>
-        </NavLink>
-        <NavLink to="/media-library" className={bottomNavClass}>
-          <StarIcon />
-          <span>Моё</span>
-        </NavLink>
-        <NavLink to="/history" className={bottomNavClass}>
-          <HistoryIcon />
-          <span>История</span>
-        </NavLink>
-      </nav>
+      <BottomNav items={bottomNavItems} />
     </div>
   )
 }
