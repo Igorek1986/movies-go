@@ -600,6 +600,81 @@ export default function CardDetailPage() {
   const [confirmState, setConfirmState] = useState<PendingConfirm | null>(null)
   const [descrExpanded, setDescrExpanded] = useState(false)
 
+  // Site-wide keyboard nav rollout (see Layout/CatalogPage): rows are
+  // marked with data-row-id (progress/status/refresh/cast/similar, in DOM
+  // order — the TV episode list is deliberately not part of this yet, its
+  // own season/episode structure needs dedicated handling), individual
+  // focusable elements with data-nav-item. Up/Down moves between rows
+  // (remembering each row's last horizontal position, like Catalog's own
+  // row nav), Left/Right moves within one. Up from the first row bridges to
+  // the top menu, same as Catalog. Left/Right with nothing row-focused is
+  // deliberately left alone (no preventDefault) so Layout's desktop
+  // side-panel-summon can still claim it — see the data-row-id check there.
+  const rowFocusIdx = useRef(new Map<string, number>())
+  useEffect(() => {
+    function isTypingTarget(el: Element | null) {
+      const tag = el?.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || (el as HTMLElement | null)?.isContentEditable
+    }
+
+    function getRows() {
+      return Array.from(document.querySelectorAll<HTMLElement>('[data-row-id]'))
+        .filter(row => row.querySelector('[data-nav-item]'))
+    }
+
+    function focusRow(row: HTMLElement) {
+      const items = Array.from(row.querySelectorAll<HTMLElement>('[data-nav-item]'))
+      if (!items.length) return
+      const idx = Math.min(rowFocusIdx.current.get(row.dataset.rowId!) ?? 0, items.length - 1)
+      items[idx]?.focus()
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (isTypingTarget(document.activeElement)) return
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return
+
+      const focused = document.activeElement as HTMLElement | null
+      const currentRow = focused?.closest<HTMLElement>('[data-row-id]') ?? null
+
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        if (!currentRow) return
+        const items = Array.from(currentRow.querySelectorAll<HTMLElement>('[data-nav-item]'))
+        const idx = items.indexOf(focused as HTMLElement)
+        if (idx === -1) return
+        e.preventDefault()
+        const next = Math.min(Math.max(idx + (e.key === 'ArrowRight' ? 1 : -1), 0), items.length - 1)
+        rowFocusIdx.current.set(currentRow.dataset.rowId!, next)
+        items[next]?.focus()
+        return
+      }
+
+      const rows = getRows()
+      if (!currentRow) {
+        if (e.key === 'ArrowDown' && rows.length) {
+          e.preventDefault()
+          focusRow(rows[0])
+        }
+        return
+      }
+
+      e.preventDefault()
+      const rowIdx = rows.indexOf(currentRow)
+      if (e.key === 'ArrowUp' && rowIdx === 0) {
+        const topLink =
+          document.querySelector<HTMLElement>('[data-top-nav] a[aria-current="page"]') ??
+          document.querySelector<HTMLElement>('[data-top-nav] a')
+        topLink?.focus()
+        return
+      }
+      const targetIdx = rowIdx + (e.key === 'ArrowDown' ? 1 : -1)
+      if (targetIdx < 0 || targetIdx >= rows.length) return
+      focusRow(rows[targetIdx])
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   const activeProfileId = activeProfile?.profile_id ?? ''
 
   // Filter timecodes to the active profile
@@ -1016,7 +1091,7 @@ export default function CardDetailPage() {
   )
 
   const watchStatusRow = activeDevice && (
-    <div className={styles.watchStatusRow}>
+    <div className={styles.watchStatusRow} data-row-id="status">
       {(isTV ? TV_STATUS_OPTIONS : MOVIE_STATUS_OPTIONS).map(opt => {
         // No status set at all (never touched) displays as "Не смотрю" —
         // that's the implicit default, just not written to the DB
@@ -1026,6 +1101,7 @@ export default function CardDetailPage() {
           <button
             key={opt.status}
             className={styles.watchStatusBtn}
+            data-nav-item
             style={active ? {
               color: opt.color,
               borderColor: opt.color,
@@ -1043,6 +1119,7 @@ export default function CardDetailPage() {
       })}
       <button
         className={styles.watchStatusBtn}
+        data-nav-item
         style={isFavorite ? {
           color: FAVORITE_COLOR,
           borderColor: FAVORITE_COLOR,
@@ -1066,7 +1143,7 @@ export default function CardDetailPage() {
   )
 
   const movieProgressBlock = showMovieProgress && (
-    <div className={styles.progressWrap}>
+    <div className={styles.progressWrap} data-row-id="progress">
       <div className={styles.progressTop}>
         <span className={`${styles.progressLabel} ${moviePct >= watchedThreshold() ? styles.progressComplete : ''}`}>
           {moviePct >= watchedThreshold()
@@ -1075,7 +1152,7 @@ export default function CardDetailPage() {
           {movieDur > 0 && ` · ${fmtTime(Math.round(movieDur * moviePct / 100))} / ${fmtTime(movieDur)}`}
         </span>
         {moviePct > 0 && (
-          <button className={styles.deleteBtn} onClick={() => setConfirmState({ kind: 'deleteMovie' })}>✕</button>
+          <button className={styles.deleteBtn} data-nav-item onClick={() => setConfirmState({ kind: 'deleteMovie' })}>✕</button>
         )}
       </div>
       <div
@@ -1091,14 +1168,14 @@ export default function CardDetailPage() {
   )
 
   const tvProgressBlock = isTV && tvWatchedEps > 0 && (
-    <div className={styles.progressWrap}>
+    <div className={styles.progressWrap} data-row-id="progress">
       <div className={styles.progressTop}>
         <span className={`${styles.progressLabel} ${tvProgress >= 100 ? styles.progressComplete : ''}`}>
           {tvTotalEps > 0
             ? `${tvWatchedEps} / ${tvTotalEps} серий`
             : `${tvWatchedEps} серий просмотрено`}
         </span>
-        <button className={styles.deleteBtn} onClick={() => setConfirmState({ kind: 'deleteShow' })}>✕</button>
+        <button className={styles.deleteBtn} data-nav-item onClick={() => setConfirmState({ kind: 'deleteShow' })}>✕</button>
       </div>
       <div className={styles.tvBar}>
         <div className={styles.tvBarFill} style={{ width: `${tvProgress}%` }} />
@@ -1124,6 +1201,8 @@ export default function CardDetailPage() {
   const refreshBtn = user?.is_admin && (
     <button
       className={styles.refreshTmdbBtn}
+      data-row-id="refresh"
+      data-nav-item
       onClick={refreshFromTMDB}
       disabled={refreshing}
     >
@@ -1215,7 +1294,7 @@ export default function CardDetailPage() {
         {cast.length > 0 && (
           <section className={styles.section}>
             <h2 className={styles.sectionTitle}>В ролях</h2>
-            <div className={styles.castRow}>
+            <div className={styles.castRow} data-row-id="cast">
               {cast.map(c => {
                 const photo = c.profile_path ? tmdbUrl(c.profile_path, 'w185') : null
                 return (
@@ -1223,6 +1302,7 @@ export default function CardDetailPage() {
                     key={c.id}
                     to={`/actor/${c.id}`}
                     className={styles.castCard}
+                    data-nav-item
                   >
                     {photo
                       ? <img className={styles.castPhoto} src={photo} alt={c.name} loading="lazy" />
@@ -1259,11 +1339,11 @@ export default function CardDetailPage() {
         {similar.length > 0 && (
           <section className={styles.section}>
             <h2 className={styles.sectionTitle}>Похожее</h2>
-            <div className={styles.similarGrid}>
+            <div className={styles.similarGrid} data-row-id="similar">
               {similar.map(item => {
                 const url = tmdbUrl(item.poster_path, 'w185') || posterUrl(item.poster_path)
                 return (
-                  <Link key={item.card_id} to={`/card/${item.card_id}`} className={styles.similarCard}>
+                  <Link key={item.card_id} to={`/card/${item.card_id}`} className={styles.similarCard} data-nav-item>
                     {url
                       ? <img className={styles.similarPoster} src={url} alt={item.title} loading="lazy" />
                       : <div className={styles.similarPosterPlaceholder}>Нет постера</div>

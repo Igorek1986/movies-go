@@ -204,6 +204,10 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       if (location.pathname === '/catalog') return
 
       const panelHasFocus = !!desktopPanelRef.current?.contains(document.activeElement)
+      // A page can opt into owning Left/Right itself by marking its rows
+      // with data-row-id (see CardDetailPage) — skip summoning the panel
+      // from there so the two don't fight over the same keys.
+      const onPageRowNav = !!activeEl?.closest('[data-row-id]')
 
       if (e.key === 'Backspace') {
         e.preventDefault()
@@ -220,11 +224,11 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
 
       if (e.key === 'ArrowRight') {
         if (desktopPanel === 'left') { e.preventDefault(); setDesktopPanel(null); return }
-        if (!desktopPanel) { e.preventDefault(); setDesktopPanel('right'); return }
+        if (!desktopPanel && !onPageRowNav) { e.preventDefault(); setDesktopPanel('right'); return }
       }
       if (e.key === 'ArrowLeft') {
         if (desktopPanel === 'right') { e.preventDefault(); setDesktopPanel(null); return }
-        if (!desktopPanel) { e.preventDefault(); setDesktopPanel('left'); return }
+        if (!desktopPanel && !onPageRowNav) { e.preventDefault(); setDesktopPanel('left'); return }
       }
 
       if (panelHasFocus && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
