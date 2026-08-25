@@ -602,6 +602,19 @@ export default function CardDetailPage() {
   // Keyboard scrub preview for the movie progress bar (Left/Right while
   // focused) — null = not currently scrubbing, showing the real moviePct.
   const [progressPreviewPct, setProgressPreviewPct] = useState<number | null>(null)
+  // moviePct/movieDur/item/profileId are computed further down (after the
+  // loading/!card early-returns, from bestTc which depends on the timecodes
+  // fetch — a separate, slower request than the card itself). The keydown
+  // effect below can't list them as deps (still not initialized at the
+  // point that array is evaluated — see the note by its own deps) AND a
+  // plain `[card]` dep isn't enough either: card's own object reference
+  // stops changing once loaded, but moviePct keeps changing after that as
+  // timecodes finish loading — a scrub starting from a closure captured
+  // before that resolved would begin from a stale (often 0%) base. Mirrored
+  // into a ref (updated via a plain assignment during render, right after
+  // computed) so the handler always reads the current value regardless of
+  // when its own closure was last created.
+  const progressCtxRef = useRef({ moviePct: 0, movieDur: 0, item: '', profileId: '' })
 
   // Site-wide keyboard nav rollout (see Layout/CatalogPage): rows are
   // marked with data-row-id (progress/status/refresh/cast/similar, in DOM
@@ -647,14 +660,18 @@ export default function CardDetailPage() {
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           e.preventDefault()
           const STEP_PCT = 2
-          const base = progressPreviewPct ?? moviePct
+          const base = progressPreviewPct ?? progressCtxRef.current.moviePct
           const next = Math.min(100, Math.max(0, base + (e.key === 'ArrowRight' ? STEP_PCT : -STEP_PCT)))
           setProgressPreviewPct(next)
           return
         }
         if (e.key === 'Enter' && progressPreviewPct != null) {
           e.preventDefault()
-          if (card) commitProgressPreview(progressPreviewPct, card)
+          const { movieDur, item, profileId } = progressCtxRef.current
+          if (item) {
+            const sec = movieDur > 0 ? Math.round(movieDur * progressPreviewPct / 100) : Math.round(progressPreviewPct)
+            saveTimecodeForItem({ initialSec: sec, maxSec: movieDur, item, profileId }, sec)
+          }
           setProgressPreviewPct(null)
           return
         }
@@ -706,14 +723,19 @@ export default function CardDetailPage() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-    // card/progressPreviewPct only — moviePct/movieDur are declared further
-    // down (after the loading/!card early-returns) so referencing them here
-    // would throw (TDZ) at the moment this array is evaluated; reading them
-    // from inside onKeyDown's own body is fine (deferred until a real
-    // keypress, by which time that render has already finished executing
-    // top to bottom). Re-subscribing on `card` picks up a closure from a
-    // render where they're safely initialized.
-  }, [progressPreviewPct, card]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Just progressPreviewPct — everything else the handler needs
+    // (moviePct/movieDur/item/profileId) comes from progressCtxRef, kept
+    // current by a plain assignment during render (see its declaration),
+    // not this dependency array. That sidesteps two problems: those values
+    // are declared after the loading/!card early-returns (listing them here
+    // would throw — TDZ, this array is evaluated immediately, unlike reads
+    // inside onKeyDown's own body which are deferred until a real keypress)
+    // AND — the one that actually bit in practice — a plain `[card]` dep
+    // isn't enough to stay fresh either: card's object reference stops
+    // changing once loaded, but moviePct keeps changing after that as the
+    // separate, slower timecodes fetch resolves. A scrub base read from a
+    // closure captured before that landed would start from a stale 0%.
+  }, [progressPreviewPct]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeProfileId = activeProfile?.profile_id ?? ''
 
@@ -1064,18 +1086,6 @@ export default function CardDetailPage() {
     setTpCtx({ initialSec: initSec, maxSec: dur, item, profileId: bestTc?.profile_id ?? defaultProfileId })
   }
 
-  // Keyboard scrub commit — Enter on the focused progress bar saves the
-  // previewed position directly (skips the TimePicker modal the mouse click
-  // opens; arrow-scrubbing already IS the fine-tuning step here).
-  function commitProgressPreview(pct: number, card: CardDetail) {
-    if (!activeDevice) return
-    const item = bestTc?.item ?? card.movie_item
-    if (!item) return
-    const dur = bestTc?.duration_sec ?? (card.runtime ? card.runtime * 60 : 0)
-    const sec = dur > 0 ? Math.round(dur * pct / 100) : Math.round(pct)
-    saveTimecodeForItem({ initialSec: sec, maxSec: dur, item, profileId: bestTc?.profile_id ?? defaultProfileId }, sec)
-  }
-
   if (loading) return <Layout><div className={styles.loading}>Загрузка…</div></Layout>
 
   if (!card) return (
@@ -1106,6 +1116,13 @@ export default function CardDetailPage() {
   const moviePct = bestTc?.percent ?? 0
   const movieDur = bestTc?.duration_sec ?? (card.runtime ? card.runtime * 60 : 0)
   const showMovieProgress = !isTV
+
+  progressCtxRef.current = {
+    moviePct,
+    movieDur,
+    item: bestTc?.item ?? card.movie_item ?? '',
+    profileId: bestTc?.profile_id ?? defaultProfileId,
+  }
 
   // Overall TV progress denominator: prefer episodes table (non-special, aired), fall back to card.seasons
   const tvTotalEps = isTV ? (() => {
@@ -1208,7 +1225,11 @@ export default function CardDetailPage() {
           )}
         </span>
         {moviePct > 0 && (
-          <button className={styles.deleteBtn} data-nav-item onClick={() => setConfirmState({ kind: 'deleteMovie' })}>✕</button>
+          // Not a nav-item: with the bar itself now always focusable (see
+          // below), this being first in DOM order kept stealing the
+          // ArrowDown landing spot ahead of the bar. Still reachable by
+          // mouse/Tab, just not part of the arrow-key row nav.
+          <button className={styles.deleteBtn} onClick={() => setConfirmState({ kind: 'deleteMovie' })}>✕</button>
         )}
       </div>
       <div
