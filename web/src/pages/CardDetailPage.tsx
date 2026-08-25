@@ -314,23 +314,59 @@ function ConfirmModal({ title, message, confirmLabel, onConfirm, onCancel }: {
 
 // ── Interactive bar ───────────────────────────────────────────────────────────
 
-function InteractiveBar({ percent, onClick }: { percent: number; onClick: (pct: number) => void }) {
+// navItem, when passed, makes the bar keyboard-scrubbable (Left/Right ±2%,
+// Enter confirms, Escape reverts) via the same data-progress-slider handler
+// that drives the movie hero bar — see the keydown effect in
+// CardDetailPage. scrubPct is the live preview from that handler (null when
+// this particular bar isn't the one currently being scrubbed).
+function InteractiveBar({ percent, onClick, navItem }: {
+  percent: number
+  onClick: (pct: number) => void
+  navItem?: {
+    item: string
+    durationSec: number
+    profileId: string
+    ariaLabel: string
+    scrubPct: number | null
+    onBlur: () => void
+  }
+}) {
   const ref = useRef<HTMLDivElement>(null)
   function pct(e: React.MouseEvent) {
     if (!ref.current) return 0
     const r = ref.current.getBoundingClientRect()
     return Math.min(100, Math.max(0, (e.clientX - r.left) / r.width * 100))
   }
+  const scrubbing = navItem?.scrubPct != null
+  const displayPct = navItem?.scrubPct ?? percent
   return (
-    <div ref={ref} className={styles.iBar} onClick={e => onClick(pct(e))}>
-      <div className={styles.iBarFill} style={{ width: `${Math.min(percent, 100)}%` }} />
+    <div
+      ref={ref}
+      className={`${styles.iBar}${scrubbing ? ' ' + styles.iBarScrubbing : ''}`}
+      onClick={e => onClick(pct(e))}
+      data-nav-item={navItem ? true : undefined}
+      data-progress-slider={navItem ? true : undefined}
+      data-progress-kind={navItem ? 'episode' : undefined}
+      data-ep-item={navItem?.item}
+      data-ep-duration={navItem?.durationSec}
+      data-ep-profile={navItem?.profileId}
+      data-ep-pct={navItem ? percent : undefined}
+      tabIndex={navItem ? 0 : undefined}
+      role={navItem ? 'slider' : undefined}
+      aria-label={navItem?.ariaLabel}
+      aria-valuemin={navItem ? 0 : undefined}
+      aria-valuemax={navItem ? 100 : undefined}
+      aria-valuenow={navItem ? Math.round(displayPct) : undefined}
+      onBlur={navItem?.onBlur}
+    >
+      <div className={styles.iBarFill} style={{ width: `${Math.min(displayPct, 100)}%` }} />
     </div>
   )
 }
 
 // ── TV Episode List ───────────────────────────────────────────────────────────
 
-function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, onMarkAllWatched, onMarkSpecial, onUnmarkSpecial, onDeleteEpisode, apiEpisodes, timecodesLoaded, numberOfSeasons }: {
+function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, onMarkAllWatched, onMarkSpecial, onUnmarkSpecial, onDeleteEpisode, apiEpisodes, timecodesLoaded, numberOfSeasons, epScrub, onEpScrubBlur }: {
   card: CardDetail
   tcMap: Record<string, CardTimecode>
   defaultProfileId: string
@@ -343,6 +379,8 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
   apiEpisodes: EpisodeData[] | null
   timecodesLoaded: boolean
   numberOfSeasons: number
+  epScrub: { item: string; pct: number } | null
+  onEpScrubBlur: (item: string) => void
 }) {
   // ── Source: apiEpisodes or card.seasons ──────────────────────────────────────
   const seasonGroupsFromAPI = useMemo(() => {
@@ -449,11 +487,13 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
     const isStub = total === -1
     return (
       <div key={sn} className={styles.seasonBlock}>
-        <div className={styles.seasonHeader} onClick={() => toggle(sn)}>
-          <span className={styles.seasonArrow}>{open ? '▼' : '▶'}</span>
-          <span className={styles.seasonName}>{sn === 0 ? 'Спецэпизоды' : `Сезон ${sn}`}</span>
+        <div className={styles.seasonHeader} data-row-id={`season-${sn}`}>
+          <button type="button" className={styles.seasonToggle} data-nav-item aria-expanded={open} onClick={() => toggle(sn)}>
+            <span className={styles.seasonArrow}>{open ? '▼' : '▶'}</span>
+            <span className={styles.seasonName}>{sn === 0 ? 'Спецэпизоды' : `Сезон ${sn}`}</span>
+          </button>
           <span className={styles.seasonCount}>{isStub ? '?' : `${watched}/${total}`}</span>
-          {!isStub && <button className={styles.markAllBtn} onClick={markAll}>✓ Все</button>}
+          {!isStub && <button className={styles.markAllBtn} data-nav-item onClick={markAll}>✓ Все</button>}
         </div>
         {open && !isStub && (
           <div className={styles.epList}>
@@ -483,7 +523,11 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
       const isUserMarked = ep.user_special
       const isWatched = pct >= watchedThreshold() || isUserMarked
       return (
-        <div key={ep.episode} className={`${styles.epRow} ${isCatalogSpecial ? styles.epRowSpecial : ''} ${ep.future ? styles.epRowFuture : ''}`}>
+        <div
+          key={ep.episode}
+          className={`${styles.epRow} ${isCatalogSpecial ? styles.epRowSpecial : ''} ${ep.future ? styles.epRowFuture : ''}`}
+          data-row-id={isCatalogSpecial ? undefined : `ep-${sn}-${ep.episode}`}
+        >
           <div className={styles.epTop}>
             <span className={styles.epCode}>{epCode(sn, ep.episode)}</span>
             {ep.title && <span className={styles.epTitle}>{ep.title}</span>}
@@ -495,6 +539,14 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
                 if (isCatalogSpecial) return
                 const initSec = durSec > 0 ? Math.round(durSec * clickPct / 100) : 0
                 onPickTime({ initialSec: initSec, maxSec: durSec, item: ep.hash, profileId })
+              }}
+              navItem={isCatalogSpecial ? undefined : {
+                item: ep.hash,
+                durationSec: durSec,
+                profileId,
+                ariaLabel: `${epCode(sn, ep.episode)}${ep.title ? ' ' + ep.title : ''} — прогресс`,
+                scrubPct: epScrub && epScrub.item === ep.hash ? epScrub.pct : null,
+                onBlur: () => onEpScrubBlur(ep.hash),
               }}
             />
             <span className={`${styles.epTime} ${isCatalogSpecial ? styles.epTimeSpecial : ''}`}>
@@ -529,7 +581,11 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
       const timeSec = tc?.time ?? 0
       const profileId = tc?.profile_id ?? defaultProfileId
       return (
-        <div key={ep} className={`${styles.epRow} ${isSpecial ? styles.epRowSpecial : ''}`}>
+        <div
+          key={ep}
+          className={`${styles.epRow} ${isSpecial ? styles.epRowSpecial : ''}`}
+          data-row-id={isSpecial ? undefined : `ep-${sn}-${ep}`}
+        >
           <div className={styles.epTop}>
             <span className={styles.epCode}>{epCode(sn, ep)}</span>
           </div>
@@ -540,6 +596,14 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
                 if (isSpecial) return
                 const initSec = durSec > 0 ? Math.round(durSec * clickPct / 100) : 0
                 onPickTime({ initialSec: initSec, maxSec: durSec, item, profileId })
+              }}
+              navItem={isSpecial ? undefined : {
+                item,
+                durationSec: durSec,
+                profileId,
+                ariaLabel: `${epCode(sn, ep)} — прогресс`,
+                scrubPct: epScrub && epScrub.item === item ? epScrub.pct : null,
+                onBlur: () => onEpScrubBlur(item),
               }}
             />
             <span className={`${styles.epTime} ${isSpecial ? styles.epTimeSpecial : ''}`}>
@@ -621,6 +685,27 @@ export default function CardDetailPage() {
   // computed) so the handler always reads the current value regardless of
   // when its own closure was last created.
   const progressCtxRef = useRef({ moviePct: 0, movieDur: 0, item: '', profileId: '' })
+  // Same scrub-preview idea as the movie bar above, but for TV episode
+  // progress bars — there are many of them, so this is keyed by which
+  // episode (hash) is currently focused/being scrubbed instead of a single
+  // scalar. Mirrored into a ref (plain assignment during render, like
+  // progressCtxRef) so the keydown handler below always reads the current
+  // value without needing it in the effect's dependency array.
+  const [epScrub, setEpScrub] = useState<{ item: string; pct: number } | null>(null)
+  const epScrubRef = useRef<{ item: string; pct: number } | null>(null)
+  epScrubRef.current = epScrub
+  // saveTimecodeForItem itself closes over activeDevice/cardId, which are
+  // null until their own fetches resolve after mount. The movie scrub call
+  // below "self heals" that staleness because setProgressPreviewPct on every
+  // Left/Right re-subscribes this effect, capturing a fresh
+  // saveTimecodeForItem each time — but episode scrubbing deliberately does
+  // NOT retrigger the effect (epScrub isn't a dep, see epScrubRef above), so
+  // its Enter handler would otherwise keep calling the mount-time closure
+  // forever, with activeDevice permanently stuck at whatever it was before
+  // the devices fetch resolved. Reading the always-current function via a
+  // ref (same plain-assignment-during-render pattern) sidesteps that.
+  const saveTimecodeRef = useRef<typeof saveTimecodeForItem | null>(null)
+  saveTimecodeRef.current = saveTimecodeForItem
 
   // Site-wide keyboard nav rollout (see Layout/CatalogPage): rows are
   // marked with data-row-id (progress/status/refresh/cast/similar, in DOM
@@ -712,35 +797,67 @@ export default function CardDetailPage() {
       // focus straight back out to the page on every key press.
       if (focused?.closest('nav[aria-label="Быстрая навигация"]')) return
 
-      // Movie progress bar: Left/Right scrubs a local preview (doesn't save
-      // yet), Enter commits it (calls saveTimecodeForItem directly — the
-      // scrubbing itself already is the fine-tuning step, unlike the mouse
-      // click which opens the TimePicker for that), Escape discards back to
-      // the real saved position. Losing focus without confirming (the
-      // bar's own onBlur) discards the same way.
+      // Progress bar (movie hero bar, or a TV episode row's bar — told apart
+      // by data-progress-kind): Left/Right scrubs a local preview (doesn't
+      // save yet), Enter commits it (calls saveTimecodeForItem directly —
+      // the scrubbing itself already is the fine-tuning step, unlike the
+      // mouse click which opens the TimePicker for that), Escape discards
+      // back to the real saved position. Losing focus without confirming
+      // (the bar's own onBlur) discards the same way. Episode bars read
+      // their item/duration/profile straight off their own data-* attrs
+      // (set at render time from that row's own data) instead of a ref —
+      // there are many of them, unlike the single movie bar.
       if (focused?.hasAttribute('data-progress-slider')) {
+        const isEpisode = focused.dataset.progressKind === 'episode'
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           e.preventDefault()
           const STEP_PCT = 2
-          const base = progressPreviewPct ?? progressCtxRef.current.moviePct
-          const next = Math.min(100, Math.max(0, base + (e.key === 'ArrowRight' ? STEP_PCT : -STEP_PCT)))
-          setProgressPreviewPct(next)
-          return
-        }
-        if (e.key === 'Enter' && progressPreviewPct != null) {
-          e.preventDefault()
-          const { movieDur, item, profileId } = progressCtxRef.current
-          if (item) {
-            const sec = movieDur > 0 ? Math.round(movieDur * progressPreviewPct / 100) : Math.round(progressPreviewPct)
-            saveTimecodeForItem({ initialSec: sec, maxSec: movieDur, item, profileId }, sec)
+          const dir = e.key === 'ArrowRight' ? STEP_PCT : -STEP_PCT
+          if (isEpisode) {
+            const item = focused.dataset.epItem!
+            const cur = epScrubRef.current
+            const base = cur && cur.item === item ? cur.pct : Number(focused.dataset.epPct || '0')
+            setEpScrub({ item, pct: Math.min(100, Math.max(0, base + dir)) })
+          } else {
+            const base = progressPreviewPct ?? progressCtxRef.current.moviePct
+            setProgressPreviewPct(Math.min(100, Math.max(0, base + dir)))
           }
-          setProgressPreviewPct(null)
           return
         }
-        if (e.key === 'Escape' && progressPreviewPct != null) {
-          e.preventDefault()
-          setProgressPreviewPct(null)
-          return
+        if (e.key === 'Enter') {
+          const curScrub = epScrubRef.current
+          if (isEpisode && curScrub && curScrub.item === focused.dataset.epItem) {
+            e.preventDefault()
+            const { item, pct } = curScrub
+            const durSec = Number(focused.dataset.epDuration || '0')
+            const profileId = focused.dataset.epProfile || ''
+            const sec = durSec > 0 ? Math.round(durSec * pct / 100) : Math.round(pct)
+            saveTimecodeRef.current?.({ initialSec: sec, maxSec: durSec, item, profileId }, sec)
+            setEpScrub(null)
+            return
+          }
+          if (!isEpisode && progressPreviewPct != null) {
+            e.preventDefault()
+            const { movieDur, item, profileId } = progressCtxRef.current
+            if (item) {
+              const sec = movieDur > 0 ? Math.round(movieDur * progressPreviewPct / 100) : Math.round(progressPreviewPct)
+              saveTimecodeRef.current?.({ initialSec: sec, maxSec: movieDur, item, profileId }, sec)
+            }
+            setProgressPreviewPct(null)
+            return
+          }
+        }
+        if (e.key === 'Escape') {
+          if (isEpisode && epScrubRef.current) {
+            e.preventDefault()
+            setEpScrub(null)
+            return
+          }
+          if (!isEpisode && progressPreviewPct != null) {
+            e.preventDefault()
+            setProgressPreviewPct(null)
+            return
+          }
         }
       }
 
@@ -1367,7 +1484,10 @@ export default function CardDetailPage() {
             ? `${tvWatchedEps} / ${tvTotalEps} серий`
             : `${tvWatchedEps} серий просмотрено`}
         </span>
-        <button className={styles.deleteBtn} data-nav-item onClick={() => setConfirmState({ kind: 'deleteShow' })}>✕</button>
+        {/* Not a nav-item — same reasoning as the movie bar's own delete
+            button: a secondary/destructive action shouldn't sit in the
+            arrow-key row nav. Still reachable by mouse/Tab. */}
+        <button className={styles.deleteBtn} onClick={() => setConfirmState({ kind: 'deleteShow' })}>✕</button>
       </div>
       <div className={styles.tvBar}>
         <div className={styles.tvBarFill} style={{ width: `${tvProgress}%` }} />
@@ -1530,6 +1650,8 @@ export default function CardDetailPage() {
             apiEpisodes={apiEpisodes}
             timecodesLoaded={timecodesLoaded}
             numberOfSeasons={card.number_of_seasons}
+            epScrub={epScrub}
+            onEpScrubBlur={item => setEpScrub(cur => cur?.item === item ? null : cur)}
           />
         )}
 

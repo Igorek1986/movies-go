@@ -489,8 +489,25 @@
   overflow: hidden;
   cursor: pointer;
   user-select: none;
+  transition: height 0.15s ease;
 
   &:hover { opacity: 0.85; }
+
+  // Same reasoning as .movieBar's own focus rule — overflow:hidden (above,
+  // for iBarFill's rounded corners) clips a normal outline, inset
+  // box-shadow instead.
+  &[data-progress-slider]:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px $color-primary;
+  }
+}
+
+// Actively being scrubbed via keyboard (Left/Right) — taller + brighter
+// fill while a preview is pending, mirrors .movieBarScrubbing.
+.iBarScrubbing {
+  height: 12px;
+
+  .iBarFill { background: $color-primary-hover; }
 }
 
 .iBarFill {
@@ -683,11 +700,42 @@
   align-items: center;
   gap: $spacing-sm;
   padding: $spacing-sm $spacing-md;
-  cursor: pointer;
   background: $color-bg-card;
   user-select: none;
+}
 
-  &:hover { background: rgba($color-primary-rgb, 0.05); }
+// Wraps the arrow+name — the header's own expand/collapse toggle. A real
+// button (not a div+onClick) so it's natively keyboard-activatable (Enter/
+// Space) without extra handling, and can carry data-nav-item on its own
+// element separate from data-row-id on .seasonHeader (see the
+// data-row-id/data-nav-item note by the refresh button — same reasoning).
+.seasonToggle {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  // Color change on the arrow+name, matching cast card's own pattern,
+  // instead of an outline box or the header's old whole-row background.
+  // [data-nav-item] added to the selector purely for specificity — beats
+  // the shared [data-nav-item]:focus-visible fallback further down this
+  // file regardless of source order (same trick as .movieBar/.castCard).
+  &:hover {
+    .seasonArrow, .seasonName { color: $color-primary; }
+  }
+  &[data-nav-item]:focus-visible {
+    outline: none;
+    .seasonArrow, .seasonName { color: $color-primary; }
+  }
 }
 
 .seasonArrow {
@@ -695,6 +743,7 @@
   color: $color-text-muted;
   width: 12px;
   flex-shrink: 0;
+  transition: color $transition-fast;
 }
 
 .seasonName {
@@ -702,6 +751,7 @@
   font-size: $font-size-sm;
   font-weight: 600;
   color: $color-text;
+  transition: color $transition-fast;
 }
 
 .seasonCount {
@@ -721,6 +771,13 @@
   flex-shrink: 0;
 
   &:hover { border-color: $color-success; color: $color-success; }
+
+  &[data-nav-item]:focus-visible {
+    outline: none;
+    border-color: $color-success;
+    color: $color-success;
+    background: rgba($color-success-rgb, 0.12);
+  }
 }
 
 // ── Episode rows ──────────────────────────────────────────────────────────────
