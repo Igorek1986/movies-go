@@ -660,7 +660,7 @@ export default function CardDetailPage() {
         // focus-scroll only brings the element barely into view, right at
         // an edge — centering it gives more of the surrounding page for
         // context instead.
-        target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        target?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
       }
     }
 
@@ -728,6 +728,10 @@ export default function CardDetailPage() {
         const next = idx + (e.key === 'ArrowRight' ? 1 : -1)
         rowFocusIdx.current.set(currentRow.dataset.rowId!, next)
         items[next]?.focus()
+        // Keep horizontal focus centered in scrollable rows (cast/similar)
+        // instead of the browser's default edge-alignment — block:'nearest'
+        // so this doesn't also yank the page's vertical scroll position.
+        items[next]?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
         return
       }
 
