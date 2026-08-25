@@ -649,6 +649,15 @@ export default function CardDetailPage() {
       if (!items.length) return
       const idx = Math.min(rowFocusIdx.current.get(row.dataset.rowId!) ?? 0, items.length - 1)
       items[idx]?.focus()
+      // progress/status live inside the hero, at the very top of the page —
+      // the browser's own focus-scroll only brings the element barely into
+      // view, leaving the page scrolled where it was for a lower row (cast/
+      // similar/refresh). Snap back to the top instead, matching how the
+      // page first looked on load (hero fully visible, not just the button
+      // row peeking in from the bottom).
+      if (row.dataset.rowId === 'progress' || row.dataset.rowId === 'status') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
     }
 
     function onKeyDown(e: KeyboardEvent) {
