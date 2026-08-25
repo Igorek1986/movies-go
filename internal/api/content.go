@@ -126,16 +126,44 @@ func handleAPIAdminPopularSource(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadGateway, "popular source unavailable")
 		return
 	}
-	results := first.Results
-	for page := 2; page <= first.TotalPages && page <= 50; page++ {
-		next, err := fetchPopularSource(ctx, page, perPage, date)
-		if err != nil {
-			break // return what we have so far
-		}
-		results = append(results, next.Results...)
+
+	lastPage := min(first.TotalPages, 50)
+
+	// Remaining pages are independent — fetch them concurrently (bounded pool)
+	// instead of one at a time. This is what actually made the endpoint take
+	// 16-29s: ~37 sequential round-trips at ~300-500ms each, not a slow query
+	// or a slow source. A page that errors is just dropped (best-effort),
+	// unlike the old sequential version which stopped pagination entirely on
+	// the first failure.
+	pages := make([][]json.RawMessage, lastPage+1) // 1-indexed; [0] unused
+	pages[1] = first.Results
+	var daily json.RawMessage
+	var wg sync.WaitGroup
+	const maxConcurrent = 10
+	sem := make(chan struct{}, maxConcurrent)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		daily = fetchPopularSourceDaily(ctx) // best-effort: older sources may not expose it
+	}()
+	for page := 2; page <= lastPage; page++ {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(page int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if next, err := fetchPopularSource(ctx, page, perPage, date); err == nil {
+				pages[page] = next.Results
+			}
+		}(page)
 	}
-	// Best-effort: per-day dynamics (older sources may not expose it).
-	daily := fetchPopularSourceDaily(ctx)
+	wg.Wait()
+
+	results := make([]json.RawMessage, 0, first.TotalResults)
+	for page := 1; page <= lastPage; page++ {
+		results = append(results, pages[page]...)
+	}
 	JSON(w, http.StatusOK, map[string]any{
 		"source_url":    getPopularSourceURL(r.Context()),
 		"results":       results,
