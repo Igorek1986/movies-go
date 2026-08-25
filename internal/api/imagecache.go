@@ -20,10 +20,12 @@ import (
 
 // ─── Disk cache for /imgproxy ──────────────────────────────────────────────
 //
-// Off by default (images_cache_enabled=0) — an opt-in disk cache for the
-// web UI's image proxy. When enabled, a poster/backdrop is fetched from TMDB
-// once and served from local disk on every subsequent request, instead of
-// re-proxying through the (DPI-bypass) proxy client every time. Keyed by the
+// On by default (images_cache_enabled=1), but only takes effect once
+// images_via_server routes the web UI's images through /imgproxy in the
+// first place (that setting defaults off). When active, a poster/backdrop
+// is fetched from TMDB once and served from local disk on every subsequent
+// request, instead of re-proxying through the (DPI-bypass) proxy client
+// every time. Keyed by the
 // TMDB path itself (e.g. t/p/w342/abc.jpg) — TMDB assigns a new path when an
 // image is genuinely replaced, so entries never need explicit invalidation,
 // only size-based eviction (see StartImageCacheEvictionLoop).
