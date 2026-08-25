@@ -19,10 +19,12 @@
 
 // ── Backdrop ─────────────────────────────────────────────────────────────────
 
+// Negative margin/width must match Layout's .main padding exactly at each
+// breakpoint — see the longer note on .heroFull below, same bug/fix.
 .backdrop {
   position: relative;
-  width: calc(100% + $spacing-2xl * 2);
-  margin: -$spacing-2xl (-$spacing-2xl) 0;
+  width: calc(100% + $spacing-lg * 2);
+  margin: -$spacing-xl (-$spacing-lg) 0;
   overflow: hidden;
 
   img {
@@ -36,9 +38,14 @@
     @media (max-width: $bp-sm) { aspect-ratio: 16/9; }
   }
 
+  @media (max-width: $bp-md) {
+    width: calc(100% + $spacing-md * 2);
+    margin: -$spacing-lg (-$spacing-md) 0;
+  }
+
   @media (max-width: $bp-sm) {
-    margin: -$spacing-lg (-$spacing-lg) 0;
-    width: calc(100% + $spacing-lg * 2);
+    width: calc(100% + $spacing-sm * 2);
+    margin: -$spacing-md (-$spacing-sm) 0;
   }
 }
 
@@ -53,17 +60,34 @@
 // flex justify-content — same idea as plugins/full_hero.js, ported to plain
 // CSS instead of hacking Lampa's own DOM.
 
+// Negative margin/width here must match Layout's .main padding exactly at
+// each breakpoint (its horizontal value, and vertical for the top margin) —
+// mismatched, it either falls short of the true edge or overshoots past the
+// actual viewport, which read as "content not contained"/clipped buttons on
+// mobile (.main's padding shrinks at $bp-md and $bp-sm; this didn't
+// previously have its own $bp-md tier at all).
 .heroFull {
   position: relative;
-  width: calc(100% + $spacing-2xl * 2);
-  margin: -$spacing-2xl (-$spacing-2xl) 0;
+  width: calc(100% + $spacing-lg * 2);
+  margin: -$spacing-xl (-$spacing-lg) 0;
+  // Full first-screen height reads fine on desktop, but on a narrow phone a
+  // wide landscape backdrop crammed into that tall a box gets cropped down
+  // to an unrecognizable, over-zoomed sliver (object-fit: cover) — shorter
+  // on narrow viewports so the aspect ratio stays reasonable.
   min-height: calc(100vh - #{$nav-height} - env(safe-area-inset-top));
   display: flex;
   overflow: hidden;
 
+  @media (max-width: $bp-md) {
+    width: calc(100% + $spacing-md * 2);
+    margin: -$spacing-lg (-$spacing-md) 0;
+    min-height: 65vh;
+  }
+
   @media (max-width: $bp-sm) {
-    width: calc(100% + $spacing-lg * 2);
-    margin: -$spacing-lg (-$spacing-lg) 0;
+    width: calc(100% + $spacing-sm * 2);
+    margin: -$spacing-md (-$spacing-sm) 0;
+    min-height: 55vh;
   }
 }
 
