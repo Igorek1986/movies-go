@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } fr
 import { useAuth } from '@/hooks/useAuth'
 import Layout from '@/components/Layout'
 import PasswordInput from '@/components/PasswordInput'
+import { BottomNavSettings } from '@/components/BottomNavSettings'
 import { PROFILE_ICON_IDS, profileIconSrc } from '@/utils/profileIcon'
 import { useActiveProfile, profileUrlParam } from '@/contexts/ActiveProfileContext'
 import styles from './ProfilesPage.module.scss'
@@ -1769,6 +1770,8 @@ export default function ProfilesPage() {
               )}
             </div>
           </details>
+
+          <BottomNavSettings />
 
           {/* ── Account settings ── */}
           <details className={styles.details}>

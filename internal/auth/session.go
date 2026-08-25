@@ -56,13 +56,14 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 	}
 
 	var u models.User
-	var totpSecret, backupCodes, blockReason *string
+	var totpSecret, backupCodes, blockReason, bottomNavKeys *string
 	var premiumUntil, blockedAt *time.Time
 
 	err := postgres.Pool.QueryRow(ctx, `
 		SELECT u.id, u.username, u.password_hash, u.role, u.is_admin,
 		       u.totp_secret, u.totp_enabled, u.backup_codes,
-		       u.premium_until, u.blocked_at, u.block_reason, u.created_at
+		       u.premium_until, u.blocked_at, u.block_reason, u.created_at,
+		       u.bottom_nav_keys
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.key = $1 AND s.expires_at > now()`,
@@ -71,6 +72,7 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 		&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.IsAdmin,
 		&totpSecret, &u.TotpEnabled, &backupCodes,
 		&premiumUntil, &blockedAt, &blockReason, &u.CreatedAt,
+		&bottomNavKeys,
 	)
 	if err != nil {
 		return nil
@@ -80,6 +82,7 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 	u.PremiumUntil = premiumUntil
 	u.BlockedAt = blockedAt
 	u.BlockReason = blockReason
+	u.BottomNavKeys = bottomNavKeys
 
 	// sliding window — extend session on use
 	postgres.Pool.Exec(ctx, //nolint:errcheck
@@ -226,10 +229,10 @@ func SetSessionCookie(w http.ResponseWriter, key string, expires time.Time) {
 // ClearSessionCookie removes the session cookie.
 func ClearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:    sessionCookieName,
-		Value:   "",
-		MaxAge:  -1,
-		Path:    "/",
+		Name:     sessionCookieName,
+		Value:    "",
+		MaxAge:   -1,
+		Path:     "/",
 		HttpOnly: true,
 	})
 }

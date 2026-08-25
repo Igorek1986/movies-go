@@ -80,6 +80,7 @@ func NewRouter(mode string) http.Handler {
 			r.Post("/register", rateLimitMiddleware(registerRL, "rate_register_max", "rate_register_window_sec", handleRegister))
 			r.Post("/logout", handleLogout)
 			r.Get("/me", handleMe)
+			r.With(requireSession).Post("/me/bottom-nav", handleSaveBottomNav)
 			r.With(requireSession).Post("/change-password", handleChangePassword)
 			r.With(requireSession).Delete("/account", handleDeleteAccount)
 			r.With(requireSession).Get("/sessions", handleAPISessions)

@@ -19,6 +19,23 @@ export function StarIcon() {
 export function HistoryIcon() {
   return <svg {...iconProps}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>
 }
+export function CalendarIcon() {
+  return <svg {...iconProps}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+}
+export function SessionsIcon() {
+  return <svg {...iconProps}><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg>
+}
+
+// key -> icon, shared by BottomNav's own default set and the settings UI
+// (SettingsBottomNav) so both stay in sync with BOTTOM_NAV_OPTIONS for free.
+export const BOTTOM_NAV_ICONS: Record<string, React.ReactNode> = {
+  back: <BackIcon />,
+  home: <HomeIcon />,
+  calendar: <CalendarIcon />,
+  mine: <StarIcon />,
+  history: <HistoryIcon />,
+  sessions: <SessionsIcon />,
+}
 
 export interface BottomNavItem {
   key: string

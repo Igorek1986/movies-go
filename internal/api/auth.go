@@ -111,6 +111,10 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	var bottomNavKeys []string
+	if u.BottomNavKeys != nil && *u.BottomNavKeys != "" {
+		bottomNavKeys = strings.Split(*u.BottomNavKeys, ",")
+	}
 	JSON(w, http.StatusOK, map[string]any{
 		"id":                 u.ID,
 		"username":           u.Username,
@@ -120,7 +124,54 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		"backup_codes_count": countBackupCodes(u.BackupCodes),
 		"premium_until":      u.PremiumUntil,
 		"blocked_at":         u.BlockedAt,
+		"bottom_nav_keys":    bottomNavKeys, // null/absent = use the frontend default set
 	})
+}
+
+// TMDB doesn't come into this — this is just the fixed vocabulary of mobile
+// bottom-nav bar buttons (see BOTTOM_NAV_OPTIONS in bottomNavConfig.ts,
+// which must stay in sync with this list).
+var validBottomNavKeys = map[string]bool{
+	"back": true, "home": true, "calendar": true, "mine": true, "history": true, "sessions": true,
+}
+
+// POST /api/me/bottom-nav — save the current user's bottom-nav bar config.
+// Body: {"keys": ["back","home","mine","history"]}
+func handleSaveBottomNav(w http.ResponseWriter, r *http.Request) {
+	key := auth.SessionFromRequest(r)
+	if key == "" {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	u := auth.GetSessionUser(r.Context(), key)
+	if u == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		Keys []string `json:"keys"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if len(body.Keys) < 2 || len(body.Keys) > 5 {
+		Error(w, http.StatusBadRequest, "keys must list between 2 and 5 buttons")
+		return
+	}
+	seen := make(map[string]bool, len(body.Keys))
+	for _, k := range body.Keys {
+		if !validBottomNavKeys[k] || seen[k] {
+			Error(w, http.StatusBadRequest, "invalid or duplicate key: "+k)
+			return
+		}
+		seen[k] = true
+	}
+	if err := store.SetUserBottomNavKeys(r.Context(), u.ID, strings.Join(body.Keys, ",")); err != nil {
+		Error(w, http.StatusInternalServerError, "save failed")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // GET /api/config — public non-sensitive config for the frontend

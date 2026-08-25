@@ -1,0 +1,60 @@
+@use '@/styles/variables' as *;
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  padding: $spacing-xs $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  color: $color-text-muted;
+
+  svg { width: 18px; height: 18px; }
+}
+
+.orderBtns {
+  display: flex;
+  gap: 4px;
+
+  button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid $color-border;
+    border-radius: $radius-sm;
+    background: transparent;
+    color: $color-text-muted;
+    cursor: pointer;
+    transition: color $transition-fast, border-color $transition-fast;
+
+    &:hover:not(:disabled) {
+      color: $color-primary;
+      border-color: $color-primary;
+    }
+
+    &:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+  }
+}
+
+.actions {
+  display: flex;
+  gap: $spacing-sm;
+  margin-top: $spacing-sm;
+}

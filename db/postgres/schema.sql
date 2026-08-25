@@ -374,6 +374,11 @@ ALTER TABLE torrents     ADD COLUMN IF NOT EXISTS created_at            TIMESTAM
 CREATE INDEX IF NOT EXISTS idx_torrents_tracker_card ON torrents (tracker, card_id);
 CREATE INDEX IF NOT EXISTS idx_torrents_created_at   ON torrents (created_at DESC NULLS LAST) WHERE created_at IS NOT NULL;
 
+-- Migration: per-user mobile bottom-nav bar configuration (which buttons,
+-- what order) — comma-separated keys into BOTTOM_NAV_OPTIONS on the
+-- frontend, NULL = use the built-in default set.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bottom_nav_keys VARCHAR(200);
+
 -- ─── Proxy configuration ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS proxy_configs (
     id         SERIAL      PRIMARY KEY,

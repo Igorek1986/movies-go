@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { ProfileSwitcher } from '@/components/ProfileSwitcher'
-import { BottomNav, BackIcon, HomeIcon, StarIcon, HistoryIcon, type BottomNavItem } from '@/components/BottomNav'
+import { BottomNav, BOTTOM_NAV_ICONS, type BottomNavItem } from '@/components/BottomNav'
+import { BOTTOM_NAV_OPTIONS, resolveBottomNavKeys } from '@/utils/bottomNavConfig'
 import { applyTheme, getStoredTheme, THEMES, type ThemeId } from '@/utils/theme'
 import { loadTTLCache, saveTTLCache } from '@/utils/ttlCache'
 import { ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS } from '@/utils/adminStatsCache'
@@ -20,6 +21,19 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
     applyTheme(next)
     setTheme(next)
   }
+
+  const [navKeys, setNavKeys] = useState<string[]>(() => resolveBottomNavKeys(undefined))
+  useEffect(() => {
+    setNavKeys(resolveBottomNavKeys(user?.bottom_nav_keys))
+  }, [user?.bottom_nav_keys])
+  // Settings page dispatches this right after a successful save, so the
+  // change is visible immediately without waiting for Layout's next mount
+  // (per-page navigation) to re-fetch /api/me.
+  useEffect(() => {
+    const onUpdate = (e: Event) => setNavKeys((e as CustomEvent<string[]>).detail)
+    window.addEventListener('bottomnav:update', onUpdate)
+    return () => window.removeEventListener('bottomnav:update', onUpdate)
+  }, [])
 
   useEffect(() => {
     setMenuOpen(false)
@@ -83,15 +97,18 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `${styles.navLink}${isActive ? ' ' + styles.active : ''}`
 
-  // Default mobile bottom-bar set — change/add/remove entries here (or pass
-  // a different array to <BottomNav> from elsewhere) without touching the
-  // component itself.
-  const bottomNavItems: BottomNavItem[] = [
-    { key: 'back', label: 'Назад', icon: <BackIcon />, onClick: handleBottomBack },
-    { key: 'home', label: 'Главная', icon: <HomeIcon />, to: '/catalog', onClick: () => window.dispatchEvent(new CustomEvent('catalog:back')) },
-    { key: 'mine', label: 'Моё', icon: <StarIcon />, to: '/media-library' },
-    { key: 'history', label: 'История', icon: <HistoryIcon />, to: '/history' },
-  ]
+  // User-configurable mobile bottom bar (see /profiles "Настройки" ->
+  // «Нижняя панель») — navKeys is the account's saved key list (or the
+  // built-in default), mapped to renderable items here. "back"/"home" get
+  // special-cased onClick handlers; everything else is a plain route.
+  const bottomNavItems: BottomNavItem[] = navKeys.map(key => {
+    const opt = BOTTOM_NAV_OPTIONS.find(o => o.key === key)!
+    const onClick =
+      key === 'back' ? handleBottomBack :
+      key === 'home' ? () => window.dispatchEvent(new CustomEvent('catalog:back')) :
+      undefined
+    return { key: opt.key, label: opt.label, icon: BOTTOM_NAV_ICONS[opt.key], to: opt.to ?? undefined, onClick }
+  })
 
   const links = (
     <>

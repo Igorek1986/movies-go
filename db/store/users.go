@@ -91,6 +91,13 @@ func SetUserRole(ctx context.Context, id int64, role string) error {
 	return err
 }
 
+// SetUserBottomNavKeys saves the user's mobile bottom-nav bar configuration
+// (comma-separated option keys, see BOTTOM_NAV_OPTIONS on the frontend).
+func SetUserBottomNavKeys(ctx context.Context, id int64, keys string) error {
+	_, err := postgres.Pool.Exec(ctx, `UPDATE users SET bottom_nav_keys = $1 WHERE id = $2`, keys, id)
+	return err
+}
+
 func DeleteUser(ctx context.Context, id int64) error {
 	_, err := postgres.Pool.Exec(ctx, `DELETE FROM users WHERE id = $1 AND is_admin = false`, id)
 	return err
@@ -121,10 +128,10 @@ func QueryUserRoleCounts(ctx context.Context) ([]RoleCount, error) {
 // ─── Notification settings ────────────────────────────────────────────────────
 
 type NotificationSettings struct {
-	Enabled      bool   `json:"enabled"`
-	Timezone     string `json:"timezone"`
-	NotifyStart  int    `json:"notify_start"`
-	NotifyEnd    int    `json:"notify_end"`
+	Enabled     bool   `json:"enabled"`
+	Timezone    string `json:"timezone"`
+	NotifyStart int    `json:"notify_start"`
+	NotifyEnd   int    `json:"notify_end"`
 }
 
 func GetNotificationSettings(ctx context.Context, userID int64) NotificationSettings {

@@ -7,6 +7,7 @@ interface User {
   is_admin: boolean
   totp_enabled: boolean
   backup_codes_count: number
+  bottom_nav_keys?: string[] | null
 }
 
 interface AuthState {
