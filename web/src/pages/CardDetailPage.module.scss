@@ -153,6 +153,8 @@
 
 // Clickable — toggles .heroDescrExpanded to show the full text in place,
 // so it doesn't need repeating lower down the page (was duplicated before).
+// Desktop has room to just show it in full — clamp only kicks in at
+// tablet/mobile widths, where the hero is more cramped.
 .heroDescr {
   margin: 0;
   max-width: 46em;
@@ -166,6 +168,15 @@
   overflow: hidden;
 
   &:hover { color: $color-text; }
+
+  @media (min-width: $bp-lg + 1) {
+    display: block;
+    overflow: visible;
+    -webkit-line-clamp: unset;
+    cursor: default;
+
+    &:hover { color: $color-text-muted; }
+  }
 }
 
 .heroDescrExpanded {
