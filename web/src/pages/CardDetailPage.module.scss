@@ -331,6 +331,18 @@
   &:hover:not(:disabled) { border-color: $color-primary; color: $color-text; }
   &:disabled { opacity: 0.6; cursor: default; }
 
+  // Same border+background+color combo as the active state (inline style,
+  // per-option color — see watchStatusRow in CardDetailPage.tsx) uses,
+  // just with the neutral focus color instead of that option's own. Wins
+  // over the generic [data-nav-item] outline via the extra attribute
+  // selector's specificity.
+  &[data-nav-item]:focus-visible {
+    outline: none;
+    border-color: $color-primary;
+    background: rgba($color-primary-rgb, 0.15);
+    color: $color-primary;
+  }
+
   @media (max-width: $bp-sm) {
     min-width: 40px;
     width: 40px;
@@ -526,6 +538,13 @@
     border-color: $color-text;
   }
   &:disabled { opacity: 0.5; cursor: default; }
+
+  &[data-nav-item]:focus-visible {
+    outline: none;
+    border-color: $color-primary;
+    background: rgba($color-primary-rgb, 0.15);
+    color: $color-primary;
+  }
 }
 
 // ── Sections ──────────────────────────────────────────────────────────────────
