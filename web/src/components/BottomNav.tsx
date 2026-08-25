@@ -57,14 +57,17 @@ export interface BottomNavItem {
   onClick?: () => void
 }
 
-// Fixed mobile-only navigation bar (see .bottomNav — hidden on desktop via
+// Fixed mobile/tablet navigation bar (see .bottomNav — hidden on desktop via
 // CSS). Configurable via `items`: add/remove/reorder buttons by changing the
 // array passed in, no changes needed here. Used by Layout for the app-wide
 // default set (Назад/Главная/Моё/История), but any page/context can render
 // its own <BottomNav items={...}> with a different set if needed later.
-export function BottomNav({ items }: { items: BottomNavItem[] }) {
+// `position` picks the docked edge ("bottom", default, or "right"/"left" —
+// a vertical strip, mainly meant for the tablet width range).
+export function BottomNav({ items, position = 'bottom' }: { items: BottomNavItem[]; position?: 'bottom' | 'right' | 'left' }) {
+  const navClass = `${styles.bottomNav}${position !== 'bottom' ? ' ' + styles[position] : ''}`
   return (
-    <nav className={styles.bottomNav} aria-label="Быстрая навигация">
+    <nav className={navClass} aria-label="Быстрая навигация">
       {items.map(item => item.to ? (
         <NavLink
           key={item.key}

@@ -27,6 +27,9 @@ export const DEFAULT_KEYS = ['back', 'home', 'mine', 'history']
 export const MIN_ITEMS = 2
 export const MAX_ITEMS = 5
 
+export type BottomNavPosition = 'bottom' | 'right' | 'left'
+export const DEFAULT_POSITION: BottomNavPosition = 'bottom'
+
 // `stored` is user.bottom_nav_keys from useAuth() — null/undefined/invalid
 // falls back to the default set.
 export function resolveBottomNavKeys(stored: string[] | null | undefined): string[] {
@@ -35,17 +38,27 @@ export function resolveBottomNavKeys(stored: string[] | null | undefined): strin
   return valid.length >= MIN_ITEMS ? valid : DEFAULT_KEYS
 }
 
+// `stored` is user.bottom_nav_position from useAuth().
+export function resolveBottomNavPosition(stored: string | null | undefined): BottomNavPosition {
+  return stored === 'right' || stored === 'left' ? stored : DEFAULT_POSITION
+}
+
+export interface BottomNavConfig {
+  keys: string[]
+  position: BottomNavPosition
+}
+
 // Saves to the server and notifies any already-mounted Layout to pick up the
 // change immediately (Layout gets its own useAuth() snapshot on mount, which
 // won't otherwise refresh until the next navigation/remount).
-export async function saveBottomNavKeys(keys: string[]): Promise<boolean> {
+export async function saveBottomNavConfig(config: BottomNavConfig): Promise<boolean> {
   const res = await fetch('/api/me/bottom-nav', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keys }),
+    body: JSON.stringify(config),
   })
   if (res.ok) {
-    window.dispatchEvent(new CustomEvent<string[]>('bottomnav:update', { detail: keys }))
+    window.dispatchEvent(new CustomEvent<BottomNavConfig>('bottomnav:update', { detail: config }))
   }
   return res.ok
 }

@@ -115,16 +115,21 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 	if u.BottomNavKeys != nil && *u.BottomNavKeys != "" {
 		bottomNavKeys = strings.Split(*u.BottomNavKeys, ",")
 	}
+	bottomNavPosition := "bottom"
+	if u.BottomNavPosition != nil && *u.BottomNavPosition != "" {
+		bottomNavPosition = *u.BottomNavPosition
+	}
 	JSON(w, http.StatusOK, map[string]any{
-		"id":                 u.ID,
-		"username":           u.Username,
-		"role":               u.Role,
-		"is_admin":           u.IsAdmin,
-		"totp_enabled":       u.TotpEnabled,
-		"backup_codes_count": countBackupCodes(u.BackupCodes),
-		"premium_until":      u.PremiumUntil,
-		"blocked_at":         u.BlockedAt,
-		"bottom_nav_keys":    bottomNavKeys, // null/absent = use the frontend default set
+		"id":                  u.ID,
+		"username":            u.Username,
+		"role":                u.Role,
+		"is_admin":            u.IsAdmin,
+		"totp_enabled":        u.TotpEnabled,
+		"backup_codes_count":  countBackupCodes(u.BackupCodes),
+		"premium_until":       u.PremiumUntil,
+		"blocked_at":          u.BlockedAt,
+		"bottom_nav_keys":     bottomNavKeys, // null/absent = use the frontend default set
+		"bottom_nav_position": bottomNavPosition,
 	})
 }
 
@@ -136,8 +141,10 @@ var validBottomNavKeys = map[string]bool{
 	"mine": true, "history": true, "sessions": true, "settings": true,
 }
 
+var validBottomNavPositions = map[string]bool{"bottom": true, "right": true, "left": true}
+
 // POST /api/me/bottom-nav — save the current user's bottom-nav bar config.
-// Body: {"keys": ["back","home","mine","history"]}
+// Body: {"keys": ["back","home","mine","history"], "position": "bottom"}
 func handleSaveBottomNav(w http.ResponseWriter, r *http.Request) {
 	key := auth.SessionFromRequest(r)
 	if key == "" {
@@ -150,7 +157,8 @@ func handleSaveBottomNav(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Keys []string `json:"keys"`
+		Keys     []string `json:"keys"`
+		Position string   `json:"position"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		Error(w, http.StatusBadRequest, "bad request")
@@ -168,7 +176,14 @@ func handleSaveBottomNav(w http.ResponseWriter, r *http.Request) {
 		}
 		seen[k] = true
 	}
-	if err := store.SetUserBottomNavKeys(r.Context(), u.ID, strings.Join(body.Keys, ",")); err != nil {
+	if body.Position == "" {
+		body.Position = "bottom"
+	}
+	if !validBottomNavPositions[body.Position] {
+		Error(w, http.StatusBadRequest, "invalid position: "+body.Position)
+		return
+	}
+	if err := store.SetUserBottomNavConfig(r.Context(), u.ID, strings.Join(body.Keys, ","), body.Position); err != nil {
 		Error(w, http.StatusInternalServerError, "save failed")
 		return
 	}

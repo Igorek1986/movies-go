@@ -56,14 +56,14 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 	}
 
 	var u models.User
-	var totpSecret, backupCodes, blockReason, bottomNavKeys *string
+	var totpSecret, backupCodes, blockReason, bottomNavKeys, bottomNavPosition *string
 	var premiumUntil, blockedAt *time.Time
 
 	err := postgres.Pool.QueryRow(ctx, `
 		SELECT u.id, u.username, u.password_hash, u.role, u.is_admin,
 		       u.totp_secret, u.totp_enabled, u.backup_codes,
 		       u.premium_until, u.blocked_at, u.block_reason, u.created_at,
-		       u.bottom_nav_keys
+		       u.bottom_nav_keys, u.bottom_nav_position
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.key = $1 AND s.expires_at > now()`,
@@ -72,7 +72,7 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 		&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.IsAdmin,
 		&totpSecret, &u.TotpEnabled, &backupCodes,
 		&premiumUntil, &blockedAt, &blockReason, &u.CreatedAt,
-		&bottomNavKeys,
+		&bottomNavKeys, &bottomNavPosition,
 	)
 	if err != nil {
 		return nil
@@ -83,6 +83,7 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 	u.BlockedAt = blockedAt
 	u.BlockReason = blockReason
 	u.BottomNavKeys = bottomNavKeys
+	u.BottomNavPosition = bottomNavPosition
 
 	// sliding window — extend session on use
 	postgres.Pool.Exec(ctx, //nolint:errcheck

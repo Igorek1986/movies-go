@@ -4,7 +4,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { ProfileSwitcher } from '@/components/ProfileSwitcher'
 import { BottomNav, BOTTOM_NAV_ICONS, type BottomNavItem } from '@/components/BottomNav'
-import { BOTTOM_NAV_OPTIONS, resolveBottomNavKeys } from '@/utils/bottomNavConfig'
+import { BOTTOM_NAV_OPTIONS, resolveBottomNavKeys, resolveBottomNavPosition, type BottomNavConfig } from '@/utils/bottomNavConfig'
 import { requestFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { applyTheme, getStoredTheme, THEMES, type ThemeId } from '@/utils/theme'
 import { loadTTLCache, saveTTLCache } from '@/utils/ttlCache'
@@ -26,14 +26,20 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   }
 
   const [navKeys, setNavKeys] = useState<string[]>(() => resolveBottomNavKeys(undefined))
+  const [navPosition, setNavPosition] = useState(() => resolveBottomNavPosition(undefined))
   useEffect(() => {
     setNavKeys(resolveBottomNavKeys(user?.bottom_nav_keys))
-  }, [user?.bottom_nav_keys])
+    setNavPosition(resolveBottomNavPosition(user?.bottom_nav_position))
+  }, [user?.bottom_nav_keys, user?.bottom_nav_position])
   // Settings page dispatches this right after a successful save, so the
   // change is visible immediately without waiting for Layout's next mount
   // (per-page navigation) to re-fetch /api/me.
   useEffect(() => {
-    const onUpdate = (e: Event) => setNavKeys((e as CustomEvent<string[]>).detail)
+    const onUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<BottomNavConfig>).detail
+      setNavKeys(detail.keys)
+      setNavPosition(detail.position)
+    }
     window.addEventListener('bottomnav:update', onUpdate)
     return () => window.removeEventListener('bottomnav:update', onUpdate)
   }, [])
@@ -210,11 +216,11 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
         <button className={styles.drawerLogout} onClick={handleLogout}>Выйти</button>
       </div>
 
-      <main className={`${styles.main}${wide ? ' ' + styles.mainWide : ''}`}>{children}</main>
+      <main className={`${styles.main}${wide ? ' ' + styles.mainWide : ''}${navPosition === 'right' ? ' ' + styles.mainRightNav : ''}${navPosition === 'left' ? ' ' + styles.mainLeftNav : ''}`}>{children}</main>
 
       <input ref={searchWarmupRef} type="text" aria-hidden="true" tabIndex={-1} className={styles.searchWarmup} />
 
-      <BottomNav items={bottomNavItems} />
+      <BottomNav items={bottomNavItems} position={navPosition} />
     </div>
   )
 }

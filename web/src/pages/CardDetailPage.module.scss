@@ -44,9 +44,10 @@
   transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 
-  // Superseded by the Layout bottom bar's own Назад slot on mobile — last so
-  // it wins the cascade over the unconditional `display: flex` above.
-  @media (max-width: $bp-md) {
+  // Superseded by the Layout nav panel's own Назад slot on mobile/tablet
+  // (shown up to $bp-lg) — last so it wins the cascade over the
+  // unconditional `display: flex` above.
+  @media (max-width: $bp-lg) {
     display: none;
   }
 

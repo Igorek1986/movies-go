@@ -8,6 +8,7 @@ interface User {
   totp_enabled: boolean
   backup_codes_count: number
   bottom_nav_keys?: string[] | null
+  bottom_nav_position?: string | null
 }
 
 interface AuthState {

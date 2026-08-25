@@ -91,10 +91,11 @@ func SetUserRole(ctx context.Context, id int64, role string) error {
 	return err
 }
 
-// SetUserBottomNavKeys saves the user's mobile bottom-nav bar configuration
-// (comma-separated option keys, see BOTTOM_NAV_OPTIONS on the frontend).
-func SetUserBottomNavKeys(ctx context.Context, id int64, keys string) error {
-	_, err := postgres.Pool.Exec(ctx, `UPDATE users SET bottom_nav_keys = $1 WHERE id = $2`, keys, id)
+// SetUserBottomNavConfig saves the user's mobile/tablet bottom-nav bar
+// configuration: comma-separated option keys (see BOTTOM_NAV_OPTIONS on the
+// frontend) and its screen position ("bottom" or "right").
+func SetUserBottomNavConfig(ctx context.Context, id int64, keys, position string) error {
+	_, err := postgres.Pool.Exec(ctx, `UPDATE users SET bottom_nav_keys = $1, bottom_nav_position = $2 WHERE id = $3`, keys, position, id)
 	return err
 }
 

@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { BOTTOM_NAV_ICONS } from '@/components/BottomNav'
-import { BOTTOM_NAV_OPTIONS, DEFAULT_KEYS, MIN_ITEMS, MAX_ITEMS, resolveBottomNavKeys, saveBottomNavKeys } from '@/utils/bottomNavConfig'
+import {
+  BOTTOM_NAV_OPTIONS, DEFAULT_KEYS, MIN_ITEMS, MAX_ITEMS,
+  DEFAULT_POSITION, resolveBottomNavKeys, resolveBottomNavPosition,
+  saveBottomNavConfig, type BottomNavPosition,
+} from '@/utils/bottomNavConfig'
 // Reuses ProfilesPage's own <details>/<summary>/checkbox styles for a
 // consistent look — this settings block only lives on that page today.
 import pageStyles from '@/pages/ProfilesPage.module.scss'
@@ -14,8 +18,12 @@ import styles from './BottomNavSettings.module.scss'
 export function BottomNavSettings() {
   const { user } = useAuth()
   const [keys, setKeys] = useState<string[]>(DEFAULT_KEYS)
+  const [position, setPosition] = useState<BottomNavPosition>(DEFAULT_POSITION)
   useEffect(() => {
-    if (user) setKeys(resolveBottomNavKeys(user.bottom_nav_keys))
+    if (user) {
+      setKeys(resolveBottomNavKeys(user.bottom_nav_keys))
+      setPosition(resolveBottomNavPosition(user.bottom_nav_position))
+    }
   }, [user])
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -47,7 +55,7 @@ export function BottomNavSettings() {
   async function handleSave() {
     setSaving(true)
     setMsg(null)
-    const ok = await saveBottomNavKeys(keys)
+    const ok = await saveBottomNavConfig({ keys, position })
     setMsg(ok ? 'Сохранено' : 'Ошибка сохранения')
     setSaving(false)
   }
@@ -61,11 +69,28 @@ export function BottomNavSettings() {
 
   return (
     <details className={pageStyles.details}>
-      <summary className={pageStyles.summary}>Нижняя панель (моб.)</summary>
+      <summary className={pageStyles.summary}>Панель навигации (моб./планшет)</summary>
       <div className={pageStyles.detailsBody}>
         <p className={pageStyles.hint}>
           Кнопки нижней панели на телефоне — от {MIN_ITEMS} до {MAX_ITEMS}, стрелками меняешь порядок.
         </p>
+        <p className={pageStyles.hint}>
+          Расположение на планшетном экране (768–1024px) — на телефоне панель всегда снизу.
+        </p>
+        <div className={styles.positionRow}>
+          <label className={pageStyles.checkLabel}>
+            <input type="radio" name="bottomNavPosition" checked={position === 'bottom'} onChange={() => setPosition('bottom')} />
+            Снизу
+          </label>
+          <label className={pageStyles.checkLabel}>
+            <input type="radio" name="bottomNavPosition" checked={position === 'right'} onChange={() => setPosition('right')} />
+            Справа
+          </label>
+          <label className={pageStyles.checkLabel}>
+            <input type="radio" name="bottomNavPosition" checked={position === 'left'} onChange={() => setPosition('left')} />
+            Слева
+          </label>
+        </div>
         <ul className={styles.list}>
           {ordered.map(opt => {
             const idx = keys.indexOf(opt.key)

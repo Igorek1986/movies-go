@@ -1,7 +1,5 @@
 @use '@/styles/variables' as *;
 
-$nav-height: 52px;
-
 .layout {
   display: flex;
   flex-direction: column;
@@ -43,7 +41,7 @@ $nav-height: 52px;
   z-index: 200;
   gap: $spacing-sm;
 
-  @media (max-width: $bp-md) {
+  @media (max-width: $bp-lg) {
     padding: $spacing-sm $spacing-md;
     padding-top: calc(#{$spacing-sm} + env(safe-area-inset-top));
   }
@@ -58,13 +56,15 @@ $nav-height: 52px;
   flex-shrink: 0;
 }
 
-// Desktop links — hidden on mobile
+// Desktop links — hidden on mobile/tablet (burger+drawer take over up to
+// $bp-lg, matching BottomNav's own visibility range — otherwise both the
+// full link list and the quick-nav panel would show at once).
 .navLinks {
   display: flex;
   align-items: center;
   gap: $spacing-xs;
 
-  @media (max-width: $bp-md) {
+  @media (max-width: $bp-lg) {
     display: none;
   }
 }
@@ -144,7 +144,7 @@ $nav-height: 52px;
   gap: $spacing-sm;
   flex-shrink: 0;
 
-  @media (max-width: $bp-md) {
+  @media (max-width: $bp-lg) {
     display: flex;
   }
 }
@@ -176,7 +176,7 @@ $nav-height: 52px;
 
   &:hover span { background: $color-text; }
 
-  @media (max-width: $bp-md) {
+  @media (max-width: $bp-lg) {
     display: flex;
   }
 
@@ -298,10 +298,16 @@ $nav-height: 52px;
   margin: 0 auto;
   box-sizing: border-box;
 
+  // Reserve space so the fixed nav panel (shown up to $bp-lg, tablet
+  // included) never covers page content — default "bottom" position, see
+  // .mainRightNav below for the "right" one. Applied here once rather than
+  // per-page.
+  @media (max-width: $bp-lg) {
+    padding-bottom: calc(#{$spacing-lg} + #{$bottom-nav-height} + env(safe-area-inset-bottom));
+  }
+
   @media (max-width: $bp-md) {
     padding: $spacing-lg $spacing-md;
-    // Reserve space so the fixed bottom bar never covers page content —
-    // applied here once rather than per-page.
     padding-bottom: calc(#{$spacing-lg} + #{$bottom-nav-height} + env(safe-area-inset-bottom));
   }
 
@@ -313,4 +319,26 @@ $nav-height: 52px;
 
 .mainWide {
   max-width: 1800px;
+}
+
+// Applied alongside .main when the account's bottom-nav position is
+// "right"/"left" — swaps the reserved space from the bottom edge to that
+// side, tablet width range only (BottomNav's own .right/.left do the same
+// phone/tablet split; keep them in sync). Written after .main so each
+// property here wins at matching specificity.
+// The pill floats $spacing-lg off the edge (plus safe-area-inset) — content
+// needs to clear that margin AND the pill's own width, plus one more
+// $spacing-lg so it isn't flush against the pill itself.
+.mainRightNav {
+  @media (min-width: $bp-md) and (max-width: $bp-lg) {
+    padding-bottom: $spacing-xl;
+    padding-right: calc(#{$spacing-lg} * 2 + #{$bottom-nav-width-vertical} + env(safe-area-inset-right));
+  }
+}
+
+.mainLeftNav {
+  @media (min-width: $bp-md) and (max-width: $bp-lg) {
+    padding-bottom: $spacing-xl;
+    padding-left: calc(#{$spacing-lg} * 2 + #{$bottom-nav-width-vertical} + env(safe-area-inset-left));
+  }
 }

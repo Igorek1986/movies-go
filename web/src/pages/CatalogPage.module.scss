@@ -49,15 +49,17 @@
   @include input-base;
   height: 36px;
   width: 220px;
-  font-size: $font-size-sm;
   border-radius: $radius-sm;
   padding-right: 28px;
+  // iOS Safari auto-zooms the page on focus for any input with a computed
+  // font-size under 16px — this is that threshold, not a visual choice.
+  // Kept unconditional (not just under some breakpoint): a landscape phone
+  // or a portrait tablet can both land in the "tablet" width range where
+  // this bar shows, so there's no single cutoff that's safe to gate it on.
+  font-size: 16px;
 
   @media (max-width: $bp-sm) {
     width: 150px;
-    // iOS Safari auto-zooms the page on focus for any input with a computed
-    // font-size under 16px — this is that threshold, not a visual choice.
-    font-size: 16px;
   }
 }
 

@@ -1,9 +1,11 @@
 @use '@/styles/variables' as *;
 
+// Shown up to $bp-lg (tablet included, not just phones) — position within
+// that range is per-account, see .right below and BottomNavSettings.
 .bottomNav {
   display: none;
 
-  @media (max-width: $bp-md) {
+  @media (max-width: $bp-lg) {
     display: flex;
     position: fixed;
     left: 0;
@@ -17,8 +19,57 @@
   }
 }
 
+// Floating rounded pill (Lampa-style), inset from the edge rather than
+// flush against it. $bottom-nav-width-vertical is the pill's own content
+// width — kept out of any safe-area-inset math (that's handled by the
+// left/right offset below instead) since on a notched iPhone in landscape
+// that inset can be 44-59px: baking it into a border-box width in "right:0"
+// mode ate straight into the content area and truncated every label down to
+// 2-3 characters, which is what "iPhone-only, tablet mode" turned out to be.
+@mixin vertical-nav-base {
+  flex-direction: column;
+  top: calc(#{$nav-height} + env(safe-area-inset-top) + #{$spacing-lg});
+  bottom: calc(#{$spacing-lg} + env(safe-area-inset-bottom));
+  width: $bottom-nav-width-vertical;
+  height: auto;
+  padding-bottom: 0;
+  border-radius: $radius-full;
+  border: 1px solid $color-border;
+  background: rgba($color-bg-card-rgb, 0.92);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+// Vertical strips docked to the right/left instead of the bottom bar —
+// opt-in, tablet width range only (phones stay on the bottom bar regardless
+// of this setting, too narrow for a sidebar). Same specificity as
+// .bottomNav's media rule above, comes later in the file, so each wins on
+// every property it redeclares.
+.right {
+  @media (min-width: $bp-md) and (max-width: $bp-lg) {
+    @include vertical-nav-base;
+    left: auto;
+    right: calc(#{$spacing-lg} + env(safe-area-inset-right));
+  }
+}
+
+.left {
+  @media (min-width: $bp-md) and (max-width: $bp-lg) {
+    @include vertical-nav-base;
+    right: auto;
+    left: calc(#{$spacing-lg} + env(safe-area-inset-left));
+  }
+}
+
 .bottomNavItem {
   flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  // Text is centered and nowrap (below) — without this, a label that ends
+  // up wider than the item on some device's actual font metrics (observed
+  // on real iPhone, wider than desktop measurements predicted) paints past
+  // the item's own background instead of clipping to it.
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -34,8 +85,24 @@
 
   svg { flex-shrink: 0; }
 
+  span {
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
   &:hover, &:active {
     color: $color-text;
+  }
+}
+
+// Vertical (right/left) mode needs a little breathing room around the
+// label so it doesn't sit flush against the panel's own edge/border.
+.right .bottomNavItem,
+.left .bottomNavItem {
+  @media (min-width: $bp-md) and (max-width: $bp-lg) {
+    padding: 0 $spacing-xs;
   }
 }
 

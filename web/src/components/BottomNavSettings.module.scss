@@ -58,3 +58,9 @@
   gap: $spacing-sm;
   margin-top: $spacing-sm;
 }
+
+.positionRow {
+  display: flex;
+  gap: $spacing-md;
+  margin-bottom: $spacing-sm;
+}

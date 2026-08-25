@@ -378,6 +378,7 @@ CREATE INDEX IF NOT EXISTS idx_torrents_created_at   ON torrents (created_at DES
 -- what order) — comma-separated keys into BOTTOM_NAV_OPTIONS on the
 -- frontend, NULL = use the built-in default set.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bottom_nav_keys VARCHAR(200);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bottom_nav_position VARCHAR(10);
 
 -- ─── Proxy configuration ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS proxy_configs (
