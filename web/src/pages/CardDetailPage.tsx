@@ -633,7 +633,39 @@ export default function CardDetailPage() {
   // deliberately left alone (no preventDefault) so Layout's desktop
   // side-panel-summon can still claim it — see the data-row-id check there.
   const rowFocusIdx = useRef(new Map<string, number>())
+  // Coalesces scrollIntoView calls for rapid within-row Left/Right presses
+  // (held key / fast repeats). Calling scrollIntoView again while a previous
+  // smooth-scroll is still animating restarts its easing curve from
+  // scratch — several of those in a row reads as visible stutter/pulsing
+  // instead of one continuous glide. So: fire immediately if the last
+  // animation has had time to settle, otherwise just remember the latest
+  // target and fire once, after that settle time — coalescing a burst of
+  // presses into one final smooth scroll instead of many interrupted ones.
+  const rowScrollState = useRef<{ lastCallAt: number; timer: number | null; pendingEl: HTMLElement | null }>({
+    lastCallAt: 0, timer: null, pendingEl: null,
+  })
   useEffect(() => {
+    const ROW_SCROLL_SETTLE_MS = 350
+
+    function scrollRowTo(el: HTMLElement) {
+      const state = rowScrollState.current
+      const now = performance.now()
+      const elapsed = now - state.lastCallAt
+      if (elapsed >= ROW_SCROLL_SETTLE_MS) {
+        state.lastCallAt = now
+        el.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+        return
+      }
+      state.pendingEl = el
+      if (state.timer !== null) return
+      state.timer = window.setTimeout(() => {
+        state.timer = null
+        state.lastCallAt = performance.now()
+        state.pendingEl?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+        state.pendingEl = null
+      }, ROW_SCROLL_SETTLE_MS - elapsed)
+    }
+
     function isTypingTarget(el: Element | null) {
       const tag = el?.tagName
       return tag === 'INPUT' || tag === 'TEXTAREA' || (el as HTMLElement | null)?.isContentEditable
@@ -733,9 +765,8 @@ export default function CardDetailPage() {
         rowFocusIdx.current.set(currentRow.dataset.rowId!, next)
         items[next]?.focus({ preventScroll: true })
         // Keep horizontal focus centered in scrollable rows (cast/similar)
-        // instead of the browser's default edge-alignment — block:'nearest'
-        // so this doesn't also yank the page's vertical scroll position.
-        items[next]?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+        // instead of the browser's default edge-alignment.
+        if (items[next]) scrollRowTo(items[next])
         return
       }
 
@@ -763,7 +794,10 @@ export default function CardDetailPage() {
     }
 
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      if (rowScrollState.current.timer !== null) window.clearTimeout(rowScrollState.current.timer)
+    }
     // Just progressPreviewPct — everything else the handler needs
     // (moviePct/movieDur/item/profileId) comes from progressCtxRef, kept
     // current by a plain assignment during render (see its declaration),
