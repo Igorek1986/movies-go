@@ -50,6 +50,14 @@
   font-size: $font-size-base;
   font-weight: 600;
   color: $color-text;
+  padding: $spacing-xs $spacing-sm;
+  border: 1px solid transparent;
+  border-radius: $radius-sm;
+
+  &:focus-visible {
+    outline: none;
+    border-color: $color-primary;
+  }
 }
 
 .todayBtn {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
@@ -70,6 +70,8 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(todayStr())
   const [pushSubscribed, setPushSubscribed] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
+  const monthNavRef = useRef<HTMLDivElement>(null)
+  const lastFocusedDateRef = useRef<string | null>(null)
 
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
@@ -132,6 +134,20 @@ export default function CalendarPage() {
     setSelectedDate(todayStr())
   }
 
+  // Remember the last focused grid cell's date so that returning down through
+  // the month nav / top menu lands back on the day the user left, not
+  // whichever day happens to be selected.
+  useEffect(() => {
+    function onFocusIn(e: FocusEvent) {
+      const target = e.target as HTMLElement
+      if (target?.hasAttribute('data-cal-cell')) {
+        lastFocusedDateRef.current = target.dataset.date ?? null
+      }
+    }
+    document.addEventListener('focusin', onFocusIn)
+    return () => document.removeEventListener('focusin', onFocusIn)
+  }, [])
+
   // Keyboard navigation: arrow keys move focus across the day grid, then down
   // into the selected day's episode list (mirrors the card-grid nav on other
   // pages — see HistoryPage/CatalogPage/MediaLibraryPage).
@@ -157,6 +173,33 @@ export default function CalendarPage() {
       if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
       e.preventDefault()
 
+      const inMonthNav = !!focused?.closest('[data-row-id="calendar-month-nav"]')
+      if (inMonthNav) {
+        if (e.key === 'ArrowLeft') { goMonth(-1); return }
+        if (e.key === 'ArrowRight') { goMonth(1); return }
+        if (e.key === 'ArrowDown') {
+          const wantDate = lastFocusedDateRef.current ?? selectedDate
+          ;(cells.find(c => c.dataset.date === wantDate) ?? cells[0])?.focus()
+          return
+        }
+        if (e.key === 'ArrowUp') {
+          const topLink =
+            document.querySelector<HTMLElement>('[data-top-nav] a[aria-current="page"]') ??
+            document.querySelector<HTMLElement>('[data-top-nav] a')
+          topLink?.focus()
+          return
+        }
+        return
+      }
+
+      const inTopNav = !!focused?.closest('[data-top-nav]')
+      if (inTopNav) {
+        if (e.key === 'ArrowDown') {
+          monthNavRef.current?.querySelector<HTMLElement>('[data-cal-month-label]')?.focus()
+        }
+        return
+      }
+
       if (dayItemIdx !== -1) {
         if (e.key === 'ArrowDown') {
           dayItems[Math.min(dayItemIdx + 1, dayItems.length - 1)].focus()
@@ -181,7 +224,13 @@ export default function CalendarPage() {
       let next = -1
       if (e.key === 'ArrowRight') next = Math.min(cellIdx + 1, cells.length - 1)
       else if (e.key === 'ArrowLeft') next = Math.max(cellIdx - 1, 0)
-      else if (e.key === 'ArrowUp') next = Math.max(cellIdx - cols, 0)
+      else if (e.key === 'ArrowUp') {
+        if (cellIdx < cols) {
+          monthNavRef.current?.querySelector<HTMLElement>('[data-cal-month-label]')?.focus()
+          return
+        }
+        next = cellIdx - cols
+      }
       else if (e.key === 'ArrowDown') {
         if (cellIdx >= cells.length - cols) {
           dayItems[0]?.focus()
@@ -197,7 +246,7 @@ export default function CalendarPage() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [navigate, selectedDate])
+  }, [navigate, selectedDate, month, year])
 
   const byDate = new Map<string, CalendarEpisode[]>()
   for (const ep of episodes ?? []) {
@@ -219,9 +268,9 @@ export default function CalendarPage() {
       <div className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Календарь</h1>
-          <div className={styles.monthNav}>
+          <div className={styles.monthNav} ref={monthNavRef} data-row-id="calendar-month-nav">
             <button className={styles.navBtn} onClick={() => goMonth(-1)} aria-label="Предыдущий месяц">‹</button>
-            <span className={styles.monthLabel}>{MONTH_NAMES[month - 1]} {year}</span>
+            <span className={styles.monthLabel} data-cal-month-label tabIndex={0}>{MONTH_NAMES[month - 1]} {year}</span>
             <button className={styles.navBtn} onClick={() => goMonth(1)} aria-label="Следующий месяц">›</button>
             <button className={styles.todayBtn} onClick={goToday}>Сегодня</button>
             {isPushSupported() && (
