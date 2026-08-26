@@ -3,14 +3,14 @@ package api
 import (
 	"context"
 	"io"
-	"movies-api/db/store"
+	"movies-api/internal/imagecache"
 	"movies-api/internal/proxy"
 	"net/http"
 	"strings"
 )
 
 // handleImgProxy serves TMDB images through the configured proxy, optionally
-// through a disk cache (see imagecache.go — off by default).
+// through a disk cache (see internal/imagecache — off by default).
 // Route: GET /imgproxy/* where * = t/p/w300/abc.jpg
 func handleImgProxy(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/imgproxy/")
@@ -19,19 +19,20 @@ func handleImgProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cacheEnabled := store.GetSettingInt(r.Context(), "images_cache_enabled") == 1
-	if cacheEnabled && serveFromImageCache(w, r, path) {
+	cacheEnabled := imagecache.Enabled(r.Context())
+	if cacheEnabled && imagecache.ServeFromCache(w, r, path) {
 		return
 	}
 
 	client := proxy.Default.ClientFor(context.Background(), proxy.RouteImages)
 
 	if cacheEnabled {
-		body, ct, err := fetchAndCacheImage(client, path)
+		body, ct, err := imagecache.FetchAndCache(client, path)
 		if err != nil {
 			http.Error(w, "proxy error", http.StatusBadGateway)
 			return
 		}
+		go imagecache.WarmSibling(path)
 		w.Header().Set("Content-Type", ct)
 		w.Header().Set("Cache-Control", "public, max-age=604800")
 		w.Header().Set("Access-Control-Allow-Origin", "*")

@@ -8,6 +8,7 @@ import (
 	"movies-api/db/models"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
+	"movies-api/internal/imagecache"
 	"movies-api/internal/myshows"
 	"movies-api/movies/tmdb"
 	"net/http"
@@ -347,6 +348,7 @@ func findOrFetchCard(ctx context.Context, tmdbID int64, imdbID, origTitle, title
 
 	log.Printf("myshows findCard [tmdb] %q → tmdb_id=%d in %v", origTitle, ent.ID, time.Since(t0))
 	store.UpsertMediaCard(ent, &models.TorrentDetails{})
+	imagecache.WarmCard(ent.PosterPath, ent.BackdropPath)
 
 	cardID := fmt.Sprintf("%d_%s", ent.ID, ent.MediaType)
 	return &cardBasic{

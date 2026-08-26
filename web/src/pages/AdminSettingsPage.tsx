@@ -674,6 +674,7 @@ const CHECKBOX_KEYS: Record<string, string> = {
   google_analytics_enabled: 'google_analytics_id',
   catalog_require_poster:   '',
   images_cache_enabled:     '',
+  images_cache_warm_original: '',
 }
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -686,6 +687,7 @@ const DESCRIPTIONS: Record<string, string> = {
   watching_threshold: 'Процент прогресса текущей серии, после которого сериал получает статус «Смотрю» (0 = сразу на любой прогресс).',
   images_cache_enabled: 'Постеры/фоны с TMDB сохраняются на диск при первом запросе и дальше отдаются локально, без похода на TMDB. Работает только для веб-интерфейса (плагин Lampa не проксирует через сервер).',
   images_cache_limit_mb: 'При превышении лимита старые файлы (по дате записи) вытесняются автоматически.',
+  images_cache_warm_original: 'Дополнительно прогревать фон в размере original (полный, без ресайза TMDB) — сам по себе тяжелее w780/w1280. Срабатывает при парсинге новых карточек и при первом запросе постера/фона через /imgproxy (см. WarmSibling).',
   poster_size: 'Действует для новых/обновляемых карточек. Уже существующие карточки сохранят прежнее качество до своего следующего TMDB-обновления — нужен разовый бэкафилл в БД, чтобы поднять качество сразу у всех.',
   backdrop_size: 'Действует для новых/обновляемых карточек, как и качество постеров.',
 }
@@ -759,6 +761,7 @@ const LABELS: Record<string, string> = {
   catalog_require_poster:  'Скрывать карточки без постера',
   images_cache_enabled:    'Дисковый кеш картинок',
   images_cache_limit_mb:   'Лимит дискового кеша картинок (МБ)',
+  images_cache_warm_original: 'Прогревать фон в original',
   poster_size:             'Качество постеров',
   backdrop_size:           'Качество фонов',
   catalog_actor_count:      'Актёры в каталоге — глобальных (0 = выкл)',
@@ -844,6 +847,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'catalog_require_poster',
     'images_cache_enabled',
     'images_cache_limit_mb',
+    'images_cache_warm_original',
     'poster_size',
     'backdrop_size',
     'catalog_actor_count',

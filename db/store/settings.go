@@ -96,8 +96,9 @@ var SettingDefaults = map[string]string{
 	"tmdb_refresh_age_days":       "30",
 	// Catalog
 	"catalog_require_poster": "1",
-	"images_cache_enabled":   "1", // дисковый кеш /imgproxy — сам включает раздачу картинок через сервер
-	"images_cache_limit_mb":  "1024",
+	"images_cache_enabled":       "1", // дисковый кеш /imgproxy — сам включает раздачу картинок через сервер
+	"images_cache_limit_mb":      "3072",
+	"images_cache_warm_original": "1", // прогревать ли фон в размере original (тяжёлый — не урезан TMDB-ресайзом) при WarmSibling
 	"poster_size":            "w500",  // TMDB size сегмент для постеров при обогащении карточек
 	"backdrop_size":          "w1280", // TMDB size сегмент для фонов при обогащении карточек
 	"catalog_actor_count":    "2",

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"movies-api/db/models"
 	"movies-api/db/store"
+	"movies-api/internal/imagecache"
 	"movies-api/internal/myshows"
 	"movies-api/movies/tmdb"
 	"net/http"
@@ -84,6 +85,7 @@ func enrichMissingMyshowsCards(cards []store.MyshowsCard) bool {
 		}
 		ent.MediaType = c.MediaType // authoritative type from myshows_items
 		store.UpsertMediaCard(ent, &models.TorrentDetails{})
+		imagecache.WarmCard(ent.PosterPath, ent.BackdropPath)
 		enriched = true
 	}
 	return enriched

@@ -1356,6 +1356,35 @@ func SearchMedia(query string, limit, offset int) []MediaRow {
 
 // ─── Media card reads ─────────────────────────────────────────────────────────
 
+// FindCardImagesByFilename returns the poster and backdrop URLs of whichever
+// card owns the given TMDB image filename (matched by trailing path segment
+// of either poster_path or backdrop_path, ignoring domain/size prefix) — used
+// to warm the sibling image (backdrop when a poster was just requested through
+// /imgproxy, or vice versa) without the client having to ask for it explicitly.
+func FindCardImagesByFilename(ctx context.Context, filename string) (posterURL, backdropURL string, found bool) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	var poster, backdrop *string
+	err := postgres.Pool.QueryRow(ctx, `
+		SELECT poster_path, backdrop_path FROM media_cards
+		WHERE regexp_replace(poster_path, '^.*/', '') = $1
+		   OR regexp_replace(backdrop_path, '^.*/', '') = $1
+		LIMIT 1`,
+		filename,
+	).Scan(&poster, &backdrop)
+	if err != nil {
+		return "", "", false
+	}
+	if poster != nil {
+		posterURL = *poster
+	}
+	if backdrop != nil {
+		backdropURL = *backdrop
+	}
+	return posterURL, backdropURL, true
+}
+
 func GetMediaCard(tmdbID int64, mediaType string) *models.Entity {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

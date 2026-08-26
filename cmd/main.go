@@ -13,6 +13,7 @@ import (
 	"movies-api/internal/api"
 	"movies-api/internal/auth"
 	"movies-api/internal/bot"
+	"movies-api/internal/imagecache"
 	"movies-api/internal/logbuf"
 	"movies-api/internal/myshows"
 	"movies-api/internal/tasks"
@@ -117,8 +118,8 @@ func main() {
 	// in-memory size counters from whatever's already on disk, then start
 	// trimming it back to images_cache_limit_mb periodically.
 	os.MkdirAll("cache/images", 0o755) //nolint:errcheck
-	api.LoadImageCacheStats()
-	api.StartImageCacheEvictionLoop(appCtx, 10*time.Minute)
+	imagecache.LoadStats()
+	imagecache.StartEvictionLoop(appCtx, 10*time.Minute)
 
 	go api.RecomputeCategoryCounts()             // warm random-collection totals before first request
 	go store.BackfillImpliedStatuses(appCtx)     // catch up subjective statuses for pre-existing timecodes

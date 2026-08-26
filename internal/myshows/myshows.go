@@ -11,6 +11,7 @@ import (
 	"log"
 	"movies-api/db/models"
 	"movies-api/db/store"
+	"movies-api/internal/imagecache"
 	"movies-api/movies/tmdb"
 	"net/http"
 	"regexp"
@@ -453,6 +454,7 @@ func SyncEpisodesByID(ctx context.Context, tmdbID int64, myshowsID int, force bo
 		// title (LEFT JOIN media_cards), и в календаре сериал без названия.
 		if ent := tmdb.GetVideoDetails(false, tmdbID); ent != nil {
 			store.UpsertMediaCard(ent, &models.TorrentDetails{})
+			imagecache.WarmCard(ent.PosterPath, ent.BackdropPath)
 			mc = store.GetMediaCardEpInfo(ctx, cardID)
 		}
 	}

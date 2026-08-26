@@ -12,6 +12,7 @@ import (
 	"movies-api/db/postgres"
 	"movies-api/db/store"
 	"movies-api/internal/bot"
+	"movies-api/internal/imagecache"
 	tasks "movies-api/internal/tasks"
 	"movies-api/movies/tmdb"
 	"net/http"
@@ -95,7 +96,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	var popularCards int
 	var popularSourceURL string
 	popularSourceCount := -1                                    // -1 = unknown/unreachable
-	imageCacheBytesVal, imageCacheFilesVal := ImageCacheStats() // in-memory counters, no disk scan
+	imageCacheBytesVal, imageCacheFilesVal := imagecache.Stats() // in-memory counters, no disk scan
 
 	type newUser struct {
 		Username  string `json:"username"`
@@ -1897,8 +1898,9 @@ var checkboxSettingKeys = map[string]string{
 	"google_analytics_enabled": "google_analytics_id",
 }
 var boolSettingKeys = map[string]bool{
-	"catalog_require_poster": true,
-	"images_cache_enabled":   true,
+	"catalog_require_poster":     true,
+	"images_cache_enabled":       true,
+	"images_cache_warm_original": true,
 }
 
 // settingsGroupDefs mirrors FastAPI GROUPS.
@@ -1971,6 +1973,7 @@ var settingsGroupDefs = []struct {
 		"catalog_require_poster",
 		"images_cache_enabled",
 		"images_cache_limit_mb",
+		"images_cache_warm_original",
 		"poster_size",
 		"backdrop_size",
 		"catalog_actor_count",

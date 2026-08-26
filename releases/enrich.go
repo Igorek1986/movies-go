@@ -5,6 +5,7 @@ import (
 	"log"
 	"movies-api/db/models"
 	"movies-api/db/store"
+	"movies-api/internal/imagecache"
 	"movies-api/movies/tmdb"
 	"time"
 )
@@ -39,6 +40,7 @@ func Enrich(label string, isMovie bool, t *models.TorrentDetails) bool {
 
 	md.SetTorrent(t)
 	store.UpsertMediaCard(md, t)
+	imagecache.WarmCard(md.PosterPath, md.BackdropPath)
 	cardID := fmt.Sprintf("%d_%s", md.ID, md.MediaType)
 	store.CacheTorrent(t.Hash, cardID, t.Tracker, t.CreateDate)
 	log.Printf("%s: enriched: %s", label, t.Title)
