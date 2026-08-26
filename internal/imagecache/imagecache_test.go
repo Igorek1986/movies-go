@@ -132,3 +132,30 @@ func TestEvictionOrderFavorsRecentlyServedFile(t *testing.T) {
 		t.Fatalf("eviction would pick %q first, want %q (the never-served one)", oldest.path, coldFP)
 	}
 }
+
+func TestSweepStaleTmpRemovesOldButKeepsFresh(t *testing.T) {
+	dir := withTempCacheDir(t)
+
+	stale := filepath.Join(dir, "t_p_w500_stale.jpg.tmp")
+	fresh := filepath.Join(dir, "t_p_w500_fresh.jpg.tmp")
+	for _, fp := range []string{stale, fresh} {
+		if err := os.WriteFile(fp, []byte("x"), 0o644); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
+	// stale.tmp looks like it's been sitting there since well before a
+	// write+rename (milliseconds) would ever normally take.
+	old := time.Now().Add(-2 * staleTmpAge)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatalf("setup chtimes: %v", err)
+	}
+
+	sweepStaleTmp()
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale.tmp should have been swept, stat err = %v", err)
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Fatalf("fresh.tmp should NOT have been swept (too young to be litter): %v", err)
+	}
+}

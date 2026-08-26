@@ -182,9 +182,11 @@ func writeFile(tmdbPath string, body []byte) {
 	fp := path(tmdbPath)
 	tmp := fp + ".tmp"
 	if err := os.WriteFile(tmp, body, 0o644); err != nil {
+		log.Printf("imagecache: write %s: %v", tmp, err)
 		return
 	}
 	if err := os.Rename(tmp, fp); err != nil {
+		log.Printf("imagecache: rename %s -> %s: %v", tmp, fp, err)
 		os.Remove(tmp) //nolint:errcheck
 		return
 	}
@@ -295,11 +297,45 @@ func WarmSibling(tmdbPath string) {
 	}
 }
 
+// staleTmpAge is how long a .tmp is given to turn into a real file (write +
+// rename normally takes milliseconds) before sweepStaleTmp treats it as
+// litter from a failed write (e.g. disk full) and removes it. Swept
+// unconditionally on every tick, independent of evictIfOverLimit — a write
+// failure never bumps cacheBytes, so a size-gated sweep would never run
+// during the exact situation (disk full) that leaves .tmp litter behind.
+const staleTmpAge = time.Hour
+
+func sweepStaleTmp() {
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-staleTmpAge)
+	removed := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tmp") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		if os.Remove(filepath.Join(cacheDir, e.Name())) == nil {
+			removed++
+		}
+	}
+	if removed > 0 {
+		log.Printf("imagecache: swept %d stale .tmp file(s)", removed)
+	}
+}
+
 // StartEvictionLoop periodically trims the cache down to images_cache_limit_mb,
-// oldest-written file first, whenever it's enabled and over the limit. Runs
-// once immediately, then on the given interval.
+// oldest-written file first, whenever it's enabled and over the limit, and
+// sweeps any stray .tmp files left behind by failed writes. Runs once
+// immediately, then on the given interval.
 func StartEvictionLoop(ctx context.Context, interval time.Duration) {
 	evictIfOverLimit(ctx)
+	sweepStaleTmp()
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -309,6 +345,7 @@ func StartEvictionLoop(ctx context.Context, interval time.Duration) {
 				return
 			case <-ticker.C:
 				evictIfOverLimit(ctx)
+				sweepStaleTmp()
 			}
 		}
 	}()
