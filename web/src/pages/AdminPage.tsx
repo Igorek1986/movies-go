@@ -78,6 +78,7 @@ export default function AdminPage() {
   )
   const [sysStats, setSysStats] = useState<SystemStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [statsRefreshing, setStatsRefreshing] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [fixRtStatus, setFixRtStatus] = useState<{ running: boolean; stage: string; current: number; total: number; fixed: number }>({
     running: false, stage: '', current: 0, total: 0, fixed: 0,
@@ -513,9 +514,17 @@ export default function AdminPage() {
               type="button"
               className={styles.navBtn}
               title="Статистика кешируется на 5 минут — если только что менял что-то на сервере (например прогревал кеш картинок), обнови вручную"
-              onClick={() => refresh()}
+              disabled={statsRefreshing}
+              onClick={async () => {
+                setStatsRefreshing(true)
+                try {
+                  await refresh()
+                } finally {
+                  setStatsRefreshing(false)
+                }
+              }}
             >
-              Обновить статистику
+              {statsRefreshing ? 'Обновление…' : 'Обновить статистику'}
             </button>
             <Link to="/admin/parsers" className={styles.navBtn}>Парсеры</Link>
             <Link to="/admin/proxies" className={styles.navBtn}>Прокси</Link>
