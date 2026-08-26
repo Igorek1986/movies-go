@@ -4,6 +4,7 @@ import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { isPushSupported, getPushStatus, subscribeToPush, unsubscribeFromPush } from '@/utils/push'
+import { getGridCols } from '@/utils/scrollNav'
 import styles from './CalendarPage.module.scss'
 
 interface CalendarEpisode {
@@ -131,6 +132,73 @@ export default function CalendarPage() {
     setSelectedDate(todayStr())
   }
 
+  // Keyboard navigation: arrow keys move focus across the day grid, then down
+  // into the selected day's episode list (mirrors the card-grid nav on other
+  // pages — see HistoryPage/CatalogPage/MediaLibraryPage).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const tag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') return
+
+      if (e.key === 'Backspace') { navigate(-1); return }
+
+      const cells = Array.from(document.querySelectorAll<HTMLElement>('[data-cal-cell]'))
+      const dayItems = Array.from(document.querySelectorAll<HTMLElement>('[data-cal-day-item]'))
+      const focused = document.activeElement as HTMLElement
+      const cellIdx = cells.indexOf(focused)
+      const dayItemIdx = dayItems.indexOf(focused)
+
+      if (e.key === 'Enter' && (cellIdx !== -1 || dayItemIdx !== -1)) {
+        e.preventDefault()
+        focused.click()
+        return
+      }
+
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
+      e.preventDefault()
+
+      if (dayItemIdx !== -1) {
+        if (e.key === 'ArrowDown') {
+          dayItems[Math.min(dayItemIdx + 1, dayItems.length - 1)].focus()
+        } else if (e.key === 'ArrowUp') {
+          if (dayItemIdx === 0) {
+            (cells.find(c => c.dataset.date === selectedDate) ?? cells[cells.length - 1])?.focus()
+          } else {
+            dayItems[dayItemIdx - 1].focus()
+          }
+        }
+        return
+      }
+
+      if (!cells.length) return
+
+      if (cellIdx === -1) {
+        (cells.find(c => c.dataset.date === selectedDate) ?? cells[0]).focus()
+        return
+      }
+
+      const cols = getGridCols(cells)
+      let next = -1
+      if (e.key === 'ArrowRight') next = Math.min(cellIdx + 1, cells.length - 1)
+      else if (e.key === 'ArrowLeft') next = Math.max(cellIdx - 1, 0)
+      else if (e.key === 'ArrowUp') next = Math.max(cellIdx - cols, 0)
+      else if (e.key === 'ArrowDown') {
+        if (cellIdx >= cells.length - cols) {
+          dayItems[0]?.focus()
+          return
+        }
+        next = Math.min(cellIdx + cols, cells.length - 1)
+      }
+
+      if (next !== -1 && next !== cellIdx) {
+        cells[next].focus()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [navigate, selectedDate])
+
   const byDate = new Map<string, CalendarEpisode[]>()
   for (const ep of episodes ?? []) {
     const list = byDate.get(ep.air_date)
@@ -178,7 +246,7 @@ export default function CalendarPage() {
           {WEEKDAYS.map(d => <div key={d} className={styles.weekday}>{d}</div>)}
         </div>
 
-        <div className={styles.grid}>
+        <div className={styles.grid} data-row-id="calendar-grid">
           {grid.map(({ date, inMonth }) => {
             const dayEpisodes = byDate.get(date) ?? []
             const dayNum = Number(date.slice(8, 10))
@@ -187,9 +255,11 @@ export default function CalendarPage() {
             return (
               <button
                 key={date}
-                className={`${styles.cell}${inMonth ? '' : ' ' + styles.outMonth}${isToday ? ' ' + styles.today : ''}${isSelected ? ' ' + styles.selected : ''}`}
+                className={`${styles.cell}${inMonth ? '' : ' ' + styles.outMonth}${isToday ? ' ' + styles.today : ''}${isSelected ? ' ' + styles.selected : ''}${dayEpisodes.length ? ' ' + styles.hasEvents : ''}`}
+                data-cal-cell
+                data-nav-item
+                data-date={date}
                 onClick={() => dayEpisodes.length && setSelectedDate(isSelected ? null : date)}
-                disabled={!dayEpisodes.length}
               >
                 <span className={styles.dayNum}>{dayNum}</span>
                 {dayEpisodes.length > 0 && (
@@ -217,11 +287,19 @@ export default function CalendarPage() {
           <div className={styles.dayPanel}>
             <p className={styles.dayPanelTitle}>{selectedDate.split('-').reverse().join('.')}</p>
             {selectedEpisodes.length === 0 && <p className={styles.dayEmpty}>Нет серий</p>}
-            <div className={styles.dayList}>
+            <div className={styles.dayList} data-row-id="calendar-day-list">
               {selectedEpisodes.map((ep, i) => {
                 const poster = posterUrl(ep.poster_path)
                 return (
-                <div key={i} className={styles.dayItem} onClick={() => openCard(ep.card_id)}>
+                <div
+                  key={i}
+                  className={styles.dayItem}
+                  data-cal-day-item
+                  data-nav-item
+                  tabIndex={0}
+                  role="button"
+                  onClick={() => openCard(ep.card_id)}
+                >
                   {poster
                     ? <img className={styles.dayPoster} src={poster} alt={ep.title} loading="lazy" />
                     : <div className={styles.dayPosterPlaceholder} />
