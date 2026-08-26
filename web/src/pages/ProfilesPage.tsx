@@ -208,6 +208,7 @@ export default function ProfilesPage() {
   const [profilePlugins, setProfilePlugins] = useState<ProfilePluginItem[]>([])
   const [newProfilePluginUrl, setNewProfilePluginUrl] = useState('')
   const [newProfilePluginName, setNewProfilePluginName] = useState('')
+  const [profilePluginError, setProfilePluginError] = useState('')
   // Telegram
   const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null)
   const [tgCode, setTgCode] = useState<{ code: string; link: string; ttl_min: number } | null>(null)
@@ -618,6 +619,7 @@ export default function ProfilesPage() {
     setProfilePluginsFor(profileId)
     setNewProfilePluginUrl('')
     setNewProfilePluginName('')
+    setProfilePluginError('')
     const res = await fetch(`/api/devices/${openProfilesFor}/profiles/${profileUrlParam(profileId)}/plugins`)
     if (res.ok) {
       const data = await res.json()
@@ -633,14 +635,20 @@ export default function ProfilesPage() {
     setProfilePlugins(data.plugins || [])
   }
 
-  async function handleSetProfileOverride(url: string, enabled: boolean, name?: string) {
-    if (!openProfilesFor || profilePluginsFor === null) return
-    await fetch(`/api/devices/${openProfilesFor}/profiles/${profileUrlParam(profilePluginsFor)}/plugins`, {
+  // Returns null on success, an error message otherwise.
+  async function handleSetProfileOverride(url: string, enabled: boolean, name?: string): Promise<string | null> {
+    if (!openProfilesFor || profilePluginsFor === null) return null
+    const res = await fetch(`/api/devices/${openProfilesFor}/profiles/${profileUrlParam(profilePluginsFor)}/plugins`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(name === undefined ? { url, enabled } : { url, enabled, name }),
     })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      return d.error || 'Ошибка добавления плагина'
+    }
     reloadProfilePlugins()
+    return null
   }
 
   async function handleClearProfileOverride(url: string) {
@@ -655,15 +663,19 @@ export default function ProfilesPage() {
     const value = window.prompt('Название плагина (только для этого профиля):', pp.name)
     if (value === null || value.trim() === pp.name) return
     const effective = pp.override ?? pp.device_enabled
-    await handleSetProfileOverride(pp.url, effective, value.trim())
+    const err = await handleSetProfileOverride(pp.url, effective, value.trim())
+    if (err) alert(err)
   }
 
   async function handleEditProfilePluginUrl(pp: ProfilePluginItem) {
     const value = window.prompt('URL плагина (только для этого профиля):', pp.url)
     if (value === null || value.trim() === pp.url || !value.trim()) return
     const effective = pp.override ?? pp.device_enabled
+    // Validate/add the new URL before dropping the old override, so a bad
+    // replacement URL doesn't leave the profile with neither.
+    const err = await handleSetProfileOverride(value.trim(), effective, pp.name)
+    if (err) { alert(err); return }
     await handleClearProfileOverride(pp.url)
-    await handleSetProfileOverride(value.trim(), effective, pp.name)
   }
 
   async function handleCreateProfile(e: React.FormEvent) {
@@ -1258,11 +1270,13 @@ export default function ProfilesPage() {
                               })}
                               <form
                                 className={styles.formRow}
-                                onSubmit={e => {
+                                onSubmit={async e => {
                                   e.preventDefault()
                                   const url = newProfilePluginUrl.trim()
                                   if (!url) return
-                                  handleSetProfileOverride(url, true, newProfilePluginName.trim())
+                                  setProfilePluginError('')
+                                  const err = await handleSetProfileOverride(url, true, newProfilePluginName.trim())
+                                  if (err) { setProfilePluginError(err); return }
                                   setNewProfilePluginUrl('')
                                   setNewProfilePluginName('')
                                 }}
@@ -1282,6 +1296,7 @@ export default function ProfilesPage() {
                                 />
                                 <button className={styles.btnSm} type="submit">Добавить</button>
                               </form>
+                              {profilePluginError && <p className={styles.errorText}>{profilePluginError}</p>}
                             </div>
                           )}
                         </div>

@@ -6,13 +6,50 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"movies-api/db/store"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
+
+var pluginCheckClient = &http.Client{Timeout: 6 * time.Second}
+
+// checkPluginURL does a best-effort GET to catch typos/dead links at save
+// time — Lampa fetches the URL directly and just silently no-ops on a bad
+// one, which is confusing enough to be worth a round-trip here. Returns ""
+// on success, a user-facing reason otherwise.
+func checkPluginURL(url string) string {
+	// Lampac-style template URLs (e.g. "http://{localhost}/my_plugins/actors.js")
+	// have their host substituted by Lampac itself at request time — there's
+	// nothing reachable from here to check, so skip the round-trip.
+	if strings.Contains(url, "{") {
+		return ""
+	}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "некорректный URL"
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; movies-go-plugin-check/1.0)")
+	resp, err := pluginCheckClient.Do(req)
+	if err != nil {
+		return "не удалось загрузить URL: " + err.Error()
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Sprintf("сервер вернул статус %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	head := strings.TrimSpace(strings.ToLower(string(body)))
+	if strings.HasPrefix(head, "<!doctype") || strings.HasPrefix(head, "<html") {
+		return "по ссылке HTML-страница, а не JS-файл"
+	}
+	return ""
+}
 
 // GET /api/devices/{id}/plugins
 func handleWebListDevicePlugins(w http.ResponseWriter, r *http.Request) {
@@ -49,6 +86,10 @@ func handleWebAddDevicePlugin(w http.ResponseWriter, r *http.Request) {
 	req.URL = strings.TrimSpace(req.URL)
 	if req.URL == "" || (!strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://")) {
 		Error(w, http.StatusBadRequest, "valid http(s) url required")
+		return
+	}
+	if msg := checkPluginURL(req.URL); msg != "" {
+		Error(w, http.StatusBadRequest, msg)
 		return
 	}
 	enabled := true
@@ -93,6 +134,10 @@ func handleWebUpdateDevicePlugin(w http.ResponseWriter, r *http.Request) {
 		trimmed := strings.TrimSpace(*req.URL)
 		if trimmed == "" || (!strings.HasPrefix(trimmed, "http://") && !strings.HasPrefix(trimmed, "https://")) {
 			Error(w, http.StatusBadRequest, "valid http(s) url required")
+			return
+		}
+		if msg := checkPluginURL(trimmed); msg != "" {
+			Error(w, http.StatusBadRequest, msg)
 			return
 		}
 		req.URL = &trimmed
@@ -165,9 +210,30 @@ func handleWebSetProfilePluginOverride(w http.ResponseWriter, r *http.Request) {
 		Enabled bool    `json:"enabled"`
 		Name    *string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
-		Error(w, http.StatusBadRequest, "url required")
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid json")
 		return
+	}
+	req.URL = strings.TrimSpace(req.URL)
+	if req.URL == "" || (!strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://")) {
+		Error(w, http.StatusBadRequest, "valid http(s) url required")
+		return
+	}
+	// Only re-check URLs this profile doesn't already know about — an
+	// enable/disable toggle on an existing entry re-sends the same URL and
+	// shouldn't pay for (or fail on) a fresh network round-trip.
+	known := false
+	for _, p := range store.ListProfilePlugins(r.Context(), deviceID, profileID) {
+		if p.URL == req.URL {
+			known = true
+			break
+		}
+	}
+	if !known {
+		if msg := checkPluginURL(req.URL); msg != "" {
+			Error(w, http.StatusBadRequest, msg)
+			return
+		}
 	}
 	if err := store.SetProfilePluginOverride(r.Context(), deviceID, u.ID, profileID, req.URL, req.Enabled, req.Name); err != nil {
 		Error(w, http.StatusInternalServerError, "db error")
