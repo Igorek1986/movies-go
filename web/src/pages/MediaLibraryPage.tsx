@@ -58,12 +58,14 @@ function itemYear(item: LibraryItem): string {
   return (item.release_date || item.first_air_date || '').slice(0, 4)
 }
 
-function Card({ item, onClick, onActivate }: { item: LibraryItem; onClick: () => void; onActivate?: () => void }) {
+function Card({ item, onClick, onActivate, isHeroActive }: {
+  item: LibraryItem; onClick: () => void; onActivate?: () => void; isHeroActive?: boolean
+}) {
   const url = posterUrl(item.poster_path)
   const title = item.title || item.name
   return (
     <div
-      className={styles.card}
+      className={`${styles.card}${isHeroActive ? ' ' + styles.cardHeroActive : ''}`}
       tabIndex={0}
       data-card
       onClick={onClick}
@@ -86,10 +88,11 @@ function Card({ item, onClick, onActivate }: { item: LibraryItem; onClick: () =>
 
 // ── Row: lazy-loaded on scroll into view, horizontal, "Все →" to expand ────────
 
-function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, onActivate, onItemsLoaded }: {
+function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, onActivate, activeCardId, onItemsLoaded }: {
   status: StatusKey; label: string; token: string; profileId: string
   onExpand: (status: StatusKey) => void; onCardClick: (item: LibraryItem) => void
   onActivate?: (item: LibraryItem) => void
+  activeCardId?: string | null
   onItemsLoaded?: (status: StatusKey, items: LibraryItem[]) => void
 }) {
   const [items, setItems] = useState<LibraryItem[] | null>(null)
@@ -173,7 +176,12 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
           {items === null && <div className={styles.rowLoading}>Загрузка…</div>}
           {items?.map(item => (
             <div key={cardIdOf(item)} className={styles.rowCard}>
-              <Card item={item} onClick={() => onCardClick(item)} onActivate={onActivate ? () => onActivate(item) : undefined} />
+              <Card
+                item={item}
+                onClick={() => onCardClick(item)}
+                onActivate={onActivate ? () => onActivate(item) : undefined}
+                isHeroActive={activeCardId === cardIdOf(item)}
+              />
             </div>
           ))}
           {items !== null && hasMore && (
@@ -266,10 +274,30 @@ export default function MediaLibraryPage() {
   const [layout] = useState(() => getStoredBrowseLayout())
   const hero = useHeroPreview<LibraryItem>()
   const heroInitRef = useRef(false)
-  const handleItemsLoaded = useCallback((_status: StatusKey, items: LibraryItem[]) => {
-    if (!heroInitRef.current && items.length > 0) {
-      heroInitRef.current = true
-      hero.activate(items[0])
+  // Rows lazy-load independently and can resolve in any order — reading
+  // whichever answers first made the initial hero background essentially
+  // random. Scan ROW_ORDER instead, stopping at the first row that hasn't
+  // reported yet, so the result is always the first row's first item
+  // regardless of network timing (mirrors CatalogPage's tryInitHero).
+  const rowLoadedRef = useRef<Map<StatusKey, LibraryItem[]>>(new Map())
+
+  const handleItemsLoaded = useCallback((status: StatusKey, items: LibraryItem[]) => {
+    rowLoadedRef.current.set(status, items)
+    if (heroInitRef.current) return
+    for (const st of ROW_ORDER) {
+      const cached = rowLoadedRef.current.get(st)
+      if (cached === undefined) return // earlier-in-order row hasn't reported yet — wait for it
+      if (cached.length > 0) {
+        heroInitRef.current = true
+        hero.activate(cached[0])
+        // Actually focus the card (not just hero state) so it's visibly
+        // marked as active — preventScroll since it's already on-screen.
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLElement>(`[data-row-id="${st}"] [data-card]`)?.focus({ preventScroll: true })
+        })
+        return
+      }
+      // else: this row loaded empty — keep scanning the next one
     }
   }, [hero.activate])
 
@@ -407,6 +435,7 @@ export default function MediaLibraryPage() {
                   onExpand={setExpanded}
                   onCardClick={openCard}
                   onActivate={layout === 'hero' ? hero.activate : undefined}
+                  activeCardId={layout === 'hero' && hero.item ? cardIdOf(hero.item) : null}
                   onItemsLoaded={handleItemsLoaded}
                 />
               ))}

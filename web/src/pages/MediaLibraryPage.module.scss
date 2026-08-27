@@ -166,6 +166,10 @@
   transition: transform $transition-fast, border-color $transition-fast;
 
   &:hover { transform: translateY(-5px); border-color: $color-primary; }
+
+  // Marks whichever card the hero banner is currently showing (see
+  // BrowseHero) — same idea as CatalogPage's .cardHeroActive.
+  &.cardHeroActive { transform: translateY(-5px); border-color: $color-primary; }
 }
 
 .poster {

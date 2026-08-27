@@ -274,7 +274,12 @@
     }
   }
 
-  &:focus {
+  // .cardHeroActive: marks whichever card the hero banner is currently
+  // showing (see BrowseHero) — driven by React state, not real DOM focus, so
+  // it stays visible on mouse hover (which never moves focus) and doesn't
+  // depend on :focus-visible's heuristics matching a programmatic .focus()
+  // call (they often don't).
+  &:focus, &.cardHeroActive {
     transform: translateY(-6px);
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
 

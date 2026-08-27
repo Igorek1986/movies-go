@@ -135,16 +135,17 @@ interface CardProps {
   item: MediaItem
   onClick: () => void
   onActivate?: () => void
+  isHeroActive?: boolean
 }
 
-function MediaCard({ item, onClick, onActivate }: CardProps) {
+function MediaCard({ item, onClick, onActivate, isHeroActive }: CardProps) {
   const url = posterUrl(item.poster_path)
   const title = getItemTitle(item)
   const year = getItemYear(item)
   const cert = getCertification(item)
   return (
     <div
-      className={styles.card}
+      className={`${styles.card}${isHeroActive ? ' ' + styles.cardHeroActive : ''}`}
       onClick={onClick}
       tabIndex={0}
       data-card
@@ -198,6 +199,7 @@ interface CategoryRowProps {
   onExpandCategory: (id: string, focusAfterIdx?: number) => void
   onCardClick: (item: MediaItem) => void
   onActivate?: (item: MediaItem) => void
+  activeCardId?: string | null
   dragHandlers: {
     onDragStart: (e: React.DragEvent, id: string) => void
     onDragEnd: () => void
@@ -208,7 +210,7 @@ interface CategoryRowProps {
   onItemsLoaded: (id: string, cache: RowCache) => void
 }
 
-function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick, onActivate, dragHandlers, initialCache, onItemsLoaded }: CategoryRowProps) {
+function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick, onActivate, activeCardId, dragHandlers, initialCache, onItemsLoaded }: CategoryRowProps) {
   const [items, setItems] = useState<MediaItem[] | null>(initialCache?.items ?? null)
   const [totalPages, setTotalPages] = useState(initialCache?.totalPages ?? 1)
   const [error, setError] = useState(false)
@@ -337,6 +339,7 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
                   item={item}
                   onClick={() => onCardClick(item)}
                   onActivate={onActivate ? () => onActivate(item) : undefined}
+                  isHeroActive={activeCardId === cardId}
                 />
               </div>
             )
@@ -598,6 +601,39 @@ export default function CatalogPage() {
   const [layout] = useState(() => getStoredBrowseLayout())
   const hero = useHeroPreview<MediaItem>()
   const heroInitRef = useRef(false)
+  // Rows lazy-load independently (IntersectionObserver) and can resolve in
+  // any order — reading whichever happens to answer first made the initial
+  // hero background essentially random. Scan categories in visual order
+  // instead, stopping at the first one whose row cache isn't in yet, so the
+  // result is always the first row's first item regardless of network timing.
+  const categoriesRef = useRef(categories)
+  categoriesRef.current = categories
+
+  const tryInitHero = useCallback(() => {
+    if (heroInitRef.current) return
+    for (const cat of categoriesRef.current) {
+      const cached = _cache.rows[cat.id]
+      if (!cached) return // earlier-in-order row hasn't reported yet — wait for it
+      if (cached.items.length > 0) {
+        heroInitRef.current = true
+        hero.activate(cached.items[0])
+        // Actually focus the card (not just hero state) so it's visibly
+        // marked as active, same as hovering/tabbing to it manually would —
+        // preventScroll since it's already on-screen at the top.
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(cat.id)}"] [data-card]`)
+            ?.focus({ preventScroll: true })
+        })
+        return
+      }
+      // else: this row loaded empty — keep scanning the next one
+    }
+  }, [hero.activate])
+
+  // Warm SPA-cache revisit: rows with a cache hit skip their own fetch (see
+  // CategoryRow's loadedRef) and never call onItemsLoaded again, so without
+  // this the hero would just stay empty on a Backspace-back to /catalog.
+  useEffect(() => { tryInitHero() }, [tryInitHero])
 
   const [mainSearchFloating, setMainSearchFloating] = useState(false)
   const mainSearchRef = useRef<HTMLDivElement>(null)
@@ -668,11 +704,8 @@ export default function CatalogPage() {
 
   const handleItemsLoaded = useCallback((id: string, rowCache: RowCache) => {
     _cache.rows[id] = rowCache
-    if (!heroInitRef.current && rowCache.items.length > 0) {
-      heroInitRef.current = true
-      hero.activate(rowCache.items[0])
-    }
-  }, [hero.activate])
+    tryInitHero()
+  }, [tryInitHero])
   const dragSrcRef = useRef<string | null>(null)
   const lastRowFocusIdx = useRef<Map<string, number>>(new Map())
 
@@ -1081,6 +1114,7 @@ export default function CatalogPage() {
                 onExpandCategory={handleExpandCategory}
                 onCardClick={handleCardClick}
                 onActivate={layout === 'hero' ? hero.activate : undefined}
+                activeCardId={layout === 'hero' && hero.item ? `${hero.item.id}_${hero.item.media_type}` : null}
                 dragHandlers={{ onDragStart, onDragEnd, onDragOver, onDrop }}
                 initialCache={_cache.rows[cat.id]}
                 onItemsLoaded={handleItemsLoaded}
