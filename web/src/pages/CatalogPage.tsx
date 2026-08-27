@@ -5,6 +5,8 @@ import { posterUrl } from '@/utils/poster'
 import { scrollV, getGridCols } from '@/utils/scrollNav'
 import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
+import { getStoredBrowseLayout } from '@/utils/browseLayout'
+import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
 import styles from './CatalogPage.module.scss'
 
 interface MediaItem {
@@ -132,15 +134,24 @@ function saveRowOrder(ids: string[]) {
 interface CardProps {
   item: MediaItem
   onClick: () => void
+  onActivate?: () => void
 }
 
-function MediaCard({ item, onClick }: CardProps) {
+function MediaCard({ item, onClick, onActivate }: CardProps) {
   const url = posterUrl(item.poster_path)
   const title = getItemTitle(item)
   const year = getItemYear(item)
   const cert = getCertification(item)
   return (
-    <div className={styles.card} onClick={onClick} tabIndex={0} data-card onKeyDown={e => { if (e.key === 'Enter') onClick() }}>
+    <div
+      className={styles.card}
+      onClick={onClick}
+      tabIndex={0}
+      data-card
+      onKeyDown={e => { if (e.key === 'Enter') onClick() }}
+      onFocus={onActivate}
+      onMouseEnter={onActivate}
+    >
       <div className={styles.posterWrap}>
         {url
           ? <img className={styles.poster} src={url} alt={title} loading="lazy" />
@@ -186,6 +197,7 @@ interface CategoryRowProps {
   profileId: string
   onExpandCategory: (id: string, focusAfterIdx?: number) => void
   onCardClick: (item: MediaItem) => void
+  onActivate?: (item: MediaItem) => void
   dragHandlers: {
     onDragStart: (e: React.DragEvent, id: string) => void
     onDragEnd: () => void
@@ -196,7 +208,7 @@ interface CategoryRowProps {
   onItemsLoaded: (id: string, cache: RowCache) => void
 }
 
-function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick, dragHandlers, initialCache, onItemsLoaded }: CategoryRowProps) {
+function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick, onActivate, dragHandlers, initialCache, onItemsLoaded }: CategoryRowProps) {
   const [items, setItems] = useState<MediaItem[] | null>(initialCache?.items ?? null)
   const [totalPages, setTotalPages] = useState(initialCache?.totalPages ?? 1)
   const [error, setError] = useState(false)
@@ -324,6 +336,7 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
                 <MediaCard
                   item={item}
                   onClick={() => onCardClick(item)}
+                  onActivate={onActivate ? () => onActivate(item) : undefined}
                 />
               </div>
             )
@@ -580,6 +593,12 @@ export default function CatalogPage() {
 
   const { activeDevice, activeProfile } = useActiveProfile()
 
+  // Per-device (localStorage) — see BrowseLayoutSettings on /profiles. Read
+  // fresh on every mount, same convention as CardDetailPage's cardLayout.
+  const [layout] = useState(() => getStoredBrowseLayout())
+  const hero = useHeroPreview<MediaItem>()
+  const heroInitRef = useRef(false)
+
   const [mainSearchFloating, setMainSearchFloating] = useState(false)
   const mainSearchRef = useRef<HTMLDivElement>(null)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -649,7 +668,11 @@ export default function CatalogPage() {
 
   const handleItemsLoaded = useCallback((id: string, rowCache: RowCache) => {
     _cache.rows[id] = rowCache
-  }, [])
+    if (!heroInitRef.current && rowCache.items.length > 0) {
+      heroInitRef.current = true
+      hero.activate(rowCache.items[0])
+    }
+  }, [hero.activate])
   const dragSrcRef = useRef<string | null>(null)
   const lastRowFocusIdx = useRef<Map<string, number>>(new Map())
 
@@ -1039,6 +1062,14 @@ export default function CatalogPage() {
           </div>
         )}
 
+        {!expandedCategory && !showSearch && layout === 'hero' && (
+          <BrowseHero
+            item={hero.item}
+            detail={hero.detail}
+            onOpen={() => hero.item && handleCardClick(hero.item)}
+          />
+        )}
+
         {!expandedCategory && !showSearch && (
           <div className={styles.rows}>
             {categories.map(cat => (
@@ -1049,6 +1080,7 @@ export default function CatalogPage() {
                 profileId={profileId}
                 onExpandCategory={handleExpandCategory}
                 onCardClick={handleCardClick}
+                onActivate={layout === 'hero' ? hero.activate : undefined}
                 dragHandlers={{ onDragStart, onDragEnd, onDragOver, onDrop }}
                 initialCache={_cache.rows[cat.id]}
                 onItemsLoaded={handleItemsLoaded}

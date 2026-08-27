@@ -4,6 +4,8 @@ import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
 import { scrollV, getGridCols } from '@/utils/scrollNav'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
+import { getStoredBrowseLayout } from '@/utils/browseLayout'
+import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
 import styles from './MediaLibraryPage.module.scss'
 
 interface LibraryItem {
@@ -56,11 +58,19 @@ function itemYear(item: LibraryItem): string {
   return (item.release_date || item.first_air_date || '').slice(0, 4)
 }
 
-function Card({ item, onClick }: { item: LibraryItem; onClick: () => void }) {
+function Card({ item, onClick, onActivate }: { item: LibraryItem; onClick: () => void; onActivate?: () => void }) {
   const url = posterUrl(item.poster_path)
   const title = item.title || item.name
   return (
-    <div className={styles.card} tabIndex={0} data-card onClick={onClick} onKeyDown={e => { if (e.key === 'Enter') onClick() }}>
+    <div
+      className={styles.card}
+      tabIndex={0}
+      data-card
+      onClick={onClick}
+      onKeyDown={e => { if (e.key === 'Enter') onClick() }}
+      onFocus={onActivate}
+      onMouseEnter={onActivate}
+    >
       {url
         ? <img className={styles.poster} src={url} alt={title} loading="lazy" />
         : <div className={styles.posterPlaceholder}>Нет постера</div>
@@ -76,9 +86,11 @@ function Card({ item, onClick }: { item: LibraryItem; onClick: () => void }) {
 
 // ── Row: lazy-loaded on scroll into view, horizontal, "Все →" to expand ────────
 
-function LibraryRow({ status, label, token, profileId, onExpand, onCardClick }: {
+function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, onActivate, onItemsLoaded }: {
   status: StatusKey; label: string; token: string; profileId: string
   onExpand: (status: StatusKey) => void; onCardClick: (item: LibraryItem) => void
+  onActivate?: (item: LibraryItem) => void
+  onItemsLoaded?: (status: StatusKey, items: LibraryItem[]) => void
 }) {
   const [items, setItems] = useState<LibraryItem[] | null>(null)
   const [totalPages, setTotalPages] = useState(1)
@@ -91,11 +103,13 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick }: 
     fetch(libraryUrl(status, { token, profile_id: profileId, page: '1', per_page: '20' }))
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((data: LibraryResponse) => {
-        setItems(data.results || [])
+        const results = data.results || []
+        setItems(results)
         setTotalPages(data.total_pages || 1)
+        onItemsLoaded?.(status, results)
       })
       .catch(() => setItems([]))
-  }, [status, token, profileId])
+  }, [status, token, profileId, onItemsLoaded])
 
   // Profile (or device) switch — the row already fired its one-shot fetch under the
   // old identity, so without this the loadedRef latch would keep it stuck showing
@@ -159,7 +173,7 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick }: 
           {items === null && <div className={styles.rowLoading}>Загрузка…</div>}
           {items?.map(item => (
             <div key={cardIdOf(item)} className={styles.rowCard}>
-              <Card item={item} onClick={() => onCardClick(item)} />
+              <Card item={item} onClick={() => onCardClick(item)} onActivate={onActivate ? () => onActivate(item) : undefined} />
             </div>
           ))}
           {items !== null && hasMore && (
@@ -247,6 +261,17 @@ export default function MediaLibraryPage() {
 
   const [expanded, setExpanded] = useState<StatusKey | null>(null)
   const lastRowFocusIdx = useRef<Map<string, number>>(new Map())
+
+  // Per-device (localStorage) — see BrowseLayoutSettings on /profiles.
+  const [layout] = useState(() => getStoredBrowseLayout())
+  const hero = useHeroPreview<LibraryItem>()
+  const heroInitRef = useRef(false)
+  const handleItemsLoaded = useCallback((_status: StatusKey, items: LibraryItem[]) => {
+    if (!heroInitRef.current && items.length > 0) {
+      heroInitRef.current = true
+      hero.activate(items[0])
+    }
+  }, [hero.activate])
 
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
@@ -363,19 +388,30 @@ export default function MediaLibraryPage() {
             <LibraryGrid status={expanded} token={token} profileId={profileId} onCardClick={openCard} />
           </>
         ) : (
-          <div className={styles.rows}>
-            {ROW_ORDER.map(status => (
-              <LibraryRow
-                key={status}
-                status={status}
-                label={STATUS_LABELS[status]}
-                token={token}
-                profileId={profileId}
-                onExpand={setExpanded}
-                onCardClick={openCard}
+          <>
+            {layout === 'hero' && (
+              <BrowseHero
+                item={hero.item}
+                detail={hero.detail}
+                onOpen={() => hero.item && openCard(hero.item)}
               />
-            ))}
-          </div>
+            )}
+            <div className={styles.rows}>
+              {ROW_ORDER.map(status => (
+                <LibraryRow
+                  key={status}
+                  status={status}
+                  label={STATUS_LABELS[status]}
+                  token={token}
+                  profileId={profileId}
+                  onExpand={setExpanded}
+                  onCardClick={openCard}
+                  onActivate={layout === 'hero' ? hero.activate : undefined}
+                  onItemsLoaded={handleItemsLoaded}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </Layout>

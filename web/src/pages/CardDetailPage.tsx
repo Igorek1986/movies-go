@@ -4,6 +4,7 @@ import Layout from '@/components/Layout'
 import { posterUrl, tmdbUrl } from '@/utils/poster'
 import { watchedThreshold } from '@/utils/config'
 import { getStoredCardLayout } from '@/utils/cardLayout'
+import { qualityLabel, runtimeLabel } from '@/utils/mediaFormat'
 import { useAuth } from '@/hooks/useAuth'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import styles from './CardDetailPage.module.scss'
@@ -68,13 +69,6 @@ function fmtTime(sec: number): string {
   return `${m}:${String(s).padStart(2,'0')}`
 }
 
-function qualityLabel(q: number) {
-  if (q >= 300) return '4K'; if (q >= 200) return '1080p'; if (q >= 100) return '720p'; return 'SD'
-}
-function runtimeLabel(m: number) {
-  if (!m) return ''; const h = Math.floor(m/60); const r = m%60
-  if (!h) return `${r} мин`; return r ? `${h} ч ${r} мин` : `${h} ч`
-}
 function epLabel(ep: { season: number; episode: number }) {
   return `S${String(ep.season).padStart(2,'0')}E${String(ep.episode).padStart(2,'0')}`
 }
@@ -1318,7 +1312,7 @@ export default function CardDetailPage() {
 
   const tags: string[] = []
   if (card.year)              tags.push(card.year)
-  if (card.certification_ru)  tags.push(card.certification_ru + '+')
+  if (card.certification_ru)  tags.push(card.certification_ru.endsWith('+') ? card.certification_ru : card.certification_ru + '+')
   if (!isTV && card.runtime)  tags.push(runtimeLabel(card.runtime))
   if (isTV && card.episode_run_time) tags.push(runtimeLabel(card.episode_run_time) + '/эп')
   if (isTV && card.number_of_seasons) tags.push(`${card.number_of_seasons} сез.`)

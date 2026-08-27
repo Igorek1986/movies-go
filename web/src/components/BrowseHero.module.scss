@@ -1,0 +1,135 @@
+@use '@/styles/variables' as *;
+
+// Compact full-bleed banner (not full-viewport like CardDetailPage's
+// .heroFull — this sits mid-page, above a list of rows, not as the page's
+// first element) — same negative-margin full-bleed technique as
+// CardDetailPage's .backdrop, but without its vertical margin since this
+// isn't the first element in .page (it would overlap the toolbar above it).
+.hero {
+  position: relative;
+  width: calc(100% + $spacing-lg * 2);
+  margin: 0 (-$spacing-lg);
+  aspect-ratio: 16/6;
+  overflow: hidden;
+  border-radius: $radius-md;
+  cursor: pointer;
+
+  @media (max-width: $bp-md) {
+    width: calc(100% + $spacing-md * 2);
+    margin: 0 (-$spacing-md);
+    aspect-ratio: 16/7;
+  }
+
+  @media (max-width: $bp-sm) {
+    width: calc(100% + $spacing-sm * 2);
+    margin: 0 (-$spacing-sm);
+    aspect-ratio: 16/9;
+    border-radius: 0;
+  }
+}
+
+.bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 15%;
+    display: block;
+    transition: opacity $transition-normal;
+  }
+}
+
+// No backdrop yet (still loading, or TMDB has none) — poster stretched into
+// the same slot instead of an empty background, blurred+darkened same as
+// CardDetailPage's .heroFullBgPoster.
+.bgPoster img {
+  object-position: center center;
+  filter: blur(30px) brightness(0.6) saturate(1.1);
+  transform: scale(1.15);
+}
+
+.content {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: $spacing-xs;
+  padding: $spacing-md $spacing-lg;
+  background: linear-gradient(to top, $color-bg 0%, rgba($color-bg-rgb, 0.9) 35%, rgba($color-bg-rgb, 0.25) 70%, transparent 100%);
+
+  @media (max-width: $bp-md) { padding: $spacing-sm $spacing-md; }
+  @media (max-width: $bp-sm) { padding: $spacing-sm; }
+}
+
+.title {
+  margin: 0;
+  font-size: $font-size-xl;
+  font-weight: 700;
+  line-height: 1.2;
+  color: $color-text;
+
+  @media (max-width: $bp-sm) { font-size: $font-size-lg; }
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+}
+
+.tag {
+  padding: 2px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  background: rgba($color-bg-rgb, 0.5);
+}
+
+.tagType {
+  @extend .tag;
+  border-color: $color-primary;
+  color: $color-primary;
+  font-weight: 600;
+}
+
+.tagRating {
+  @extend .tag;
+  border-color: rgba(#f5c518, 0.5);
+  color: #f5c518;
+  font-weight: 600;
+}
+
+.genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+}
+
+.genre {
+  padding: 2px $spacing-sm;
+  background: rgba($color-primary-rgb, 0.2);
+  border-radius: $radius-full;
+  font-size: $font-size-xs;
+  color: $color-primary;
+}
+
+.descr {
+  margin: 0;
+  max-width: 56em;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+
+  @media (max-width: $bp-sm) { display: none; }
+}
