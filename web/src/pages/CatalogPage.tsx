@@ -1109,7 +1109,17 @@ export default function CatalogPage() {
   }, [expandedCategory, searchQuery, navigate, layout, activeCategoryIndex, categories, switchCategory])
 
   useEffect(() => {
-    const onCatalogBack = () => { if (expandedCategory) handleBack() }
+    const onCatalogBack = () => {
+      if (expandedCategory) handleBack()
+      // Clicking "Каталог" (or any other top-nav link/the bottom-nav
+      // "Главная") while search results are showing should reset back to
+      // normal browsing just like navigating anywhere else does — nothing
+      // else clears search state for you when you're already on /catalog,
+      // since that click doesn't actually remount this page.
+      setSearchValue('')
+      setSearchQuery('')
+      setSearchOpen(false)
+    }
     window.addEventListener('catalog:back', onCatalogBack)
     return () => window.removeEventListener('catalog:back', onCatalogBack)
   }, [expandedCategory]) // eslint-disable-line react-hooks/exhaustive-deps
