@@ -139,6 +139,56 @@ function useCrossfadeBg(item: HeroLiteItem | null, backdropSrc: string | null, d
   return bg
 }
 
+// Also passed inline as .bgLayer's transition-duration (see the style prop
+// below) so the CSS fade and the "outgoing layer is fully hidden, safe to
+// drop from the DOM" timer below are always the same number, not two
+// independent literals that happen to match.
+const CROSSFADE_MS = 500
+
+interface BgLayer { key: number; src: string; isPoster: boolean }
+
+// Renders bg (picked by useCrossfadeBg above) as a stack of <img> layers
+// instead of swapping a single element's src — a plain src swap has no
+// previous frame to fade FROM, so it just pops the instant the new image
+// finishes loading. Each new src gets its own layer, mounted at opacity 0
+// and bumped to "active" a tick later so the CSS opacity transition (see
+// .bgLayer/.bgLayerActive) has something to animate from; only the newest
+// layer ever carries the "active" class, so marking it active simultaneously
+// un-marks whatever was previously active — the two layers' opacities cross
+// in opposite directions (old 0.5→0, new 0→0.5) at the same time, which is
+// exactly the dissolve a crossfade is meant to look like. The old layer is
+// dropped from the DOM once its own fade-out has had time to finish.
+function useBgLayers(bg: { src: string; isPoster: boolean } | null) {
+  const [layers, setLayers] = useState<BgLayer[]>([])
+  const [activeKey, setActiveKey] = useState<number | null>(null)
+  const keyRef = useRef(0)
+
+  useEffect(() => {
+    if (!bg) { setLayers([]); setActiveKey(null); return }
+    setLayers(prev => {
+      if (prev.length && prev[prev.length - 1].src === bg.src) return prev
+      return [...prev, { key: ++keyRef.current, src: bg.src, isPoster: bg.isPoster }]
+    })
+  }, [bg])
+
+  useEffect(() => {
+    const newest = layers[layers.length - 1]
+    if (!newest || newest.key === activeKey) return
+    const raf = requestAnimationFrame(() => setActiveKey(newest.key))
+    return () => cancelAnimationFrame(raf)
+  }, [layers, activeKey])
+
+  useEffect(() => {
+    if (layers.length <= 1 || activeKey === null) return
+    const t = window.setTimeout(() => {
+      setLayers(prev => prev.filter(l => l.key === activeKey))
+    }, CROSSFADE_MS)
+    return () => window.clearTimeout(t)
+  }, [layers, activeKey])
+
+  return { layers, activeKey }
+}
+
 export function BrowseHero({ item, detail, onOpen }: {
   item: HeroLiteItem | null
   detail: HeroDetail | null
@@ -146,6 +196,7 @@ export function BrowseHero({ item, detail, onOpen }: {
 }) {
   const backdropSrc = item && detail?.backdrop_path ? tmdbUrl(detail.backdrop_path, 'w1280') : null
   const bg = useCrossfadeBg(item, backdropSrc, detail !== null)
+  const { layers, activeKey } = useBgLayers(bg)
 
   if (!item) return null
 
@@ -172,13 +223,19 @@ export function BrowseHero({ item, detail, onOpen }: {
           so it stays visible no matter how far the page scrolls, like the
           int.js Lampa plugin's full-screen background. */}
       <div className={styles.heroBg} aria-hidden>
-        {bg && (
+        {layers.map(l => (
           <img
-            src={bg.src}
+            key={l.key}
+            src={l.src}
             alt=""
-            className={bg.isPoster ? styles.bgPoster : undefined}
+            className={[
+              styles.bgLayer,
+              l.key === activeKey && styles.bgLayerActive,
+              l.isPoster && styles.bgPoster,
+            ].filter(Boolean).join(' ')}
+            style={{ transitionDuration: `${CROSSFADE_MS}ms` }}
           />
-        )}
+        ))}
       </div>
       <div className={styles.hero} onClick={onOpen}>
         <div className={styles.content}>

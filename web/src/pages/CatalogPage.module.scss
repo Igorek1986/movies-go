@@ -17,8 +17,44 @@
   @include carousel-rail;
 }
 
-.slideFromTop    { @include slide-in-from-top; }
-.slideFromBottom { @include slide-in-from-bottom; }
+// Wraps both the outgoing and incoming row during a category switch — see
+// the carousel keyframes in variables.scss for how the "drum" effect works.
+// position: relative + overflow: hidden makes this exactly the row's own
+// height (set by the incoming row's normal-flow box) and clips both layers
+// to it, which is what turns two overlapping slides into a scrolling reel.
+//
+// padding-top/margin-top: same trick as .rowScroll's own — without it, this
+// overflow:hidden box clips right at the settled row's visual top edge, so
+// the focused card's hover-lift (translateY(-5px) + outline, see
+// .cardHeroActive) or its focus/hover snake-border got its top sliver cut
+// off even at rest, not just mid-slide. The padding gives the clip boundary
+// 10px of slack above the content; the equal negative margin cancels the
+// resulting height increase so the viewport still sits exactly where it did
+// before (position: absolute children like .carouselLayerOut resolve inset
+// against the padding edge, not the margin edge, so they still align with
+// the visual content, not this extra slack).
+.carouselViewport {
+  position: relative;
+  overflow: hidden;
+  padding-top: 10px;
+  margin-top: -10px;
+}
+
+// The outgoing row only — stacked on top of the incoming one (which stays
+// in normal flow so it keeps defining the viewport's height) at the exact
+// same box via inset: 0, so the two line up perfectly at the start of the
+// slide. pointer-events: none since it's on its way out.
+.carouselLayerOut {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.carouselOutToTop      { @include carousel-out-to-top; }
+.carouselOutToBottom   { @include carousel-out-to-bottom; }
+.carouselInFromTop     { @include carousel-in-from-top; }
+.carouselInFromBottom  { @include carousel-in-from-bottom; }
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
@@ -168,6 +204,12 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  // Unlike .rowTitle (full-brightness $color-text), this sits at 0.6 opacity
+  // specifically to read as dimmer/secondary — but with nothing else behind
+  // it, that same dimming made it nearly illegible over a busy backdrop
+  // image. A soft dark shadow lifts it off the image without touching the
+  // color/opacity that makes it read as "not the current one".
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
   // Same stacking fix as .rowTitle above — otherwise BrowseHero's fixed
   // backdrop paints over these too.
   position: relative;
@@ -512,7 +554,7 @@
 
 .floatingBar {
   position: fixed;
-  top: calc(52px + env(safe-area-inset-top));
+  top: calc(#{$nav-height} + env(safe-area-inset-top));
   left: 0;
   right: 0;
   z-index: 100;

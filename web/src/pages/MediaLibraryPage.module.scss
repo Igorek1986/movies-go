@@ -17,8 +17,26 @@
   @include carousel-rail;
 }
 
-.slideFromTop    { @include slide-in-from-top; }
-.slideFromBottom { @include slide-in-from-bottom; }
+// See CatalogPage.module.scss for all of these — same drum-carousel idea,
+// same mechanics, kept in sync between the two pages.
+.carouselViewport {
+  position: relative;
+  overflow: hidden;
+  padding-top: 10px;
+  margin-top: -10px;
+}
+
+.carouselLayerOut {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.carouselOutToTop      { @include carousel-out-to-top; }
+.carouselOutToBottom   { @include carousel-out-to-bottom; }
+.carouselInFromTop     { @include carousel-in-from-top; }
+.carouselInFromBottom  { @include carousel-in-from-bottom; }
 
 .header {
   display: flex;
@@ -101,6 +119,9 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  // See CatalogPage.module.scss for why — legibility over a busy backdrop
+  // image without giving up the dimmer, "not current" color/opacity.
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
   position: relative;
   z-index: 1;
 }

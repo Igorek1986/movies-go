@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, getGridCols } from '@/utils/scrollNav'
+import { scrollV, getGridCols, NAV_H } from '@/utils/scrollNav'
 import { useActiveProfile, ACTIVE_PROFILE_STORAGE_KEY, type Device, type Profile } from '@/contexts/ActiveProfileContext'
 import styles from './HistoryPage.module.scss'
 
@@ -154,12 +154,12 @@ export default function HistoryPage() {
     return () => { cancelled = true }
   }, [])
 
-  // Show floating search bar when the search field scrolls above the nav (52px)
+  // Show floating search bar when the search field scrolls above the nav
   useEffect(() => {
     function check() {
       const el = searchWrapRef.current
       if (!el) return
-      setSearchFloating(el.getBoundingClientRect().bottom < 52)
+      setSearchFloating(el.getBoundingClientRect().bottom < NAV_H)
     }
     window.addEventListener('scroll', check, { passive: true })
     return () => window.removeEventListener('scroll', check)
@@ -329,7 +329,10 @@ export default function HistoryPage() {
       }
 
       if (next !== -1 && next !== idx) {
-        cards[next].focus()
+        // preventScroll: focusing an off-screen element natively jumps it
+        // into view instantly, before our own smooth scrollV below runs —
+        // same fix as Catalog/MediaLibraryPage's grid nav.
+        cards[next].focus({ preventScroll: true })
         scrollV(cards[next])
       }
     }

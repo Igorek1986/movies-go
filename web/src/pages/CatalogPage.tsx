@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react
 import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, getGridCols } from '@/utils/scrollNav'
+import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, NAV_H } from '@/utils/scrollNav'
 import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
@@ -40,16 +40,6 @@ interface Category {
   name: string
 }
 
-// Scroll the horizontal row container so el is centered.
-// CSS scroll-behavior: smooth on .rowScroll handles the animation.
-function scrollH(el: HTMLElement) {
-  const scroll = el.closest<HTMLElement>('[data-row-scroll]')
-  if (!scroll) return
-  const sr = scroll.getBoundingClientRect()
-  const cr = el.getBoundingClientRect()
-  const relCenter = cr.left - sr.left + scroll.scrollLeft + cr.width / 2
-  scroll.scrollTo({ left: relCenter - scroll.clientWidth / 2 })
-}
 
 const LS_ROW_ORDER    = 'catalog_row_order'
 
@@ -218,9 +208,6 @@ interface CategoryRowProps {
   // advances activeCategoryIndex instead of leaving an empty screen (in
   // Classic layout the row just quietly disappears from the scrollable list).
   onEmpty?: () => void
-  // Carousel mode: entry animation direction for this mount (new category
-  // via ArrowUp/ArrowDown or a swipe) — omitted in Classic layout.
-  slideDir?: 'from-top' | 'from-bottom'
   // Carousel mode: focus this card index once items are available (whatever
   // was last focused in this category, or 0) — Classic layout never
   // auto-focuses on mount, so this stays undefined there.
@@ -233,7 +220,7 @@ interface CategoryRowProps {
   hideHeader?: boolean
 }
 
-function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick, onActivate, activeCardId, dragHandlers, initialCache, onItemsLoaded, onEmpty, slideDir, autoFocusIdx, hideHeader }: CategoryRowProps) {
+function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick, onActivate, activeCardId, dragHandlers, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: CategoryRowProps) {
   const [items, setItems] = useState<MediaItem[] | null>(initialCache?.items ?? null)
   const [totalPages, setTotalPages] = useState(initialCache?.totalPages ?? 1)
   const [error, setError] = useState(false)
@@ -290,7 +277,11 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
     requestAnimationFrame(() => {
       const cards = el.querySelectorAll<HTMLElement>('[data-card]')
       const target = cards[Math.min(savedIdx, cards.length - 1)]
-      target?.focus()
+      // preventScroll: focusing an off-screen element natively jumps it into
+      // view instantly, before our own smooth scrollH/scrollV below even
+      // runs — without this, every keyboard move looked like an abrupt jump
+      // immediately followed by a smooth correction, not one smooth move.
+      target?.focus({ preventScroll: true })
       // Classic layout only (carousel mode never sets pendingFocus — it has
       // its own autoFocusIdx path and nothing to scroll into view anyway).
       if (target) { scrollH(target); scrollV(target) }
@@ -317,12 +308,10 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
 
   const hasMore = totalPages > 1
 
-  const slideClass = slideDir === 'from-top' ? styles.slideFromTop : slideDir === 'from-bottom' ? styles.slideFromBottom : ''
-
   return (
     <section
       ref={rowRef}
-      className={`${styles.row}${slideClass ? ' ' + slideClass : ''}`}
+      className={styles.row}
       data-cat-id={category.id}
       draggable={!!dragHandlers}
       onDragStart={dragHandlers ? e => dragHandlers.onDragStart(e, category.id) : undefined}
@@ -361,7 +350,11 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
                 if (hasMore) onExpandCategory(category.id, items?.length ?? 0)
               } else {
                 const next = cards[idx + 1]
-                next?.focus()
+                // preventScroll — see the pendingFocus effect above for why;
+                // also matters here since this move is horizontal-only (no
+                // scrollV call), so a native vertical auto-scroll would go
+                // uncorrected instead of just landing early.
+                next?.focus({ preventScroll: true })
                 // Horizontal-only move within the same row — its vertical position
                 // doesn't change, so no scrollV here (it would force-recenter the
                 // page, yanking the hero banner out of view for no reason).
@@ -369,7 +362,7 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
               }
             } else {
               const prev = cards[idx - 1]
-              prev?.focus()
+              prev?.focus({ preventScroll: true })
               if (prev) scrollH(prev)
             }
           }}
@@ -453,12 +446,12 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
     return () => window.removeEventListener('scroll', save)
   }, [category.id])
 
-  // Show floating search bar when the search field scrolls above the nav (52px)
+  // Show floating search bar when the search field scrolls above the nav
   useEffect(() => {
     function check() {
       const el = catSearchRef.current
       if (!el) return
-      setSearchFloating(el.getBoundingClientRect().bottom < 52)
+      setSearchFloating(el.getBoundingClientRect().bottom < NAV_H)
     }
     window.addEventListener('scroll', check, { passive: true })
     return () => window.removeEventListener('scroll', check)
@@ -535,7 +528,7 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
       requestAnimationFrame(() => {
         const cards = document.querySelectorAll<HTMLElement>('[data-card]')
         const target = cards[focusAfterIdx]
-        target?.focus()
+        target?.focus({ preventScroll: true })
         if (target) scrollV(target)
       })
     } else if (!loadingRef.current && pageRef.current < totalPagesRef.current) {
@@ -664,13 +657,20 @@ export default function CatalogPage() {
   // here — CategoryRow's own onFocus→onActivate wiring drives the hero from
   // whichever card ends up focused, same as any other navigation.
   const [activeCategoryIndex, setActiveCategoryIndex] = useState(0)
-  const [slideDir, setSlideDir] = useState<'from-top' | 'from-bottom' | undefined>(undefined)
+  // Drum-carousel row switch — both the outgoing (prevIndex) and incoming
+  // (activeCategoryIndex) rows render at once, sliding together the same
+  // direction (see .carouselViewport/CAROUSEL_TRANSITION_MS), for as long as
+  // this is non-null; then the outgoing one is dropped.
+  const [transition, setTransition] = useState<{ prevIndex: number; dir: 1 | -1 } | null>(null)
+  const transitionTimerRef = useRef<number | null>(null)
+  useEffect(() => () => { if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current) }, [])
 
   const handleEmptyCategory = useCallback(() => {
     // This category has nothing to show — silently skip to the next one
-    // instead of leaving a blank screen; no slide animation for an
+    // instead of leaving a blank screen; no carousel animation for an
     // automatic correction like this (only real navigation animates).
-    setSlideDir(undefined)
+    if (transitionTimerRef.current) { window.clearTimeout(transitionTimerRef.current); transitionTimerRef.current = null }
+    setTransition(null)
     setActiveCategoryIndex(idx => Math.min(idx + 1, categories.length - 1))
   }, [categories.length])
 
@@ -963,13 +963,19 @@ export default function CatalogPage() {
   }
 
   // Shared by ArrowUp/Down and the mobile swipe below — swaps which
-  // category's row is shown in the hero carousel, with a slide animation
-  // for real navigation (as opposed to handleEmptyCategory's silent skip).
+  // category's row is shown in the hero carousel, with the drum-slide
+  // transition for real navigation (as opposed to handleEmptyCategory's
+  // silent skip).
   const switchCategory = useCallback((dir: 1 | -1) => {
     setActiveCategoryIndex(idx => {
       const next = idx + dir
       if (next < 0 || next >= categories.length) return idx
-      setSlideDir(dir > 0 ? 'from-bottom' : 'from-top')
+      setTransition({ prevIndex: idx, dir })
+      if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current)
+      transitionTimerRef.current = window.setTimeout(() => {
+        transitionTimerRef.current = null
+        setTransition(null)
+      }, CAROUSEL_TRANSITION_MS)
       return next
     })
   }, [categories.length])
@@ -1032,7 +1038,8 @@ export default function CatalogPage() {
           }
         }
         if (next !== -1 && next !== idx) {
-          cards[next].focus()
+          // preventScroll — see the pendingFocus effect above for why.
+          cards[next].focus({ preventScroll: true })
           scrollV(cards[next])
         }
         return
@@ -1043,7 +1050,7 @@ export default function CatalogPage() {
           if (e.key === 'ArrowDown') {
             e.preventDefault()
             const first = document.querySelector<HTMLElement>('[data-card]')
-            first?.focus()
+            first?.focus({ preventScroll: true })
             // Hero carousel: the active row is always already pinned to the
             // bottom via CSS, nothing to scroll into view.
             if (layout !== 'hero' && first) scrollV(first)
@@ -1088,7 +1095,7 @@ export default function CatalogPage() {
           return
         }
         const target = targetCards[Math.min(savedIdx, targetCards.length - 1)]
-        target?.focus()
+        target?.focus({ preventScroll: true })
         if (target) { scrollH(target); scrollV(target) }
       }
     }
@@ -1219,22 +1226,43 @@ export default function CatalogPage() {
               <h3 className={styles.rowTitle}>{categories[activeCategoryIndex].name}</h3>
               <span className={styles.categoryTitleNeighbor}>{categories[activeCategoryIndex + 1]?.name ?? ' '}</span>
             </div>
-            <CategoryRow
-              key={`${categories[activeCategoryIndex].id}_${token}_${profileId}`}
-              category={categories[activeCategoryIndex]}
-              token={token}
-              profileId={profileId}
-              onExpandCategory={handleExpandCategory}
-              onCardClick={handleCardClick}
-              onActivate={handleActivate}
-              activeCardId={cardGridFocused && hero.item ? `${hero.item.id}_${hero.item.media_type}` : null}
-              initialCache={_cache.rows[categories[activeCategoryIndex].id]}
-              onItemsLoaded={handleItemsLoaded}
-              onEmpty={handleEmptyCategory}
-              slideDir={slideDir}
-              autoFocusIdx={lastRowFocusIdx.current.get(categories[activeCategoryIndex].id) ?? 0}
-              hideHeader
-            />
+            <div className={styles.carouselViewport}>
+              {/* Outgoing row — same key it had before the switch, so React
+                  keeps reusing the already-fetched instance instead of
+                  remounting/refetching it just to animate it away. */}
+              {transition && categories[transition.prevIndex] && (
+                <div className={`${styles.carouselLayerOut} ${transition.dir > 0 ? styles.carouselOutToTop : styles.carouselOutToBottom}`}>
+                  <CategoryRow
+                    key={`${categories[transition.prevIndex].id}_${token}_${profileId}`}
+                    category={categories[transition.prevIndex]}
+                    token={token}
+                    profileId={profileId}
+                    onExpandCategory={handleExpandCategory}
+                    onCardClick={handleCardClick}
+                    initialCache={_cache.rows[categories[transition.prevIndex].id]}
+                    onItemsLoaded={handleItemsLoaded}
+                    hideHeader
+                  />
+                </div>
+              )}
+              <div className={transition ? (transition.dir > 0 ? styles.carouselInFromBottom : styles.carouselInFromTop) : undefined}>
+                <CategoryRow
+                  key={`${categories[activeCategoryIndex].id}_${token}_${profileId}`}
+                  category={categories[activeCategoryIndex]}
+                  token={token}
+                  profileId={profileId}
+                  onExpandCategory={handleExpandCategory}
+                  onCardClick={handleCardClick}
+                  onActivate={handleActivate}
+                  activeCardId={cardGridFocused && hero.item ? `${hero.item.id}_${hero.item.media_type}` : null}
+                  initialCache={_cache.rows[categories[activeCategoryIndex].id]}
+                  onItemsLoaded={handleItemsLoaded}
+                  onEmpty={handleEmptyCategory}
+                  autoFocusIdx={lastRowFocusIdx.current.get(categories[activeCategoryIndex].id) ?? 0}
+                  hideHeader
+                />
+              </div>
+            </div>
           </div>
         )}
 
@@ -1291,7 +1319,7 @@ export default function CatalogPage() {
                       e.preventDefault()
                       e.stopPropagation()
                       const first = document.querySelector<HTMLElement>('[data-card]')
-                      first?.focus()
+                      first?.focus({ preventScroll: true })
                       if (layout !== 'hero' && first) scrollV(first)
                     } else if (e.key === 'ArrowUp' || e.key === 'Escape') {
                       e.preventDefault()

@@ -133,7 +133,7 @@
 
   th {
     position: sticky;
-    top: 52px; // высота фиксированного навбара
+    top: $nav-height;
     z-index: 5;
     background: $color-bg;
     text-align: left;

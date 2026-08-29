@@ -167,23 +167,37 @@ $nav-height: 52px;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  // Between the title and the row of cards below it — same value CategoryRow
-  // itself uses for the same gap in Classic layout (see .row's own `gap`).
-  gap: $spacing-sm;
+  // Bigger than Classic layout's equivalent .row gap (CategoryRow's own
+  // title-to-cards spacing) on purpose: .hero above is flex: 1 and absorbs
+  // whatever room this doesn't use, so growing this gap just moves the row
+  // further from the title instead of shrinking anything below it — there
+  // was visibly unused space here before.
+  gap: $spacing-lg;
   padding-top: $spacing-md;
 }
 
-@keyframes slideInFromTop {
-  from { transform: translateY(-24px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
-}
+// Carousel row-swap — a "drum": the outgoing and incoming rows are both on
+// screen at once, sliding the same direction together (like a slot-machine
+// reel), instead of the outgoing one just vanishing while the incoming one
+// slides+fades in on its own (which read as an abrupt cut with a little
+// shimmy tacked onto the new content rather than something moving). The
+// viewport wrapping both (see CatalogPage/MediaLibraryPage's
+// .carouselViewport) clips them to exactly the row's own height, which is
+// what makes the outgoing layer look like it's sliding out through the top
+// or bottom edge instead of just sliding-in-place-and-covering.
+//
+// "top"/"bottom" name which edge the INCOMING row enters from — matches the
+// existing from-top (ArrowUp, previous category)/from-bottom (ArrowDown,
+// next category) convention. The outgoing row always exits through the
+// opposite edge, in the same visual direction of travel.
+@keyframes carouselOutToTop    { to   { transform: translateY(-100%); } }
+@keyframes carouselOutToBottom { to   { transform: translateY(100%); } }
+@keyframes carouselInFromTop    { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+@keyframes carouselInFromBottom { from { transform: translateY(100%); }  to { transform: translateY(0); } }
 
-@keyframes slideInFromBottom {
-  from { transform: translateY(24px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
-}
+$carousel-transition-ms: 280ms;
 
-// Carousel row-swap entry animation — from-top when the new row is the
-// previous category (ArrowUp), from-bottom when it's the next one (ArrowDown).
-@mixin slide-in-from-top    { animation: slideInFromTop 220ms ease-out; }
-@mixin slide-in-from-bottom { animation: slideInFromBottom 220ms ease-out; }
+@mixin carousel-out-to-top    { animation: carouselOutToTop $carousel-transition-ms ease-out forwards; }
+@mixin carousel-out-to-bottom { animation: carouselOutToBottom $carousel-transition-ms ease-out forwards; }
+@mixin carousel-in-from-top    { animation: carouselInFromTop $carousel-transition-ms ease-out; }
+@mixin carousel-in-from-bottom { animation: carouselInFromBottom $carousel-transition-ms ease-out; }

@@ -306,7 +306,7 @@
 
 .floatingBar {
   position: fixed;
-  top: calc(52px + env(safe-area-inset-top));
+  top: calc(#{$nav-height} + env(safe-area-inset-top));
   left: 0;
   right: 0;
   z-index: 100;

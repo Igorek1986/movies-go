@@ -25,12 +25,33 @@
   overflow: hidden;
   pointer-events: none;
 
-  img {
+  // One <img> per background shown since mount — see the layers state in
+  // BrowseHero.tsx. Stacked absolutely (not swapped in place) so the
+  // outgoing image stays visible underneath while the incoming one fades
+  // in on top of it — a plain src swap on a single <img> has nothing to
+  // cross-fade FROM, it just pops.
+  .bgLayer {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: center 15%;
     display: block;
+    opacity: 0;
+    // Duration set inline from BrowseHero.tsx's CROSSFADE_MS, not hardcoded
+    // here — that constant also drives when the outgoing layer gets
+    // unmounted, so the two have to stay numerically equal; one shared
+    // source avoids relying on two independent literals never drifting.
+    transition-property: opacity;
+    transition-timing-function: ease;
+  }
+
+  // Target opacity a layer animates to once mounted — kept as a separate
+  // class (rather than baking 0.5 into .bgLayer itself) so the initial
+  // frame really does paint at 0 before this class is added a tick later,
+  // which is what gives the transition something to animate from.
+  .bgLayerActive {
     opacity: 0.5;
   }
 
@@ -49,10 +70,10 @@
   // own CSS for this same fallback doesn't override object-position at all
   // (so it defaults to center center) — matching that here.
   //
-  // Nested under .heroBg (not a standalone top-level rule) so this beats the
-  // "img" rule above on specificity (2 classes vs. 1 class + 1 type) — a
-  // standalone ".bgPoster" rule has LOWER specificity than ".heroBg img" and
-  // silently loses the cascade despite coming later in the file.
+  // Nested under .heroBg (not a standalone top-level rule) so this ties
+  // ".bgLayer" above on specificity (2 classes each) and wins on source
+  // order instead — a standalone top-level ".bgPoster" rule would tie AND
+  // lose on order (it'd compile before .bgLayer, further down this file).
   .bgPoster {
     object-position: center center;
   }

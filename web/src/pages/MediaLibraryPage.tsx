@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, getGridCols } from '@/utils/scrollNav'
+import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS } from '@/utils/scrollNav'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
@@ -55,16 +55,6 @@ function libraryUrl(status: StatusKey, params: { token: string; profile_id: stri
   return `/media-library?${new URLSearchParams({ ...params, status })}`
 }
 
-// Scroll the horizontal row container so el is centered (same as CatalogPage's scrollH).
-function scrollH(el: HTMLElement) {
-  const scroll = el.closest<HTMLElement>('[data-row-scroll]')
-  if (!scroll) return
-  const sr = scroll.getBoundingClientRect()
-  const cr = el.getBoundingClientRect()
-  const relCenter = cr.left - sr.left + scroll.scrollLeft + cr.width / 2
-  scroll.scrollTo({ left: relCenter - scroll.clientWidth / 2 })
-}
-
 function itemYear(item: LibraryItem): string {
   return (item.release_date || item.first_air_date || '').slice(0, 4)
 }
@@ -103,7 +93,7 @@ function Card({ item, onClick, onActivate, isHeroActive, compact }: {
 
 // ── Row: lazy-loaded on scroll into view, horizontal, "Все →" to expand ────────
 
-function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, onActivate, activeCardId, initialCache, onItemsLoaded, onEmpty, slideDir, autoFocusIdx, hideHeader }: {
+function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, onActivate, activeCardId, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: {
   status: StatusKey; label: string; token: string; profileId: string
   onExpand: (status: StatusKey) => void; onCardClick: (item: LibraryItem) => void
   onActivate?: (item: LibraryItem) => void
@@ -111,10 +101,9 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
   initialCache?: RowCache
   onItemsLoaded?: (status: StatusKey, cache: RowCache) => void
   // Carousel mode (see CatalogPage's CategoryRow for the same pattern):
-  // status turned out empty → advance; slide-in direction on mount; focus
-  // this card index once loaded. All undefined/unused in Classic layout.
+  // status turned out empty → advance; focus this card index once loaded.
+  // Both undefined/unused in Classic layout.
   onEmpty?: () => void
-  slideDir?: 'from-top' | 'from-bottom'
   autoFocusIdx?: number
   // Carousel mode: the parent renders its own persistent title instead — see
   // CatalogPage's CategoryRow for why (avoids the title flickering in/out on
@@ -182,10 +171,9 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
   if (items !== null && items.length === 0) return null
 
   const hasMore = totalPages > 1
-  const slideClass = slideDir === 'from-top' ? styles.slideFromTop : slideDir === 'from-bottom' ? styles.slideFromBottom : ''
 
   return (
-    <section ref={rowRef} className={`${styles.row}${slideClass ? ' ' + slideClass : ''}`}>
+    <section ref={rowRef} className={styles.row}>
       {!hideHeader && (
       <div className={styles.rowHeader}>
         <h3 className={styles.rowTitle}>{label}</h3>
@@ -210,7 +198,11 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
                 if (hasMore) onExpand(status)
               } else {
                 const next = cards[idx + 1]
-                next?.focus()
+                // preventScroll: focusing an off-screen element natively
+                // jumps it into view instantly, before our own smooth
+                // scrollH/scrollV runs — without this every keyboard move
+                // looked like a jump immediately followed by a correction.
+                next?.focus({ preventScroll: true })
                 // Horizontal-only move within the same row — its vertical position
                 // doesn't change, so no scrollV here (it would force-recenter the
                 // page, yanking the hero banner out of view for no reason).
@@ -218,7 +210,7 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
               }
             } else {
               const prev = cards[idx - 1]
-              prev?.focus()
+              prev?.focus({ preventScroll: true })
               if (prev) scrollH(prev)
             }
           }}
@@ -337,10 +329,15 @@ export default function MediaLibraryPage() {
   // one status's row mounted at a time, pinned to the bottom via CSS, never
   // scrolled. ArrowUp/Down (or a swipe) swaps which status that is.
   const [activeStatusIndex, setActiveStatusIndex] = useState(0)
-  const [slideDir, setSlideDir] = useState<'from-top' | 'from-bottom' | undefined>(undefined)
+  // Drum-carousel row switch — see CatalogPage's identical `transition`
+  // state for how the two-layer slide works.
+  const [transition, setTransition] = useState<{ prevIndex: number; dir: 1 | -1 } | null>(null)
+  const transitionTimerRef = useRef<number | null>(null)
+  useEffect(() => () => { if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current) }, [])
 
   const handleEmptyStatus = useCallback(() => {
-    setSlideDir(undefined)
+    if (transitionTimerRef.current) { window.clearTimeout(transitionTimerRef.current); transitionTimerRef.current = null }
+    setTransition(null)
     setActiveStatusIndex(idx => Math.min(idx + 1, ROW_ORDER.length - 1))
   }, [])
 
@@ -352,7 +349,12 @@ export default function MediaLibraryPage() {
     setActiveStatusIndex(idx => {
       const next = idx + dir
       if (next < 0 || next >= ROW_ORDER.length) return idx
-      setSlideDir(dir > 0 ? 'from-bottom' : 'from-top')
+      setTransition({ prevIndex: idx, dir })
+      if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current)
+      transitionTimerRef.current = window.setTimeout(() => {
+        transitionTimerRef.current = null
+        setTransition(null)
+      }, CAROUSEL_TRANSITION_MS)
       return next
     })
   }, [])
@@ -431,7 +433,8 @@ export default function MediaLibraryPage() {
           else if (e.key === 'ArrowUp') next = Math.max(idx - cols, 0)
         }
         if (next !== -1 && next !== idx) {
-          cards[next].focus()
+          // preventScroll — see LibraryRow's identical fix above for why.
+          cards[next].focus({ preventScroll: true })
           scrollV(cards[next])
         }
         return
@@ -442,7 +445,7 @@ export default function MediaLibraryPage() {
           if (e.key === 'ArrowDown') {
             e.preventDefault()
             const first = document.querySelector<HTMLElement>('[data-card]')
-            first?.focus()
+            first?.focus({ preventScroll: true })
             // Hero carousel: the active row is always already pinned to the
             // bottom via CSS, nothing to scroll into view.
             if (layout !== 'hero' && first) scrollV(first)
@@ -478,7 +481,7 @@ export default function MediaLibraryPage() {
         const targetCards = Array.from(targetRow.querySelectorAll<HTMLElement>('[data-card]'))
         if (!targetCards.length) return
         const target = targetCards[Math.min(savedIdx, targetCards.length - 1)]
-        target?.focus()
+        target?.focus({ preventScroll: true })
         if (target) { scrollH(target); scrollV(target) }
       }
     }
@@ -528,23 +531,45 @@ export default function MediaLibraryPage() {
                   <h3 className={styles.rowTitle}>{STATUS_LABELS[activeStatus]}</h3>
                   <span className={styles.categoryTitleNeighbor}>{STATUS_LABELS[ROW_ORDER[activeStatusIndex + 1]] ?? ' '}</span>
                 </div>
-                <LibraryRow
-                  key={activeStatus}
-                  status={activeStatus}
-                  label={STATUS_LABELS[activeStatus]}
-                  token={token}
-                  profileId={profileId}
-                  onExpand={setExpanded}
-                  onCardClick={openCard}
-                  onActivate={handleActivate}
-                  activeCardId={cardGridFocused && hero.item ? cardIdOf(hero.item) : null}
-                  initialCache={_rowCache[activeStatus]}
-                  onItemsLoaded={handleItemsLoaded}
-                  onEmpty={handleEmptyStatus}
-                  slideDir={slideDir}
-                  autoFocusIdx={lastRowFocusIdx.current.get(activeStatus) ?? 0}
-                  hideHeader
-                />
+                <div className={styles.carouselViewport}>
+                  {/* Outgoing row — same key it had before the switch, so it
+                      keeps reusing its already-fetched instance instead of
+                      remounting/refetching just to animate away. */}
+                  {transition && ROW_ORDER[transition.prevIndex] && (
+                    <div className={`${styles.carouselLayerOut} ${transition.dir > 0 ? styles.carouselOutToTop : styles.carouselOutToBottom}`}>
+                      <LibraryRow
+                        key={ROW_ORDER[transition.prevIndex]}
+                        status={ROW_ORDER[transition.prevIndex]}
+                        label={STATUS_LABELS[ROW_ORDER[transition.prevIndex]]}
+                        token={token}
+                        profileId={profileId}
+                        onExpand={setExpanded}
+                        onCardClick={openCard}
+                        initialCache={_rowCache[ROW_ORDER[transition.prevIndex]]}
+                        onItemsLoaded={handleItemsLoaded}
+                        hideHeader
+                      />
+                    </div>
+                  )}
+                  <div className={transition ? (transition.dir > 0 ? styles.carouselInFromBottom : styles.carouselInFromTop) : undefined}>
+                    <LibraryRow
+                      key={activeStatus}
+                      status={activeStatus}
+                      label={STATUS_LABELS[activeStatus]}
+                      token={token}
+                      profileId={profileId}
+                      onExpand={setExpanded}
+                      onCardClick={openCard}
+                      onActivate={handleActivate}
+                      activeCardId={cardGridFocused && hero.item ? cardIdOf(hero.item) : null}
+                      initialCache={_rowCache[activeStatus]}
+                      onItemsLoaded={handleItemsLoaded}
+                      onEmpty={handleEmptyStatus}
+                      autoFocusIdx={lastRowFocusIdx.current.get(activeStatus) ?? 0}
+                      hideHeader
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
