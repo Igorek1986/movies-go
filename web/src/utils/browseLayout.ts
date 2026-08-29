@@ -19,3 +19,17 @@ export function getStoredBrowseLayout(): BrowseLayout {
 export function setStoredBrowseLayout(layout: BrowseLayout) {
   localStorage.setItem(STORAGE_KEY, layout)
 }
+
+// The hero view is a non-scrolling carousel driven by keyboard/mouse focus —
+// there's no way to move focus onto a card by touch (no hover, no arrow
+// keys), so a touch-primary device always gets Classic regardless of the
+// saved preference. `hover: none` + `pointer: coarse` is the standard way to
+// detect that (unlike a width check, it isn't fooled by a narrow desktop
+// window or a large tablet).
+function isTouchPrimary(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia?.('(hover: none), (pointer: coarse)').matches
+}
+
+export function getEffectiveBrowseLayout(): BrowseLayout {
+  return isTouchPrimary() ? 'classic' : getStoredBrowseLayout()
+}

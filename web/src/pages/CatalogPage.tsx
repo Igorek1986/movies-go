@@ -5,7 +5,7 @@ import { posterUrl } from '@/utils/poster'
 import { scrollV, getGridCols } from '@/utils/scrollNav'
 import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
-import { getStoredBrowseLayout } from '@/utils/browseLayout'
+import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
 import styles from './CatalogPage.module.scss'
 
@@ -136,9 +136,13 @@ interface CardProps {
   onClick: () => void
   onActivate?: () => void
   isHeroActive?: boolean
+  // Hero carousel: the focused card's title/year/rating/cert/quality are
+  // already shown up in BrowseHero, so repeating them under every poster in
+  // the row is pure duplication — Classic layout (no hero panel) keeps them.
+  compact?: boolean
 }
 
-function MediaCard({ item, onClick, onActivate, isHeroActive }: CardProps) {
+function MediaCard({ item, onClick, onActivate, isHeroActive, compact }: CardProps) {
   const url = posterUrl(item.poster_path)
   const title = getItemTitle(item)
   const year = getItemYear(item)
@@ -151,7 +155,6 @@ function MediaCard({ item, onClick, onActivate, isHeroActive }: CardProps) {
       data-card
       onKeyDown={e => { if (e.key === 'Enter') onClick() }}
       onFocus={onActivate}
-      onMouseEnter={onActivate}
     >
       <div className={styles.posterWrap}>
         {url
@@ -177,6 +180,7 @@ function MediaCard({ item, onClick, onActivate, isHeroActive }: CardProps) {
           </>
         )}
       </div>
+      {!compact && (
       <div className={styles.cardBody}>
         <p className={styles.cardTitle}>{title}</p>
         <div className={styles.cardMeta}>
@@ -188,6 +192,7 @@ function MediaCard({ item, onClick, onActivate, isHeroActive }: CardProps) {
           <span className={styles.quality}>{item.release_quality || ' '}</span>
         </div>
       </div>
+      )}
     </div>
   )
 }
@@ -200,7 +205,9 @@ interface CategoryRowProps {
   onCardClick: (item: MediaItem) => void
   onActivate?: (item: MediaItem) => void
   activeCardId?: string | null
-  dragHandlers: {
+  // Omitted entirely in the hero-carousel view — only one row is ever visible
+  // there, so there's nothing to drag onto. Still used in Classic layout.
+  dragHandlers?: {
     onDragStart: (e: React.DragEvent, id: string) => void
     onDragEnd: () => void
     onDragOver: (e: React.DragEvent, id: string) => void
@@ -208,15 +215,33 @@ interface CategoryRowProps {
   }
   initialCache?: RowCache
   onItemsLoaded: (id: string, cache: RowCache) => void
+  // Carousel mode: this category turned out to have 0 items — the parent
+  // advances activeCategoryIndex instead of leaving an empty screen (in
+  // Classic layout the row just quietly disappears from the scrollable list).
+  onEmpty?: () => void
+  // Carousel mode: entry animation direction for this mount (new category
+  // via ArrowUp/ArrowDown or a swipe) — omitted in Classic layout.
+  slideDir?: 'from-top' | 'from-bottom'
+  // Carousel mode: focus this card index once items are available (whatever
+  // was last focused in this category, or 0) — Classic layout never
+  // auto-focuses on mount, so this stays undefined there.
+  autoFocusIdx?: number
+  // Carousel mode: the parent renders its own persistent title instead (see
+  // CatalogPage's carouselActive branch) — otherwise, switching to a category
+  // that turns out empty briefly showed its title before this component
+  // returned null and the parent skipped to the next one, which read as the
+  // title flickering in and out on every auto-skip.
+  hideHeader?: boolean
 }
 
-function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick, onActivate, activeCardId, dragHandlers, initialCache, onItemsLoaded }: CategoryRowProps) {
+function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick, onActivate, activeCardId, dragHandlers, initialCache, onItemsLoaded, onEmpty, slideDir, autoFocusIdx, hideHeader }: CategoryRowProps) {
   const [items, setItems] = useState<MediaItem[] | null>(initialCache?.items ?? null)
   const [totalPages, setTotalPages] = useState(initialCache?.totalPages ?? 1)
   const [error, setError] = useState(false)
   const rowRef = useRef<HTMLElement>(null)
   const rowInnerRef = useRef<HTMLDivElement>(null)
   const loadedRef = useRef(!!initialCache)
+  const autoFocusAppliedRef = useRef(false)
 
   const loadItems = useCallback(async () => {
     if (loadedRef.current) return
@@ -240,6 +265,23 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
     }
   }, [category.id, token, profileId, onItemsLoaded])
 
+  // Carousel mode: this category has nothing to show — tell the parent to
+  // advance instead of leaving a blank screen (Classic layout doesn't pass
+  // onEmpty; it just relies on the render-time `return null` below).
+  useEffect(() => {
+    if (items !== null && items.length === 0) onEmpty?.()
+  }, [items, onEmpty])
+
+  useEffect(() => {
+    if (autoFocusIdx === undefined || autoFocusAppliedRef.current || !items?.length) return
+    autoFocusAppliedRef.current = true
+    requestAnimationFrame(() => {
+      const cards = rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]')
+      if (!cards?.length) return
+      cards[Math.min(autoFocusIdx, cards.length - 1)]?.focus({ preventScroll: true })
+    })
+  }, [items, autoFocusIdx])
+
   useEffect(() => {
     if (items === null) return
     const el = rowInnerRef.current
@@ -250,6 +292,8 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
       const cards = el.querySelectorAll<HTMLElement>('[data-card]')
       const target = cards[Math.min(savedIdx, cards.length - 1)]
       target?.focus()
+      // Classic layout only (carousel mode never sets pendingFocus — it has
+      // its own autoFocusIdx path and nothing to scroll into view anyway).
       if (target) { scrollH(target); scrollV(target) }
     })
   }, [items])
@@ -274,20 +318,23 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
 
   const hasMore = totalPages > 1
 
+  const slideClass = slideDir === 'from-top' ? styles.slideFromTop : slideDir === 'from-bottom' ? styles.slideFromBottom : ''
+
   return (
     <section
       ref={rowRef}
-      className={styles.row}
+      className={`${styles.row}${slideClass ? ' ' + slideClass : ''}`}
       data-cat-id={category.id}
-      draggable
-      onDragStart={e => dragHandlers.onDragStart(e, category.id)}
-      onDragEnd={dragHandlers.onDragEnd}
-      onDragOver={e => dragHandlers.onDragOver(e, category.id)}
-      onDrop={dragHandlers.onDrop}
+      draggable={!!dragHandlers}
+      onDragStart={dragHandlers ? e => dragHandlers.onDragStart(e, category.id) : undefined}
+      onDragEnd={dragHandlers?.onDragEnd}
+      onDragOver={dragHandlers ? e => dragHandlers.onDragOver(e, category.id) : undefined}
+      onDrop={dragHandlers?.onDrop}
     >
+      {!hideHeader && (
       <div className={styles.rowHeader}>
         <div className={styles.rowHeaderLeft}>
-          <span className={styles.dragHandle} title="Перетащить">⠿</span>
+          {dragHandlers && <span className={styles.dragHandle} title="Перетащить">⠿</span>}
           <h3 className={styles.rowTitle}>{category.name}</h3>
         </div>
         {hasMore && (
@@ -296,7 +343,8 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
           </button>
         )}
       </div>
-      <div className={styles.rowScroll} data-row-scroll>
+      )}
+      <div className={`${styles.rowScroll}${hideHeader ? ' ' + styles.rowScrollCompact : ''}`} data-row-scroll>
         <div
           ref={rowInnerRef}
           className={styles.rowInner}
@@ -315,12 +363,15 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
               } else {
                 const next = cards[idx + 1]
                 next?.focus()
-                if (next) { scrollH(next); scrollV(next) }
+                // Horizontal-only move within the same row — its vertical position
+                // doesn't change, so no scrollV here (it would force-recenter the
+                // page, yanking the hero banner out of view for no reason).
+                if (next) scrollH(next)
               }
             } else {
               const prev = cards[idx - 1]
               prev?.focus()
-              if (prev) { scrollH(prev); scrollV(prev) }
+              if (prev) scrollH(prev)
             }
           }}
         >
@@ -340,6 +391,7 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
                   onClick={() => onCardClick(item)}
                   onActivate={onActivate ? () => onActivate(item) : undefined}
                   isHeroActive={activeCardId === cardId}
+                  compact={hideHeader}
                 />
               </div>
             )
@@ -598,47 +650,57 @@ export default function CatalogPage() {
 
   // Per-device (localStorage) — see BrowseLayoutSettings on /profiles. Read
   // fresh on every mount, same convention as CardDetailPage's cardLayout.
-  const [layout] = useState(() => getStoredBrowseLayout())
+  // Forced to Classic on touch devices regardless of the saved preference —
+  // the hero carousel is driven by keyboard/mouse focus, which touch has no
+  // equivalent for.
+  const [layout] = useState(() => getEffectiveBrowseLayout())
   const hero = useHeroPreview<MediaItem>()
-  const heroInitRef = useRef(false)
-  // Rows lazy-load independently (IntersectionObserver) and can resolve in
-  // any order — reading whichever happens to answer first made the initial
-  // hero background essentially random. Scan categories in visual order
-  // instead, stopping at the first one whose row cache isn't in yet, so the
-  // result is always the first row's first item regardless of network timing.
-  const categoriesRef = useRef(categories)
-  categoriesRef.current = categories
+  const handleActivate = useCallback((item: MediaItem) => hero.activate(item), [hero.activate])
 
-  const tryInitHero = useCallback(() => {
-    if (heroInitRef.current) return
-    for (const cat of categoriesRef.current) {
-      const cached = _cache.rows[cat.id]
-      if (!cached) return // earlier-in-order row hasn't reported yet — wait for it
-      if (cached.items.length > 0) {
-        heroInitRef.current = true
-        hero.activate(cached.items[0])
-        // Actually focus the card (not just hero state) so it's visibly
-        // marked as active, same as hovering/tabbing to it manually would —
-        // preventScroll since it's already on-screen at the top.
-        requestAnimationFrame(() => {
-          document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(cat.id)}"] [data-card]`)
-            ?.focus({ preventScroll: true })
-        })
-        return
-      }
-      // else: this row loaded empty — keep scanning the next one
-    }
-  }, [hero.activate])
+  // Hero layout: non-scrolling carousel (Lampa TV-style) — exactly one
+  // category's row is mounted at a time, always pinned to the bottom via CSS
+  // (see .carouselRail), never revealed by scrolling. ArrowUp/Down (or a
+  // swipe) just swaps which category that is; the row itself doesn't need to
+  // be scrolled into place at all, so there's no scroll-position bookkeeping
+  // here — CategoryRow's own onFocus→onActivate wiring drives the hero from
+  // whichever card ends up focused, same as any other navigation.
+  const [activeCategoryIndex, setActiveCategoryIndex] = useState(0)
+  const [slideDir, setSlideDir] = useState<'from-top' | 'from-bottom' | undefined>(undefined)
 
-  // Warm SPA-cache revisit: rows with a cache hit skip their own fetch (see
-  // CategoryRow's loadedRef) and never call onItemsLoaded again, so without
-  // this the hero would just stay empty on a Backspace-back to /catalog.
-  useEffect(() => { tryInitHero() }, [tryInitHero])
+  const handleEmptyCategory = useCallback(() => {
+    // This category has nothing to show — silently skip to the next one
+    // instead of leaving a blank screen; no slide animation for an
+    // automatic correction like this (only real navigation animates).
+    setSlideDir(undefined)
+    setActiveCategoryIndex(idx => Math.min(idx + 1, categories.length - 1))
+  }, [categories.length])
 
-  const [mainSearchFloating, setMainSearchFloating] = useState(false)
-  const mainSearchRef = useRef<HTMLDivElement>(null)
+  // Search lives entirely in the floating bar now (see .floatingBar below) —
+  // no permanently-visible input in the page toolbar. That toolbar sits in
+  // normal page flow, which the hero carousel's fixed full-viewport backdrop
+  // (see BrowseHero's .heroBg) paints over — an always-open field there was
+  // invisible in hero layout. The floating bar is position:fixed with a
+  // z-index (100) well above .heroBg's (0), so it's never hidden regardless
+  // of layout; the header's search icon (Layout.tsx) opens it from anywhere.
+  const [searchOpen, setSearchOpen] = useState(false)
+  const floatingInputRef = useRef<HTMLInputElement>(null)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedScrollRef = useRef(0)
+
+  // Layout.tsx's nav doesn't know about this page's local search state —
+  // publish it as a body class instead of threading a prop/context through,
+  // same idea as --app-footer-h. Layout.module.scss uses it to mute the
+  // current page's nav-link highlight and color the search icon instead, so
+  // the header doesn't show two different "active" things at once while
+  // browsing search results. Tied to results actually showing (matches
+  // showSearch below), not to searchOpen/the floating bar's own visibility —
+  // that closes the instant focus leaves it for a result card (see its
+  // onBlur), which is exactly when you start browsing results, so the
+  // indicator would vanish right as it became most useful.
+  useEffect(() => {
+    document.body.classList.toggle('search-mode-active', searchQuery.length >= 3 && !expandedCategory)
+    return () => { document.body.classList.remove('search-mode-active') }
+  }, [searchQuery, expandedCategory])
 
   // Save scroll position to cache continuously.
   useEffect(() => {
@@ -704,15 +766,25 @@ export default function CatalogPage() {
 
   const handleItemsLoaded = useCallback((id: string, rowCache: RowCache) => {
     _cache.rows[id] = rowCache
-    tryInitHero()
-  }, [tryInitHero])
+  }, [])
   const dragSrcRef = useRef<string | null>(null)
   const lastRowFocusIdx = useRef<Map<string, number>>(new Map())
+  // Whether a card in the grid currently has keyboard focus — the hero
+  // border (.cardHeroActive) only shows while true, so it disappears the
+  // moment focus leaves for the top menu/search instead of staying stuck on
+  // whichever card was focused last (hero.item itself keeps its value, so
+  // the background stays as ambient art — only the "this card is selected"
+  // border goes away).
+  const [cardGridFocused, setCardGridFocused] = useState(false)
 
   useEffect(() => {
     function onFocusIn(e: FocusEvent) {
       const el = e.target as HTMLElement
-      if (!el.hasAttribute('data-card')) return
+      if (!el.hasAttribute('data-card')) {
+        if (!el.closest('[data-row-id]')) setCardGridFocused(false)
+        return
+      }
+      setCardGridFocused(true)
       const rowInner = el.closest<HTMLElement>('[data-row-id]')
       if (!rowInner) return
       const rowId = rowInner.dataset.rowId!
@@ -732,17 +804,11 @@ export default function CatalogPage() {
     }
   }, [])
 
-  // Show floating search bar when the toolbar search scrolls above the nav (52px)
-  useEffect(() => {
-    function check() {
-      if (expandedCategory) return
-      const el = mainSearchRef.current
-      if (!el) return
-      setMainSearchFloating(el.getBoundingClientRect().bottom < 52)
-    }
-    window.addEventListener('scroll', check, { passive: true })
-    return () => window.removeEventListener('scroll', check)
-  }, [expandedCategory])
+  // Focus the floating input once it actually mounts (searchOpen just makes
+  // it render — it doesn't exist in the DOM before that).
+  useLayoutEffect(() => {
+    if (searchOpen) floatingInputRef.current?.focus()
+  }, [searchOpen])
 
   // Row cache is keyed by category id only (not profile) — drop it whenever the
   // active profile actually changes so CategoryRow doesn't flash stale items while
@@ -908,6 +974,18 @@ export default function CatalogPage() {
     e.preventDefault()
   }
 
+  // Shared by ArrowUp/Down and the mobile swipe below — swaps which
+  // category's row is shown in the hero carousel, with a slide animation
+  // for real navigation (as opposed to handleEmptyCategory's silent skip).
+  const switchCategory = useCallback((dir: 1 | -1) => {
+    setActiveCategoryIndex(idx => {
+      const next = idx + dir
+      if (next < 0 || next >= categories.length) return idx
+      setSlideDir(dir > 0 ? 'from-bottom' : 'from-top')
+      return next
+    })
+  }, [categories.length])
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const focused = document.activeElement as HTMLElement | null
@@ -923,7 +1001,24 @@ export default function CatalogPage() {
         return
       }
 
-      if (expandedCategory) {
+      // Escape while browsing search results (not just from the input
+      // itself, which the floating bar's own onKeyDown already covers) —
+      // clears the query and drops back to normal browsing.
+      if (e.key === 'Escape' && !expandedCategory && searchQuery.length >= 3) {
+        e.preventDefault()
+        setSearchValue('')
+        setSearchQuery('')
+        setSearchOpen(false)
+        document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+        return
+      }
+
+      // Search results render the same flat .grid of cards as an expanded
+      // category (not the row-carousel structure) — share the same grid
+      // navigation instead of falling through to the row-based logic below,
+      // which has nothing to walk here and left arrow keys doing nothing
+      // once focus reached a search result card.
+      if (expandedCategory || searchQuery.length >= 3) {
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
         e.preventDefault()
         const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-card]'))
@@ -937,7 +1032,16 @@ export default function CatalogPage() {
           if (e.key === 'ArrowRight') next = Math.min(idx + 1, cards.length - 1)
           else if (e.key === 'ArrowLeft') next = Math.max(idx - 1, 0)
           else if (e.key === 'ArrowDown') next = Math.min(idx + cols, cards.length - 1)
-          else if (e.key === 'ArrowUp') next = Math.max(idx - cols, 0)
+          else if (e.key === 'ArrowUp') {
+            // Top row of search results — bridge straight back up to the
+            // search icon in the nav (no such bridge for an expanded
+            // category, which has no search box to return to).
+            if (!expandedCategory && idx - cols < 0) {
+              document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+              return
+            }
+            next = Math.max(idx - cols, 0)
+          }
         }
         if (next !== -1 && next !== idx) {
           cards[next].focus()
@@ -952,19 +1056,37 @@ export default function CatalogPage() {
             e.preventDefault()
             const first = document.querySelector<HTMLElement>('[data-card]')
             first?.focus()
-            if (first) scrollV(first)
+            // Hero carousel: the active row is always already pinned to the
+            // bottom via CSS, nothing to scroll into view.
+            if (layout !== 'hero' && first) scrollV(first)
           }
           return
         }
 
         e.preventDefault()
+
+        if (layout === 'hero') {
+          const dir = e.key === 'ArrowDown' ? 1 : -1
+          if (dir < 0 && activeCategoryIndex === 0) {
+            // The search icon is the first item in the top nav — bridge
+            // straight to it (not the active page link) so ArrowUp always
+            // lands on whatever's leftmost, matching the visual order.
+            document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+            return
+          }
+          switchCategory(dir)
+          return
+        }
+
+        // Classic: scrollable list of every row — walk the DOM to find
+        // whichever one is next/previous and focus into it.
         const rowInner = focused.closest('[data-row-id]') as HTMLElement | null
         if (!rowInner) return
         const allRows = Array.from(document.querySelectorAll<HTMLElement>('[data-row-id]'))
         const rowIdx = allRows.indexOf(rowInner)
         const targetRowIdx = e.key === 'ArrowDown' ? rowIdx + 1 : rowIdx - 1
         if (targetRowIdx < 0) {
-          mainSearchRef.current?.querySelector('input')?.focus()
+          document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
           return
         }
         if (targetRowIdx >= allRows.length) return
@@ -984,7 +1106,7 @@ export default function CatalogPage() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [expandedCategory, navigate])
+  }, [expandedCategory, searchQuery, navigate, layout, activeCategoryIndex, categories, switchCategory])
 
   useEffect(() => {
     const onCatalogBack = () => { if (expandedCategory) handleBack() }
@@ -1004,12 +1126,12 @@ export default function CatalogPage() {
   // separate task after the gesture window closes, so focus() would "work"
   // (activeElement changes) but the keyboard would stay closed.
   useLayoutEffect(() => {
-    function focusMainSearch() {
-      mainSearchRef.current?.querySelector('input')?.focus()
+    function openMainSearch() {
+      setSearchOpen(true)
     }
-    if (takePendingFocusCatalogSearch()) focusMainSearch()
-    window.addEventListener('catalog:focus-search', focusMainSearch)
-    return () => window.removeEventListener('catalog:focus-search', focusMainSearch)
+    if (takePendingFocusCatalogSearch()) openMainSearch()
+    window.addEventListener('catalog:focus-search', openMainSearch)
+    return () => window.removeEventListener('catalog:focus-search', openMainSearch)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stateName = (location.state as { catName?: string } | null)?.catName ?? null
@@ -1021,45 +1143,20 @@ export default function CatalogPage() {
 
   const showSearch = searchQuery.length >= 3 && !expandedCategory
 
+  // Hero carousel locks the page to the viewport (no scroll) — only while
+  // actually showing the carousel itself, not the expanded/"Все →" grid or
+  // search results, which stay normal scrollable views.
+  const carouselActive = layout === 'hero' && !expandedCategory && !showSearch
+
   return (
     <Layout>
-      <div className={styles.page}>
-        {!expandedCat && (
+      <div className={`${styles.page}${carouselActive ? ' ' + styles.pageLocked : ''}`}>
+        {!expandedCat && hasCustomOrder && layout === 'classic' && (
           <div className={styles.toolbar}>
             <div className={styles.toolbarTop}>
-              {hasCustomOrder && (
-                <button className={styles.resetOrderBtn} onClick={resetRowOrder} title="Вернуть порядок по умолчанию">
-                  Сбросить порядок
-                </button>
-              )}
-              <div ref={mainSearchRef} className={styles.searchWrap}>
-                <input
-                  className={styles.searchInput}
-                  placeholder="Поиск…"
-                  value={searchValue}
-                  onChange={e => handleSearchChange(e.target.value)}
-                  onKeyDown={e => {
-                    // Part of the site-wide keyboard-nav rollout: search sits
-                    // between the top menu and the category grid — Up/Down
-                    // move to whichever one is above/below it.
-                    if (e.key === 'ArrowDown') {
-                      e.preventDefault()
-                      const first = document.querySelector<HTMLElement>('[data-card]')
-                      first?.focus()
-                      if (first) scrollV(first)
-                    } else if (e.key === 'ArrowUp') {
-                      e.preventDefault()
-                      const topLink =
-                        document.querySelector<HTMLElement>('[data-top-nav] a[aria-current="page"]') ??
-                        document.querySelector<HTMLElement>('[data-top-nav] a')
-                      topLink?.focus()
-                    }
-                  }}
-                />
-                {searchValue && (
-                  <button className={styles.searchClear} onClick={() => handleSearchChange('')} title="Очистить">✕</button>
-                )}
-              </div>
+              <button className={styles.resetOrderBtn} onClick={resetRowOrder} title="Вернуть порядок по умолчанию">
+                Сбросить порядок
+              </button>
             </div>
           </div>
         )}
@@ -1103,7 +1200,47 @@ export default function CatalogPage() {
           />
         )}
 
-        {!expandedCategory && !showSearch && (
+        {carouselActive && categories[activeCategoryIndex] && (
+          <div className={styles.carouselRail}>
+            {/* Owned by the parent, not CategoryRow itself — switching to a
+                category that turns out empty briefly showed its title before
+                CategoryRow returned null and handleEmptyCategory skipped to
+                the next one, which read as the title flickering on every
+                auto-skip. This one just always names whatever's targeted.
+                The dimmer neighbor names above/below hint that ArrowUp/Down
+                reaches more categories, without taking any horizontal space
+                away from the row of cards below. */}
+            <div className={styles.categoryTitleStack}>
+              {/*  , not a plain space — a lone regular space is
+                  collapsible whitespace, so browsers render that line at
+                  zero height until real text lands in it, which made the
+                  hero area's height (and everything anchored to its bottom)
+                  visibly jump on every category change. A non-breaking space
+                  keeps the line's height reserved even when empty. */}
+              <span className={styles.categoryTitleNeighbor}>{categories[activeCategoryIndex - 1]?.name ?? ' '}</span>
+              <h3 className={styles.rowTitle}>{categories[activeCategoryIndex].name}</h3>
+              <span className={styles.categoryTitleNeighbor}>{categories[activeCategoryIndex + 1]?.name ?? ' '}</span>
+            </div>
+            <CategoryRow
+              key={`${categories[activeCategoryIndex].id}_${token}_${profileId}`}
+              category={categories[activeCategoryIndex]}
+              token={token}
+              profileId={profileId}
+              onExpandCategory={handleExpandCategory}
+              onCardClick={handleCardClick}
+              onActivate={handleActivate}
+              activeCardId={cardGridFocused && hero.item ? `${hero.item.id}_${hero.item.media_type}` : null}
+              initialCache={_cache.rows[categories[activeCategoryIndex].id]}
+              onItemsLoaded={handleItemsLoaded}
+              onEmpty={handleEmptyCategory}
+              slideDir={slideDir}
+              autoFocusIdx={lastRowFocusIdx.current.get(categories[activeCategoryIndex].id) ?? 0}
+              hideHeader
+            />
+          </div>
+        )}
+
+        {!expandedCategory && !showSearch && layout === 'classic' && (
           <div className={styles.rows}>
             {categories.map(cat => (
               <CategoryRow
@@ -1113,8 +1250,6 @@ export default function CatalogPage() {
                 profileId={profileId}
                 onExpandCategory={handleExpandCategory}
                 onCardClick={handleCardClick}
-                onActivate={layout === 'hero' ? hero.activate : undefined}
-                activeCardId={layout === 'hero' && hero.item ? `${hero.item.id}_${hero.item.media_type}` : null}
                 dragHandlers={{ onDragStart, onDragEnd, onDragOver, onDrop }}
                 initialCache={_cache.rows[cat.id]}
                 onItemsLoaded={handleItemsLoaded}
@@ -1122,21 +1257,56 @@ export default function CatalogPage() {
             ))}
           </div>
         )}
-        {!expandedCategory && mainSearchFloating && (
-          <div className={styles.floatingBar}>
+        {!expandedCategory && searchOpen && (
+          <div
+            className={styles.floatingBar}
+            onBlur={e => {
+              // Closes as soon as focus actually leaves the bar (Escape, the
+              // ✕ button, or ArrowUp bridging back to the search icon below
+              // all move focus elsewhere and land here) — not just on the
+              // explicit affordances, so it never lingers open once you've
+              // moved on.
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSearchOpen(false)
+            }}
+          >
             <div className={styles.floatingBarInner}>
               <span className={styles.floatingIcon}>🔍</span>
               <div className={styles.searchWrap} style={{flex: 1}}>
                 <input
+                  ref={floatingInputRef}
                   className={styles.floatingInput}
                   placeholder="Поиск…"
                   value={searchValue}
                   onChange={e => handleSearchChange(e.target.value)}
+                  onKeyDown={e => {
+                    // Same site-wide keyboard-nav rollout as before this
+                    // moved into the floating bar — Down bridges to the
+                    // first card, Up/Escape bridge back to the search icon
+                    // (onBlur above then closes the bar). stopPropagation is
+                    // required: without it the same event also reaches the
+                    // window-level grid-nav listener below (search results
+                    // share its Left/Right/Up/Down handling), which then
+                    // moves focus AGAIN from wherever we just landed —
+                    // ArrowDown here would jump straight to the first card,
+                    // then immediately a whole row further.
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const first = document.querySelector<HTMLElement>('[data-card]')
+                      first?.focus()
+                      if (layout !== 'hero' && first) scrollV(first)
+                    } else if (e.key === 'ArrowUp' || e.key === 'Escape') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+                    }
+                  }}
                 />
                 {searchValue && (
                   <button className={styles.searchClear} onClick={() => handleSearchChange('')} title="Очистить">✕</button>
                 )}
               </div>
+              <button className={styles.floatingClose} onClick={() => setSearchOpen(false)} title="Закрыть">✕</button>
             </div>
           </div>
         )}

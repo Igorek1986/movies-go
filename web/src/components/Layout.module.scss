@@ -3,7 +3,16 @@
 .layout {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  // AppFooter renders outside this component (see App.tsx) directly after
+  // it, so its height always adds on top of whatever .layout occupies —
+  // shrinking the floor by that much is what actually keeps a full page
+  // (this + the footer) at exactly 100vh instead of 100vh-plus-footer.
+  // --app-footer-h is published by AppFooter itself (0px where it's hidden,
+  // e.g. /consent, /privacy) and matters most for CatalogPage's/
+  // MediaLibraryPage's hero carousel (@mixin page-locked), which needs the
+  // whole page — including this footer — to fit without any scroll at all;
+  // on normal scrollable pages it's a no-op past the point content overflows.
+  min-height: calc(100vh - var(--app-footer-h, 0px));
   background: $color-bg;
   padding-top: calc(#{$nav-height} + env(safe-area-inset-top));
 }
@@ -56,6 +65,15 @@
   flex-shrink: 0;
 }
 
+// Wraps the search button + the link pill row — see the data-top-nav
+// comment in Layout.tsx for why they share one keyboard-nav group despite
+// being visually distinct flex items.
+.navGroup {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
 // Desktop links — hidden on mobile/tablet (burger+drawer take over up to
 // $bp-lg, matching BottomNav's own visibility range — otherwise both the
 // full link list and the quick-nav panel would show at once).
@@ -96,6 +114,75 @@
     outline: none;
     color: $color-primary;
     background: rgba($color-primary-rgb, 0.12);
+  }
+
+  // Focusing the link for the page you're already on would otherwise look
+  // identical to just .active (same color+background, nothing to tell them
+  // apart) — white text marks it as *also* carrying keyboard focus.
+  &.active:focus-visible {
+    color: $color-text;
+  }
+
+  // Search open (see CatalogPage's search-mode-active body class) — the
+  // current page's link shouldn't still read as "active" alongside the
+  // search icon below, which takes over that highlight instead.
+  :global(body.search-mode-active) &.active {
+    color: $color-text-muted;
+    background: transparent;
+  }
+
+  // Keyboard focus must stay visible even then — one extra class in the
+  // selector (a real attribute wouldn't do, :focus-visible is a pseudo-
+  // class) gives this higher specificity than the mute rule above so
+  // arriving here via ArrowUp from search results doesn't look identical
+  // to just being unfocused-and-muted.
+  :global(body.search-mode-active) &.active:focus-visible {
+    color: $color-text;
+    background: rgba($color-primary-rgb, 0.12);
+  }
+}
+
+.navSearchBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color $transition-fast, background $transition-fast;
+
+  svg { width: 18px; height: 18px; }
+
+  &:hover, &:focus-visible {
+    color: $color-primary;
+  }
+
+  &:focus-visible {
+    outline: none;
+    // Search-mode-active already colors this icon all the time (below) —
+    // a background pill is the only thing left to actually show that it
+    // ALSO currently has keyboard focus, matching how a .navLink's own
+    // focus ring adds a pill on top of its resting color.
+    background: rgba($color-primary-rgb, 0.12);
+  }
+
+  // Search open — see the .navLink.active rule above muting the current
+  // page's link at the same time, so exactly one thing in the nav reads as
+  // "active" while search is up.
+  :global(body.search-mode-active) & {
+    color: $color-primary;
+  }
+
+  // Mobile/tablet already has search via the bottom nav's "Поиск" item —
+  // matches .navLinks' own cutoff so both appear/disappear together.
+  @media (max-width: $bp-lg) {
+    display: none;
   }
 }
 

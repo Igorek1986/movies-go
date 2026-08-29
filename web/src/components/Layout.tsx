@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { ProfileSwitcher } from '@/components/ProfileSwitcher'
-import { BottomNav, BOTTOM_NAV_ICONS, type BottomNavItem } from '@/components/BottomNav'
+import { BottomNav, BOTTOM_NAV_ICONS, SearchIcon, type BottomNavItem } from '@/components/BottomNav'
 import { BOTTOM_NAV_OPTIONS, resolveBottomNavKeys, resolveBottomNavPosition, type BottomNavConfig } from '@/utils/bottomNavConfig'
 import { requestFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { applyTheme, getStoredTheme, THEMES, type ThemeId } from '@/utils/theme'
@@ -201,7 +201,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       if (onTopNav && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault()
         e.stopImmediatePropagation()
-        const topLinks = Array.from(document.querySelectorAll<HTMLElement>('[data-top-nav] a'))
+        const topLinks = Array.from(document.querySelectorAll<HTMLElement>('[data-top-nav] a, [data-top-nav] [data-top-nav-search]'))
         const i = topLinks.indexOf(activeEl!)
         const next = Math.min(Math.max(i + (e.key === 'ArrowRight' ? 1 : -1), 0), topLinks.length - 1)
         topLinks[next]?.focus()
@@ -341,8 +341,29 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
 
         <a className={styles.brand} href="/">Movies API</a>
 
-        {/* Desktop */}
-        <div className={styles.navLinks} data-top-nav>
+        {/* Desktop — data-top-nav wraps both the search button and the link
+            pill row so Layout's own Left/Right cycling (below) and the
+            ArrowUp bridge from CatalogPage/MediaLibraryPage can both reach
+            the button by keyboard, even though it's visually its own item
+            (not part of .navLinks' pill group) and not one of the `a` page
+            links themselves — see the querySelectorAll below, which matches
+            it via data-nav-item instead of tag name. */}
+        <div className={styles.navGroup} data-top-nav>
+          {/* Catalog search's own field is fixed-position and hidden until
+              opened (see CatalogPage's floating bar) — the hero carousel's
+              full-viewport backdrop covers normal page content, so this is
+              the one entry point that's always reachable regardless of
+              layout or which page you're on. data-top-nav-search, not
+              data-nav-item — that name is already a site-wide marker (see
+              CardDetailPage.module.scss's bare, unscoped
+              [data-nav-item]:focus-visible rule, which isn't CSS-Modules-
+              scoped and so applies to ANY element with the attribute once
+              that stylesheet has loaded) for the generic row-nav rectangle
+              outline, which isn't the look wanted here. */}
+          <button className={styles.navSearchBtn} data-top-nav-search onClick={handleBottomSearch} aria-label="Поиск" title="Поиск">
+            <SearchIcon />
+          </button>
+          <div className={styles.navLinks}>
           {links}
           <span className={styles.navUser}>{user?.username}</span>
           <ProfileSwitcher />
@@ -352,6 +373,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
             ))}
           </select>
           <button className={styles.btnLogout} onClick={handleLogout}>Выйти</button>
+          </div>
         </div>
 
         {/* Mobile: profile switcher — rightmost */}

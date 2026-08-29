@@ -6,6 +6,20 @@
   gap: $spacing-lg;
 }
 
+// Hero+carousel view: page can't grow taller than the viewport, so there's
+// never a real page scrollbar — the active row is always already at the
+// bottom, never revealed by scrolling. See @mixin page-locked.
+.pageLocked {
+  @include page-locked;
+}
+
+.carouselRail {
+  @include carousel-rail;
+}
+
+.slideFromTop    { @include slide-in-from-top; }
+.slideFromBottom { @include slide-in-from-bottom; }
+
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
 .toolbar {
@@ -127,6 +141,37 @@
   font-size: $font-size-base;
   font-weight: 600;
   color: $color-text;
+  // Needed in the hero carousel: rendered as a plain non-positioned sibling
+  // in .carouselRail, it was getting visually painted over by BrowseHero's
+  // fixed, z-index:1 backdrop (see .heroBg) — a static-position element with
+  // z-index:auto loses to a positioned one at the same point regardless of
+  // DOM order. .row's cards escape this only because they have their own
+  // opaque backgrounds; harmless here in Classic layout, which has no
+  // competing fixed layer to begin with.
+  position: relative;
+  z-index: 1;
+}
+
+// Hero carousel: previous/next category names shown smaller and dimmer right
+// above/below the current .rowTitle — a non-clickable hint that there's more
+// to reach with ArrowUp/ArrowDown, in the same spot the title already sits.
+.categoryTitleStack {
+  display: flex;
+  flex-direction: column;
+}
+
+.categoryTitleNeighbor {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  opacity: 0.6;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  // Same stacking fix as .rowTitle above — otherwise BrowseHero's fixed
+  // backdrop paints over these too.
+  position: relative;
+  z-index: 1;
 }
 
 .rowMore {
@@ -155,6 +200,13 @@
   padding-bottom: $spacing-xs;
   // Reserve height = poster (185px × 3/2) + card body (~54px) to avoid layout shift while loading
   min-height: calc(185px * 3 / 2 + 54px);
+
+  // Hero carousel: cards render without their .cardBody text (see MediaCard's
+  // `compact` prop) — reserving room for it here left a large empty gap
+  // below the row.
+  &.rowScrollCompact {
+    min-height: calc(185px * 3 / 2);
+  }
 
   scrollbar-width: none;
   &::-webkit-scrollbar {
@@ -500,6 +552,19 @@
   font-size: $font-size-sm;
   border-radius: $radius-sm;
   padding-right: 28px;
+}
+
+.floatingClose {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: $spacing-xs;
+  cursor: pointer;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  line-height: 1;
+
+  &:hover { color: $color-text; }
 }
 
 .categoryTitle {

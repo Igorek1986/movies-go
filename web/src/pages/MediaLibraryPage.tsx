@@ -4,7 +4,7 @@ import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
 import { scrollV, getGridCols } from '@/utils/scrollNav'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
-import { getStoredBrowseLayout } from '@/utils/browseLayout'
+import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
 import styles from './MediaLibraryPage.module.scss'
 
@@ -33,6 +33,17 @@ interface LibraryResponse {
 
 type StatusKey = 'favorite' | 'continues' | 'watching' | 'completed' | 'planned' | 'stopped'
 
+interface RowCache { items: LibraryItem[]; totalPages: number }
+
+// Module-level, like CatalogPage's _cache — MediaLibraryPage remounts
+// wholesale on every navigation (see the `key={location.key}` below), so
+// without this, flipping back to an already-visited status in the carousel
+// would always show "Загрузка…" and refetch instead of redisplaying instantly.
+const _rowCache: Partial<Record<StatusKey, RowCache>> = {}
+// Profile the cache belongs to — cleared on switch (see CatalogPage's
+// _cache.profileKey for the same reasoning).
+let _libProfileKey: string | null = null
+
 // «Продолжить просмотр» — не subjective_statuses, а прогресс по таймкодам (карточки
 // с прогрессом ниже watched_threshold), отдаётся отдельным эндпоинтом /continues
 // (см. handleContinues в internal/api/content.go), не /media-library.
@@ -58,8 +69,11 @@ function itemYear(item: LibraryItem): string {
   return (item.release_date || item.first_air_date || '').slice(0, 4)
 }
 
-function Card({ item, onClick, onActivate, isHeroActive }: {
+function Card({ item, onClick, onActivate, isHeroActive, compact }: {
   item: LibraryItem; onClick: () => void; onActivate?: () => void; isHeroActive?: boolean
+  // Hero carousel: title/year are already shown in BrowseHero for the
+  // focused card — Classic layout (no hero panel) keeps them.
+  compact?: boolean
 }) {
   const url = posterUrl(item.poster_path)
   const title = item.title || item.name
@@ -71,34 +85,48 @@ function Card({ item, onClick, onActivate, isHeroActive }: {
       onClick={onClick}
       onKeyDown={e => { if (e.key === 'Enter') onClick() }}
       onFocus={onActivate}
-      onMouseEnter={onActivate}
     >
       {url
         ? <img className={styles.poster} src={url} alt={title} loading="lazy" />
         : <div className={styles.posterPlaceholder}>Нет постера</div>
       }
       {item.media_type === 'tv' && <span className={styles.typeBadge}>Сериал</span>}
-      <div className={styles.cardBody}>
-        <p className={styles.cardTitle}>{title}</p>
-        <span className={styles.cardYear}>{itemYear(item)}</span>
-      </div>
+      {!compact && (
+        <div className={styles.cardBody}>
+          <p className={styles.cardTitle}>{title}</p>
+          <span className={styles.cardYear}>{itemYear(item)}</span>
+        </div>
+      )}
     </div>
   )
 }
 
 // ── Row: lazy-loaded on scroll into view, horizontal, "Все →" to expand ────────
 
-function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, onActivate, activeCardId, onItemsLoaded }: {
+function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, onActivate, activeCardId, initialCache, onItemsLoaded, onEmpty, slideDir, autoFocusIdx, hideHeader }: {
   status: StatusKey; label: string; token: string; profileId: string
   onExpand: (status: StatusKey) => void; onCardClick: (item: LibraryItem) => void
   onActivate?: (item: LibraryItem) => void
   activeCardId?: string | null
-  onItemsLoaded?: (status: StatusKey, items: LibraryItem[]) => void
+  initialCache?: RowCache
+  onItemsLoaded?: (status: StatusKey, cache: RowCache) => void
+  // Carousel mode (see CatalogPage's CategoryRow for the same pattern):
+  // status turned out empty → advance; slide-in direction on mount; focus
+  // this card index once loaded. All undefined/unused in Classic layout.
+  onEmpty?: () => void
+  slideDir?: 'from-top' | 'from-bottom'
+  autoFocusIdx?: number
+  // Carousel mode: the parent renders its own persistent title instead — see
+  // CatalogPage's CategoryRow for why (avoids the title flickering in/out on
+  // every auto-skip of an empty status).
+  hideHeader?: boolean
 }) {
-  const [items, setItems] = useState<LibraryItem[] | null>(null)
-  const [totalPages, setTotalPages] = useState(1)
+  const [items, setItems] = useState<LibraryItem[] | null>(initialCache?.items ?? null)
+  const [totalPages, setTotalPages] = useState(initialCache?.totalPages ?? 1)
   const rowRef = useRef<HTMLDivElement>(null)
-  const loadedRef = useRef(false)
+  const rowInnerRef = useRef<HTMLDivElement>(null)
+  const loadedRef = useRef(!!initialCache)
+  const autoFocusAppliedRef = useRef(false)
 
   const loadItems = useCallback(() => {
     if (loadedRef.current || !token) return
@@ -107,9 +135,10 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((data: LibraryResponse) => {
         const results = data.results || []
+        const tp = data.total_pages || 1
         setItems(results)
-        setTotalPages(data.total_pages || 1)
-        onItemsLoaded?.(status, results)
+        setTotalPages(tp)
+        onItemsLoaded?.(status, { items: results, totalPages: tp })
       })
       .catch(() => setItems([]))
   }, [status, token, profileId, onItemsLoaded])
@@ -136,20 +165,38 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
     return () => observer.disconnect()
   }, [loadItems])
 
+  useEffect(() => {
+    if (items !== null && items.length === 0) onEmpty?.()
+  }, [items, onEmpty])
+
+  useEffect(() => {
+    if (autoFocusIdx === undefined || autoFocusAppliedRef.current || !items?.length) return
+    autoFocusAppliedRef.current = true
+    requestAnimationFrame(() => {
+      const cards = rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]')
+      if (!cards?.length) return
+      cards[Math.min(autoFocusIdx, cards.length - 1)]?.focus({ preventScroll: true })
+    })
+  }, [items, autoFocusIdx])
+
   if (items !== null && items.length === 0) return null
 
   const hasMore = totalPages > 1
+  const slideClass = slideDir === 'from-top' ? styles.slideFromTop : slideDir === 'from-bottom' ? styles.slideFromBottom : ''
 
   return (
-    <section ref={rowRef} className={styles.row}>
+    <section ref={rowRef} className={`${styles.row}${slideClass ? ' ' + slideClass : ''}`}>
+      {!hideHeader && (
       <div className={styles.rowHeader}>
         <h3 className={styles.rowTitle}>{label}</h3>
         {hasMore && (
           <button className={styles.rowMore} onClick={() => onExpand(status)}>Все →</button>
         )}
       </div>
-      <div className={styles.rowScroll} data-row-scroll>
+      )}
+      <div className={`${styles.rowScroll}${hideHeader ? ' ' + styles.rowScrollCompact : ''}`} data-row-scroll>
         <div
+          ref={rowInnerRef}
           className={styles.rowInner}
           data-row-id={status}
           onKeyDown={e => {
@@ -164,12 +211,15 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
               } else {
                 const next = cards[idx + 1]
                 next?.focus()
-                if (next) { scrollH(next); scrollV(next) }
+                // Horizontal-only move within the same row — its vertical position
+                // doesn't change, so no scrollV here (it would force-recenter the
+                // page, yanking the hero banner out of view for no reason).
+                if (next) scrollH(next)
               }
             } else {
               const prev = cards[idx - 1]
               prev?.focus()
-              if (prev) { scrollH(prev); scrollV(prev) }
+              if (prev) scrollH(prev)
             }
           }}
         >
@@ -181,6 +231,7 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
                 onClick={() => onCardClick(item)}
                 onActivate={onActivate ? () => onActivate(item) : undefined}
                 isHeroActive={activeCardId === cardIdOf(item)}
+                compact={hideHeader}
               />
             </div>
           ))}
@@ -269,50 +320,71 @@ export default function MediaLibraryPage() {
 
   const [expanded, setExpanded] = useState<StatusKey | null>(null)
   const lastRowFocusIdx = useRef<Map<string, number>>(new Map())
+  // See CatalogPage's identical field: whether a card in the grid currently
+  // has keyboard focus, so the hero border (.cardHeroActive) disappears once
+  // focus leaves for the top menu instead of staying stuck on the last card.
+  const [cardGridFocused, setCardGridFocused] = useState(false)
 
   // Per-device (localStorage) — see BrowseLayoutSettings on /profiles.
-  const [layout] = useState(() => getStoredBrowseLayout())
+  // Forced to Classic on touch devices regardless of the saved preference —
+  // the hero carousel is driven by keyboard/mouse focus, which touch has no
+  // equivalent for.
+  const [layout] = useState(() => getEffectiveBrowseLayout())
   const hero = useHeroPreview<LibraryItem>()
-  const heroInitRef = useRef(false)
-  // Rows lazy-load independently and can resolve in any order — reading
-  // whichever answers first made the initial hero background essentially
-  // random. Scan ROW_ORDER instead, stopping at the first row that hasn't
-  // reported yet, so the result is always the first row's first item
-  // regardless of network timing (mirrors CatalogPage's tryInitHero).
-  const rowLoadedRef = useRef<Map<StatusKey, LibraryItem[]>>(new Map())
+  const handleActivate = useCallback((item: LibraryItem) => hero.activate(item), [hero.activate])
 
-  const handleItemsLoaded = useCallback((status: StatusKey, items: LibraryItem[]) => {
-    rowLoadedRef.current.set(status, items)
-    if (heroInitRef.current) return
-    for (const st of ROW_ORDER) {
-      const cached = rowLoadedRef.current.get(st)
-      if (cached === undefined) return // earlier-in-order row hasn't reported yet — wait for it
-      if (cached.length > 0) {
-        heroInitRef.current = true
-        hero.activate(cached[0])
-        // Actually focus the card (not just hero state) so it's visibly
-        // marked as active — preventScroll since it's already on-screen.
-        requestAnimationFrame(() => {
-          document.querySelector<HTMLElement>(`[data-row-id="${st}"] [data-card]`)?.focus({ preventScroll: true })
-        })
-        return
-      }
-      // else: this row loaded empty — keep scanning the next one
-    }
-  }, [hero.activate])
+  // Hero layout: non-scrolling carousel, same model as CatalogPage — exactly
+  // one status's row mounted at a time, pinned to the bottom via CSS, never
+  // scrolled. ArrowUp/Down (or a swipe) swaps which status that is.
+  const [activeStatusIndex, setActiveStatusIndex] = useState(0)
+  const [slideDir, setSlideDir] = useState<'from-top' | 'from-bottom' | undefined>(undefined)
+
+  const handleEmptyStatus = useCallback(() => {
+    setSlideDir(undefined)
+    setActiveStatusIndex(idx => Math.min(idx + 1, ROW_ORDER.length - 1))
+  }, [])
+
+  const handleItemsLoaded = useCallback((status: StatusKey, cache: RowCache) => {
+    _rowCache[status] = cache
+  }, [])
+
+  const switchStatus = useCallback((dir: 1 | -1) => {
+    setActiveStatusIndex(idx => {
+      const next = idx + dir
+      if (next < 0 || next >= ROW_ORDER.length) return idx
+      setSlideDir(dir > 0 ? 'from-bottom' : 'from-top')
+      return next
+    })
+  }, [])
 
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
+
+  // Drop the cross-remount row cache when the active profile actually
+  // changes — same reasoning as CatalogPage's _cache.profileKey check, run
+  // synchronously during render for the same reason (LibraryRow reads
+  // _rowCache[status] as initialCache in this same pass).
+  const profileKey = activeProfile ? `${activeProfile.device_id}:${activeProfile.profile_id}` : null
+  if (_libProfileKey !== null && _libProfileKey !== profileKey) {
+    for (const k of Object.keys(_rowCache) as StatusKey[]) delete _rowCache[k]
+  }
+  _libProfileKey = profileKey
 
   function openCard(item: LibraryItem) {
     navigate(`/card/${cardIdOf(item)}`, { state: { backUrl: '/media-library' } })
   }
 
   // Track last-focused card index per row, to restore position when navigating back to it.
+  // Also tracks whether a card currently has focus at all — see
+  // cardGridFocused below (mirrors CatalogPage's identical fix).
   useEffect(() => {
     function onFocusIn(e: FocusEvent) {
       const el = e.target as HTMLElement
-      if (!el.hasAttribute('data-card')) return
+      if (!el.hasAttribute('data-card')) {
+        if (!el.closest('[data-row-id]')) setCardGridFocused(false)
+        return
+      }
+      setCardGridFocused(true)
       const rowInner = el.closest<HTMLElement>('[data-row-id]')
       if (!rowInner) return
       const rowId = rowInner.dataset.rowId!
@@ -371,12 +443,29 @@ export default function MediaLibraryPage() {
             e.preventDefault()
             const first = document.querySelector<HTMLElement>('[data-card]')
             first?.focus()
-            if (first) scrollV(first)
+            // Hero carousel: the active row is always already pinned to the
+            // bottom via CSS, nothing to scroll into view.
+            if (layout !== 'hero' && first) scrollV(first)
           }
           return
         }
 
         e.preventDefault()
+
+        if (layout === 'hero') {
+          const dir = e.key === 'ArrowDown' ? 1 : -1
+          if (dir < 0 && activeStatusIndex === 0) {
+            // Same as CatalogPage: the search icon is the first item in the
+            // top nav — bridge straight to it, not the active page link.
+            document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+            return
+          }
+          switchStatus(dir)
+          return
+        }
+
+        // Classic: scrollable list of every row — walk the DOM to find
+        // whichever one is next/previous and focus into it.
         const rowInner = focused.closest('[data-row-id]') as HTMLElement | null
         if (!rowInner) return
         const allRows = Array.from(document.querySelectorAll<HTMLElement>('[data-row-id]'))
@@ -395,14 +484,17 @@ export default function MediaLibraryPage() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [expanded, navigate])
+  }, [expanded, navigate, layout, activeStatusIndex, switchStatus])
+
+  const carouselActive = layout === 'hero' && !expanded
+  const activeStatus = ROW_ORDER[activeStatusIndex]
 
   return (
     <Layout>
       {/* location.key is unique per navigation — remounts everything below on
           every visit to this page, so a status changed elsewhere (card detail
           page) is never shown stale without a hard refresh. */}
-      <div className={styles.page} key={location.key}>
+      <div className={`${styles.page}${carouselActive ? ' ' + styles.pageLocked : ''}`} key={location.key}>
         <div className={styles.header}>
           {expanded
             ? <button className={styles.backBtn} onClick={() => setExpanded(null)}>← Назад</button>
@@ -424,22 +516,55 @@ export default function MediaLibraryPage() {
                 onOpen={() => hero.item && openCard(hero.item)}
               />
             )}
-            <div className={styles.rows}>
-              {ROW_ORDER.map(status => (
+
+            {carouselActive && activeStatus && (
+              <div className={styles.carouselRail}>
+                {/* Owned by the parent — see CatalogPage's CategoryRow for
+                    why (avoids the title flickering on every auto-skip).
+                    Dimmer neighbor labels above/below hint that ArrowUp/Down
+                    reaches more statuses. */}
+                <div className={styles.categoryTitleStack}>
+                  <span className={styles.categoryTitleNeighbor}>{STATUS_LABELS[ROW_ORDER[activeStatusIndex - 1]] ?? ' '}</span>
+                  <h3 className={styles.rowTitle}>{STATUS_LABELS[activeStatus]}</h3>
+                  <span className={styles.categoryTitleNeighbor}>{STATUS_LABELS[ROW_ORDER[activeStatusIndex + 1]] ?? ' '}</span>
+                </div>
                 <LibraryRow
-                  key={status}
-                  status={status}
-                  label={STATUS_LABELS[status]}
+                  key={activeStatus}
+                  status={activeStatus}
+                  label={STATUS_LABELS[activeStatus]}
                   token={token}
                   profileId={profileId}
                   onExpand={setExpanded}
                   onCardClick={openCard}
-                  onActivate={layout === 'hero' ? hero.activate : undefined}
-                  activeCardId={layout === 'hero' && hero.item ? cardIdOf(hero.item) : null}
+                  onActivate={handleActivate}
+                  activeCardId={cardGridFocused && hero.item ? cardIdOf(hero.item) : null}
+                  initialCache={_rowCache[activeStatus]}
                   onItemsLoaded={handleItemsLoaded}
+                  onEmpty={handleEmptyStatus}
+                  slideDir={slideDir}
+                  autoFocusIdx={lastRowFocusIdx.current.get(activeStatus) ?? 0}
+                  hideHeader
                 />
-              ))}
-            </div>
+              </div>
+            )}
+
+            {layout === 'classic' && (
+              <div className={styles.rows}>
+                {ROW_ORDER.map(status => (
+                  <LibraryRow
+                    key={status}
+                    status={status}
+                    label={STATUS_LABELS[status]}
+                    token={token}
+                    profileId={profileId}
+                    onExpand={setExpanded}
+                    onCardClick={openCard}
+                    initialCache={_rowCache[status]}
+                    onItemsLoaded={handleItemsLoaded}
+                  />
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>

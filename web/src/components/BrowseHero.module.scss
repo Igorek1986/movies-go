@@ -1,37 +1,29 @@
 @use '@/styles/variables' as *;
 
-// Compact full-bleed banner (not full-viewport like CardDetailPage's
-// .heroFull — this sits mid-page, above a list of rows, not as the page's
-// first element) — same negative-margin full-bleed technique as
-// CardDetailPage's .backdrop, but without its vertical margin since this
-// isn't the first element in .page (it would overlap the toolbar above it).
-.hero {
-  position: relative;
-  width: calc(100% + $spacing-lg * 2);
-  margin: 0 (-$spacing-lg);
-  aspect-ratio: 16/6;
-  overflow: hidden;
-  border-radius: $radius-md;
-  cursor: pointer;
-
-  @media (max-width: $bp-md) {
-    width: calc(100% + $spacing-md * 2);
-    margin: 0 (-$spacing-md);
-    aspect-ratio: 16/7;
-  }
-
-  @media (max-width: $bp-sm) {
-    width: calc(100% + $spacing-sm * 2);
-    margin: 0 (-$spacing-sm);
-    aspect-ratio: 16/9;
-    border-radius: 0;
-  }
-}
-
-.bg {
-  position: absolute;
+// Fixed full-viewport backdrop, behind everything (rows scroll over it as
+// the page scrolls) — like the int.js Lampa plugin's full-screen background,
+// adapted for a scrollable web page instead of a TV app: it never moves or
+// disappears, so the currently-active card's mood stays visible no matter
+// how far down the row list you've navigated.
+.heroBg {
+  position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
+  // Solid base showing through the dimmed image below — same idea as the
+  // Lampa int.js plugin, which renders its background at flat 50% opacity
+  // over the page's own dark background rather than fading it directionally.
+  // A directional fade alone left text illegible against bright backdrops
+  // (a light sky, a yellow title card, etc.) since contrast there depended
+  // entirely on where the text happened to land on the gradient.
+  background: $color-bg;
+  // Not -1: a negative z-index on a fixed element renders behind the
+  // page's own canvas background in some browsers instead of just behind
+  // normal content — DOM order (this is the first thing BrowseHero renders)
+  // already keeps it behind everything that follows.
   z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
 
   img {
     width: 100%;
@@ -39,17 +31,70 @@
     object-fit: cover;
     object-position: center 15%;
     display: block;
-    transition: opacity $transition-normal;
+    opacity: 0.5;
+  }
+
+  // No backdrop at all (confirmed by TMDB, or nothing shown yet) — poster
+  // stretched into the same slot instead of an empty background. A heavy
+  // blur+scale (matching CardDetailPage's .heroFullBgPoster) looked fine
+  // there against a portrait poster filling a portrait-ish hero, but
+  // stretched to cover this banner's much wider aspect ratio it turned into
+  // an unrecognizable smear — so the poster is shown plainly here instead,
+  // same treatment as a real backdrop (just object-fit: cover + the shared
+  // dimming above), except for object-position: the base rule's `center 15%`
+  // is tuned for landscape backdrops (subject usually sits in the upper
+  // third), but a portrait poster's interesting content (the lead's face, a
+  // title graphic) tends to sit nearer the vertical middle — center 15%
+  // mostly showed cropped-off title text/actor-name credits instead. int.js's
+  // own CSS for this same fallback doesn't override object-position at all
+  // (so it defaults to center center) — matching that here.
+  //
+  // Nested under .heroBg (not a standalone top-level rule) so this beats the
+  // "img" rule above on specificity (2 classes vs. 1 class + 1 type) — a
+  // standalone ".bgPoster" rule has LOWER specificity than ".heroBg img" and
+  // silently loses the cascade despite coming later in the file.
+  .bgPoster {
+    object-position: center center;
+  }
+
+  // Extra fade toward the very bottom of the (viewport-fixed) image, so it
+  // blends into whatever row content ends up below it instead of cutting
+  // off sharply — the flat 50% opacity above already keeps text legible
+  // everywhere, this is just for a smoother bottom edge.
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, transparent 0%, transparent 55%, $color-bg 85%);
   }
 }
 
-// No backdrop yet (still loading, or TMDB has none) — poster stretched into
-// the same slot instead of an empty background, blurred+darkened same as
-// CardDetailPage's .heroFullBgPoster.
-.bgPoster img {
-  object-position: center center;
-  filter: blur(30px) brightness(0.6) saturate(1.1);
-  transform: scale(1.15);
+// In-flow spacer — the actual image lives in the fixed .heroBg behind it, so
+// this only positions the text overlay. It's a flex child of .page-locked
+// alongside .carouselRail: the row (see @mixin carousel-rail) takes its own
+// natural height and never shrinks, so this fills whatever's left instead of
+// claiming a width-driven aspect-ratio height — on a wide-but-short desktop
+// viewport, a 16:6 ratio could easily claim most of the screen and leave the
+// row too little room, clipping the focused card's hover-lift against the
+// carousel's own edge.
+.hero {
+  position: relative;
+  width: calc(100% + $spacing-lg * 2);
+  margin: 0 (-$spacing-lg);
+  flex: 1 1 auto;
+  min-height: 160px;
+  overflow: hidden;
+  cursor: pointer;
+
+  @media (max-width: $bp-md) {
+    width: calc(100% + $spacing-md * 2);
+    margin: 0 (-$spacing-md);
+  }
+
+  @media (max-width: $bp-sm) {
+    width: calc(100% + $spacing-sm * 2);
+    margin: 0 (-$spacing-sm);
+  }
 }
 
 .content {
@@ -61,7 +106,9 @@
   justify-content: flex-end;
   gap: $spacing-xs;
   padding: $spacing-md $spacing-lg;
-  background: linear-gradient(to top, $color-bg 0%, rgba($color-bg-rgb, 0.9) 35%, rgba($color-bg-rgb, 0.25) 70%, transparent 100%);
+  // No gradient of its own — .heroBg::after already fades the fixed backdrop
+  // toward $color-bg behind this text; a second one stacked on top of it
+  // just showed up as a visible dark rectangle instead of blending in.
 
   @media (max-width: $bp-md) { padding: $spacing-sm $spacing-md; }
   @media (max-width: $bp-sm) { padding: $spacing-sm; }
@@ -88,7 +135,10 @@
   border: 1px solid $color-border;
   border-radius: $radius-sm;
   font-size: $font-size-xs;
-  color: $color-text-muted;
+  // Full-brightness text, not muted — sitting directly over a busy image
+  // (unlike everywhere else $color-text-muted is used, over a flat card
+  // background), the lower-contrast muted tone washed out too easily.
+  color: $color-text;
   background: rgba($color-bg-rgb, 0.5);
 }
 
@@ -114,16 +164,20 @@
 
 .genre {
   padding: 2px $spacing-sm;
-  background: rgba($color-primary-rgb, 0.2);
+  background: rgba($color-primary-rgb, 0.35);
   border-radius: $radius-full;
   font-size: $font-size-xs;
-  color: $color-primary;
+  // Full brightness, not $color-primary — same reasoning as .tag/.descr,
+  // the accent color didn't have enough contrast sitting over a busy image.
+  color: $color-text;
 }
 
 .descr {
   margin: 0;
   max-width: 56em;
-  color: $color-text-muted;
+  // Same reasoning as .tag — full brightness, this sits directly over the
+  // image with no background box of its own at all.
+  color: $color-text;
   font-size: $font-size-sm;
   line-height: 1.4;
   display: -webkit-box;

@@ -1,3 +1,4 @@
+@use 'sass:color';
 @use '@/styles/variables' as *;
 
 .page {
@@ -438,7 +439,7 @@
   &.danger {
     background: $color-danger;
     color: #fff;
-    &:hover:not(:disabled) { background: darken(#e05252, 10%); }
+    &:hover:not(:disabled) { background: color.adjust(#e05252, $lightness: -10%); }
   }
 }
 

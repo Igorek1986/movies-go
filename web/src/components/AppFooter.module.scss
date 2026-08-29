@@ -2,31 +2,42 @@
 
 .footer {
   text-align: center;
-  padding: $spacing-xl $spacing-lg;
+  padding: $spacing-sm $spacing-lg;
   border-top: 1px solid $color-border;
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   align-items: center;
-  gap: $spacing-xs;
+  justify-content: center;
+  row-gap: 2px;
+  // Same fixed-backdrop stacking issue as CatalogPage/MediaLibraryPage's
+  // .rowTitle (see that comment) — this footer can end up sitting over
+  // BrowseHero's fixed z-index:0 layer near the bottom of a locked carousel
+  // page, and a static-position element with z-index:auto loses to it.
+  position: relative;
+  z-index: 1;
+}
+
+.tmdbLink {
+  display: flex;
+  align-items: center;
 }
 
 .tmdbLogo {
-  height: 16px;
+  height: 12px;
   opacity: 0.6;
   display: block;
 }
 
 .attribution {
-  font-size: $font-size-xs;
-  color: $color-text-muted;
-}
-
-.links {
-  font-size: $font-size-xs;
+  font-size: 11px;
   color: $color-text-muted;
 }
 
 .link {
+  // Explicit — without it this inherited the browser default (~16px), not
+  // .attribution's $font-size-xs next to it, so the links visibly outsized
+  // the rest of the footer's text instead of matching it.
+  font-size: 11px;
   color: $color-text-muted;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -39,4 +50,6 @@
 .sep {
   margin: 0 6px;
   opacity: 0.5;
+  font-size: 11px;
+  color: $color-text-muted;
 }

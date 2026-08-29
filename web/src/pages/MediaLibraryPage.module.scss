@@ -6,6 +6,20 @@
   gap: $spacing-lg;
 }
 
+// Hero+carousel view: page can't grow taller than the viewport, so there's
+// never a real page scrollbar — the active row is always already at the
+// bottom, never revealed by scrolling. See @mixin page-locked.
+.pageLocked {
+  @include page-locked;
+}
+
+.carouselRail {
+  @include carousel-rail;
+}
+
+.slideFromTop    { @include slide-in-from-top; }
+.slideFromBottom { @include slide-in-from-bottom; }
+
 .header {
   display: flex;
   align-items: center;
@@ -67,6 +81,28 @@
   font-size: $font-size-base;
   font-weight: 600;
   color: $color-text;
+  // See CatalogPage.module.scss's .rowTitle for why — same fixed-backdrop
+  // stacking issue in the hero carousel, harmless in Classic layout.
+  position: relative;
+  z-index: 1;
+}
+
+// See CatalogPage.module.scss for both of these — same idea, same stacking fix.
+.categoryTitleStack {
+  display: flex;
+  flex-direction: column;
+}
+
+.categoryTitleNeighbor {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  opacity: 0.6;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+  z-index: 1;
 }
 
 .rowMore {
@@ -98,6 +134,17 @@
 
   @media (max-width: $bp-sm) {
     min-height: calc(155px * 3 / 2 + 54px);
+  }
+
+  // Hero carousel: cards render without their .cardBody text (see Card's
+  // `compact` prop) — reserving room for it here left a large empty gap
+  // below the row.
+  &.rowScrollCompact {
+    min-height: calc(185px * 3 / 2);
+
+    @media (max-width: $bp-sm) {
+      min-height: calc(155px * 3 / 2);
+    }
   }
 }
 

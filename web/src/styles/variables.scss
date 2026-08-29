@@ -129,3 +129,61 @@ $nav-height: 52px;
     @content;
   }
 }
+
+// Locks a page container to exactly the viewport height available inside
+// Layout's <main> (nav height + main's own vertical padding, mobile bottom-
+// nav reservation below $bp-lg) so its content can never grow the page
+// taller and force a real scrollbar — used by CatalogPage/MediaLibraryPage's
+// hero-carousel view (Lampa TV-style: one row pinned to the bottom, no page
+// scroll at all). Mirrors the padding math in Layout.module.scss's .main —
+// keep both in sync if that ever changes.
+//
+// Also subtracts .page's own two flex gaps (toolbar/header ↔ hero ↔ rail are
+// 3 flex children, i.e. 2 gaps of $spacing-lg) — .page uses `gap: $spacing-lg`
+// in both CatalogPage.module.scss and MediaLibraryPage.module.scss.
+//
+// Doesn't need to account for AppFooter itself — .layout's own min-height
+// already reserves room for it (see Layout.module.scss), so the space this
+// mixin computes here is exactly what's left for .page once the footer's
+// already spoken for.
+@mixin page-locked {
+  height: calc(100vh - #{$nav-height} - #{$spacing-xl} * 2 - #{$spacing-lg} * 2);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  @media (max-width: $bp-lg) {
+    height: calc(100vh - #{$nav-height} - #{$spacing-lg} - #{$bottom-nav-height} - #{$spacing-xl} - #{$spacing-lg} * 2);
+  }
+}
+
+// Sits below the hero inside a .page-locked container and holds the single
+// active row. Deliberately flex: 0 0 auto (not flex: 1) — it takes exactly
+// the row's own natural height, never shrinks, and never clips it; .hero is
+// the one that flexes to fill whatever's left (see its comment). A little
+// top padding keeps the focused card's hover-lift (translateY + box-shadow,
+// see .cardHeroActive) from grazing this container's own top edge.
+@mixin carousel-rail {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  // Between the title and the row of cards below it — same value CategoryRow
+  // itself uses for the same gap in Classic layout (see .row's own `gap`).
+  gap: $spacing-sm;
+  padding-top: $spacing-md;
+}
+
+@keyframes slideInFromTop {
+  from { transform: translateY(-24px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slideInFromBottom {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+// Carousel row-swap entry animation — from-top when the new row is the
+// previous category (ArrowUp), from-bottom when it's the next one (ArrowDown).
+@mixin slide-in-from-top    { animation: slideInFromTop 220ms ease-out; }
+@mixin slide-in-from-bottom { animation: slideInFromBottom 220ms ease-out; }

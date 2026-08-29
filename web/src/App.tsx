@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 
 function ScrollToTop() {
@@ -13,7 +13,6 @@ import { setWatchedThreshold } from '@/utils/config'
 import footerStyles from '@/components/AppFooter.module.scss'
 
 import LoginPage from '@/pages/LoginPage'
-import RegisterPage from '@/pages/RegisterPage'
 import ProfilesPage from '@/pages/ProfilesPage'
 import CatalogPage from '@/pages/CatalogPage'
 import CalendarPage from '@/pages/CalendarPage'
@@ -21,35 +20,40 @@ import MediaLibraryPage from '@/pages/MediaLibraryPage'
 import HistoryPage from '@/pages/HistoryPage'
 import CardDetailPage from '@/pages/CardDetailPage'
 import AdminPage from '@/pages/AdminPage'
-import SessionsPage from '@/pages/SessionsPage'
-import StatsPage from '@/pages/StatsPage'
-import Setup2FAPage from '@/pages/Setup2FAPage'
-import Verify2FAPage from '@/pages/Verify2FAPage'
-import ForgotPasswordPage from '@/pages/ForgotPasswordPage'
-import ResetPasswordPage from '@/pages/ResetPasswordPage'
-import RegisterSuccessPage from '@/pages/RegisterSuccessPage'
 import NotFoundPage from '@/pages/NotFoundPage'
-import ActorPage from '@/pages/ActorPage'
-import AdminSettingsPage from '@/pages/AdminSettingsPage'
-import ParsersPage from '@/pages/ParsersPage'
-import ProxiesPage from '@/pages/ProxiesPage'
-import LogsPage from '@/pages/LogsPage'
-import BotPage from '@/pages/BotPage'
-import TMDBMissingPage from '@/pages/TMDBMissingPage'
-import NewCardsPage from '@/pages/NewCardsPage'
-import AllCardsPage from '@/pages/AllCardsPage'
-import PopularPage from '@/pages/PopularPage'
-import PopularSourcePage from '@/pages/PopularSourcePage'
-import PersonsAdminPage from '@/pages/PersonsAdminPage'
-import StaticPage from '@/pages/StaticPage'
-import TgMiniAppPage from '@/pages/TgMiniAppPage'
-import UsersTodayPage from '@/pages/UsersTodayPage'
-import DevicesTodayPage from '@/pages/DevicesTodayPage'
-import TimecodesTodayPage from '@/pages/TimecodesTodayPage'
-import TMDBRefreshedTodayPage from '@/pages/TMDBRefreshedTodayPage'
-import UsersListPage from '@/pages/UsersListPage'
-import DevicesListPage from '@/pages/DevicesListPage'
-import TimecodesListPage from '@/pages/TimecodesListPage'
+
+// One-off / rarely-revisited pages (auth flows, admin sub-pages, static
+// pages): split into their own chunks (loaded on demand) instead of
+// bloating the bundle every visitor downloads up front.
+const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
+const SessionsPage = lazy(() => import('@/pages/SessionsPage'))
+const StatsPage = lazy(() => import('@/pages/StatsPage'))
+const Setup2FAPage = lazy(() => import('@/pages/Setup2FAPage'))
+const Verify2FAPage = lazy(() => import('@/pages/Verify2FAPage'))
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'))
+const RegisterSuccessPage = lazy(() => import('@/pages/RegisterSuccessPage'))
+const ActorPage = lazy(() => import('@/pages/ActorPage'))
+const StaticPage = lazy(() => import('@/pages/StaticPage'))
+const TgMiniAppPage = lazy(() => import('@/pages/TgMiniAppPage'))
+const AdminSettingsPage = lazy(() => import('@/pages/AdminSettingsPage'))
+const ParsersPage = lazy(() => import('@/pages/ParsersPage'))
+const ProxiesPage = lazy(() => import('@/pages/ProxiesPage'))
+const LogsPage = lazy(() => import('@/pages/LogsPage'))
+const BotPage = lazy(() => import('@/pages/BotPage'))
+const TMDBMissingPage = lazy(() => import('@/pages/TMDBMissingPage'))
+const NewCardsPage = lazy(() => import('@/pages/NewCardsPage'))
+const AllCardsPage = lazy(() => import('@/pages/AllCardsPage'))
+const PopularPage = lazy(() => import('@/pages/PopularPage'))
+const PopularSourcePage = lazy(() => import('@/pages/PopularSourcePage'))
+const PersonsAdminPage = lazy(() => import('@/pages/PersonsAdminPage'))
+const UsersTodayPage = lazy(() => import('@/pages/UsersTodayPage'))
+const DevicesTodayPage = lazy(() => import('@/pages/DevicesTodayPage'))
+const TimecodesTodayPage = lazy(() => import('@/pages/TimecodesTodayPage'))
+const TMDBRefreshedTodayPage = lazy(() => import('@/pages/TMDBRefreshedTodayPage'))
+const UsersListPage = lazy(() => import('@/pages/UsersListPage'))
+const DevicesListPage = lazy(() => import('@/pages/DevicesListPage'))
+const TimecodesListPage = lazy(() => import('@/pages/TimecodesListPage'))
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -66,20 +70,41 @@ const FOOTER_HIDDEN = ['/consent', '/privacy']
 
 function AppFooter() {
   const { pathname } = useLocation()
-  if (FOOTER_HIDDEN.includes(pathname)) return null
+  const ref = useRef<HTMLElement>(null)
+  const hidden = FOOTER_HIDDEN.includes(pathname)
+
+  // Published as --app-footer-h so CatalogPage/MediaLibraryPage's hero
+  // carousel (@mixin page-locked) can reserve exactly this much room instead
+  // of either hiding the footer or leaving a residual scroll to reach it —
+  // measured rather than hardcoded since it reflows with viewport width.
+  useEffect(() => {
+    if (hidden) {
+      document.documentElement.style.setProperty('--app-footer-h', '0px')
+      return
+    }
+    const el = ref.current
+    if (!el) return
+    const set = () => document.documentElement.style.setProperty('--app-footer-h', `${el.offsetHeight}px`)
+    set()
+    const ro = new ResizeObserver(set)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [hidden])
+
+  if (hidden) return null
   return (
-    <footer className={footerStyles.footer}>
-      <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">
+    <footer ref={ref} className={footerStyles.footer}>
+      <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer" className={footerStyles.tmdbLink}>
         <img src="/static/tmdb-logo.svg" alt="TMDB" className={footerStyles.tmdbLogo} />
       </a>
-      <p className={footerStyles.attribution}>
+      <span className={footerStyles.sep}>·</span>
+      <span className={footerStyles.attribution}>
         Сайт использует API TMDB, но не одобрен и не сертифицирован TMDB.
-      </p>
-      <p className={footerStyles.links}>
-        <Link to="/privacy" className={footerStyles.link}>Политика обработки персональных данных</Link>
-        <span className={footerStyles.sep}>·</span>
-        <Link to="/consent" className={footerStyles.link}>Согласие на обработку персональных данных</Link>
-      </p>
+      </span>
+      <span className={footerStyles.sep}>·</span>
+      <Link to="/privacy" className={footerStyles.link}>Политика обработки персональных данных</Link>
+      <span className={footerStyles.sep}>·</span>
+      <Link to="/consent" className={footerStyles.link}>Согласие на обработку персональных данных</Link>
     </footer>
   )
 }
@@ -99,6 +124,7 @@ export default function App() {
     <ActiveProfileProvider>
       <ScrollToTop />
       <div style={{ flex: 1 }}>
+      <Suspense fallback={null}>
       <Routes>
       {/* Публичные */}
       <Route path="/consent" element={<StaticPage name="consent" />} />
@@ -149,6 +175,7 @@ export default function App() {
 
       <Route path="*" element={<NotFoundPage />} />
       </Routes>
+      </Suspense>
       </div>
       <AppFooter />
     </ActiveProfileProvider>
