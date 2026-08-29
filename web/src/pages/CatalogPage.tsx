@@ -52,7 +52,6 @@ function scrollH(el: HTMLElement) {
 }
 
 const LS_ROW_ORDER    = 'catalog_row_order'
-const SS_SEARCH = 'catalog_search'
 
 // Module-level cache — survives SPA navigation, resets on full page reload.
 interface RowCache { items: MediaItem[]; totalPages: number }
@@ -796,14 +795,6 @@ export default function CatalogPage() {
     return () => document.removeEventListener('focusin', onFocusIn)
   }, [])
 
-  useEffect(() => {
-    const savedSearch = sessionStorage.getItem(SS_SEARCH) || ''
-    if (savedSearch) {
-      setSearchValue(savedSearch)
-      if (savedSearch.length >= 3) setSearchQuery(savedSearch)
-    }
-  }, [])
-
   // Focus the floating input once it actually mounts (searchOpen just makes
   // it render — it doesn't exist in the DOM before that).
   useLayoutEffect(() => {
@@ -889,7 +880,6 @@ export default function CatalogPage() {
     setSearchValue(value)
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
     if (value.length === 0) {
-      sessionStorage.removeItem(SS_SEARCH)
       setSearchQuery('')
       setSearchResults(null)
       return
@@ -897,10 +887,8 @@ export default function CatalogPage() {
     searchTimerRef.current = setTimeout(() => {
       const q = value.trim()
       if (q.length >= 3) {
-        sessionStorage.setItem(SS_SEARCH, q)
         setSearchQuery(q)
       } else {
-        sessionStorage.removeItem(SS_SEARCH)
         setSearchQuery('')
         setSearchResults(null)
       }
