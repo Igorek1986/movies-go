@@ -1,21 +1,24 @@
 import { useEffect, useRef, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigationType } from 'react-router-dom'
 
-// Skipped on POP (browser back/forward): that's exactly when a page's own
-// restoration logic (e.g. CatalogPage's expanded-category scroll/focus
-// restore) is trying to put the user back where they were — this effect is
-// a plain useEffect, which always runs after any useLayoutEffect in the
-// same commit (React runs layout effects, children-before-parents, before
-// any passive effects, regardless of tree depth), so unconditionally
-// resetting to (0,0) here silently overwrote a same-commit restore no
-// matter which page owned it.
+// Skipped on POP (browser back/forward) and on Layout's own handleBottomBack
+// (Backspace / the nav panel's "Назад", marked via state.isBack — see its
+// comment): both are "going back" to a page that may be restoring its own
+// scroll/focus (e.g. CatalogPage's expanded category), even though
+// handleBottomBack's nav(backUrl) is a PUSH as far as React Router's own
+// navigationType is concerned, not a POP. This effect is a plain useEffect,
+// which always runs after any useLayoutEffect in the same commit (React
+// runs layout effects, children-before-parents, before any passive effects,
+// regardless of tree depth), so unconditionally resetting to (0,0) here
+// silently overwrote a same-commit restore no matter which page owned it.
 function ScrollToTop() {
-  const { pathname } = useLocation()
+  const location = useLocation()
   const navType = useNavigationType()
   useEffect(() => {
     if (navType === 'POP') return
+    if ((location.state as { isBack?: boolean } | null)?.isBack) return
     window.scrollTo(0, 0)
-  }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
   return null
 }
 import { useAuth } from '@/hooks/useAuth'

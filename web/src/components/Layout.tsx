@@ -99,7 +99,14 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   // browser history otherwise.
   function handleBottomBack() {
     const backUrl = (location.state as { backUrl?: string } | null)?.backUrl
-    if (backUrl) nav(backUrl)
+    // isBack: true — App.tsx's global ScrollToTop skips its reset for it,
+    // same as a real POP (browser back) navigation. This IS a PUSH as far
+    // as React Router's own navigationType is concerned (nav(url), not
+    // nav(-1)) even though it's semantically "going back" to a page that
+    // may be restoring its own scroll/focus (see CatalogPage's expanded
+    // category) — without the marker, ScrollToTop couldn't tell the two
+    // apart and clobbered that restore right after it ran.
+    if (backUrl) nav(backUrl, { state: { isBack: true } })
     else nav(-1)
   }
 
