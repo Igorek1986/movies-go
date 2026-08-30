@@ -258,8 +258,13 @@ export default function HistoryPage() {
     filterKeyRef.current = filterKey
     pageRef.current = 0
     setItems([])
-    setCounts(null)
     setTotalPages(1)
+    // Not setCounts(null) — the filter tabs only render while counts isn't
+    // null, so clearing it here unmounted the very button the user just
+    // picked (or pressed Enter on) for the length of the refetch, dropping
+    // keyboard focus to <body>. Stale counts stay on screen a moment
+    // instead, which is harmless (they refresh a beat later) and keeps
+    // focus right where it was.
     doFetch(1, filterKey, activeDevice, activeProfile, mediaType, inProgress, sort, search)
   }, [activeDevice, activeProfile, mediaType, inProgress, sort, search]) // eslint-disable-line
 
@@ -291,21 +296,64 @@ export default function HistoryPage() {
     navigate(`/card/${item.card_id}`, { state: { backUrl: `/history#${item.card_id}` } })
   }
 
-  // Keyboard navigation
+  // Keyboard navigation. Three keyboard-reachable zones stacked top to
+  // bottom: search input → filter tabs → card grid (the sort/media-type
+  // <select>s are deliberately left out of the arrow ring — same convention
+  // as the header's theme select — native browsers already drive their
+  // value with Up/Down while focused, which would fight with using arrows to
+  // move focus instead). ArrowUp/Down bridges between adjacent zones so the
+  // grid isn't a keyboard dead end; Left/Right cycle within a zone.
   useEffect(() => {
+    function focusSearch(): HTMLElement | null {
+      // Prefer the floating bar's input when it's the one actually on
+      // screen — the inline one it mirrors may be scrolled out of view.
+      const el = document.querySelector<HTMLElement>('[data-hist-search-floating]')
+        ?? document.querySelector<HTMLElement>('[data-hist-search]')
+      el?.focus()
+      return el
+    }
+
     function onKeyDown(e: KeyboardEvent) {
-      const tag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase()
-      if (tag === 'input' || tag === 'select' || tag === 'textarea') return
+      const focused = document.activeElement as HTMLElement | null
+      const tag = focused?.tagName?.toLowerCase()
 
-      const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-hist-card]'))
-      if (!cards.length) return
-
-      const focused = document.activeElement as HTMLElement
-      const idx = cards.indexOf(focused)
-
-      if (e.key === 'Enter' && idx !== -1) {
-        e.preventDefault()
-        focused.click()
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') {
+        // Bridge out of the search field (Up into the nav, Down into the
+        // page's own controls) and out of the sort select (Up back to the
+        // filter tabs). Enter/Space opens the sort select's own dropdown
+        // explicitly via showPicker() — a plain focused <select> normally
+        // opens on Enter/Space and cycles its value with Up/Down on its own,
+        // but that native behavior turned out not to fire reliably here, so
+        // Enter is wired by hand instead of being left to chance; once the
+        // dropdown is actually open, Up/Down/Enter inside it are the
+        // browser's own native popup, untouched.
+        const inSearch = focused?.hasAttribute('data-hist-search') || focused?.hasAttribute('data-hist-search-floating')
+        const inSort = focused?.hasAttribute('data-hist-sort')
+        if (e.key === 'ArrowDown' && inSearch) {
+          e.preventDefault()
+          const target = document.querySelector<HTMLElement>('[data-hist-filter]') ?? document.querySelector<HTMLElement>('[data-hist-card]')
+          target?.focus({ preventScroll: true })
+        } else if (e.key === 'ArrowUp' && inSearch) {
+          e.preventDefault()
+          document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+        } else if (e.key === 'ArrowUp' && inSort) {
+          e.preventDefault()
+          document.querySelector<HTMLElement>('[data-hist-filter]')?.focus()
+        } else if (e.key === 'ArrowDown' && inSort) {
+          // Into the grid, not left to native behavior: on a
+          // focused-but-closed <select>, this browser opens the dropdown on
+          // plain ArrowDown too (not just cycle the value), which fought
+          // with Enter being the deliberate way to open it below — so this
+          // is blocked with preventDefault and repurposed as the bridge
+          // onward instead of just doing nothing.
+          e.preventDefault()
+          const first = document.querySelector<HTMLElement>('[data-hist-card]')
+          first?.focus({ preventScroll: true })
+          if (first) scrollV(first)
+        } else if ((e.key === 'Enter' || e.key === ' ') && inSort) {
+          e.preventDefault()
+          ;(focused as HTMLSelectElement).showPicker?.()
+        }
         return
       }
 
@@ -314,21 +362,72 @@ export default function HistoryPage() {
         return
       }
 
-      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
-      e.preventDefault()
-
-      let next = -1
-      if (idx === -1) {
-        next = 0
-      } else {
-        const cols = getGridCols(cards)
-        if (e.key === 'ArrowRight') next = Math.min(idx + 1, cards.length - 1)
-        else if (e.key === 'ArrowLeft') next = Math.max(idx - 1, 0)
-        else if (e.key === 'ArrowDown') next = Math.min(idx + cols, cards.length - 1)
-        else if (e.key === 'ArrowUp') next = Math.max(idx - cols, 0)
+      // Filter tab ring.
+      if (focused?.hasAttribute('data-hist-filter')) {
+        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
+        e.preventDefault()
+        if (e.key === 'ArrowUp') { focusSearch(); return }
+        if (e.key === 'ArrowDown') {
+          // The sort select, not straight to the grid — otherwise arrow
+          // navigation could never reach it at all, only Tab could.
+          const sortEl = document.querySelector<HTMLElement>('[data-hist-sort]')
+          sortEl?.focus()
+          return
+        }
+        const tabs = Array.from(document.querySelectorAll<HTMLElement>('[data-hist-filter]'))
+        const idx = tabs.indexOf(focused)
+        if (e.key === 'ArrowLeft') tabs[Math.max(idx - 1, 0)]?.focus()
+        else tabs[Math.min(idx + 1, tabs.length - 1)]?.focus()
+        return
       }
 
-      if (next !== -1 && next !== idx) {
+      const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-hist-card]'))
+      const idx = cards.indexOf(focused as HTMLElement)
+
+      if (e.key === 'Enter' && idx !== -1) {
+        e.preventDefault()
+        focused!.click()
+        return
+      }
+
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
+
+      if (idx === -1) {
+        // Focus is somewhere outside the page's own controls (the nav, or
+        // nothing at all) — only ArrowDown auto-enters, same convention as
+        // Catalog/Моё, so Left/Right/Up don't fight with the nav's own use
+        // of those keys.
+        if (e.key !== 'ArrowDown') return
+        e.preventDefault()
+        const searchEl = document.querySelector<HTMLElement>('[data-hist-search]')
+        const target = searchEl ?? document.querySelector<HTMLElement>('[data-hist-filter]') ?? cards[0]
+        if (!target) return
+        target.focus({ preventScroll: true })
+        if (target === cards[0]) scrollV(cards[0])
+        return
+      }
+
+      if (!cards.length) return
+      e.preventDefault()
+      const cols = getGridCols(cards)
+
+      if (e.key === 'ArrowUp' && idx - cols < 0) {
+        // Top row — bridge up to the sort select (the nearest zone above
+        // the grid), or the filter tabs / search if those aren't rendered,
+        // instead of clamping in place.
+        const target = document.querySelector<HTMLElement>('[data-hist-sort]') ?? document.querySelector<HTMLElement>('[data-hist-filter]')
+        if (target) target.focus()
+        else focusSearch()
+        return
+      }
+
+      let next = idx
+      if (e.key === 'ArrowRight') next = Math.min(idx + 1, cards.length - 1)
+      else if (e.key === 'ArrowLeft') next = Math.max(idx - 1, 0)
+      else if (e.key === 'ArrowDown') next = Math.min(idx + cols, cards.length - 1)
+      else if (e.key === 'ArrowUp') next = idx - cols
+
+      if (next !== idx) {
         // preventScroll: focusing an off-screen element natively jumps it
         // into view instantly, before our own smooth scrollV below runs —
         // same fix as Catalog/MediaLibraryPage's grid nav.
@@ -364,6 +463,7 @@ export default function HistoryPage() {
                   placeholder="Поиск…"
                   value={searchInput}
                   onChange={e => handleSearchInput(e.target.value)}
+                  data-hist-search
                 />
                 {searchInput && (
                   <button className={styles.searchClear} onClick={() => handleSearchInput('')} title="Очистить">✕</button>
@@ -375,13 +475,18 @@ export default function HistoryPage() {
 
         {/* ── Filter tabs + sort ── */}
         {counts !== null && (
-          <div className={styles.controlsBar}>
+          // data-row-id: opts this whole bar out of Layout's site-wide
+          // Left/Right → side-panel behavior (see Layout.tsx's onKeyDown) —
+          // without it, arrowing across the filter buttons or reaching the
+          // selects summoned that panel instead of moving focus here.
+          <div className={styles.controlsBar} data-row-id="history-controls">
             <div className={styles.filterTabs}>
               {filterTabs.map(t => (
                 <button
                   key={t.key}
                   className={`${styles.filterTab} ${activeFilterKey() === t.key ? styles.filterTabActive : ''}`}
                   onClick={() => handleFilterTab(t.key === 'all' ? '' : t.key)}
+                  data-hist-filter
                 >
                   {t.label}{t.count !== undefined ? ` (${t.count})` : ''}
                 </button>
@@ -402,6 +507,7 @@ export default function HistoryPage() {
               className={styles.sortSelect}
               value={sort}
               onChange={e => { setSort(e.target.value); saveFilter(mediaType, inProgress, e.target.value) }}
+              data-hist-sort
             >
               {SORT_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -423,7 +529,10 @@ export default function HistoryPage() {
 
         {/* ── Grid ── */}
         {items.length > 0 && (
-          <div className={styles.grid}>
+          // data-row-id: same reasoning as the controls bar above — the grid
+          // owns Left/Right/Up/Down itself (see the keydown effect below),
+          // so it must opt out of Layout's site-wide side-panel behavior too.
+          <div className={styles.grid} data-row-id="history-grid">
             {items.map(item => {
               const url = posterUrl(item.poster_path)
               return (
@@ -474,6 +583,7 @@ export default function HistoryPage() {
                   placeholder="Поиск…"
                   value={searchInput}
                   onChange={e => handleSearchInput(e.target.value)}
+                  data-hist-search-floating
                 />
                 {searchInput && (
                   <button className={styles.searchClear} onClick={() => handleSearchInput('')} title="Очистить">✕</button>

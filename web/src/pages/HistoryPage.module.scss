@@ -118,6 +118,29 @@
 
   &:last-child { border-right: none; }
   &:hover { background: rgba($color-primary-rgb, 0.08); color: $color-text; }
+
+  // A solid inset ring, not just a background tint — the tab sits inside
+  // .filterTabs' own overflow:hidden pill, so inset is also what stays
+  // visible right up to the rounded corners instead of getting clipped like
+  // an outward outline/glow would. A plain background tint alone (the first
+  // attempt here) was too close to the existing hover/active tones to read
+  // as "this one has focus" at a glance.
+  &:focus-visible {
+    outline: none;
+    background: rgba($color-primary-rgb, 0.18);
+    color: $color-text;
+    box-shadow: inset 0 0 0 2px $color-primary;
+  }
+
+  // Focusing the tab you're already on (.filterTabActive) would otherwise
+  // look identical to just being the active filter, same background+color —
+  // this combined selector outranks both single-class :focus-visible rules
+  // regardless of source order, same idea as .navLink.active:focus-visible.
+  // White, not $color-primary, since the active fill is already that color.
+  &.filterTabActive:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 3px #fff;
+  }
 }
 
 .filterTabActive {
