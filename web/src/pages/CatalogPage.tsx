@@ -52,6 +52,17 @@ const _cache = {
   rows: {} as Record<string, RowCache>,
   scrollY: 0,
   catView: null as CatViewCache | null,
+  // Which category is currently expanded (classic layout's "full grid" view)
+  // and the id of the card last clicked out of it — module-level for the
+  // same reason as everything else here: expanding a category never pushes
+  // its own history entry (only the ?cat= query param embedded in the
+  // backUrl passed to the card detail page's own back button does), so a
+  // plain browser back button/gesture lands on the bare /catalog URL with no
+  // ?cat= at all, and a component-local expandedCategory read only from that
+  // URL forgot the expanded view entirely — landing back on the top-level
+  // category list instead of the grid you'd drilled into.
+  expandedCategory: null as string | null,
+  lastFocusCardId: null as string | null,
   // Profile the cached rows/catView belong to — module-level (not a ref) because
   // a profile switch made while CatalogPage is unmounted (e.g. from the admin
   // panel) must still be detected on remount; a component-local ref would reset
@@ -499,9 +510,18 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
     return () => window.removeEventListener('scroll', check)
   }, [])
 
-  // Restore scroll when returning with cached items
+  // Restore scroll — and keyboard focus, on the exact card last clicked out
+  // of this grid (see _cache.lastFocusCardId's comment) — when returning
+  // with cached items. preventScroll: true since scrollY above (or the
+  // browser's own scroll restoration) already puts the right area on
+  // screen; without it, focus() re-scrolling to "nearest" could fight that.
   useLayoutEffect(() => {
     if (cached && cached.scrollY > 0) window.scrollTo({ top: cached.scrollY, behavior: 'instant' })
+    if (cached && _cache.lastFocusCardId) {
+      document.getElementById(_cache.lastFocusCardId)
+        ?.querySelector<HTMLElement>('[data-card]')
+        ?.focus({ preventScroll: true })
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadPage = useCallback(async (pg: number, sq: string, reset: boolean) => {
@@ -669,8 +689,9 @@ export default function CatalogPage() {
   const [hasCustomOrder, setHasCustomOrder] = useState(() => !!localStorage.getItem(LS_ROW_ORDER))
   const [expandedCategory, setExpandedCategory] = useState<string | null>(() => {
     const p = new URLSearchParams(window.location.search)
-    return p.get('cat')
+    return p.get('cat') ?? _cache.expandedCategory
   })
+  useEffect(() => { _cache.expandedCategory = expandedCategory }, [expandedCategory])
   const [expandedFocusIdx, setExpandedFocusIdx] = useState<number | undefined>(undefined)
   const [searchValue, setSearchValue] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -981,6 +1002,10 @@ export default function CatalogPage() {
 
   function handleCardClick(item: MediaItem) {
     const cardId = `${item.id}_${item.media_type}`
+    // Restored on return (see CategoryView's own restore effect) so the grid
+    // regains keyboard focus on the exact card you left, not just the right
+    // scroll position with nothing focused.
+    _cache.lastFocusCardId = cardId
     const backUrl = expandedCategory
       ? `/catalog?cat=${encodeURIComponent(expandedCategory)}#${cardId}`
       : `/catalog#${cardId}`
