@@ -364,3 +364,88 @@
 .sentinel {
   height: 1px;
 }
+
+// ── Floating search bar ─────────────────────────────────────────────────────
+// Mirrors CatalogPage.module.scss's identical block — same floating-bar
+// search model, opened by the header's search icon (see Layout.tsx's
+// handleBottomSearch, "media-library" branch).
+
+.floatingBar {
+  position: fixed;
+  top: calc(#{$nav-height} + env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: $color-bg-card;
+  border-bottom: 1px solid $color-border;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  animation: floatIn 150ms ease;
+}
+
+@keyframes floatIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+.floatingBarInner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: $spacing-xs $spacing-lg;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+
+  @media (max-width: $bp-md) { padding: $spacing-xs $spacing-md; }
+  @media (max-width: $bp-sm) { padding: $spacing-xs $spacing-sm; }
+}
+
+.floatingIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+  color: $color-text-muted;
+}
+
+.floatingInput {
+  @include input-base;
+  height: 34px;
+  width: 100%;
+  font-size: $font-size-sm;
+  border-radius: $radius-sm;
+  padding-right: 28px;
+}
+
+.floatingClose {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: $spacing-xs;
+  cursor: pointer;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  line-height: 1;
+
+  &:hover { color: $color-text; }
+}
+
+.searchWrap {
+  flex-shrink: 0;
+  position: relative;
+}
+
+.searchClear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: $color-text-muted;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  &:hover { color: $color-text; }
+}

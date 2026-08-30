@@ -128,8 +128,28 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   // to keep it open, even across the heavier work in between.
   function handleBottomSearch() {
     if (location.pathname === '/catalog') {
-      window.dispatchEvent(new CustomEvent('catalog:back'))
+      // Not catalog:back — that also wipes the current query/results, so
+      // re-pressing the icon to refine an already-open search (rather than
+      // start over) looked like it just bounced you back to plain browsing.
+      // Closing an expanded category is still needed here: the search
+      // results grid won't render underneath one (see CatalogPage's
+      // `!expandedCategory && showSearch` guard), so opening the bar there
+      // would otherwise type into a query with no visible effect.
+      window.dispatchEvent(new CustomEvent('catalog:close-expanded'))
       window.dispatchEvent(new CustomEvent('catalog:focus-search'))
+    } else if (location.pathname === '/history') {
+      // History has its own always-mounted search field — just focus it in
+      // place, no navigation/warmup dance needed like the Catalog branches
+      // below (that one has to survive this component's own teardown).
+      window.dispatchEvent(new CustomEvent('history:focus-search'))
+    } else if (location.pathname === '/media-library') {
+      // Моё has its own floating search bar, same model as Catalog's — open
+      // it in place instead of navigating away. Not media-library:back — see
+      // the identical catalog:close-expanded comment above for why that
+      // would wipe an already-in-progress query instead of letting you
+      // refine it.
+      window.dispatchEvent(new CustomEvent('media-library:close-expanded'))
+      window.dispatchEvent(new CustomEvent('media-library:focus-search'))
     } else {
       searchWarmupRef.current?.focus()
       requestFocusCatalogSearch()
@@ -314,7 +334,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
     <>
       <NavLink to="/catalog"  className={linkClass} onClick={() => { setMenuOpen(false); window.dispatchEvent(new CustomEvent('catalog:back')) }}>Каталог</NavLink>
       <NavLink to="/calendar" className={linkClass} onClick={() => setMenuOpen(false)}>Календарь</NavLink>
-      <NavLink to="/media-library" className={linkClass} onClick={() => setMenuOpen(false)}>Моё</NavLink>
+      <NavLink to="/media-library" className={linkClass} onClick={() => { setMenuOpen(false); window.dispatchEvent(new CustomEvent('media-library:back')) }}>Моё</NavLink>
       <NavLink to="/history"  className={linkClass} onClick={() => setMenuOpen(false)}>История</NavLink>
       <NavLink to="/sessions" className={linkClass} onClick={() => setMenuOpen(false)}>Сессии</NavLink>
       {user?.is_admin && (

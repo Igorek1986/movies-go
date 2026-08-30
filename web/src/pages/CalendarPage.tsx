@@ -248,6 +248,19 @@ export default function CalendarPage() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [navigate, selectedDate, month, year])
 
+  // Focus something on first load — otherwise nothing is ever focused until
+  // the user's first arrow press, and with focus outside every data-row-id
+  // (see Layout.tsx's onKeyDown), Left/Right read as "this page doesn't own
+  // its own row nav" and pop the site-wide side panel instead of moving
+  // within the grid. Once any cell has real focus, the existing
+  // data-row-id/data-nav-item wiring here already handles that correctly.
+  useEffect(() => {
+    const wantDate = selectedDate ?? todayStr()
+    const cell = document.querySelector<HTMLElement>(`[data-cal-cell][data-date="${wantDate}"]`)
+    cell?.focus({ preventScroll: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const byDate = new Map<string, CalendarEpisode[]>()
   for (const ep of episodes ?? []) {
     const list = byDate.get(ep.air_date)

@@ -58,6 +58,7 @@ func NewRouter(mode string) http.Handler {
 	r.Get("/unwatched/episodes", handleUnwatchedEpisodes)
 	r.Get("/calendar", pageOrAPI(mode, handleCalendar))
 	r.Get("/media-library", pageOrAPI(mode, handleMediaLibrary))
+	r.Get("/api/media-library/search", handleMediaLibrarySearch)
 	r.Get("/np_popular", cached)
 	r.Get("/np_popular_daily", handlePopularDaily)
 

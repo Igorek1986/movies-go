@@ -125,6 +125,21 @@ export default function HistoryPage() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  // Header search icon (see Layout's handleBottomSearch) — this page has its
+  // own always-visible search field, so unlike Catalog/МОЁ it just needs
+  // focusing in place rather than opening anything. Scroll to the top first:
+  // the inline field can be scrolled out of view, and there's no floating
+  // bar equivalent to fall back to at this exact instant (it only appears
+  // once you've already scrolled past the inline one).
+  useEffect(() => {
+    function onFocusSearch() {
+      window.scrollTo({ top: 0, behavior: 'instant' })
+      searchRef.current?.focus()
+    }
+    window.addEventListener('history:focus-search', onFocusSearch)
+    return () => window.removeEventListener('history:focus-search', onFocusSearch)
+  }, [])
+
   // Restore scroll on mount — same pattern as CatalogPage.
   // Items come from the lazy useState initialiser so the DOM is already populated.
   useEffect(() => {

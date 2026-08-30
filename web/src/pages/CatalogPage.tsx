@@ -270,6 +270,15 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
     // populates regardless of whether the focus() below actually lands.
     onActivate?.(items[idx])
     requestAnimationFrame(() => {
+      // Don't steal focus from an active text input — this fires on every
+      // fresh mount of the row, including the moment the header search icon
+      // just opened the floating search bar (still mounted underneath until
+      // a query actually narrows the view): without this check, the row's
+      // own focus() below beat the search input's for it, which then read
+      // as "the bar closed itself" once its onBlur saw focus leave for a
+      // card the instant it opened.
+      const activeTag = document.activeElement?.tagName?.toLowerCase()
+      if (activeTag === 'input' || activeTag === 'textarea') return
       const cards = rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]')
       if (!cards?.length) return
       const target = cards[Math.min(idx, cards.length - 1)]
@@ -1146,6 +1155,15 @@ export default function CatalogPage() {
     }
     window.addEventListener('catalog:back', onCatalogBack)
     return () => window.removeEventListener('catalog:back', onCatalogBack)
+  }, [expandedCategory]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Header search icon (Layout.tsx's handleBottomSearch) — closes an
+  // expanded category (search results can't show underneath one) without
+  // touching an already-in-progress query, unlike catalog:back above.
+  useEffect(() => {
+    const onCloseExpanded = () => { if (expandedCategory) handleBack() }
+    window.addEventListener('catalog:close-expanded', onCloseExpanded)
+    return () => window.removeEventListener('catalog:close-expanded', onCloseExpanded)
   }, [expandedCategory]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Bottom-nav "Поиск" — focus the main search input. Covers both being

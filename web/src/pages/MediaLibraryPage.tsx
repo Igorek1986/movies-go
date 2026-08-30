@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
@@ -188,6 +188,11 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
     // populates regardless of whether the focus() below actually lands.
     onActivate?.(items[idx])
     requestAnimationFrame(() => {
+      // Don't steal focus from an active text input — see CatalogPage's
+      // identical guard for why (the header search icon's floating bar
+      // otherwise closes itself the instant it opens).
+      const activeTag = document.activeElement?.tagName?.toLowerCase()
+      if (activeTag === 'input' || activeTag === 'textarea') return
       const cards = rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]')
       if (!cards?.length) return
       const target = cards[Math.min(idx, cards.length - 1)]
@@ -346,6 +351,22 @@ export default function MediaLibraryPage() {
 
   const [expanded, setExpanded] = useState<StatusKey | null>(null)
   const lastRowFocusIdx = useRef<Map<string, number>>(new Map())
+
+  // Search — same floating-bar model as CatalogPage, opened by the header's
+  // search icon (see Layout.tsx's handleBottomSearch). Searches across the
+  // whole library at once (favorite/watching/completed/stopped/continues via
+  // /api/media-library/search — see its comment for why "planned" is
+  // excluded), not just whichever status row is currently showing.
+  const [searchValue, setSearchValue] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<LibraryItem[] | null>(null)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchHasMore, setSearchHasMore] = useState(false)
+  const searchSentinelRef = useRef<HTMLDivElement>(null)
+  const searchPageRef = useRef(1)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const floatingInputRef = useRef<HTMLInputElement>(null)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // See CatalogPage's identical field: whether a card in the grid currently
   // has keyboard focus, so the hero border (.cardHeroActive) disappears once
   // focus leaves for the top menu instead of staying stuck on the last card.
@@ -453,6 +474,106 @@ export default function MediaLibraryPage() {
     navigate(`/card/${cardIdOf(item)}`, { state: { backUrl: '/media-library' } })
   }
 
+  // Layout.tsx's nav doesn't know about this page's local search state —
+  // publish it as a body class instead, same idea as CatalogPage's identical
+  // effect (Layout.module.scss mutes the current page's nav-link highlight
+  // off this, and it's generic across pages, not Catalog-specific).
+  useEffect(() => {
+    document.body.classList.toggle('search-mode-active', searchQuery.length >= 3 && !expanded)
+    return () => { document.body.classList.remove('search-mode-active') }
+  }, [searchQuery, expanded])
+
+  const loadSearchPage = useCallback((query: string, page: number, reset: boolean) => {
+    setSearchLoading(true)
+    fetch(`/api/media-library/search?token=${encodeURIComponent(token)}&profile_id=${encodeURIComponent(profileId)}&search=${encodeURIComponent(query)}&page=${page}`)
+      .then(r => r.ok ? r.json() : { results: [], total_pages: 1 })
+      .then((data: LibraryResponse) => {
+        const rows = data.results || []
+        setSearchResults(prev => reset ? rows : [...(prev ?? []), ...rows])
+        setSearchHasMore((data.total_pages ?? 1) > page)
+        searchPageRef.current = page
+        setSearchLoading(false)
+      })
+      .catch(() => {
+        if (reset) setSearchResults([])
+        setSearchLoading(false)
+      })
+  }, [token, profileId])
+
+  useEffect(() => {
+    if (searchQuery.length < 3 || expanded) {
+      setSearchResults(null)
+      setSearchHasMore(false)
+      return
+    }
+    loadSearchPage(searchQuery, 1, true)
+  }, [searchQuery, expanded, loadSearchPage])
+
+  // Infinite scroll for search results.
+  useEffect(() => {
+    const sentinel = searchSentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && searchHasMore && !searchLoading) {
+        loadSearchPage(searchQuery, searchPageRef.current + 1, false)
+      }
+    }, { rootMargin: '200px' })
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [searchHasMore, searchLoading, searchQuery, loadSearchPage])
+
+  function handleSearchChange(value: string) {
+    setSearchValue(value)
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    if (value.length === 0) {
+      setSearchQuery('')
+      setSearchResults(null)
+      return
+    }
+    searchTimerRef.current = setTimeout(() => {
+      const q = value.trim()
+      if (q.length >= 3) {
+        setSearchQuery(q)
+      } else {
+        setSearchQuery('')
+        setSearchResults(null)
+      }
+    }, 400)
+  }
+
+  // Clicking "Моё" while already on it — that click doesn't remount this
+  // page, so nothing else resets search state for you.
+  useEffect(() => {
+    const onBack = () => {
+      if (expanded) setExpanded(null)
+      setSearchValue('')
+      setSearchQuery('')
+      setSearchOpen(false)
+    }
+    window.addEventListener('media-library:back', onBack)
+    return () => window.removeEventListener('media-library:back', onBack)
+  }, [expanded])
+
+  // Header search icon (Layout.tsx's handleBottomSearch) — closes an
+  // expanded status (search results can't show underneath one — see
+  // showSearch's `!expanded` guard) without touching an already-in-progress
+  // query, unlike media-library:back above.
+  useEffect(() => {
+    const onCloseExpanded = () => { if (expanded) setExpanded(null) }
+    window.addEventListener('media-library:close-expanded', onCloseExpanded)
+    return () => window.removeEventListener('media-library:close-expanded', onCloseExpanded)
+  }, [expanded])
+
+  useEffect(() => {
+    function openSearch() { setSearchOpen(true) }
+    window.addEventListener('media-library:focus-search', openSearch)
+    return () => window.removeEventListener('media-library:focus-search', openSearch)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (searchOpen) floatingInputRef.current?.focus()
+  }, [searchOpen])
+
   // Track last-focused card index per row, to restore position when navigating back to it.
   // Also tracks whether a card currently has focus at all — see
   // cardGridFocused below (mirrors CatalogPage's identical fix).
@@ -493,7 +614,22 @@ export default function MediaLibraryPage() {
         return
       }
 
-      if (expanded) {
+      // Escape while browsing search results (not just from the input
+      // itself, which the floating bar's own onKeyDown already covers) —
+      // clears the query and drops back to normal browsing.
+      if (e.key === 'Escape' && !expanded && searchQuery.length >= 3) {
+        e.preventDefault()
+        setSearchValue('')
+        setSearchQuery('')
+        setSearchOpen(false)
+        document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+        return
+      }
+
+      // Search results render the same flat .grid of cards as an expanded
+      // status (not the row-carousel structure) — share the same grid
+      // navigation instead of falling through to the row-based logic below.
+      if (expanded || searchQuery.length >= 3) {
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
         e.preventDefault()
         const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-card]'))
@@ -507,7 +643,16 @@ export default function MediaLibraryPage() {
           if (e.key === 'ArrowRight') next = Math.min(idx + 1, cards.length - 1)
           else if (e.key === 'ArrowLeft') next = Math.max(idx - 1, 0)
           else if (e.key === 'ArrowDown') next = Math.min(idx + cols, cards.length - 1)
-          else if (e.key === 'ArrowUp') next = Math.max(idx - cols, 0)
+          else if (e.key === 'ArrowUp') {
+            // Top row of search results — bridge straight back up to the
+            // search icon in the nav (no such bridge for an expanded
+            // status, which has no search box to return to).
+            if (!expanded && idx - cols < 0) {
+              document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+              return
+            }
+            next = Math.max(idx - cols, 0)
+          }
         }
         if (next !== -1 && next !== idx) {
           // preventScroll — see LibraryRow's identical fix above for why.
@@ -579,9 +724,13 @@ export default function MediaLibraryPage() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [expanded, navigate, layout, activeStatusIndex, switchStatus])
+  }, [expanded, searchQuery, navigate, layout, activeStatusIndex, switchStatus])
 
-  const carouselActive = layout === 'hero' && !expanded
+  const showSearch = searchQuery.length >= 3 && !expanded
+  // Hero carousel locks the page to the viewport (no scroll) — only while
+  // actually showing the carousel itself, not the expanded status grid or
+  // search results, which stay normal scrollable views.
+  const carouselActive = layout === 'hero' && !expanded && !showSearch
   const activeStatus = ROW_ORDER[activeStatusIndex]
 
   return (
@@ -602,6 +751,21 @@ export default function MediaLibraryPage() {
             <h2 className={styles.expandedTitle}>{STATUS_LABELS[expanded]}</h2>
             <LibraryGrid status={expanded} token={token} profileId={profileId} onCardClick={openCard} />
           </>
+        ) : showSearch ? (
+          <div>
+            {searchResults !== null && searchResults.length === 0 && !searchLoading && (
+              <div className={styles.emptyMsg}>Ничего не найдено</div>
+            )}
+            {searchResults !== null && searchResults.length > 0 && (
+              <div className={styles.grid}>
+                {searchResults.map(item => (
+                  <Card key={cardIdOf(item)} item={item} onClick={() => openCard(item)} />
+                ))}
+              </div>
+            )}
+            {searchLoading && <div className={styles.loadingMore}>Поиск…</div>}
+            <div ref={searchSentinelRef} className={styles.sentinel} />
+          </div>
         ) : (
           <>
             {layout === 'hero' && (
@@ -683,6 +847,53 @@ export default function MediaLibraryPage() {
               </div>
             )}
           </>
+        )}
+
+        {!expanded && searchOpen && (
+          <div
+            className={styles.floatingBar}
+            onBlur={e => {
+              // Closes as soon as focus actually leaves the bar (Escape, the
+              // ✕ button, or ArrowUp bridging back to the search icon below
+              // all move focus elsewhere and land here).
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSearchOpen(false)
+            }}
+          >
+            <div className={styles.floatingBarInner}>
+              <span className={styles.floatingIcon}>🔍</span>
+              <div className={styles.searchWrap} style={{flex: 1}}>
+                <input
+                  ref={floatingInputRef}
+                  className={styles.floatingInput}
+                  placeholder="Поиск…"
+                  value={searchValue}
+                  onChange={e => handleSearchChange(e.target.value)}
+                  onKeyDown={e => {
+                    // stopPropagation is required — without it the same event
+                    // also reaches the window-level grid-nav listener above
+                    // (search results share its Left/Right/Up/Down handling),
+                    // which would then move focus again from wherever this
+                    // just landed.
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const first = document.querySelector<HTMLElement>('[data-card]')
+                      first?.focus({ preventScroll: true })
+                      if (layout !== 'hero' && first) scrollV(first)
+                    } else if (e.key === 'ArrowUp' || e.key === 'Escape') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+                    }
+                  }}
+                />
+                {searchValue && (
+                  <button className={styles.searchClear} onClick={() => handleSearchChange('')} title="Очистить">✕</button>
+                )}
+              </div>
+              <button className={styles.floatingClose} onClick={() => setSearchOpen(false)} title="Закрыть">✕</button>
+            </div>
+          </div>
         )}
       </div>
     </Layout>

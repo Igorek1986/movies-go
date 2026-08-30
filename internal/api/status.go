@@ -162,3 +162,77 @@ func handleMediaLibrary(w http.ResponseWriter, r *http.Request) {
 		"total_results": total,
 	})
 }
+
+// handleMediaLibrarySearch searches by title across the profile's whole
+// library at once — favorite/watching/completed/stopped/continues-in-progress
+// — for the "Моё" page's header search icon. Deliberately excludes "planned"
+// (Буду смотреть): those are cards the user hasn't actually watched yet, just
+// bookmarked to watch later, so they're not really part of "my library" in
+// the sense this search is for. Reuses the same card_id-set + ILIKE approach
+// as CategoryFilter.Search (see store.searchSQL) rather than a dedicated
+// query — the sources here are five different tables with no single query
+// that already joins all of them for one profile.
+func handleMediaLibrarySearch(w http.ResponseWriter, r *http.Request) {
+	d := deviceFromRequest(r)
+	if d == nil {
+		JSON(w, http.StatusOK, emptyPage(1))
+		return
+	}
+	profileID := r.URL.Query().Get("profile_id")
+	searchQ := r.URL.Query().Get("search")
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+	if len(searchQ) < 2 {
+		JSON(w, http.StatusOK, emptyPage(page))
+		return
+	}
+
+	seen := make(map[string]bool)
+	var ids []string
+	add := func(cardIDs []string) {
+		for _, id := range cardIDs {
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	add(store.ListFavoriteCardIDs(r.Context(), d.ID, profileID))
+	add(store.ListWatchingCardIDs(r.Context(), d.ID, profileID, 0))
+	add(store.ListCompletedCardIDs(r.Context(), d.ID, profileID, 0))
+	add(store.ListCardIDsByStatus(r.Context(), d.ID, profileID, store.StatusStopped))
+	for _, a := range store.ContinuesAggregate(r.Context(), d.ID, profileID, "", 0) {
+		if !seen[a.CardID] {
+			seen[a.CardID] = true
+			ids = append(ids, a.CardID)
+		}
+	}
+	if len(ids) == 0 {
+		JSON(w, http.StatusOK, emptyPage(page))
+		return
+	}
+
+	f := store.CategoryFilter{CardIDs: ids, Search: searchQ, Page: page, PerPage: perPage}
+	applyCatalogTrackers(&f)
+	rows, total := store.ListCategory(f)
+	totalPages := (total + perPage - 1) / perPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	results := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, toMediaItem(row))
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"page":          page,
+		"results":       results,
+		"total_pages":   totalPages,
+		"total_results": total,
+	})
+}
