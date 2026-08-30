@@ -43,6 +43,19 @@ export interface HeroDetail {
 
 const DEBOUNCE_MS = 200
 
+// Module-level, not component-scoped: CatalogPage/MediaLibraryPage fully
+// unmount and remount on every navigation away and back (a card detail page
+// round trip, switching between Каталог/Моё, even a fresh app open landing
+// there) — a useRef-scoped cache would reset to empty on every single one of
+// those, refetching detail for a card already seen this session and, while
+// that fetch is in flight, falling back to the poster (see useCrossfadeBg
+// below) — a portrait image cover-cropped into this wide hero box reads as a
+// jarring "zoomed in" flash right before the real backdrop pops in a moment
+// later. Keeping this alive across mounts makes a revisit show the correct
+// backdrop immediately, no flash — only a card genuinely never seen this
+// session still has to wait on the real fetch.
+const _heroDetailCache = new Map<string, HeroDetail>()
+
 // Debounced, cached fetch of full card detail for whichever item currently
 // has focus/hover in a row below — the list endpoints (MediaItem/LibraryItem)
 // don't carry backdrop/overview/genres/status, so the hero upgrades from the
@@ -51,7 +64,6 @@ export function useHeroPreview<T extends HeroLiteItem>() {
   const [item, setItem] = useState<T | null>(null)
   const [detail, setDetail] = useState<HeroDetail | null>(null)
   const activeCardIdRef = useRef<string | null>(null)
-  const cacheRef = useRef(new Map<string, HeroDetail>())
   const timerRef = useRef<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -61,7 +73,7 @@ export function useHeroPreview<T extends HeroLiteItem>() {
     activeCardIdRef.current = cardId
     setItem(next)
 
-    const cached = cacheRef.current.get(cardId)
+    const cached = _heroDetailCache.get(cardId)
     if (cached) { setDetail(cached); return }
     setDetail(null)
 
@@ -73,7 +85,7 @@ export function useHeroPreview<T extends HeroLiteItem>() {
       fetch(`/api/media-card/${cardId}`, { signal: ac.signal })
         .then(r => r.ok ? r.json() : Promise.reject())
         .then((d: HeroDetail) => {
-          cacheRef.current.set(cardId, d)
+          _heroDetailCache.set(cardId, d)
           if (activeCardIdRef.current === cardId) setDetail(d)
         })
         .catch(() => {})

@@ -1,10 +1,63 @@
 @use '@/styles/variables' as *;
 
+// Breaks a normally .main-bounded (max-width: 1200px, centered) element out
+// to the true viewport edge — needed so the hero layout's full-bleed
+// backdrop (see .heroFullBg) has something edge-to-edge to composite
+// against instead of a narrower column floating over a wider image.
+@mixin hero-full-bleed-position {
+  position: relative;
+  width: 100vw;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+}
+
+// Keeps an element's own content (not its background/box) lined up with
+// .main's reading column, on an element that's already 100vw wide (either
+// via @mixin hero-full-bleed-position on itself, or by filling a 100vw
+// parent, like .heroFullContent inside .heroFull) — split out from the
+// mixin above so an element can pick up ONLY the padding (see
+// .heroFullContent's comment for why that split matters).
+@mixin hero-column-padding {
+  box-sizing: border-box;
+  padding-left: max(#{$spacing-lg}, calc((100vw - 1200px) / 2 + #{$spacing-lg}));
+  padding-right: max(#{$spacing-lg}, calc((100vw - 1200px) / 2 + #{$spacing-lg}));
+
+  @media (max-width: $bp-md) {
+    padding-left: $spacing-md;
+    padding-right: $spacing-md;
+  }
+
+  @media (max-width: $bp-sm) {
+    padding-left: $spacing-sm;
+    padding-right: $spacing-sm;
+  }
+}
+
+@mixin hero-full-bleed {
+  @include hero-full-bleed-position;
+  @include hero-column-padding;
+}
+
 .page {
   display: flex;
   flex-direction: column;
   gap: $spacing-2xl;
   padding-bottom: $spacing-2xl;
+}
+
+// Hero layout only (see cardLayout === 'hero' in CardDetailPage.tsx): the
+// direct children here (.heroFull, .heroDetails, .heroBelowFold) each sit
+// over the fixed .heroFullBg and need to stay visually opaque/continuous —
+// .page's own gap and padding-bottom above are plain empty space with no
+// background of their own, which let the fixed backdrop show through as
+// bare horizontal stripes between/after them. Spacing moves into each
+// section's own padding instead (see .heroFullContent/.heroDetails/
+// .heroBelowFold), which stays inside their opaque boxes.
+.pageHero {
+  gap: 0;
+  padding-bottom: 0;
 }
 
 .loading,
@@ -60,16 +113,20 @@
 // flex justify-content — same idea as plugins/full_hero.js, ported to plain
 // CSS instead of hacking Lampa's own DOM.
 
-// Negative margin/width here must match Layout's .main padding exactly at
-// each breakpoint (its horizontal value, and vertical for the top margin) —
-// mismatched, it either falls short of the true edge or overshoots past the
-// actual viewport, which read as "content not contained"/clipped buttons on
-// mobile (.main's padding shrinks at $bp-md and $bp-sm; this didn't
-// previously have its own $bp-md tier at all).
+// Full viewport-edge breakout (see @mixin hero-full-bleed above) — the fixed
+// backdrop behind this (.heroFullBg) spans the true screen width, so the
+// gradient/text overlay compositing over it (.heroFullContent) needs to
+// match that width instead of stopping at .main's narrower centered column,
+// or it reads as a boxed panel floating over a wider image.
 .heroFull {
-  position: relative;
-  width: calc(100% + $spacing-lg * 2);
-  margin: -$spacing-xl (-$spacing-lg) 0;
+  // Position-only breakout, no column padding here — the padding needs to
+  // live on .heroFullContent instead (see its comment) so that element's own
+  // gradient background isn't shrunk down to the narrower reading column.
+  @include hero-full-bleed-position;
+  // Pulls the hero up over .main's own top padding, same value as that
+  // padding at each breakpoint (see Layout's .main) so it lands flush
+  // against the real viewport top instead of leaving a gap.
+  margin-top: -$spacing-xl;
   // Full first-screen height, pinning the buttons/progress right above the
   // bottom nav (or the true viewport edge on desktop) — matches
   // full_hero.js's own pinBodyHeight. Cropping a wide backdrop into this
@@ -92,20 +149,29 @@
   }
 
   @media (max-width: $bp-md) {
-    width: calc(100% + $spacing-md * 2);
-    margin: -$spacing-lg (-$spacing-md) 0;
+    margin-top: -$spacing-lg;
   }
 
   @media (max-width: $bp-sm) {
-    width: calc(100% + $spacing-sm * 2);
-    margin: -$spacing-md (-$spacing-sm) 0;
+    margin-top: -$spacing-md;
   }
 }
 
+// Fixed full-viewport, not scoped to .heroFull's own box — same technique as
+// BrowseHero's .heroBg (see its comment): stays put behind the page as you
+// scroll past the first screen, instead of the backdrop just scrolling away
+// with .heroFull like a normal banner. .heroFull has no transform/filter of
+// its own, so this still resolves against the real viewport despite being a
+// DOM child of it.
 .heroFullBg {
-  position: absolute;
+  position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: $color-bg;
   z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
 
   img {
     width: 100%;
@@ -114,41 +180,54 @@
     object-position: center 15%;
     display: block;
   }
+
+  // No bottom fade here (unlike BrowseHero's .heroBg::after): that gradient
+  // is painted at a fixed position in the VIEWPORT, which only works because
+  // BrowseHero's page never scrolls (.pageLocked) — its row content always
+  // sits in the same screen-space region the gradient already fades to
+  // solid. This page scrolls normally, so a viewport-anchored fade would
+  // fall out of sync with whatever content had scrolled up to occupy that
+  // screen space (the vivid, unfaded image showing through past the first
+  // screen instead). .heroFullContent's own gradient already fades to solid
+  // by the bottom of .heroFull for the first screen; .heroDetails and the
+  // sections below it (see their own `background: $color-bg`) cover the
+  // image outright for everything scrolled past that.
 }
 
 // No backdrop_path (fresh/obscure releases) — poster stretched into the same
-// slot instead of an empty background, blurred+darkened since a portrait
-// poster cropped this wide looks better softened than sharp (plain
-// object-fit: cover, no fallback treatment, is what full_hero.js itself
-// does — this goes a little further since we're not fighting Lampa's own
-// img element/CSS here, free to style it).
+// slot instead of an empty background, darkened a touch for the same text
+// contrast reasoning as a real backdrop.
 .heroFullBgPoster img {
   object-position: center center;
-  filter: blur(30px) brightness(0.6) saturate(1.1);
-  transform: scale(1.15);
+  filter: brightness(0.6) saturate(1.1);
 }
 
 .heroFullContent {
   position: relative;
   z-index: 1;
   flex: 1;
+  // Fills .heroFull's full 100vw box (flex:1, no width cap of its own) so
+  // its OWN background below spans edge to edge — background-clip defaults
+  // to border-box, so the padding this adds (via @mixin hero-column-padding)
+  // insets the CONTENT (title/description/buttons) to the reading column
+  // without shrinking the box the gradient paints into. Putting this same
+  // padding on .heroFull instead (the parent) would shrink .heroFullContent
+  // itself down to that narrower column, taking its gradient down with it —
+  // which is exactly what happened before this split.
+  @include hero-column-padding;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   gap: $spacing-sm;
-  // Horizontal value must match Layout's .main padding exactly (same
-  // reasoning as .heroFull's own negative margin) — otherwise the title/
-  // teaser here land at a different indent than the tags/description in
-  // .heroDetails right below, which sits in .main's normal padding.
-  // Vertical value is a free design choice (top/bottom breathing room).
-  padding: $spacing-2xl $spacing-lg;
+  padding-top: $spacing-2xl;
+  padding-bottom: $spacing-2xl;
   // Fades from solid page background at the bottom (guaranteed contrast for
   // the text/buttons/tags below, unchanged from the classic layout — same
   // components, don't need their own restyle) up to the plain image at top.
   background: linear-gradient(to top, $color-bg 0%, rgba($color-bg-rgb, 0.92) 40%, rgba($color-bg-rgb, 0.35) 70%, transparent 100%);
 
-  @media (max-width: $bp-md) { padding: $spacing-lg $spacing-md; }
-  @media (max-width: $bp-sm) { padding: $spacing-md $spacing-sm; }
+  @media (max-width: $bp-md) { padding-top: $spacing-lg; padding-bottom: $spacing-lg; }
+  @media (max-width: $bp-sm) { padding-top: $spacing-md; padding-bottom: $spacing-md; }
 }
 
 // Clickable — toggles .heroDescrExpanded to show the full text in place,
@@ -186,10 +265,56 @@
 }
 
 .heroDetails {
+  // Full-bleed, same reasoning as .heroFull (see @mixin hero-full-bleed) —
+  // opaque, not transparent like it'd normally be free to be: .heroFullBg
+  // sits behind the whole page as a fixed layer (see its comment), so once
+  // this scrolls into view it needs to actually cover the image edge to
+  // edge rather than let a narrower, .main-bounded box float over whatever
+  // backdrop is still showing on either side of it.
+  @include hero-full-bleed;
+  position: relative;
+  z-index: 1;
+  background: $color-bg;
   display: flex;
   flex-direction: column;
   gap: $spacing-sm;
-  max-width: 900px;
+  // Replaces .page's own gap (zeroed in hero layout, see .pageHero) on both
+  // sides — kept inside this element's own opaque box instead of empty
+  // space between it and its neighbors, so the fixed backdrop never peeks
+  // through in the seam.
+  padding-top: $spacing-2xl;
+  padding-bottom: $spacing-2xl;
+
+  // Tags/genres/status lines don't need the full screen width to read
+  // comfortably — capped on the inner content only, not the full-bleed box.
+  > * { max-width: 900px; }
+}
+
+// Same reasoning as .heroDetails above — Cast/episode-list/Similar sit on
+// the fixed .heroFullBg too once scrolled up, and need their own opaque
+// backing to cover it (only applied in the hero layout — see cardLayout ===
+// 'hero' in CardDetailPage.tsx; the classic layout's backdrop already
+// scrolls away normally and never needed this).
+.heroBelowFold {
+  // Same full-bleed reasoning as .heroDetails just above.
+  @include hero-full-bleed;
+  position: relative;
+  z-index: 1;
+  background: $color-bg;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-2xl;
+  // Replaces .page's own padding-bottom (zeroed in hero layout, see
+  // .pageHero) — same reasoning as .heroDetails' padding above. No
+  // padding-top: .heroDetails' own padding-bottom right above already
+  // covers that gap — adding one here too would double it up.
+  padding-bottom: $spacing-2xl;
+  // .main itself still has its own (non-opaque, non-promoted) padding-bottom
+  // after .page ends, before the global AppFooter — a plain box-shadow copy
+  // of this box, solid and unblurred, extends the same background color
+  // that far past this element's real bottom edge without affecting layout,
+  // closing that last sliver of visible fixed backdrop before the footer.
+  box-shadow: 0 80px 0 0 $color-bg;
 }
 
 // .progressWrap's own max-width: 360px (below) suits the classic layout's

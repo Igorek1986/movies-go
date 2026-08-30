@@ -1524,7 +1524,7 @@ export default function CardDetailPage() {
 
   return (
     <Layout>
-      <div className={styles.page}>
+      <div className={`${styles.page}${cardLayout === 'hero' ? ' ' + styles.pageHero : ''}`}>
 
         {cardLayout === 'hero' ? (
           <>
@@ -1602,6 +1602,8 @@ export default function CardDetailPage() {
           </>
         )}
 
+        <div className={cardLayout === 'hero' ? styles.heroBelowFold : undefined}>
+
         {/* ── Cast ── */}
         {cast.length > 0 && (
           <section className={styles.section}>
@@ -1670,6 +1672,8 @@ export default function CardDetailPage() {
             </div>
           </section>
         )}
+
+        </div>
 
       </div>
 

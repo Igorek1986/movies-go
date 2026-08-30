@@ -11,10 +11,15 @@
   row-gap: 2px;
   // Same fixed-backdrop stacking issue as CatalogPage/MediaLibraryPage's
   // .rowTitle (see that comment) — this footer can end up sitting over
-  // BrowseHero's fixed z-index:0 layer near the bottom of a locked carousel
-  // page, and a static-position element with z-index:auto loses to it.
+  // BrowseHero's (or CardDetailPage hero layout's) fixed z-index:0 backdrop
+  // layer, and a static-position element with z-index:auto loses to it.
   position: relative;
   z-index: 1;
+  // The z-index promotion above only lifts this element's own text/border
+  // above the fixed backdrop — without an opaque background of its own the
+  // padding area around that text stayed transparent, still showing the
+  // backdrop image through it.
+  background: $color-bg;
 }
 
 .tmdbLink {
