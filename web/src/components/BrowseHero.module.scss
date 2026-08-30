@@ -208,3 +208,37 @@
 
   @media (max-width: $bp-sm) { display: none; }
 }
+
+// "Непросмотренные" progress — see MediaCard's identical overlay for the
+// per-card version this mirrors. No max-width — .descr's 56em cap is a
+// readable-line-length choice for prose, but this is a progress bar, not
+// text to read line by line, so it should just fill .content's actual width
+// (which can be well over 56em on a wide viewport) rather than stopping
+// short of it.
+.episodeProgress {
+  margin-top: 2px;
+}
+
+.episodeProgressLabel {
+  display: block;
+  margin-bottom: 4px;
+  color: $color-text;
+  font-size: $font-size-xs;
+  // Same reasoning as .categoryTitleNeighbor elsewhere — plain full-brightness
+  // text alone still washed out over a busy/bright patch of backdrop; a
+  // shadow keeps it legible without needing a background box like .tag.
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+}
+
+.episodeProgressTrack {
+  height: 3px;
+  border-radius: $radius-full;
+  background: rgba($color-bg-rgb, 0.6);
+  overflow: hidden;
+}
+
+.episodeProgressFill {
+  height: 100%;
+  background: $color-primary;
+  border-radius: $radius-full;
+}

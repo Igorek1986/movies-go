@@ -160,9 +160,7 @@ $nav-height: 52px;
 // Sits below the hero inside a .page-locked container and holds the single
 // active row. Deliberately flex: 0 0 auto (not flex: 1) — it takes exactly
 // the row's own natural height, never shrinks, and never clips it; .hero is
-// the one that flexes to fill whatever's left (see its comment). A little
-// top padding keeps the focused card's hover-lift (translateY + box-shadow,
-// see .cardHeroActive) from grazing this container's own top edge.
+// the one that flexes to fill whatever's left (see its comment).
 @mixin carousel-rail {
   flex: 0 0 auto;
   display: flex;
@@ -173,7 +171,6 @@ $nav-height: 52px;
   // further from the title instead of shrinking anything below it — there
   // was visibly unused space here before.
   gap: $spacing-lg;
-  padding-top: $spacing-md;
 }
 
 // Carousel row-swap — a "drum": the outgoing and incoming rows are both on

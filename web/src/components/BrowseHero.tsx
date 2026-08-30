@@ -17,6 +17,12 @@ export interface HeroLiteItem {
   first_air_date?: string
   certification_ru?: string
   release_quality?: string
+  // "Непросмотренные" only (see CatalogPage's MediaCard) — next unwatched
+  // episode + watch progress for the show, shown here instead of/alongside
+  // the card's own overlay badges.
+  next_episode?: string
+  watched_count?: number
+  aired_count?: number
 }
 
 interface HeroGenre { id: number; name: string }
@@ -217,6 +223,18 @@ export function BrowseHero({ item, detail, onOpen }: {
   if (status) tags.push(status)
   if (item.release_quality) tags.push(item.release_quality)
 
+  // "Непросмотренные" progress — see MediaCard's identical unwatchedBadge/
+  // nextEpBadge/progress overlay. Shown here too (not instead, for now — the
+  // per-card version is the only place this is visible for a card that
+  // ISN'T the currently focused one) so the two can be compared side by side.
+  const aired = item.aired_count
+  const watched = item.watched_count ?? 0
+  const remaining = aired ? Math.max(0, aired - watched) : null
+  const progressLabel = [item.next_episode, remaining !== null ? `осталось ${remaining}` : null]
+    .filter(Boolean)
+    .join(' · ')
+  const progressPct = aired ? Math.min(100, (watched / aired) * 100) : 0
+
   return (
     <>
       {/* Fixed full-viewport backdrop — sits behind everything (rows included)
@@ -251,6 +269,14 @@ export function BrowseHero({ item, detail, onOpen }: {
             </div>
           )}
           {detail?.overview && <p className={styles.descr}>{detail.overview}</p>}
+          {!!aired && (
+            <div className={styles.episodeProgress}>
+              {progressLabel && <span className={styles.episodeProgressLabel}>{progressLabel}</span>}
+              <div className={styles.episodeProgressTrack}>
+                <div className={styles.episodeProgressFill} style={{ width: `${progressPct}%` }} />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>
