@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react
 import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS } from '@/utils/scrollNav'
+import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, focusTopNavActive } from '@/utils/scrollNav'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
@@ -635,7 +635,7 @@ export default function MediaLibraryPage() {
         setSearchValue('')
         setSearchQuery('')
         setSearchOpen(false)
-        document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+        focusTopNavActive()
         return
       }
 
@@ -661,7 +661,7 @@ export default function MediaLibraryPage() {
             // search icon in the nav (no such bridge for an expanded
             // status, which has no search box to return to).
             if (!expanded && idx - cols < 0) {
-              document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+              focusTopNavActive()
               return
             }
             next = Math.max(idx - cols, 0)
@@ -708,9 +708,9 @@ export default function MediaLibraryPage() {
         if (layout === 'hero') {
           const dir = e.key === 'ArrowDown' ? 1 : -1
           if (dir < 0 && activeStatusIndex === 0) {
-            // Same as CatalogPage: the search icon is the first item in the
-            // top nav — bridge straight to it, not the active page link.
-            document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+            // Same as CatalogPage: bridge up to the current page's own nav
+            // link, not the search icon — see focusTopNavActive's comment.
+            focusTopNavActive()
             return
           }
           switchStatus(dir)
@@ -896,7 +896,7 @@ export default function MediaLibraryPage() {
                     } else if (e.key === 'ArrowUp' || e.key === 'Escape') {
                       e.preventDefault()
                       e.stopPropagation()
-                      document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+                      focusTopNavActive()
                     }
                   }}
                 />

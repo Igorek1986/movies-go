@@ -61,6 +61,17 @@ export function scrollToRowBottom(el: HTMLElement) {
   window.scrollBy({ top: rect.bottom - targetBottom, behavior: 'smooth' })
 }
 
+// Focuses the top nav's active page link (e.g. "Каталог" while on /catalog)
+// when ArrowUp bridges up from Catalog/МедиаLibrary content into the menu —
+// falls back to the search button only if no link is marked active (a page
+// with no matching top-nav item at all). NavLink sets aria-current="page"
+// on the active link itself, so this doesn't need to know the current route.
+export function focusTopNavActive() {
+  const el = document.querySelector<HTMLElement>('[data-top-nav] a[aria-current="page"]')
+    ?? document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')
+  el?.focus()
+}
+
 // Count columns in a CSS grid by comparing offsetTop of items — not
 // getBoundingClientRect().top, which includes CSS transforms. The focused
 // (or hovered) card lifts by translateY(-5px) (see .card:focus-visible/

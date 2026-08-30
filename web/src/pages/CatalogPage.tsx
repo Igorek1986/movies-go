@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react
 import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, NAV_H } from '@/utils/scrollNav'
+import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, NAV_H, focusTopNavActive } from '@/utils/scrollNav'
 import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
@@ -786,20 +786,27 @@ export default function CatalogPage() {
   }, [])
 
   // Restore scroll on mount.
-  // If ?cat= is in URL — expand that category and rAF-poll for the hash card.
-  // If cache is warm — content renders synchronously, scroll restores immediately.
+  // If a category is expanded (from the ?cat= URL param, or from
+  // _cache.expandedCategory — see its comment) — CategoryView owns restoring
+  // its own scroll/focus and this effect must stay out of the way entirely.
   // Otherwise fall back to hash-based scroll for the first visit.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const catParam = params.get('cat')
     const hash = window.location.hash.slice(1)
+    // expandedCategory (component state) is what actually decides whether
+    // CategoryView renders — catParam alone missed the cache-restored case
+    // (browser back landing on a bare /catalog with no ?cat=), letting this
+    // effect's own window.scrollTo(_cache.scrollY) below fire right after
+    // CategoryView had already correctly restored its own scroll, snapping
+    // the page to the top-level view's unrelated scroll position instead.
+    const resolvedCat = catParam || expandedCategory
 
-    if (catParam) {
-      // expandedCategory is already set from the URL initial state — just clean up the URL.
-      window.history.replaceState(null, '', window.location.pathname)
+    if (resolvedCat) {
+      if (catParam) window.history.replaceState(null, '', window.location.pathname)
       // CategoryView restores its own scroll from _cache.catView.
       // Fall back to hash polling only when there is no cache (first visit).
-      if (_cache.catView?.id === catParam) return
+      if (_cache.catView?.id === resolvedCat) return
       if (!hash) return
       let cancelled = false
       let attempts = 0
@@ -1092,7 +1099,7 @@ export default function CatalogPage() {
         setSearchValue('')
         setSearchQuery('')
         setSearchOpen(false)
-        document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+        focusTopNavActive()
         return
       }
 
@@ -1120,7 +1127,7 @@ export default function CatalogPage() {
             // search icon in the nav (no such bridge for an expanded
             // category, which has no search box to return to).
             if (!expandedCategory && idx - cols < 0) {
-              document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+              focusTopNavActive()
               return
             }
             next = Math.max(idx - cols, 0)
@@ -1152,10 +1159,9 @@ export default function CatalogPage() {
         if (layout === 'hero') {
           const dir = e.key === 'ArrowDown' ? 1 : -1
           if (dir < 0 && activeCategoryIndex === 0) {
-            // The search icon is the first item in the top nav — bridge
-            // straight to it (not the active page link) so ArrowUp always
-            // lands on whatever's leftmost, matching the visual order.
-            document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+            // Bridge up to the current page's own nav link (not the search
+            // icon) — matches focusTopNavActive's own reasoning.
+            focusTopNavActive()
             return
           }
           switchCategory(dir)
@@ -1170,7 +1176,7 @@ export default function CatalogPage() {
         const rowIdx = allRows.indexOf(rowInner)
         const targetRowIdx = e.key === 'ArrowDown' ? rowIdx + 1 : rowIdx - 1
         if (targetRowIdx < 0) {
-          document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+          focusTopNavActive()
           return
         }
         if (targetRowIdx >= allRows.length) return
@@ -1422,7 +1428,7 @@ export default function CatalogPage() {
                     } else if (e.key === 'ArrowUp' || e.key === 'Escape') {
                       e.preventDefault()
                       e.stopPropagation()
-                      document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+                      focusTopNavActive()
                     }
                   }}
                 />

@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, getGridCols, NAV_H } from '@/utils/scrollNav'
+import { scrollV, getGridCols, NAV_H, focusTopNavActive } from '@/utils/scrollNav'
 import { useActiveProfile, ACTIVE_PROFILE_STORAGE_KEY, type Device, type Profile } from '@/contexts/ActiveProfileContext'
 import styles from './HistoryPage.module.scss'
 
@@ -350,7 +350,7 @@ export default function HistoryPage() {
           target?.focus({ preventScroll: true })
         } else if (e.key === 'ArrowUp' && inSearch) {
           e.preventDefault()
-          document.querySelector<HTMLElement>('[data-top-nav] [data-top-nav-search]')?.focus()
+          focusTopNavActive()
         } else if (e.key === 'ArrowUp' && inSort) {
           e.preventDefault()
           document.querySelector<HTMLElement>('[data-hist-filter]')?.focus()
