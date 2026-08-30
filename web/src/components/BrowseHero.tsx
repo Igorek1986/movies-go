@@ -12,6 +12,12 @@ export interface HeroLiteItem {
   title?: string
   name?: string
   poster_path: string | null
+  // The list endpoints (categories/media-library) already carry this — using
+  // it lets the real backdrop show immediately on activation instead of
+  // waiting on the full /api/media-card/{id} fetch below (detail) to resolve
+  // first, which is what caused a poster flash on a card genuinely never
+  // seen this session (see useCrossfadeBg's isPoster fallback).
+  backdrop_path?: string | null
   vote_average?: number
   release_date?: string
   first_air_date?: string
@@ -212,7 +218,11 @@ export function BrowseHero({ item, detail, onOpen }: {
   detail: HeroDetail | null
   onOpen: () => void
 }) {
-  const backdropSrc = item && detail?.backdrop_path ? tmdbUrl(detail.backdrop_path, 'w1280') : null
+  // Prefer the list item's own backdrop_path (already there the instant this
+  // item is focused) over detail's — detail carries the same field, but only
+  // once its own fetch resolves (see backdrop_path's comment on HeroLiteItem).
+  const rawBackdrop = item?.backdrop_path || detail?.backdrop_path
+  const backdropSrc = item && rawBackdrop ? tmdbUrl(rawBackdrop, 'w1280') : null
   const bg = useCrossfadeBg(item, backdropSrc, detail !== null)
   const { layers, activeKey } = useBgLayers(bg)
 
