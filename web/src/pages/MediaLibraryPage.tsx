@@ -135,7 +135,21 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
   // Profile (or device) switch — the row already fired its one-shot fetch under the
   // old identity, so without this the loadedRef latch would keep it stuck showing
   // the previous profile's data forever.
+  //
+  // Guarded against firing on mount: a deps-effect always runs on the first
+  // commit too, so this used to wipe every freshly mounted row's initialCache
+  // back to null and refetch it — on every single carousel switch, not just an
+  // actual profile change. That threw away the cache (a pointless round trip
+  // each switch) and, worse, tore the just-focused card out of the DOM a frame
+  // after the row's auto-focus had already latched itself as done, stranding
+  // keyboard focus on <body>. CatalogPage never hit this: it has no such
+  // effect, keying its rows on `${id}_${token}_${profileId}` instead so a
+  // profile change remounts them outright.
+  const rowIdentityRef = useRef(`${token}|${profileId}`)
   useEffect(() => {
+    const identity = `${token}|${profileId}`
+    if (rowIdentityRef.current === identity) return
+    rowIdentityRef.current = identity
     loadedRef.current = false
     setItems(null)
     setTotalPages(1)
@@ -159,14 +173,32 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
   }, [items, onEmpty])
 
   useEffect(() => {
-    if (autoFocusIdx === undefined || autoFocusAppliedRef.current || !items?.length) return
+    // Back to loading (a real profile switch wipes the row) — re-arm, so the
+    // restore runs again once the items return instead of being skipped by a
+    // latch left over from before the wipe.
+    if (items === null) { autoFocusAppliedRef.current = false; return }
+    if (autoFocusIdx === undefined || autoFocusAppliedRef.current || !items.length) return
     autoFocusAppliedRef.current = true
+    const idx = Math.min(autoFocusIdx, items.length - 1)
+    // Activate the hero banner directly here, not only through the card's
+    // own onFocus — a mouse click landing on a nav link keeps real DOM focus
+    // there (or some other interaction beats our focus() call to the punch),
+    // and when that happens onFocus never fires, so hero.item stayed null
+    // and BrowseHero rendered nothing at all. This guarantees the banner
+    // populates regardless of whether the focus() below actually lands.
+    onActivate?.(items[idx])
     requestAnimationFrame(() => {
       const cards = rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]')
       if (!cards?.length) return
-      cards[Math.min(autoFocusIdx, cards.length - 1)]?.focus({ preventScroll: true })
+      const target = cards[Math.min(idx, cards.length - 1)]
+      target?.focus({ preventScroll: true })
+      // See CatalogPage's identical CategoryRow effect — restoring focus
+      // deep into the row (e.g. back from an expanded status via Backspace)
+      // needs the row scrolled to it too, instantly (the row should already
+      // be showing the right thing on arrival, not visibly scroll to it).
+      if (target) scrollH(target, true)
     })
-  }, [items, autoFocusIdx])
+  }, [items, autoFocusIdx, onActivate])
 
   if (items !== null && items.length === 0) return null
 
@@ -195,6 +227,8 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
             e.preventDefault()
             if (e.key === 'ArrowRight') {
               if (idx === cards.length - 1) {
+                // ArrowRight past the last real card opens the status
+                // directly — see CatalogPage's identical CategoryRow.
                 if (hasMore) onExpand(status)
               } else {
                 const next = cards[idx + 1]
@@ -323,7 +357,16 @@ export default function MediaLibraryPage() {
   // equivalent for.
   const [layout] = useState(() => getEffectiveBrowseLayout())
   const hero = useHeroPreview<LibraryItem>()
-  const handleActivate = useCallback((item: LibraryItem) => hero.activate(item), [hero.activate])
+  // Also marks the grid as focused here, not just via the onFocusIn listener
+  // below — the row's own mount-time auto-focus effect calls this directly
+  // to guarantee the hero banner populates even when the real .focus() call
+  // it also makes doesn't stick (e.g. a mouse click on the nav link keeping
+  // real DOM focus there); without this the banner would show correctly but
+  // the card itself would never get its .cardHeroActive border.
+  const handleActivate = useCallback((item: LibraryItem) => {
+    hero.activate(item)
+    setCardGridFocused(true)
+  }, [hero.activate])
 
   // Hero layout: non-scrolling carousel, same model as CatalogPage — exactly
   // one status's row mounted at a time, pinned to the bottom via CSS, never
@@ -334,11 +377,44 @@ export default function MediaLibraryPage() {
   const [transition, setTransition] = useState<{ prevIndex: number; dir: 1 | -1 } | null>(null)
   const transitionTimerRef = useRef<number | null>(null)
   useEffect(() => () => { if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current) }, [])
+  // Which way we were actually headed when an empty status was hit — an
+  // empty status reached via ArrowUp must keep skipping backward, not
+  // forward: hard-coding +1 here used to override the real direction, so
+  // going up onto a run of empty statuses (common in Моё — most people have
+  // nothing in several of these) silently reversed course, which is what
+  // read as focus "getting lost". Defaults to 1 for skipping past empty
+  // leading statuses on first load, before any real switch has happened.
+  const lastDirRef = useRef<1 | -1>(1)
+  // Statuses that reported themselves empty, so the skip below can jump the
+  // whole run of them at once instead of clamping onto one.
+  const emptyStatusesRef = useRef<Set<StatusKey>>(new Set())
 
   const handleEmptyStatus = useCallback(() => {
     if (transitionTimerRef.current) { window.clearTimeout(transitionTimerRef.current); transitionTimerRef.current = null }
     setTransition(null)
-    setActiveStatusIndex(idx => Math.min(idx + 1, ROW_ORDER.length - 1))
+    setActiveStatusIndex(idx => {
+      emptyStatusesRef.current.add(ROW_ORDER[idx])
+      // Walk to the first status not already known to be empty. Clamping to
+      // the range end instead (the old Math.max/Math.min) landed right back
+      // on this same empty status, which renders null — so the carousel sat
+      // on a row with no cards in it at all and there was physically nothing
+      // for focus to be on. Most statuses here are empty for most people
+      // (unlike Catalog's categories), which is why only Моё showed this.
+      const scan = (from: number, step: number) => {
+        for (let i = from; i >= 0 && i < ROW_ORDER.length; i += step) {
+          if (!emptyStatusesRef.current.has(ROW_ORDER[i])) return i
+        }
+        return -1
+      }
+      const dir = lastDirRef.current
+      // Nothing left the way we were headed (ran off the end of a trailing
+      // run of empty statuses) — fall back to the opposite direction rather
+      // than stranding the carousel on an empty row.
+      const ahead = scan(idx + dir, dir)
+      if (ahead !== -1) return ahead
+      const back = scan(idx - dir, -dir)
+      return back !== -1 ? back : idx
+    })
   }, [])
 
   const handleItemsLoaded = useCallback((status: StatusKey, cache: RowCache) => {
@@ -346,6 +422,7 @@ export default function MediaLibraryPage() {
   }, [])
 
   const switchStatus = useCallback((dir: 1 | -1) => {
+    lastDirRef.current = dir
     setActiveStatusIndex(idx => {
       const next = idx + dir
       if (next < 0 || next >= ROW_ORDER.length) return idx
@@ -442,13 +519,28 @@ export default function MediaLibraryPage() {
 
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         if (!focused?.hasAttribute('data-card')) {
-          if (e.key === 'ArrowDown') {
-            e.preventDefault()
-            const first = document.querySelector<HTMLElement>('[data-card]')
-            first?.focus({ preventScroll: true })
+          // ArrowDown steps into the grid from anywhere (including the top
+          // nav). ArrowUp only recovers when focus was genuinely lost — it
+          // has to, or the page is stuck: with focus back on <body> nothing
+          // handles the arrows and Left/Right fall through to the nav panel
+          // instead of walking the row. But it must not fire while focus is
+          // legitimately up in the nav, or Up would yank you back down.
+          if (e.key === 'ArrowUp' && focused && focused !== document.body) return
+          e.preventDefault()
+          // Mid-switch the outgoing row is still mounted and comes first in
+          // the DOM, so take the last row — always the incoming/active one —
+          // rather than recovering onto a row that's on its way out.
+          const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-row-id]'))
+          const row = layout === 'hero' ? rows[rows.length - 1] : rows[0]
+          const cards = Array.from(row?.querySelectorAll<HTMLElement>('[data-card]') ?? [])
+          const savedIdx = row ? lastRowFocusIdx.current.get(row.dataset.rowId!) ?? 0 : 0
+          const target = cards[Math.min(savedIdx, cards.length - 1)]
+          target?.focus({ preventScroll: true })
+          if (target) {
+            scrollH(target, true)
             // Hero carousel: the active row is always already pinned to the
             // bottom via CSS, nothing to scroll into view.
-            if (layout !== 'hero' && first) scrollV(first)
+            if (layout !== 'hero') scrollV(target)
           }
           return
         }

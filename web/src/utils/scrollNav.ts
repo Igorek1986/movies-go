@@ -24,14 +24,28 @@ export function scrollV(el: HTMLElement) {
 
 // Scroll a row's horizontal scroll container so el is centered — shared by
 // CatalogPage and MediaLibraryPage, whose rows both mark their scroll
-// container with data-row-scroll.
-export function scrollH(el: HTMLElement) {
+// container with data-row-scroll. `instant` is for restoring a row to where
+// it should already be (e.g. back from an expanded category) rather than
+// animating a real move — Chrome applies the container's own
+// `scroll-behavior: smooth` (see .rowScroll) to a plain `scrollLeft`
+// assignment too, not just scrollTo, so getting a real instant jump means
+// toggling scroll-behavior off for that one assignment and restoring it
+// right after, rather than just skipping scrollTo.
+export function scrollH(el: HTMLElement, instant = false) {
   const scroll = el.closest<HTMLElement>('[data-row-scroll]')
   if (!scroll) return
   const sr = scroll.getBoundingClientRect()
   const cr = el.getBoundingClientRect()
   const relCenter = cr.left - sr.left + scroll.scrollLeft + cr.width / 2
-  scroll.scrollTo({ left: relCenter - scroll.clientWidth / 2 })
+  const left = relCenter - scroll.clientWidth / 2
+  if (instant) {
+    const prevBehavior = scroll.style.scrollBehavior
+    scroll.style.scrollBehavior = 'auto'
+    scroll.scrollLeft = left
+    scroll.style.scrollBehavior = prevBehavior
+  } else {
+    scroll.scrollTo({ left })
+  }
 }
 
 // Pin el to the bottom of the viewport (with a small margin) instead of

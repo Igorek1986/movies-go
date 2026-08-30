@@ -261,12 +261,29 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
   useEffect(() => {
     if (autoFocusIdx === undefined || autoFocusAppliedRef.current || !items?.length) return
     autoFocusAppliedRef.current = true
+    const idx = Math.min(autoFocusIdx, items.length - 1)
+    // Activate the hero banner directly here, not only through the card's
+    // own onFocus — a mouse click landing on a nav link keeps real DOM focus
+    // there (or some other interaction beats our focus() call to the punch),
+    // and when that happens onFocus never fires, so hero.item stayed null
+    // and BrowseHero rendered nothing at all. This guarantees the banner
+    // populates regardless of whether the focus() below actually lands.
+    onActivate?.(items[idx])
     requestAnimationFrame(() => {
       const cards = rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]')
       if (!cards?.length) return
-      cards[Math.min(autoFocusIdx, cards.length - 1)]?.focus({ preventScroll: true })
+      const target = cards[Math.min(idx, cards.length - 1)]
+      target?.focus({ preventScroll: true })
+      // Restoring focus deep into the row (e.g. coming back from an expanded
+      // category via Backspace, where autoFocusIdx can be far past what's
+      // scrolled into view) needs the row scrolled to it too — Classic
+      // layout's pendingFocus effect already does this; this is hero
+      // carousel's equivalent path. Instant, not animated — this is the row
+      // snapping to where it should already be on arrival, not a move the
+      // user should watch happen.
+      if (target) scrollH(target, true)
     })
-  }, [items, autoFocusIdx])
+  }, [items, autoFocusIdx, onActivate])
 
   useEffect(() => {
     if (items === null) return
@@ -347,6 +364,10 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
             e.preventDefault()
             if (e.key === 'ArrowRight') {
               if (idx === cards.length - 1) {
+                // ArrowRight past the last real card opens the category
+                // directly — the "Все →" card at the row's end (rendered
+                // below) is there so it's visible while scrolling/hovering,
+                // not a separate keyboard stop to land on first.
                 if (hasMore) onExpandCategory(category.id, items?.length ?? 0)
               } else {
                 const next = cards[idx + 1]
@@ -392,7 +413,7 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
             <div className={styles.rowCard} key="expand-btn">
               <button
                 className={styles.rowExpandBtn}
-                onClick={() => onExpandCategory(category.id)}
+                onClick={() => onExpandCategory(category.id, items?.length ?? 0)}
                 tabIndex={-1}
               >
                 Все →
@@ -647,7 +668,16 @@ export default function CatalogPage() {
   // equivalent for.
   const [layout] = useState(() => getEffectiveBrowseLayout())
   const hero = useHeroPreview<MediaItem>()
-  const handleActivate = useCallback((item: MediaItem) => hero.activate(item), [hero.activate])
+  // Also marks the grid as focused here, not just via the onFocusIn listener
+  // below — see MediaLibraryPage's identical handleActivate for why: the
+  // row's own mount-time auto-focus effect calls this directly so the hero
+  // banner populates even when the real .focus() call it also makes doesn't
+  // stick, and without this the card's .cardHeroActive border would still
+  // never show even though the banner did.
+  const handleActivate = useCallback((item: MediaItem) => {
+    hero.activate(item)
+    setCardGridFocused(true)
+  }, [hero.activate])
 
   // Hero layout: non-scrolling carousel (Lampa TV-style) — exactly one
   // category's row is mounted at a time, always pinned to the bottom via CSS
@@ -664,7 +694,6 @@ export default function CatalogPage() {
   const [transition, setTransition] = useState<{ prevIndex: number; dir: 1 | -1 } | null>(null)
   const transitionTimerRef = useRef<number | null>(null)
   useEffect(() => () => { if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current) }, [])
-
   const handleEmptyCategory = useCallback(() => {
     // This category has nothing to show — silently skip to the next one
     // instead of leaving a blank screen; no carousel animation for an
