@@ -1,9 +1,21 @@
 import { useEffect, useRef, lazy, Suspense } from 'react'
-import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, Link, useLocation, useNavigationType } from 'react-router-dom'
 
+// Skipped on POP (browser back/forward): that's exactly when a page's own
+// restoration logic (e.g. CatalogPage's expanded-category scroll/focus
+// restore) is trying to put the user back where they were — this effect is
+// a plain useEffect, which always runs after any useLayoutEffect in the
+// same commit (React runs layout effects, children-before-parents, before
+// any passive effects, regardless of tree depth), so unconditionally
+// resetting to (0,0) here silently overwrote a same-commit restore no
+// matter which page owned it.
 function ScrollToTop() {
   const { pathname } = useLocation()
-  useEffect(() => { window.scrollTo(0, 0) }, [pathname])
+  const navType = useNavigationType()
+  useEffect(() => {
+    if (navType === 'POP') return
+    window.scrollTo(0, 0)
+  }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
   return null
 }
 import { useAuth } from '@/hooks/useAuth'
