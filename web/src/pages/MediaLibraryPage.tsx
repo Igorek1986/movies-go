@@ -43,6 +43,16 @@ const _rowCache: Partial<Record<StatusKey, RowCache>> = {}
 // Profile the cache belongs to — cleared on switch (see CatalogPage's
 // _cache.profileKey for the same reasoning).
 let _libProfileKey: string | null = null
+// Per-row last-focused card index — module-level for the same reason as
+// _rowCache above: a component-local ref forgot this on every remount
+// (including just opening a card's own detail page and coming back), so
+// the hero carousel's autoFocusIdx fell back to 0, landing back on the
+// row's first card instead of whichever one had actually been focused.
+const _lastRowFocusIdx = new Map<string, number>()
+// Hero carousel: which status/row was active — same reasoning as
+// _lastRowFocusIdx above (component state alone forgot this across a
+// remount, snapping back to the first row every time).
+let _activeStatusIndex = 0
 
 // «Продолжить просмотр» — не subjective_statuses, а прогресс по таймкодам (карточки
 // с прогрессом ниже watched_threshold), отдаётся отдельным эндпоинтом /continues
@@ -350,7 +360,6 @@ export default function MediaLibraryPage() {
   const { activeDevice, activeProfile, loaded } = useActiveProfile()
 
   const [expanded, setExpanded] = useState<StatusKey | null>(null)
-  const lastRowFocusIdx = useRef<Map<string, number>>(new Map())
 
   // Search — same floating-bar model as CatalogPage, opened by the header's
   // search icon (see Layout.tsx's handleBottomSearch). Searches across the
@@ -392,7 +401,10 @@ export default function MediaLibraryPage() {
   // Hero layout: non-scrolling carousel, same model as CatalogPage — exactly
   // one status's row mounted at a time, pinned to the bottom via CSS, never
   // scrolled. ArrowUp/Down (or a swipe) swaps which status that is.
-  const [activeStatusIndex, setActiveStatusIndex] = useState(0)
+  // Initial value (and kept in sync below) from the module-level
+  // _activeStatusIndex — see its declaration for why.
+  const [activeStatusIndex, setActiveStatusIndex] = useState(() => _activeStatusIndex)
+  useEffect(() => { _activeStatusIndex = activeStatusIndex }, [activeStatusIndex])
   // Drum-carousel row switch — see CatalogPage's identical `transition`
   // state for how the two-layer slide works.
   const [transition, setTransition] = useState<{ prevIndex: number; dir: 1 | -1 } | null>(null)
@@ -590,7 +602,7 @@ export default function MediaLibraryPage() {
       const rowId = rowInner.dataset.rowId!
       const cards = Array.from(rowInner.querySelectorAll<HTMLElement>('[data-card]'))
       const idx = cards.indexOf(el)
-      if (idx >= 0) lastRowFocusIdx.current.set(rowId, idx)
+      if (idx >= 0) _lastRowFocusIdx.set(rowId, idx)
     }
     document.addEventListener('focusin', onFocusIn)
     return () => document.removeEventListener('focusin', onFocusIn)
@@ -678,7 +690,7 @@ export default function MediaLibraryPage() {
           const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-row-id]'))
           const row = layout === 'hero' ? rows[rows.length - 1] : rows[0]
           const cards = Array.from(row?.querySelectorAll<HTMLElement>('[data-card]') ?? [])
-          const savedIdx = row ? lastRowFocusIdx.current.get(row.dataset.rowId!) ?? 0 : 0
+          const savedIdx = row ? _lastRowFocusIdx.get(row.dataset.rowId!) ?? 0 : 0
           const target = cards[Math.min(savedIdx, cards.length - 1)]
           target?.focus({ preventScroll: true })
           if (target) {
@@ -714,7 +726,7 @@ export default function MediaLibraryPage() {
         if (targetRowIdx < 0 || targetRowIdx >= allRows.length) return
         const targetRow = allRows[targetRowIdx]
         const targetRowId = targetRow.dataset.rowId!
-        const savedIdx = lastRowFocusIdx.current.get(targetRowId) ?? 0
+        const savedIdx = _lastRowFocusIdx.get(targetRowId) ?? 0
         const targetCards = Array.from(targetRow.querySelectorAll<HTMLElement>('[data-card]'))
         if (!targetCards.length) return
         const target = targetCards[Math.min(savedIdx, targetCards.length - 1)]
@@ -821,7 +833,7 @@ export default function MediaLibraryPage() {
                       initialCache={_rowCache[activeStatus]}
                       onItemsLoaded={handleItemsLoaded}
                       onEmpty={handleEmptyStatus}
-                      autoFocusIdx={lastRowFocusIdx.current.get(activeStatus) ?? 0}
+                      autoFocusIdx={_lastRowFocusIdx.get(activeStatus) ?? 0}
                       hideHeader
                     />
                   </div>

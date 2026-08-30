@@ -56,6 +56,17 @@ const _cache = {
   // panel) must still be detected on remount; a component-local ref would reset
   // to "unknown" on every mount and miss changes that happened while away.
   profileKey: null as string | null,
+  // Per-row last-focused card index — module-level for the same reason as
+  // everything else here: opening a card's own detail page and coming back
+  // is a real route change, fully unmounting/remounting CatalogPage, so a
+  // component-local ref forgot this and the hero carousel's autoFocusIdx
+  // fell back to 0, landing back on the row's first card instead of
+  // whichever one had actually been focused.
+  lastRowFocusIdx: new Map<string, number>(),
+  // Hero carousel: which category/row was active — same reasoning as
+  // lastRowFocusIdx above (component state alone forgot this across a
+  // detail-page round trip, snapping back to the first row every time).
+  activeCategoryIndex: 0,
 }
 
 export function invalidateCatalogCache() {
@@ -695,7 +706,13 @@ export default function CatalogPage() {
   // be scrolled into place at all, so there's no scroll-position bookkeeping
   // here — CategoryRow's own onFocus→onActivate wiring drives the hero from
   // whichever card ends up focused, same as any other navigation.
-  const [activeCategoryIndex, setActiveCategoryIndex] = useState(0)
+  // Initial value (and kept in sync below) from _cache — same reasoning as
+  // _cache.lastRowFocusIdx: opening a card's own detail page and coming back
+  // is a real route change that fully remounts CatalogPage, so plain
+  // component state here forgot which category/row you'd switched to and
+  // always landed back on the first one.
+  const [activeCategoryIndex, setActiveCategoryIndex] = useState(() => _cache.activeCategoryIndex)
+  useEffect(() => { _cache.activeCategoryIndex = activeCategoryIndex }, [activeCategoryIndex])
   // Drum-carousel row switch — both the outgoing (prevIndex) and incoming
   // (activeCategoryIndex) rows render at once, sliding together the same
   // direction (see .carouselViewport/CAROUSEL_TRANSITION_MS), for as long as
@@ -777,6 +794,15 @@ export default function CatalogPage() {
       return () => { cancelled = true }
     }
 
+    // Hero carousel: the page doesn't scroll at all (see .pageLocked), and
+    // CategoryRow's own autoFocusIdx (backed by _cache.lastRowFocusIdx) is
+    // what puts focus back on the right card — a plain DOM scrollIntoView
+    // here, with no idea about the carousel's transform/drum-slide layers or
+    // its own horizontal scroll math, fought with that instead of doing
+    // anything useful, landing the row on a half-scrolled position that
+    // matched neither the hash card nor whichever one autoFocusIdx focused.
+    if (layout === 'hero') return
+
     if (_cache.categories.length > 0 && _cache.scrollY > 0) {
       window.scrollTo({ top: _cache.scrollY, behavior: 'instant' })
       if (window.location.hash) {
@@ -805,7 +831,6 @@ export default function CatalogPage() {
     _cache.rows[id] = rowCache
   }, [])
   const dragSrcRef = useRef<string | null>(null)
-  const lastRowFocusIdx = useRef<Map<string, number>>(new Map())
   // Whether a card in the grid currently has keyboard focus — the hero
   // border (.cardHeroActive) only shows while true, so it disappears the
   // moment focus leaves for the top menu/search instead of staying stuck on
@@ -827,7 +852,7 @@ export default function CatalogPage() {
       const rowId = rowInner.dataset.rowId!
       const cards = Array.from(rowInner.querySelectorAll<HTMLElement>('[data-card]'))
       const idx = cards.indexOf(el)
-      if (idx >= 0) lastRowFocusIdx.current.set(rowId, idx)
+      if (idx >= 0) _cache.lastRowFocusIdx.set(rowId, idx)
     }
     document.addEventListener('focusin', onFocusIn)
     return () => document.removeEventListener('focusin', onFocusIn)
@@ -1125,7 +1150,7 @@ export default function CatalogPage() {
         if (targetRowIdx >= allRows.length) return
         const targetRow = allRows[targetRowIdx]
         const targetRowId = targetRow.dataset.rowId!
-        const savedIdx = lastRowFocusIdx.current.get(targetRowId) ?? 0
+        const savedIdx = _cache.lastRowFocusIdx.get(targetRowId) ?? 0
         const targetCards = Array.from(targetRow.querySelectorAll<HTMLElement>('[data-card]'))
         if (!targetCards.length) {
           scrollV(targetRow)
@@ -1305,7 +1330,7 @@ export default function CatalogPage() {
                   initialCache={_cache.rows[categories[activeCategoryIndex].id]}
                   onItemsLoaded={handleItemsLoaded}
                   onEmpty={handleEmptyCategory}
-                  autoFocusIdx={lastRowFocusIdx.current.get(categories[activeCategoryIndex].id) ?? 0}
+                  autoFocusIdx={_cache.lastRowFocusIdx.get(categories[activeCategoryIndex].id) ?? 0}
                   hideHeader
                 />
               </div>
