@@ -43,7 +43,7 @@ export function RemoteIconPicker({ current, onSelect, onClose }: RemoteIconPicke
   }
 
   return (
-    <div className={styles.overlay} onClick={onClose} onKeyDown={handleKeyDown}>
+    <div className={styles.overlay} data-remote-overlay onClick={onClose} onKeyDown={handleKeyDown}>
       <div ref={gridRef} className={styles.grid} onClick={e => e.stopPropagation()}>
         {PROFILE_ICON_IDS.map(id => (
           <button

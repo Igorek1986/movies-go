@@ -315,6 +315,38 @@ export default function ProfilesRemoteView() {
     return () => window.removeEventListener('keydown', onBackspaceCapture, true)
   }, [])
 
+  // Clicking outside the drilled-into panel, or the bottom-nav/desktop-panel
+  // "Назад" button, pops one drill-down level too — same "go back" as
+  // Backspace, instead of clicking through to whatever's underneath (the
+  // page background) or leaving the page entirely (Назад's normal history
+  // navigation). Capture phase so the "Назад" button's own onClick (which
+  // would otherwise call Layout's handleBottomBack and navigate away) never
+  // fires — same idea as the Backspace listener above.
+  useEffect(() => {
+    function onCaptureClick(e: MouseEvent) {
+      const { activeSection: sec, deviceSubview: sub, profilePluginsView: ppv, interfaceSubview: isub } = navRef.current
+      if (!sec && !sub && !ppv && !isub) return
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('[data-key="back"]')) {
+        e.preventDefault()
+        e.stopPropagation()
+        goBack()
+        return
+      }
+      // Everything below only cares about the empty backdrop — leave normal
+      // clicks (inside the panel itself, a RemoteDialog/RemoteSelect/
+      // RemoteIconPicker overlay, the top nav, or any other bottom-nav
+      // button) alone.
+      if (target.closest(`.${styles.section}`)) return
+      if (target.closest('[data-remote-overlay]')) return
+      if (target.closest('[data-top-nav]') || target.closest('[data-bottom-nav]')) return
+      goBack()
+    }
+    window.addEventListener('click', onCaptureClick, true)
+    return () => window.removeEventListener('click', onCaptureClick, true)
+  }, [])
+
   const menu: { id: SectionId; title: React.ReactNode }[] = [
     {
       id: 'devices', title: (

@@ -91,7 +91,7 @@ export function RemoteSelect({ value, onChange, options, disabled, placeholder, 
       )}
 
       {open && (
-        <div className={styles.overlay} onClick={close} onKeyDown={handleKeyDown}>
+        <div className={styles.overlay} data-remote-overlay onClick={close} onKeyDown={handleKeyDown}>
           <div ref={listRef} className={styles.list} onClick={e => e.stopPropagation()}>
             {label && <p className={styles.label}>{label}</p>}
             {options.map(o => (

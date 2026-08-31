@@ -77,11 +77,12 @@ export function BottomNav({
 }) {
   const navClass = `${styles.bottomNav}${position !== 'bottom' ? ' ' + styles[position] : ''}${forceShow ? ' ' + styles.forceShow : ''}`
   return (
-    <nav ref={navRef} className={navClass} aria-label="Быстрая навигация" onBlur={onBlur}>
+    <nav ref={navRef} className={navClass} aria-label="Быстрая навигация" data-bottom-nav onBlur={onBlur}>
       {items.map(item => item.to ? (
         <NavLink
           key={item.key}
           to={item.to}
+          data-key={item.key}
           className={({ isActive }) => `${styles.bottomNavItem}${isActive ? ' ' + styles.bottomNavItemActive : ''}`}
           onClick={item.onClick}
         >
@@ -89,7 +90,7 @@ export function BottomNav({
           <span>{item.label}</span>
         </NavLink>
       ) : (
-        <button key={item.key} type="button" className={styles.bottomNavItem} onClick={item.onClick}>
+        <button key={item.key} type="button" data-key={item.key} className={styles.bottomNavItem} onClick={item.onClick}>
           {item.icon}
           <span>{item.label}</span>
         </button>

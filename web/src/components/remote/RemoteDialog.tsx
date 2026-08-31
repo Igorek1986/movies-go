@@ -74,7 +74,7 @@ export function RemoteDialog({
   }
 
   return (
-    <div className={styles.overlay} onClick={onCancel} onKeyDown={handleKeyDown}>
+    <div className={styles.overlay} data-remote-overlay onClick={onCancel} onKeyDown={handleKeyDown}>
       <div ref={rootRef} className={styles.dialog} onClick={e => e.stopPropagation()}>
         {title && <h3 className={styles.title}>{title}</h3>}
         <p className={styles.message}>{message}</p>
