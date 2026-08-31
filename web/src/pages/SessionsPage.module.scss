@@ -97,3 +97,12 @@
     }
   }
 }
+
+// Site-wide keyboard row-nav focus ring (see CardDetailPage's shared
+// [data-nav-item] rule) — repeated here rather than relied on globally
+// since SessionsPage is a separate lazy chunk that may not have that
+// stylesheet loaded.
+:global([data-nav-item]:focus-visible) {
+  outline: 2px solid $color-primary;
+  outline-offset: 2px;
+}
