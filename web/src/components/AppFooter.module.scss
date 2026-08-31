@@ -20,6 +20,14 @@
   // padding area around that text stayed transparent, still showing the
   // backdrop image through it.
   background: $color-bg;
+
+  // Same fixed bottom-nav reservation as Layout's own .main (mobile/tablet
+  // only, see its identical rule) — this footer is a plain in-flow element
+  // rendered after .layout (see App.tsx), so without its own bottom padding
+  // its text ends up scrolled underneath the fixed bar instead of above it.
+  @media (max-width: $bp-lg) {
+    padding-bottom: calc(#{$spacing-sm} + #{$bottom-nav-height} + env(safe-area-inset-bottom));
+  }
 }
 
 .tmdbLink {

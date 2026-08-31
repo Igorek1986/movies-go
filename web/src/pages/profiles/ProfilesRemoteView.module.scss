@@ -6,12 +6,60 @@
   gap: $spacing-sm;
   max-width: 720px;
   margin: 0 auto;
+
+  // The top-level category list can outgrow one screen on mobile — cap it
+  // at whatever's left below the top nav and above the fixed bottom nav so
+  // reaching the last row doesn't mean scrolling the whole page past the
+  // fixed bar; .menu (below) scrolls internally instead. A drilled-into
+  // section doesn't need this — it's a bottom sheet instead, see .section.
+  @media (max-width: $bp-lg) {
+    > .menu {
+      max-height: calc(100vh - #{$nav-height} - #{$bottom-nav-height} - #{$spacing-xl} * 2);
+    }
+  }
 }
 
 .section {
   @include card;
   padding: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  // Mobile/tablet only (desktop reaches this view by keyboard row-nav, not
+  // touch, and has no fixed bottom nav to dock against) — turn the
+  // drilled-into section into a bottom sheet: pulled out of the page's
+  // normal flow, docked flush against the fixed bottom nav (no dead gap
+  // below it to tap through), sliding up from behind that nav on first
+  // entry into any section. Height grows with content up to max-height
+  // rather than always filling it — .sectionBody/the nested .menu
+  // (Интерфейс submenu) already handle their own scroll past that point.
+  // No `transform` here (deliberately animating `bottom` below instead,
+  // not translateY) — RemoteIconPicker's own full-viewport overlay is a
+  // `position: fixed` DESCENDANT of this element (rendered inline in the
+  // profile row), and a `transform` on an ancestor would make it fixed
+  // relative to THIS box instead of the real viewport, breaking it exactly
+  // on the mobile widths this rule targets.
+  @media (max-width: $bp-lg) {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(#{$bottom-nav-height} + env(safe-area-inset-bottom));
+    max-height: calc(100vh - #{$nav-height} - env(safe-area-inset-top) - #{$bottom-nav-height} - env(safe-area-inset-bottom) - #{$spacing-lg});
+    z-index: 50;
+    // Full-width/edge-to-edge here (unlike .menu's in-flow card, which keeps
+    // .page's own side margins) — a docked sheet reads as attached to the
+    // bottom nav; a floating card with side gutters looked disconnected
+    // from it. Flat bottom corners for the same reason: rounded ones would
+    // leave two little triangular gaps at the seam against the nav bar.
+    border-radius: $radius-md $radius-md 0 0;
+    animation: sectionSlideUp 220ms ease-out;
+  }
+}
+
+@keyframes sectionSlideUp {
+  from { bottom: -100vh; }
+  to { bottom: calc(#{$bottom-nav-height} + env(safe-area-inset-bottom)); }
 }
 
 // ── Top-level category list (Lampa-style: pick a row, drill into its own
@@ -19,9 +67,10 @@
 .menu {
   @include card;
   padding: 0;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .menuRow {
@@ -92,10 +141,13 @@
 }
 
 .sectionBody {
-  padding: 0 $spacing-lg $spacing-lg;
+  padding: $spacing-md $spacing-lg $spacing-lg;
   display: flex;
   flex-direction: column;
   gap: $spacing-md;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 
   @media (min-width: $bp-md) {
     padding-left: $spacing-lg;

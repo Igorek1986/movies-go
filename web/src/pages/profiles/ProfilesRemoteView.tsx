@@ -110,6 +110,25 @@ export default function ProfilesRemoteView() {
     setActiveSectionState(id)
   }
 
+  // Mobile/tablet only ($bp-lg, matches .section's own bottom-sheet media
+  // query in the CSS): the drilled-into section is a `position: fixed`
+  // sheet detached from the page, which otherwise leaves the near-empty
+  // background page still scrollable underneath it — same scroll-lock idea
+  // as Layout's own mobile drawer (see its menuOpen effect).
+  useEffect(() => {
+    if (activeSection && window.innerWidth <= 1024) {
+      document.body.style.overflow = 'hidden'
+      document.body.style.overscrollBehavior = 'contain'
+    } else {
+      document.body.style.overflow = ''
+      document.body.style.overscrollBehavior = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+      document.body.style.overscrollBehavior = ''
+    }
+  }, [activeSection])
+
   // Remembers the last horizontal focus index (Left/Right) *globally*, not
   // per row — so Up/Down through a column of same-shaped rows (Панель
   // навигации's checkbox/↑/↓ list) stays in that column instead of resetting
