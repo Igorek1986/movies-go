@@ -228,7 +228,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       if (onTopNav && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault()
         e.stopImmediatePropagation()
-        const topLinks = Array.from(document.querySelectorAll<HTMLElement>('[data-top-nav] a, [data-top-nav] [data-top-nav-search]'))
+        const topLinks = Array.from(document.querySelectorAll<HTMLElement>('[data-top-nav] a, [data-top-nav] [data-top-nav-search], [data-top-nav] [data-top-nav-profile]'))
         const i = topLinks.indexOf(activeEl!)
         const next = Math.min(Math.max(i + (e.key === 'ArrowRight' ? 1 : -1), 0), topLinks.length - 1)
         topLinks[next]?.focus()
@@ -368,13 +368,14 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
 
         <a className={styles.brand} href="/">Movies API</a>
 
-        {/* Desktop — data-top-nav wraps both the search button and the link
-            pill row so Layout's own Left/Right cycling (below) and the
-            ArrowUp bridge from CatalogPage/MediaLibraryPage can both reach
-            the button by keyboard, even though it's visually its own item
-            (not part of .navLinks' pill group) and not one of the `a` page
-            links themselves — see the querySelectorAll below, which matches
-            it via data-nav-item instead of tag name. */}
+        {/* Desktop — data-top-nav wraps the search button, the link pill row
+            and ProfileSwitcher's avatar button so Layout's own Left/Right
+            cycling (below) and the ArrowUp bridge from CatalogPage/
+            MediaLibraryPage can all reach them by keyboard, even though
+            they're visually outside (or not all of) .navLinks' pill group
+            and not `a` page links themselves — see the querySelectorAll
+            below, which matches them via data-top-nav-search/
+            data-top-nav-profile instead of tag name. */}
         <div className={styles.navGroup} data-top-nav>
           {/* Catalog search's own field is fixed-position and hidden until
               opened (see CatalogPage's floating bar) — the hero carousel's
@@ -382,11 +383,9 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
               the one entry point that's always reachable regardless of
               layout or which page you're on. data-top-nav-search, not
               data-nav-item — that name is already a site-wide marker (see
-              CardDetailPage.module.scss's bare, unscoped
-              [data-nav-item]:focus-visible rule, which isn't CSS-Modules-
-              scoped and so applies to ANY element with the attribute once
-              that stylesheet has loaded) for the generic row-nav rectangle
-              outline, which isn't the look wanted here. */}
+              the global [data-nav-item]:focus-visible rule in global.scss)
+              for the generic row-nav rectangle outline, which isn't the
+              look wanted here. */}
           <button className={styles.navSearchBtn} data-top-nav-search onClick={handleBottomSearch} aria-label="Поиск" title="Поиск">
             <SearchIcon />
           </button>
