@@ -862,10 +862,16 @@ export default function ProfilesClassicView() {
             </div>
           </details>
 
-          <BottomNavSettings />
-          <CardLayoutSettings />
-          <BrowseLayoutSettings />
-          <SettingsLayoutSettings />
+          {/* ── Интерфейс (bottom nav / card / catalog / settings-page layout) ── */}
+          <details className={styles.details}>
+            <summary className={styles.summary}>Интерфейс</summary>
+            <div className={styles.detailsBody}>
+              <BottomNavSettings />
+              <CardLayoutSettings />
+              <BrowseLayoutSettings />
+              <SettingsLayoutSettings />
+            </div>
+          </details>
 
           {/* ── Account settings ── */}
           <details className={styles.details}>

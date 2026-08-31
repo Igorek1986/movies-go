@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { CARD_LAYOUTS, getStoredCardLayout, setStoredCardLayout, type CardLayout } from '@/utils/cardLayout'
+import { useEffect, useState } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { CARD_LAYOUTS, resolveCardLayout, saveCardLayout, type CardLayout } from '@/utils/cardLayout'
 // Reuses ProfilesPage's own <details>/<summary>/checkbox styles (consistent
 // look with BottomNavSettings) and its .positionRow layout for the radio
 // row — same pattern as BottomNavSettings' Снизу/Справа/Слева picker.
@@ -14,14 +15,19 @@ interface Props {
   bare?: boolean
 }
 
-// Per-device setting (localStorage, like theme) — applies instantly, no
-// save button: CardDetailPage reads it fresh on every mount.
+// Per-account setting (server, see users.card_layout) — applies instantly,
+// no save button: CardDetailPage reads it fresh (via its own useAuth() call)
+// on every mount.
 export function CardLayoutSettings({ bare }: Props = {}) {
-  const [layout, setLayout] = useState<CardLayout>(() => getStoredCardLayout())
+  const { user } = useAuth()
+  const [layout, setLayout] = useState<CardLayout>('hero')
+  useEffect(() => {
+    if (user) setLayout(resolveCardLayout(user.card_layout))
+  }, [user])
 
   function handleChange(next: CardLayout) {
     setLayout(next)
-    setStoredCardLayout(next)
+    saveCardLayout(next)
   }
 
   const body = (

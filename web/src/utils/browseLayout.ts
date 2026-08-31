@@ -1,5 +1,6 @@
-// Per-device visual preference for CatalogPage/MediaLibraryPage (like
-// cardLayout.ts for CardDetailPage — not per-account).
+// Per-account visual preference for CatalogPage/MediaLibraryPage — stored
+// server-side (users.browse_layout, see /api/me and
+// handleSaveInterfacePrefs), same as cardLayout.ts.
 
 export type BrowseLayout = 'hero' | 'classic'
 
@@ -8,16 +9,20 @@ export const BROWSE_LAYOUTS: { id: BrowseLayout; label: string }[] = [
   { id: 'classic', label: 'Классический' },
 ]
 
-const STORAGE_KEY = 'browse_layout'
 const DEFAULT_LAYOUT: BrowseLayout = 'hero'
 
-export function getStoredBrowseLayout(): BrowseLayout {
-  const v = localStorage.getItem(STORAGE_KEY)
-  return v === 'classic' ? 'classic' : DEFAULT_LAYOUT
+// `stored` is user.browse_layout from useAuth().
+export function resolveBrowseLayout(stored: string | null | undefined): BrowseLayout {
+  return stored === 'classic' ? 'classic' : DEFAULT_LAYOUT
 }
 
-export function setStoredBrowseLayout(layout: BrowseLayout) {
-  localStorage.setItem(STORAGE_KEY, layout)
+export async function saveBrowseLayout(layout: BrowseLayout): Promise<boolean> {
+  const res = await fetch('/api/me/interface', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ browse_layout: layout }),
+  })
+  return res.ok
 }
 
 // The hero view is a non-scrolling carousel driven by keyboard/mouse focus —
@@ -30,6 +35,7 @@ function isTouchPrimary(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(hover: none), (pointer: coarse)').matches
 }
 
-export function getEffectiveBrowseLayout(): BrowseLayout {
-  return isTouchPrimary() ? 'classic' : getStoredBrowseLayout()
+// `stored` is user.browse_layout from useAuth().
+export function getEffectiveBrowseLayout(stored: string | null | undefined): BrowseLayout {
+  return isTouchPrimary() ? 'classic' : resolveBrowseLayout(stored)
 }

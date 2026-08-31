@@ -4,6 +4,7 @@ import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
 import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, focusTopNavActive } from '@/utils/scrollNav'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
+import { useAuth } from '@/hooks/useAuth'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
 import styles from './MediaLibraryPage.module.scss'
@@ -359,6 +360,7 @@ export default function MediaLibraryPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { activeDevice, activeProfile, loaded } = useActiveProfile()
+  const { user } = useAuth()
 
   const [expanded, setExpanded] = useState<StatusKey | null>(null)
 
@@ -382,11 +384,11 @@ export default function MediaLibraryPage() {
   // focus leaves for the top menu instead of staying stuck on the last card.
   const [cardGridFocused, setCardGridFocused] = useState(false)
 
-  // Per-device (localStorage) — see BrowseLayoutSettings on /profiles.
+  // Per-account (server) — see BrowseLayoutSettings on /profiles.
   // Forced to Classic on touch devices regardless of the saved preference —
   // the hero carousel is driven by keyboard/mouse focus, which touch has no
   // equivalent for.
-  const [layout] = useState(() => getEffectiveBrowseLayout())
+  const layout = getEffectiveBrowseLayout(user?.browse_layout)
   const hero = useHeroPreview<LibraryItem>()
   // Also marks the grid as focused here, not just via the onFocusIn listener
   // below — the row's own mount-time auto-focus effect calls this directly

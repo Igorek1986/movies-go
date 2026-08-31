@@ -25,8 +25,19 @@ function isTypingTarget(el: Element | null) {
 
 type SectionId =
   | 'devices' | 'link' | 'myshows' | 'telegram' | 'lampacImport' | 'fileImport'
-  | 'notifications' | 'bottomNav' | 'cardLayout' | 'browseLayout' | 'settingsLayout'
+  | 'notifications' | 'interface'
   | 'account' | 'backup'
+
+// The four layout/appearance settings, grouped under one "Интерфейс" menu
+// item with its own one-level submenu (same drill-down idea as devices, just
+// one level instead of three).
+type InterfaceSubId = 'bottomNav' | 'cardLayout' | 'browseLayout' | 'settingsLayout'
+const INTERFACE_SUBMENU: { id: InterfaceSubId; title: string }[] = [
+  { id: 'bottomNav', title: 'Панель навигации (моб./планшет)' },
+  { id: 'cardLayout', title: 'Вид карточки фильма/сериала' },
+  { id: 'browseLayout', title: 'Вид Каталога и Моё' },
+  { id: 'settingsLayout', title: 'Дизайн страницы «Настройки»' },
+]
 
 export default function ProfilesRemoteView() {
   const { dialogEl, confirmDialog, promptDialog } = useRemoteDialog()
@@ -89,8 +100,11 @@ export default function ProfilesRemoteView() {
   // three levels deep instead of one.
   const [deviceSubview, setDeviceSubview] = useState<{ deviceId: number; view: 'profiles' | 'plugins' } | null>(null)
   const [profilePluginsView, setProfilePluginsView] = useState<{ deviceId: number; profileId: string } | null>(null)
-  const navRef = useRef({ activeSection, deviceSubview, profilePluginsView })
-  navRef.current = { activeSection, deviceSubview, profilePluginsView }
+  // "Интерфейс" has its own one-level submenu — same drill-down idea, just
+  // one level instead of devices' three.
+  const [interfaceSubview, setInterfaceSubview] = useState<InterfaceSubId | null>(null)
+  const navRef = useRef({ activeSection, deviceSubview, profilePluginsView, interfaceSubview })
+  navRef.current = { activeSection, deviceSubview, profilePluginsView, interfaceSubview }
 
   function setActiveSection(id: SectionId | null) {
     setActiveSectionState(id)
@@ -265,13 +279,16 @@ export default function ProfilesRemoteView() {
   // <body>).
   const pendingRefocusRowId = useRef<string | null>(null)
   function goBack() {
-    const { activeSection: sec, deviceSubview: sub, profilePluginsView: ppv } = navRef.current
+    const { activeSection: sec, deviceSubview: sub, profilePluginsView: ppv, interfaceSubview: isub } = navRef.current
     if (ppv) {
       pendingRefocusRowId.current = `profile-${ppv.deviceId}-${ppv.profileId || '__default__'}-bottom`
       setProfilePluginsView(null)
     } else if (sub) {
       pendingRefocusRowId.current = `device-${sub.deviceId}`
       setDeviceSubview(null)
+    } else if (isub) {
+      pendingRefocusRowId.current = `iface-menu-${isub}`
+      setInterfaceSubview(null)
     } else if (sec) {
       pendingRefocusRowId.current = `menu-${sec}`
       setActiveSection(null)
@@ -282,14 +299,14 @@ export default function ProfilesRemoteView() {
     const id = pendingRefocusRowId.current
     pendingRefocusRowId.current = null
     document.querySelector<HTMLElement>(`[data-row-id="${id}"] [data-nav-item]`)?.focus()
-  }, [activeSection, deviceSubview, profilePluginsView])
+  }, [activeSection, deviceSubview, profilePluginsView, interfaceSubview])
 
   useEffect(() => {
     function onBackspaceCapture(e: KeyboardEvent) {
       if (e.key !== 'Backspace') return
       if (isTypingTarget(document.activeElement)) return
-      const { activeSection: sec, deviceSubview: sub, profilePluginsView: ppv } = navRef.current
-      if (!sec && !sub && !ppv) return
+      const { activeSection: sec, deviceSubview: sub, profilePluginsView: ppv, interfaceSubview: isub } = navRef.current
+      if (!sec && !sub && !ppv && !isub) return
       e.preventDefault()
       e.stopPropagation()
       goBack()
@@ -314,10 +331,7 @@ export default function ProfilesRemoteView() {
     { id: 'lampacImport', title: 'Импорт таймкодов из LampaC' },
     { id: 'fileImport', title: 'Импорт таймкодов из Lampa' },
     ...(tgStatus?.linked && notifSettings ? [{ id: 'notifications' as const, title: 'Уведомления' }] : []),
-    { id: 'bottomNav', title: 'Панель навигации (моб./планшет)' },
-    { id: 'cardLayout', title: 'Вид карточки фильма/сериала' },
-    { id: 'browseLayout', title: 'Вид Каталога и Моё' },
-    { id: 'settingsLayout', title: 'Дизайн страницы «Настройки»' },
+    { id: 'interface', title: 'Интерфейс' },
     { id: 'account', title: 'Настройки аккаунта' },
     { id: 'backup', title: 'Резервная копия' },
   ]
@@ -329,7 +343,9 @@ export default function ProfilesRemoteView() {
     ? `Плагины — ${currentProfile ? (currentProfile.profile_id === '' ? 'Основной' : currentProfile.name) : ''}`
     : deviceSubview
       ? `${deviceSubview.view === 'profiles' ? 'Профили' : 'Плагины'} — ${currentDevice?.name ?? ''}`
-      : menu.find(m => m.id === activeSection)?.title
+      : interfaceSubview
+        ? INTERFACE_SUBMENU.find(m => m.id === interfaceSubview)?.title
+        : menu.find(m => m.id === activeSection)?.title
 
   return (
     <Layout>
@@ -955,10 +971,23 @@ export default function ProfilesRemoteView() {
               </div>
         )}
 
-        {activeSection === 'bottomNav' && <BottomNavSettings bare />}
-        {activeSection === 'cardLayout' && <CardLayoutSettings bare />}
-        {activeSection === 'browseLayout' && <BrowseLayoutSettings bare />}
-        {activeSection === 'settingsLayout' && <SettingsLayoutSettings bare />}
+        {/* ── Интерфейс: submenu, then whichever sub-section is drilled into ── */}
+        {activeSection === 'interface' && !interfaceSubview && (
+          <div className={styles.menu}>
+            {INTERFACE_SUBMENU.map(item => (
+              <div key={item.id} className={styles.menuRow} data-row-id={`iface-menu-${item.id}`}>
+                <button type="button" className={styles.menuRowBtn} data-nav-item onClick={() => setInterfaceSubview(item.id)}>
+                  <span className={styles.menuRowTitle}>{item.title}</span>
+                  <span className={styles.menuRowChevron}>›</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {interfaceSubview === 'bottomNav' && <BottomNavSettings bare />}
+        {interfaceSubview === 'cardLayout' && <CardLayoutSettings bare />}
+        {interfaceSubview === 'browseLayout' && <BrowseLayoutSettings bare />}
+        {interfaceSubview === 'settingsLayout' && <SettingsLayoutSettings bare />}
 
         {/* ── Account settings ── */}
           {activeSection === 'account' && (

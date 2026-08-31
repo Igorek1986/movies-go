@@ -9,6 +9,9 @@ interface User {
   backup_codes_count: number
   bottom_nav_keys?: string[] | null
   bottom_nav_position?: string | null
+  card_layout?: string | null
+  browse_layout?: string | null
+  settings_layout?: string | null
 }
 
 interface AuthState {

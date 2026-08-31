@@ -17,6 +17,9 @@ type User struct {
 	CreatedAt         time.Time  `db:"created_at"`
 	BottomNavKeys     *string    `db:"bottom_nav_keys"`     // comma-separated, NULL = default set
 	BottomNavPosition *string    `db:"bottom_nav_position"` // "bottom" (default) or "right"
+	CardLayout        *string    `db:"card_layout"`         // "hero" (default) or "classic"
+	BrowseLayout      *string    `db:"browse_layout"`       // "hero" (default) or "classic"
+	SettingsLayout    *string    `db:"settings_layout"`     // "remote" (default) or "classic"
 }
 
 type Session struct {

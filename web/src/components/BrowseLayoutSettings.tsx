@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { BROWSE_LAYOUTS, getStoredBrowseLayout, setStoredBrowseLayout, type BrowseLayout } from '@/utils/browseLayout'
+import { useEffect, useState } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { BROWSE_LAYOUTS, resolveBrowseLayout, saveBrowseLayout, type BrowseLayout } from '@/utils/browseLayout'
 import pageStyles from '@/pages/profiles/ProfilesClassicView.module.scss'
 import rowStyles from './BottomNavSettings.module.scss'
 
@@ -10,14 +11,19 @@ interface Props {
   bare?: boolean
 }
 
-// Per-device setting (localStorage, like cardLayout) — applies instantly, no
-// save button: CatalogPage/MediaLibraryPage read it fresh on every mount.
+// Per-account setting (server, see users.browse_layout) — applies instantly,
+// no save button: CatalogPage/MediaLibraryPage read it fresh (via their own
+// useAuth() call) on every mount.
 export function BrowseLayoutSettings({ bare }: Props = {}) {
-  const [layout, setLayout] = useState<BrowseLayout>(() => getStoredBrowseLayout())
+  const { user } = useAuth()
+  const [layout, setLayout] = useState<BrowseLayout>('hero')
+  useEffect(() => {
+    if (user) setLayout(resolveBrowseLayout(user.browse_layout))
+  }, [user])
 
   function handleChange(next: BrowseLayout) {
     setLayout(next)
-    setStoredBrowseLayout(next)
+    saveBrowseLayout(next)
   }
 
   const body = (

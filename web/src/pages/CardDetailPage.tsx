@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl, tmdbUrl } from '@/utils/poster'
 import { watchedThreshold } from '@/utils/config'
-import { getStoredCardLayout } from '@/utils/cardLayout'
+import { resolveCardLayout } from '@/utils/cardLayout'
 import { qualityLabel, runtimeLabel } from '@/utils/mediaFormat'
 import { useAuth } from '@/hooks/useAuth'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
@@ -1348,10 +1348,10 @@ export default function CardDetailPage() {
 
   const epDurSec = (card.episode_run_time || 0) * 60
 
-  // Per-device (localStorage) — see CardLayoutSettings on /profiles. Read
-  // fresh on every mount, no live-update needed (can't change it without
-  // navigating away from this page).
-  const cardLayout = getStoredCardLayout()
+  // Per-account (server) — see CardLayoutSettings on /profiles. Read fresh
+  // from `user` (already fetched above) on every mount, no live-update
+  // needed (can't change it without navigating away from this page).
+  const cardLayout = resolveCardLayout(user?.card_layout)
   // No separate full-bleed background exists without an image — falls back
   // to the poster (blurred/darkened, see .heroFullBgPoster) rather than
   // leaving the hero visually empty, same idea as full_hero.js's

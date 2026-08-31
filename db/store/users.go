@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"movies-api/db/models"
 	"movies-api/db/postgres"
 	"time"
@@ -96,6 +97,27 @@ func SetUserRole(ctx context.Context, id int64, role string) error {
 // frontend) and its screen position ("bottom" or "right").
 func SetUserBottomNavConfig(ctx context.Context, id int64, keys, position string) error {
 	_, err := postgres.Pool.Exec(ctx, `UPDATE users SET bottom_nav_keys = $1, bottom_nav_position = $2 WHERE id = $3`, keys, position, id)
+	return err
+}
+
+// interfacePrefColumns maps the frontend's field names to the actual column
+// — a fixed, hardcoded set (never built from the request), so the
+// interpolation below can't be used for injection.
+var interfacePrefColumns = map[string]string{
+	"card_layout":     "card_layout",
+	"browse_layout":   "browse_layout",
+	"settings_layout": "settings_layout",
+}
+
+// SetUserInterfacePref saves one per-account UI layout preference (card
+// layout, browse layout, or the /profiles page's own layout) — see
+// interfacePrefColumns for the allowed field names.
+func SetUserInterfacePref(ctx context.Context, id int64, field, value string) error {
+	col, ok := interfacePrefColumns[field]
+	if !ok {
+		return fmt.Errorf("unknown interface pref field: %s", field)
+	}
+	_, err := postgres.Pool.Exec(ctx, fmt.Sprintf(`UPDATE users SET %s = $1 WHERE id = $2`, col), value, id)
 	return err
 }
 

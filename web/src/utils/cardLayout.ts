@@ -1,6 +1,6 @@
-// Per-device visual preference for CardDetailPage (like theme — not
-// per-account, see project convention: bottom-nav config is per-account,
-// theme/this are per-device).
+// Per-account visual preference for CardDetailPage — stored server-side
+// (users.card_layout, see /api/me and handleSaveInterfacePrefs), same as
+// bottom_nav_keys/position, so it follows the account across devices.
 
 export type CardLayout = 'hero' | 'classic'
 
@@ -9,14 +9,18 @@ export const CARD_LAYOUTS: { id: CardLayout; label: string }[] = [
   { id: 'classic', label: 'Классический' },
 ]
 
-const STORAGE_KEY = 'card_layout'
 const DEFAULT_LAYOUT: CardLayout = 'hero'
 
-export function getStoredCardLayout(): CardLayout {
-  const v = localStorage.getItem(STORAGE_KEY)
-  return v === 'classic' ? 'classic' : DEFAULT_LAYOUT
+// `stored` is user.card_layout from useAuth().
+export function resolveCardLayout(stored: string | null | undefined): CardLayout {
+  return stored === 'classic' ? 'classic' : DEFAULT_LAYOUT
 }
 
-export function setStoredCardLayout(layout: CardLayout) {
-  localStorage.setItem(STORAGE_KEY, layout)
+export async function saveCardLayout(layout: CardLayout): Promise<boolean> {
+  const res = await fetch('/api/me/interface', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ card_layout: layout }),
+  })
+  return res.ok
 }

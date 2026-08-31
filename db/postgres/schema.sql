@@ -572,3 +572,12 @@ FROM devices d
 CROSS JOIN default_device_plugins p
 WHERE NOT EXISTS (SELECT 1 FROM device_plugins dp WHERE dp.device_id = d.id)
 ON CONFLICT (device_id, url) DO NOTHING;
+
+-- Migration: per-account UI layout preferences (card/browse/settings page
+-- layout) — previously per-device localStorage, moved server-side so they
+-- follow the account across devices, same as bottom_nav_keys/position above.
+-- NULL = use the frontend default (see resolveCardLayout/resolveBrowseLayout/
+-- resolveSettingsLayout).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS card_layout VARCHAR(10);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS browse_layout VARCHAR(10);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS settings_layout VARCHAR(10);

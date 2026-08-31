@@ -119,6 +119,20 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 	if u.BottomNavPosition != nil && *u.BottomNavPosition != "" {
 		bottomNavPosition = *u.BottomNavPosition
 	}
+	cardLayout := "hero"
+	if u.CardLayout != nil && *u.CardLayout != "" {
+		cardLayout = *u.CardLayout
+	}
+	browseLayout := "hero"
+	if u.BrowseLayout != nil && *u.BrowseLayout != "" {
+		browseLayout = *u.BrowseLayout
+	}
+	// Default is "remote" (the keyboard/pult-friendly view) — see
+	// resolveSettingsLayout on the frontend, which must stay in sync.
+	settingsLayout := "remote"
+	if u.SettingsLayout != nil && *u.SettingsLayout != "" {
+		settingsLayout = *u.SettingsLayout
+	}
 	JSON(w, http.StatusOK, map[string]any{
 		"id":                  u.ID,
 		"username":            u.Username,
@@ -130,6 +144,9 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		"blocked_at":          u.BlockedAt,
 		"bottom_nav_keys":     bottomNavKeys, // null/absent = use the frontend default set
 		"bottom_nav_position": bottomNavPosition,
+		"card_layout":         cardLayout,
+		"browse_layout":       browseLayout,
+		"settings_layout":     settingsLayout,
 	})
 }
 
@@ -186,6 +203,50 @@ func handleSaveBottomNav(w http.ResponseWriter, r *http.Request) {
 	if err := store.SetUserBottomNavConfig(r.Context(), u.ID, strings.Join(body.Keys, ","), body.Position); err != nil {
 		Error(w, http.StatusInternalServerError, "save failed")
 		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// Allowed values per field — must stay in sync with CARD_LAYOUTS/
+// BROWSE_LAYOUTS/SETTINGS_LAYOUTS on the frontend.
+var validInterfacePrefValues = map[string]map[string]bool{
+	"card_layout":     {"hero": true, "classic": true},
+	"browse_layout":   {"hero": true, "classic": true},
+	"settings_layout": {"classic": true, "remote": true},
+}
+
+// POST /api/me/interface — save one or more per-account UI layout
+// preferences (card/browse/settings-page layout — see utils/*Layout.ts on
+// the frontend). Body: {"card_layout": "hero"} or any subset of the three
+// fields; fields not present are left unchanged.
+func handleSaveInterfacePrefs(w http.ResponseWriter, r *http.Request) {
+	key := auth.SessionFromRequest(r)
+	if key == "" {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	u := auth.GetSessionUser(r.Context(), key)
+	if u == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	for field, value := range body {
+		allowed, ok := validInterfacePrefValues[field]
+		if !ok || !allowed[value] {
+			Error(w, http.StatusBadRequest, "invalid field or value: "+field)
+			return
+		}
+	}
+	for field, value := range body {
+		if err := store.SetUserInterfacePref(r.Context(), u.ID, field, value); err != nil {
+			Error(w, http.StatusInternalServerError, "save failed")
+			return
+		}
 	}
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { SETTINGS_LAYOUTS, getStoredSettingsLayout, setStoredSettingsLayout, type SettingsLayout } from '@/utils/settingsLayout'
+import { useEffect, useState } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import { SETTINGS_LAYOUTS, resolveSettingsLayout, saveSettingsLayout, type SettingsLayout } from '@/utils/settingsLayout'
 // Reuses ProfilesPage's own <details>/<summary>/checkbox styles, like
 // CardLayoutSettings/BrowseLayoutSettings — rendered in BOTH views (Classic
 // and Remote) so switching to 'remote' always leaves a way back.
@@ -12,14 +13,19 @@ interface Props {
   bare?: boolean
 }
 
-// Per-device setting (localStorage, like cardLayout/browseLayout) — applies
-// instantly, no save button, takes effect on this page's next mount.
+// Per-account setting (server, see users.settings_layout) — applies on this
+// page's next mount, via a full reload (so the fresh value round-trips
+// through /api/me instead of needing a live-update event like BottomNav).
 export function SettingsLayoutSettings({ bare }: Props = {}) {
-  const [layout, setLayout] = useState<SettingsLayout>(() => getStoredSettingsLayout())
+  const { user } = useAuth()
+  const [layout, setLayout] = useState<SettingsLayout>('remote')
+  useEffect(() => {
+    if (user) setLayout(resolveSettingsLayout(user.settings_layout))
+  }, [user])
 
-  function handleChange(next: SettingsLayout) {
+  async function handleChange(next: SettingsLayout) {
     setLayout(next)
-    setStoredSettingsLayout(next)
+    await saveSettingsLayout(next)
     window.location.reload()
   }
 

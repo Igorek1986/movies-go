@@ -5,6 +5,7 @@ import { posterUrl } from '@/utils/poster'
 import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, NAV_H, focusTopNavActive } from '@/utils/scrollNav'
 import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
+import { useAuth } from '@/hooks/useAuth'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
 import styles from './CatalogPage.module.scss'
@@ -702,13 +703,14 @@ export default function CatalogPage() {
   const searchPageRef = useRef(1)
 
   const { activeDevice, activeProfile } = useActiveProfile()
+  const { user } = useAuth()
 
-  // Per-device (localStorage) — see BrowseLayoutSettings on /profiles. Read
-  // fresh on every mount, same convention as CardDetailPage's cardLayout.
-  // Forced to Classic on touch devices regardless of the saved preference —
-  // the hero carousel is driven by keyboard/mouse focus, which touch has no
-  // equivalent for.
-  const [layout] = useState(() => getEffectiveBrowseLayout())
+  // Per-account (server) — see BrowseLayoutSettings on /profiles. Read fresh
+  // from `user` on every mount, same convention as CardDetailPage's
+  // cardLayout. Forced to Classic on touch devices regardless of the saved
+  // preference — the hero carousel is driven by keyboard/mouse focus, which
+  // touch has no equivalent for.
+  const layout = getEffectiveBrowseLayout(user?.browse_layout)
   const hero = useHeroPreview<MediaItem>()
   // Also marks the grid as focused here, not just via the onFocusIn listener
   // below — see MediaLibraryPage's identical handleActivate for why: the
