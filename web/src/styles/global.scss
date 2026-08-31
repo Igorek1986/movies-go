@@ -60,6 +60,18 @@ svg {
   border-radius: $radius-full;
 }
 
+// ── Keyboard/remote row-nav focus ring ──────────────────────────────────────
+// One rule for every row-nav item across the whole site (status/delete/
+// refresh buttons, cast/similar cards, Sessions rows, Настройки Remote-вид…)
+// instead of the browser's default blue ring — global (not per-page-module)
+// since row-nav now spans enough independent lazy chunks (CardDetailPage,
+// SessionsPage, ProfilesRemoteView, …) that a local copy in each one stopped
+// paying for itself.
+[data-nav-item]:focus-visible {
+  outline: 2px solid $color-primary;
+  outline-offset: 2px;
+}
+
 // Утилиты
 .visually-hidden {
   position: absolute;

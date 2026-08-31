@@ -1357,11 +1357,7 @@ $drum-visible: 5;
   color: $color-text-muted;
 }
 
-// ── Keyboard row nav focus ring ──────────────────────────────────────────────
-// One rule for every row item (status/delete/refresh buttons, cast/similar
-// cards) instead of the browser's default blue ring — each element keeps its
-// own border-radius (outline follows it automatically), just recolored.
-[data-nav-item]:focus-visible {
-  outline: 2px solid $color-primary;
-  outline-offset: 2px;
-}
+// The bare/fallback [data-nav-item]:focus-visible rule now lives in
+// global.scss (loaded on every page) — the many scoped &[data-nav-item]
+// overrides throughout this file still win over it on specificity alone
+// regardless of source order, so moving it doesn't change anything here.

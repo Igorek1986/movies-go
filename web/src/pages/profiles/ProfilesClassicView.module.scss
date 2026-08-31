@@ -90,6 +90,7 @@
   color: $color-text-muted;
   cursor: pointer;
   padding: 2px $spacing-xs;
+  border: none;
   border-radius: $radius-sm;
   background: rgba($color-border-rgb, 0.5);
   transition: color $transition-fast;
@@ -475,17 +476,49 @@
   color: $color-text;
   padding: $spacing-xs 0;
   list-style: none;
+  // flex, not the plain-text default: when this wraps a .summaryBtn (the 4
+  // reused settings components, both views — see its own comment) the
+  // ::before arrow is a generated box and .summaryBtn a flex item, so they
+  // sit on one line instead of the button's own block box wrapping onto a
+  // line under the arrow. A bare text node (the other 9 sections, Classic
+  // only) is just as fine as a lone flex item — no visual change there.
+  display: flex;
+  align-items: center;
+  // Trailing space inside content: '▶ ' isn't reliable spacing once the
+  // following box is a flexblockified flex item (gets collapsed at the
+  // block edge) — a real gap works for both the plain-text sections and the
+  // .summaryBtn-wrapped ones.
+  gap: $spacing-xs;
 
   &::marker, &::-webkit-details-marker { display: none; }
 
   &::before {
-    content: '▶ ';
+    content: '▶';
     font-size: 10px;
     color: $color-text-muted;
     transition: transform $transition-fast;
   }
 
-  details[open] > &::before { content: '▼ '; }
+  details[open] > &::before { content: '▼'; }
+}
+
+// Wraps a <summary>'s label text so ProfilesRemoteView's row-nav can target
+// it with data-nav-item (data-row-id has to live on the <summary> itself —
+// putting both attributes on the same element would make querySelectorAll
+// find zero descendants and the row wouldn't count, see CardDetailPage's
+// getRows()). Inert reset so it's visually identical to plain text when no
+// onToggle is passed (Classic) — the click still bubbles to <summary>'s own
+// native toggle in that case, since nothing calls preventDefault.
+.summaryBtn {
+  flex: 1;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 
 .detailsBody {

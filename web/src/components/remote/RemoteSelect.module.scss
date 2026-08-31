@@ -1,0 +1,70 @@
+@use '@/styles/variables' as *;
+
+.trigger {
+  @include input-base;
+  @include flex-between;
+  height: 38px;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  text-align: left;
+
+  &:disabled { opacity: 0.6; cursor: default; }
+}
+
+.value { color: $color-text; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.placeholder { color: $color-text-muted; }
+.chevron { color: $color-text-muted; flex-shrink: 0; margin-left: $spacing-sm; }
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: $spacing-md;
+}
+
+.list {
+  @include card;
+  width: 100%;
+  max-width: 360px;
+  max-height: 70vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  @media (max-width: $bp-sm) {
+    max-width: 100%;
+  }
+}
+
+.label {
+  margin: 0 0 $spacing-xs;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $color-text-muted;
+}
+
+.option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: $spacing-sm $spacing-md;
+  border: none;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: background $transition-fast;
+
+  &:hover, &:focus-visible { background: rgba($color-primary-rgb, 0.15); }
+}
+
+.optionActive {
+  color: $color-primary;
+  font-weight: 600;
+}

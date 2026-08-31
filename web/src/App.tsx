@@ -28,7 +28,6 @@ import { setWatchedThreshold } from '@/utils/config'
 import footerStyles from '@/components/AppFooter.module.scss'
 
 import LoginPage from '@/pages/LoginPage'
-import ProfilesPage from '@/pages/ProfilesPage'
 import CatalogPage from '@/pages/CatalogPage'
 import CalendarPage from '@/pages/CalendarPage'
 import MediaLibraryPage from '@/pages/MediaLibraryPage'
@@ -41,6 +40,9 @@ import NotFoundPage from '@/pages/NotFoundPage'
 // pages): split into their own chunks (loaded on demand) instead of
 // bloating the bundle every visitor downloads up front.
 const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
+// Roughly doubles in source size across its two views (Classic + Remote) —
+// see utils/settingsLayout.ts — no reason to ship it in the main bundle.
+const ProfilesPage = lazy(() => import('@/pages/ProfilesPage'))
 const SessionsPage = lazy(() => import('@/pages/SessionsPage'))
 const StatsPage = lazy(() => import('@/pages/StatsPage'))
 const Setup2FAPage = lazy(() => import('@/pages/Setup2FAPage'))

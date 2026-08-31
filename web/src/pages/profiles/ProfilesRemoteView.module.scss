@@ -1,0 +1,158 @@
+@use '@/styles/variables' as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.section {
+  @include card;
+  padding: 0;
+  overflow: hidden;
+}
+
+// ── Top-level category list (Lampa-style: pick a row, drill into its own
+// screen — not an accordion) ─────────────────────────────────────────────
+.menu {
+  @include card;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.menuRow {
+  border-bottom: 1px solid $color-border;
+  &:last-child { border-bottom: none; }
+}
+
+.menuRowBtn {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: $spacing-md $spacing-lg;
+  font: inherit;
+  font-size: $font-size-base;
+  font-weight: 600;
+  color: $color-text;
+  cursor: pointer;
+  transition: background $transition-fast;
+
+  &:hover, &:focus-visible { background: rgba($color-primary-rgb, 0.08); }
+}
+
+.menuRowTitle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.menuRowChevron {
+  color: $color-text-muted;
+  flex-shrink: 0;
+}
+
+// ── Drilled-into-a-section screen header (back row) ──────────────────────
+.backRow {
+  border-bottom: 1px solid $color-border;
+}
+
+.backBtn {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: $spacing-md $spacing-lg;
+  font: inherit;
+  font-size: $font-size-base;
+  font-weight: 600;
+  color: $color-text;
+  cursor: pointer;
+  transition: background $transition-fast;
+
+  &:hover, &:focus-visible { background: rgba($color-primary-rgb, 0.08); }
+}
+
+.backChevron {
+  color: $color-primary;
+  flex-shrink: 0;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.sectionBody {
+  padding: 0 $spacing-lg $spacing-lg;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+
+  @media (min-width: $bp-md) {
+    padding-left: $spacing-lg;
+    padding-right: $spacing-lg;
+  }
+}
+
+// A "row" that's just a single form field (select/input/checkbox) stacked
+// label-above-control — mobile-first, matches .fieldLabel's shape.
+.fieldRow {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+// Two fields side by side once there's room (device+profile pickers, the
+// two 2FA/JSON inputs) — stacked on mobile.
+.fieldGrid {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+
+  @media (min-width: $bp-md) {
+    flex-direction: row;
+
+    > * { flex: 1; min-width: 0; }
+  }
+}
+
+.deviceRow {
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  padding: $spacing-md;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  background: $color-bg-input;
+}
+
+.deviceActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+}
+
+.nestedPanel {
+  border-top: 1px solid $color-border;
+  margin-top: $spacing-sm;
+  padding-top: $spacing-md;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.deviceMeta {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}

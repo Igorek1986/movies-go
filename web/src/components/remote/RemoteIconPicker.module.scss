@@ -1,0 +1,49 @@
+@use '@/styles/variables' as *;
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: $spacing-md;
+}
+
+.grid {
+  @include card;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: $spacing-xs;
+  width: 100%;
+  max-width: 320px;
+
+  @media (min-width: $bp-lg) {
+    grid-template-columns: repeat(8, 1fr);
+    max-width: 400px;
+  }
+}
+
+.btn {
+  width: 44px;
+  height: 44px;
+  border: 1px solid transparent;
+  border-radius: $radius-sm;
+  background: transparent;
+  padding: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color $transition-fast, background $transition-fast;
+
+  img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+  &:hover, &:focus-visible { background: rgba($color-primary-rgb, 0.12); border-color: $color-primary; }
+}
+
+.btnActive {
+  border-color: $color-primary;
+  background: rgba($color-primary-rgb, 0.18);
+}

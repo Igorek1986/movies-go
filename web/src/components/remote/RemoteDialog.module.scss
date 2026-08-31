@@ -1,0 +1,102 @@
+@use 'sass:color';
+@use '@/styles/variables' as *;
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: $spacing-md;
+}
+
+.dialog {
+  @include card;
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.title {
+  margin: 0;
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.message {
+  margin: 0;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.input {
+  @include input-base;
+  height: 38px;
+  font-size: $font-size-sm;
+}
+
+.textarea {
+  @include input-base;
+  font-family: 'Courier New', monospace;
+  font-size: $font-size-xs;
+  resize: vertical;
+  min-height: 140px;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  gap: $spacing-sm;
+  justify-content: flex-end;
+
+  @media (max-width: $bp-sm) {
+    flex-direction: column-reverse;
+  }
+}
+
+.btnSecondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  padding: 0 $spacing-lg;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover, &:focus-visible { border-color: $color-primary; color: $color-text; }
+}
+
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  padding: 0 $spacing-lg;
+  border: none;
+  border-radius: $radius-sm;
+  background: $color-primary;
+  color: #fff;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background $transition-fast;
+
+  &:hover, &:focus-visible { background: $color-primary-hover; }
+
+  &.danger {
+    background: $color-danger;
+    &:hover, &:focus-visible { background: color.adjust(#e05252, $lightness: -10%); }
+  }
+}
