@@ -181,7 +181,12 @@ function MediaCard({ item, onClick, onActivate, isHeroActive, compact }: CardPro
         {item.next_episode && (
           <span className={styles.nextEpBadge}>{item.next_episode}</span>
         )}
-        {!!item.aired_count && (
+        {/* Hero mode (compact) already shows this same progress in the hero
+            banner itself (BrowseHero's own .episodeProgress, for whichever
+            card is currently focused) — repeating it on every thumbnail too
+            was redundant there, unlike Classic where the card is the only
+            place it's shown at all. */}
+        {!compact && !!item.aired_count && (
           <>
             <span className={styles.progressLabel}>{item.watched_count ?? 0}/{item.aired_count}</span>
             <div className={styles.progressTrack}>
@@ -315,6 +320,18 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
 
   const loadItems = useCallback(async () => {
     if (loadedRef.current) return
+    // "Непросмотренные" is per-profile — fetching it before the active
+    // profile resolves (token still '') has no way to compute anything and
+    // comes back with an empty result, which the onEmpty effect below reads
+    // as "this category is genuinely empty" and silently skips the hero
+    // carousel past it — landing on the wrong row on every fresh page load,
+    // even though the row has real items once a profile is known. Wait for
+    // a real token instead of guessing wrong; this row remounts anyway (its
+    // key includes token/profileId) once the profile resolves, so this
+    // just lets that remount make the one real fetch instead of wasting an
+    // empty one first. Every other category doesn't need a profile at all,
+    // so they're deliberately not gated here.
+    if (category.id === 'unwatched' && !token) return
     loadedRef.current = true
     try {
       const params = new URLSearchParams({ per_page: '20', page: '1' })
