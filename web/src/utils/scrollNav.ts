@@ -8,6 +8,18 @@ const ROW_BOTTOM_MARGIN = 24
 // of duplicated as a literal in both pages so the two can't drift apart.
 export const CAROUSEL_TRANSITION_MS = 280
 
+// Hero carousel wheel handling (CatalogPage/MediaLibraryPage) — shared here
+// for the same reason as CAROUSEL_TRANSITION_MS above, not duplicated as a
+// literal in both pages. A single physical wheel notch/trackpad swipe fires
+// many wheel events in quick succession; without a cooldown each one moved
+// focus/switched a category again, reading as wildly oversensitive. Card
+// focus has no animation to wait out (an instant scrollH), so it gets its
+// own shorter value instead of reusing CAROUSEL_TRANSITION_MS; the category
+// switch one is deliberately longer than that transition's own duration —
+// this throttles perceived scroll speed, not just deduplicates one gesture.
+export const CARD_WHEEL_COOLDOWN_MS = 350
+export const CATEGORY_WHEEL_COOLDOWN_MS = 450
+
 // Vertically center el in the area below the fixed nav bar. Animated (not
 // an instant jump) — every caller is a keyboard-driven focus move (between
 // cards/rows in Classic layout, or search results), where an un-animated

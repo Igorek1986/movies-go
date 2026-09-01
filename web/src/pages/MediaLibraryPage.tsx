@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react
 import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, focusTopNavActive } from '@/utils/scrollNav'
+import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLDOWN_MS, CATEGORY_WHEEL_COOLDOWN_MS, focusTopNavActive } from '@/utils/scrollNav'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { useAuth } from '@/hooks/useAuth'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
@@ -126,8 +126,55 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
   const [totalPages, setTotalPages] = useState(initialCache?.totalPages ?? 1)
   const rowRef = useRef<HTMLDivElement>(null)
   const rowInnerRef = useRef<HTMLDivElement>(null)
+  const rowScrollRef = useRef<HTMLDivElement>(null)
   const loadedRef = useRef(!!initialCache)
   const autoFocusAppliedRef = useRef(false)
+
+  // Shared by the ArrowLeft/Right keydown handler below and the wheel
+  // handler further down — see CatalogPage's identical moveCardFocus for
+  // the full rationale (moves real focus + hero activation, not just
+  // scrollLeft).
+  function moveCardFocus(dir: 1 | -1) {
+    const cards = Array.from(rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]') ?? [])
+    const idx = cards.indexOf(document.activeElement as HTMLElement)
+    if (idx === -1) return
+    if (dir === 1) {
+      if (idx === cards.length - 1) {
+        if (totalPages > 1) onExpand(status)
+        return
+      }
+      const next = cards[idx + 1]
+      next?.focus({ preventScroll: true })
+      if (next) scrollH(next)
+    } else {
+      const prev = cards[idx - 1]
+      prev?.focus({ preventScroll: true })
+      if (prev) scrollH(prev)
+    }
+  }
+  const moveCardFocusRef = useRef(moveCardFocus)
+  moveCardFocusRef.current = moveCardFocus
+
+  // Hero carousel only (hideHeader) — see CatalogPage's CategoryRow for the
+  // identical effect and full rationale: the page is scroll-locked there, so
+  // a wheel over the card rail moves focus between cards instead, same as
+  // ArrowLeft/ArrowRight — always preventDefault while hideHeader so the
+  // event never falls through to the outer page's default scroll.
+  useEffect(() => {
+    if (!hideHeader) return
+    const el = rowScrollRef.current
+    if (!el) return
+    let cooling = false
+    function onWheel(e: WheelEvent) {
+      e.preventDefault()
+      if (cooling) return
+      cooling = true
+      window.setTimeout(() => { cooling = false }, CARD_WHEEL_COOLDOWN_MS)
+      moveCardFocusRef.current(e.deltaY > 0 ? 1 : -1)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [hideHeader])
 
   const loadItems = useCallback(() => {
     if (loadedRef.current || !token) return
@@ -231,39 +278,15 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
         )}
       </div>
       )}
-      <div className={`${styles.rowScroll}${hideHeader ? ' ' + styles.rowScrollCompact : ''}`} data-row-scroll>
+      <div ref={rowScrollRef} className={`${styles.rowScroll}${hideHeader ? ' ' + styles.rowScrollCompact : ''}`} data-row-scroll>
         <div
           ref={rowInnerRef}
           className={styles.rowInner}
           data-row-id={status}
           onKeyDown={e => {
             if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
-            const cards = Array.from((e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[data-card]'))
-            const idx = cards.indexOf(document.activeElement as HTMLElement)
-            if (idx === -1) return
             e.preventDefault()
-            if (e.key === 'ArrowRight') {
-              if (idx === cards.length - 1) {
-                // ArrowRight past the last real card opens the status
-                // directly — see CatalogPage's identical CategoryRow.
-                if (hasMore) onExpand(status)
-              } else {
-                const next = cards[idx + 1]
-                // preventScroll: focusing an off-screen element natively
-                // jumps it into view instantly, before our own smooth
-                // scrollH/scrollV runs — without this every keyboard move
-                // looked like a jump immediately followed by a correction.
-                next?.focus({ preventScroll: true })
-                // Horizontal-only move within the same row — its vertical position
-                // doesn't change, so no scrollV here (it would force-recenter the
-                // page, yanking the hero banner out of view for no reason).
-                if (next) scrollH(next)
-              }
-            } else {
-              const prev = cards[idx - 1]
-              prev?.focus({ preventScroll: true })
-              if (prev) scrollH(prev)
-            }
+            moveCardFocus(e.key === 'ArrowRight' ? 1 : -1)
           }}
         >
           {items === null && <div className={styles.rowLoading}>Загрузка…</div>}
@@ -390,6 +413,7 @@ export default function MediaLibraryPage() {
   // equivalent for.
   const layout = getEffectiveBrowseLayout(user?.browse_layout)
   const hero = useHeroPreview<LibraryItem>()
+  const carouselPageRef = useRef<HTMLDivElement>(null)
   // Also marks the grid as focused here, not just via the onFocusIn listener
   // below — the row's own mount-time auto-focus effect calls this directly
   // to guarantee the hero banner populates even when the real .focus() call
@@ -748,12 +772,34 @@ export default function MediaLibraryPage() {
   const carouselActive = layout === 'hero' && !expanded && !showSearch
   const activeStatus = ROW_ORDER[activeStatusIndex]
 
+  // See CatalogPage's identical effect for the full rationale — the page
+  // itself is scroll-locked in hero mode, so repurpose a mouse wheel as
+  // ArrowUp/Down's equivalent (switch status) everywhere except over the
+  // card rail, which converts the same wheel into horizontal scroll instead
+  // (LibraryRow's own wheel effect).
+  useEffect(() => {
+    if (!carouselActive) return
+    const el = carouselPageRef.current
+    if (!el) return
+    let cooling = false
+    function onWheel(e: WheelEvent) {
+      if ((e.target as HTMLElement).closest('[data-row-scroll]')) return
+      e.preventDefault()
+      if (cooling) return
+      cooling = true
+      window.setTimeout(() => { cooling = false }, CATEGORY_WHEEL_COOLDOWN_MS)
+      switchStatus(e.deltaY > 0 ? 1 : -1)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [carouselActive, switchStatus])
+
   return (
     <Layout>
       {/* location.key is unique per navigation — remounts everything below on
           every visit to this page, so a status changed elsewhere (card detail
           page) is never shown stale without a hard refresh. */}
-      <div className={`${styles.page}${carouselActive ? ' ' + styles.pageLocked : ''}`} key={location.key}>
+      <div ref={carouselPageRef} className={`${styles.page}${carouselActive ? ' ' + styles.pageLocked : ''}`} key={location.key}>
         <div className={styles.header}>
           {expanded
             ? <button className={styles.backBtn} onClick={() => setExpanded(null)}>← Назад</button>

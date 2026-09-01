@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react
 import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, NAV_H, focusTopNavActive } from '@/utils/scrollNav'
+import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLDOWN_MS, CATEGORY_WHEEL_COOLDOWN_MS, NAV_H, focusTopNavActive } from '@/utils/scrollNav'
 import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -250,8 +250,68 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
   const [error, setError] = useState(false)
   const rowRef = useRef<HTMLElement>(null)
   const rowInnerRef = useRef<HTMLDivElement>(null)
+  const rowScrollRef = useRef<HTMLDivElement>(null)
   const loadedRef = useRef(!!initialCache)
   const autoFocusAppliedRef = useRef(false)
+
+  // Shared by the ArrowLeft/Right keydown handler below and the wheel
+  // handler further down — moves focus to the next/previous card exactly
+  // like pressing the arrow key would, rather than just nudging scrollLeft
+  // (a mouse-wheel move over the cards should feel identical to using the
+  // keyboard, hero preview activation included).
+  function moveCardFocus(dir: 1 | -1) {
+    const cards = Array.from(rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]') ?? [])
+    const idx = cards.indexOf(document.activeElement as HTMLElement)
+    if (idx === -1) return
+    if (dir === 1) {
+      if (idx === cards.length - 1) {
+        // See the keydown handler's identical comment — ArrowRight/wheel
+        // forward past the last real card opens the category directly.
+        if (totalPages > 1) onExpandCategory(category.id, items?.length ?? 0)
+        return
+      }
+      const next = cards[idx + 1]
+      next?.focus({ preventScroll: true })
+      if (next) scrollH(next)
+    } else {
+      const prev = cards[idx - 1]
+      prev?.focus({ preventScroll: true })
+      if (prev) scrollH(prev)
+    }
+  }
+  // moveCardFocus closes over items/totalPages, which change on every load —
+  // a ref keeps the wheel effect below from needing to re-attach its
+  // listener (and re-run its own setup/teardown) on every one of those.
+  const moveCardFocusRef = useRef(moveCardFocus)
+  moveCardFocusRef.current = moveCardFocus
+
+  // Hero carousel only (hideHeader): the page itself is scroll-locked (see
+  // carouselActive/.pageLocked), so a wheel over the card rail moves focus
+  // between cards instead — same effect as ArrowLeft/ArrowRight. Always
+  // preventDefault while hideHeader, even when there's nothing left to
+  // move to — otherwise a wheel event over, say, a 3-card row with nothing
+  // to focus past falls through to the browser's default scroll, which
+  // .pageLocked's own overflow:hidden doesn't actually stop (it clips this
+  // element, not the outer page). Not done in Classic layout, where the row
+  // is a normal in-page-flow element and a vertical wheel over it should
+  // keep scrolling the page like anywhere else. Plain addEventListener (not
+  // JSX onWheel) so preventDefault actually works — React attaches onWheel
+  // as a passive listener.
+  useEffect(() => {
+    if (!hideHeader) return
+    const el = rowScrollRef.current
+    if (!el) return
+    let cooling = false
+    function onWheel(e: WheelEvent) {
+      e.preventDefault()
+      if (cooling) return
+      cooling = true
+      window.setTimeout(() => { cooling = false }, CARD_WHEEL_COOLDOWN_MS)
+      moveCardFocusRef.current(e.deltaY > 0 ? 1 : -1)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [hideHeader])
 
   const loadItems = useCallback(async () => {
     if (loadedRef.current) return
@@ -382,43 +442,15 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
         )}
       </div>
       )}
-      <div className={`${styles.rowScroll}${hideHeader ? ' ' + styles.rowScrollCompact : ''}`} data-row-scroll>
+      <div ref={rowScrollRef} className={`${styles.rowScroll}${hideHeader ? ' ' + styles.rowScrollCompact : ''}`} data-row-scroll>
         <div
           ref={rowInnerRef}
           className={styles.rowInner}
           data-row-id={category.id}
           onKeyDown={e => {
             if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
-            const cards = Array.from(
-              (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[data-card]')
-            )
-            const idx = cards.indexOf(document.activeElement as HTMLElement)
-            if (idx === -1) return
             e.preventDefault()
-            if (e.key === 'ArrowRight') {
-              if (idx === cards.length - 1) {
-                // ArrowRight past the last real card opens the category
-                // directly — the "Все →" card at the row's end (rendered
-                // below) is there so it's visible while scrolling/hovering,
-                // not a separate keyboard stop to land on first.
-                if (hasMore) onExpandCategory(category.id, items?.length ?? 0)
-              } else {
-                const next = cards[idx + 1]
-                // preventScroll — see the pendingFocus effect above for why;
-                // also matters here since this move is horizontal-only (no
-                // scrollV call), so a native vertical auto-scroll would go
-                // uncorrected instead of just landing early.
-                next?.focus({ preventScroll: true })
-                // Horizontal-only move within the same row — its vertical position
-                // doesn't change, so no scrollV here (it would force-recenter the
-                // page, yanking the hero banner out of view for no reason).
-                if (next) scrollH(next)
-              }
-            } else {
-              const prev = cards[idx - 1]
-              prev?.focus({ preventScroll: true })
-              if (prev) scrollH(prev)
-            }
+            moveCardFocus(e.key === 'ArrowRight' ? 1 : -1)
           }}
         >
           {items === null && !error && (
@@ -743,6 +775,7 @@ export default function CatalogPage() {
   // this is non-null; then the outgoing one is dropped.
   const [transition, setTransition] = useState<{ prevIndex: number; dir: 1 | -1 } | null>(null)
   const transitionTimerRef = useRef<number | null>(null)
+  const carouselPageRef = useRef<HTMLDivElement>(null)
   useEffect(() => () => { if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current) }, [])
   const handleEmptyCategory = useCallback(() => {
     // This category has nothing to show — silently skip to the next one
@@ -1200,6 +1233,39 @@ export default function CatalogPage() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [expandedCategory, searchQuery, navigate, layout, activeCategoryIndex, categories, switchCategory])
 
+  const showSearch = searchQuery.length >= 3 && !expandedCategory
+
+  // Hero carousel locks the page to the viewport (no scroll) — only while
+  // actually showing the carousel itself, not the expanded/"Все →" grid or
+  // search results, which stay normal scrollable views.
+  const carouselActive = layout === 'hero' && !expandedCategory && !showSearch
+
+  // Hero carousel: the page is scroll-locked (see carouselActive/.pageLocked
+  // below), so a mouse wheel over it would otherwise do nothing — repurpose
+  // it as ArrowUp/Down's equivalent (switch category) everywhere except over
+  // the card rail itself, which converts the same wheel into horizontal
+  // scroll instead (see CategoryRow's own wheel effect, data-row-scroll is
+  // how this tells the two apart). One switch per wheel "gesture", not per
+  // delta event — a trackpad swipe fires dozens of wheel events for what's
+  // really one intent, same reasoning as CAROUSEL_TRANSITION_MS gating the
+  // drum-slide transition itself.
+  useEffect(() => {
+    if (!carouselActive) return
+    const el = carouselPageRef.current
+    if (!el) return
+    let cooling = false
+    function onWheel(e: WheelEvent) {
+      if ((e.target as HTMLElement).closest('[data-row-scroll]')) return
+      e.preventDefault()
+      if (cooling) return
+      cooling = true
+      window.setTimeout(() => { cooling = false }, CATEGORY_WHEEL_COOLDOWN_MS)
+      switchCategory(e.deltaY > 0 ? 1 : -1)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [carouselActive, switchCategory])
+
   useEffect(() => {
     const onCatalogBack = () => {
       if (expandedCategory) handleBack()
@@ -1252,16 +1318,9 @@ export default function CatalogPage() {
       : null
   )
 
-  const showSearch = searchQuery.length >= 3 && !expandedCategory
-
-  // Hero carousel locks the page to the viewport (no scroll) — only while
-  // actually showing the carousel itself, not the expanded/"Все →" grid or
-  // search results, which stay normal scrollable views.
-  const carouselActive = layout === 'hero' && !expandedCategory && !showSearch
-
   return (
     <Layout>
-      <div className={`${styles.page}${carouselActive ? ' ' + styles.pageLocked : ''}`}>
+      <div ref={carouselPageRef} className={`${styles.page}${carouselActive ? ' ' + styles.pageLocked : ''}`}>
         {!expandedCat && hasCustomOrder && layout === 'classic' && (
           <div className={styles.toolbar}>
             <div className={styles.toolbarTop}>
