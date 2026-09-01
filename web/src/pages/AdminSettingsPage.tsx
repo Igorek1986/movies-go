@@ -661,12 +661,52 @@ const PLACEHOLDERS: Record<string, string> = {
   nnmclub_host: 'https://nnmclub.to (пусто = по умолчанию)',
 }
 
+// Was a plain free-text input — a typo/copy-paste slip (wrong case, extra
+// space, "Moscow/Europe" swapped) silently breaks every AiredCutoffDate()
+// computation this setting feeds (push notifications, unwatched/aired
+// counts — see db/store/unwatched.go), with no validation anywhere to catch
+// it. The full IANA list (Intl.supportedValuesOf('timeZone'), ~400 entries)
+// was tried first and dropped — this project's audience is Russian-speaking,
+// so it's just the 11 real Russian Federation zones + UTC, not every zone on
+// Earth.
+const RU_TIMEZONES: string[] = [
+  'UTC',
+  'Europe/Kaliningrad',
+  'Europe/Moscow',
+  'Europe/Samara',
+  'Asia/Yekaterinburg',
+  'Asia/Omsk',
+  'Asia/Novosibirsk',
+  'Asia/Krasnoyarsk',
+  'Asia/Irkutsk',
+  'Asia/Yakutsk',
+  'Asia/Vladivostok',
+  'Asia/Magadan',
+  'Asia/Kamchatka',
+]
+
+// "Europe/Moscow" alone doesn't say anything about the actual offset without
+// already knowing the zone — labelling each option with it up front (current
+// offset, DST included where applicable) saves having to guess/look it up.
+function tzOffsetLabel(tz: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(new Date())
+    const raw = parts.find(p => p.type === 'timeZoneName')?.value ?? ''
+    // Comes back as "GMT+3"/"GMT" (for UTC itself) — normalize to "UTC+3"/"UTC+0".
+    const m = raw.match(/GMT([+-]\d+(?::\d+)?)?/)
+    return m ? `UTC${m[1] ?? '+0'}` : raw
+  } catch {
+    return ''
+  }
+}
+
 const SELECT_KEYS: Record<string, string[]> = {
   app_mode: ['parser', 'all'],
   // TMDB serves images only at these fixed widths (see /configuration) — no
   // arbitrary custom sizes.
   poster_size: ['w92', 'w154', 'w185', 'w342', 'w500', 'w780', 'original'],
   backdrop_size: ['w300', 'w780', 'w1280', 'original'],
+  default_timezone: RU_TIMEZONES,
 }
 
 const CHECKBOX_KEYS: Record<string, string> = {
@@ -1023,7 +1063,9 @@ export default function AdminSettingsPage() {
                             onChange={e => setValue(key, e.target.value)}
                           >
                             {SELECT_KEYS[key].map(opt => (
-                              <option key={opt} value={opt}>{opt}</option>
+                              <option key={opt} value={opt}>
+                                {key === 'default_timezone' ? `${opt} (${tzOffsetLabel(opt)})` : opt}
+                              </option>
                             ))}
                           </select>
                         </>
