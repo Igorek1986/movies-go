@@ -62,14 +62,32 @@ const DEBOUNCE_MS = 200
 // session still has to wait on the real fetch.
 const _heroDetailCache = new Map<string, HeroDetail>()
 
+// Last item activated per caller (CatalogPage passes 'catalog', MediaLibraryPage
+// 'media-library') — module-level for the same reason as _heroDetailCache: a
+// CardDetailPage round trip (or any full remount of whoever calls
+// useHeroPreview) fully unmounts this hook's own item/detail state, so
+// without this the hero necessarily renders nothing (BrowseHero's own
+// `if (!item) return null`) for at least one commit, then fades a fresh copy
+// of the exact same image back in — visibly reloading a backdrop that was
+// already fully on-screen a moment ago on the card detail page it just came
+// from. Seeding item/detail/bg/layers (see useCrossfadeBg/useBgLayers below)
+// synchronously from this cache on mount skips both the blank gap and the
+// fade for that one restored frame; anything genuinely new still goes
+// through the normal fetch-then-crossfade path untouched.
+const _lastHeroItemCache = new Map<string, HeroLiteItem>()
+
 // Debounced, cached fetch of full card detail for whichever item currently
 // has focus/hover in a row below — the list endpoints (MediaItem/LibraryItem)
 // don't carry backdrop/overview/genres/status, so the hero upgrades from the
 // lite item to a GET /api/media-card/{cardId} result once it settles.
-export function useHeroPreview<T extends HeroLiteItem>() {
-  const [item, setItem] = useState<T | null>(null)
-  const [detail, setDetail] = useState<HeroDetail | null>(null)
-  const activeCardIdRef = useRef<string | null>(null)
+export function useHeroPreview<T extends HeroLiteItem>(cacheKey: string) {
+  const restored = _lastHeroItemCache.get(cacheKey) as T | undefined
+  const [item, setItem] = useState<T | null>(restored ?? null)
+  const [detail, setDetail] = useState<HeroDetail | null>(() => {
+    if (!restored) return null
+    return _heroDetailCache.get(`${restored.id}_${restored.media_type}`) ?? null
+  })
+  const activeCardIdRef = useRef<string | null>(restored ? `${restored.id}_${restored.media_type}` : null)
   const timerRef = useRef<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -78,6 +96,7 @@ export function useHeroPreview<T extends HeroLiteItem>() {
     if (activeCardIdRef.current === cardId) return
     activeCardIdRef.current = cardId
     setItem(next)
+    _lastHeroItemCache.set(cacheKey, next)
 
     const cached = _heroDetailCache.get(cardId)
     if (cached) { setDetail(cached); return }
@@ -96,7 +115,7 @@ export function useHeroPreview<T extends HeroLiteItem>() {
         })
         .catch(() => {})
     }, DEBOUNCE_MS)
-  }, [])
+  }, [cacheKey])
 
   useEffect(() => () => {
     if (timerRef.current) window.clearTimeout(timerRef.current)
@@ -118,8 +137,21 @@ function heroYear(item: HeroLiteItem, detail: HeroDetail | null): string {
 // the very first activation (nothing shown yet) or a card confirmed (detail
 // resolved) to have no backdrop at all.
 function useCrossfadeBg(item: HeroLiteItem | null, backdropSrc: string | null, detailResolved: boolean) {
-  const [bg, setBg] = useState<{ src: string; isPoster: boolean } | null>(null)
-  const targetRef = useRef<string | null>(null)
+  // Seeded straight from backdropSrc, not null — when `item` itself was
+  // restored from useHeroPreview's cache (see its comment), backdropSrc is
+  // already resolvable on this very first render, and the browser almost
+  // certainly still has the image decoded from CardDetailPage a moment ago.
+  // Going through the normal empty-then-`new Image()`-then-onload path here
+  // would still show a blank/placeholder frame first and only THEN reveal
+  // an image that was, in reality, already fully visible on screen. Seeding
+  // targetRef to match means the effect below finds nothing to do on mount
+  // (its own `targetRef.current === backdropSrc` check short-circuits it) —
+  // a genuinely new backdropSrc still goes through the real preload-then-
+  // swap path untouched.
+  const [bg, setBg] = useState<{ src: string; isPoster: boolean } | null>(
+    () => backdropSrc ? { src: backdropSrc, isPoster: false } : null
+  )
+  const targetRef = useRef<string | null>(backdropSrc)
 
   useEffect(() => {
     if (!item) return
@@ -183,8 +215,14 @@ interface BgLayer { key: number; src: string; isPoster: boolean }
 // exactly the dissolve a crossfade is meant to look like. The old layer is
 // dropped from the DOM once its own fade-out has had time to finish.
 function useBgLayers(bg: { src: string; isPoster: boolean } | null) {
-  const [layers, setLayers] = useState<BgLayer[]>([])
-  const [activeKey, setActiveKey] = useState<number | null>(null)
+  // Seeded already-active when `bg` itself arrives pre-seeded (see
+  // useCrossfadeBg above) — otherwise this restored frame would still mount
+  // at opacity 0 and animate up over CROSSFADE_MS, dissolving in an image
+  // that was already fully opaque on screen a moment ago. key 0 is reserved
+  // for exactly this seeded layer; keyRef starts at 0 too so the next real
+  // new layer still gets 1, 2, 3… with no collision.
+  const [layers, setLayers] = useState<BgLayer[]>(() => bg ? [{ key: 0, src: bg.src, isPoster: bg.isPoster }] : [])
+  const [activeKey, setActiveKey] = useState<number | null>(() => bg ? 0 : null)
   const keyRef = useRef(0)
 
   useEffect(() => {

@@ -412,7 +412,7 @@ export default function MediaLibraryPage() {
   // the hero carousel is driven by keyboard/mouse focus, which touch has no
   // equivalent for.
   const layout = getEffectiveBrowseLayout(user?.browse_layout)
-  const hero = useHeroPreview<LibraryItem>()
+  const hero = useHeroPreview<LibraryItem>('media-library')
   const carouselPageRef = useRef<HTMLDivElement>(null)
   // Also marks the grid as focused here, not just via the onFocusIn listener
   // below — the row's own mount-time auto-focus effect calls this directly
