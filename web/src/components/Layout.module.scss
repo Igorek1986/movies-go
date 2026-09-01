@@ -124,6 +124,15 @@
   white-space: nowrap;
   flex-shrink: 0;
   transition: color $transition-fast, background $transition-fast;
+  // The drawer's "Поиск" row reuses this class on a real <button> (every
+  // other row here is an <a>/NavLink, which has none of this chrome by
+  // default) — without resetting it, the browser's own default button
+  // background/border showed through as an odd pale, barely-readable pill.
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
 
   &:hover {
     color: $color-text;
@@ -297,19 +306,34 @@
 
 // ── Burger button — leftmost, visible on mobile only ──────────────────────────
 
+// Shared with .drawer's own padding-top below (see its comment) — one
+// number instead of two magic 36px literals that could silently drift
+// apart the next time either one changes.
+$burger-size: 36px;
+
 .burger {
   display: none;
   flex-direction: column;
   justify-content: center;
   gap: 5px;
-  width: 36px;
-  height: 36px;
+  width: $burger-size;
+  height: $burger-size;
   padding: 6px;
   border: none;
   border-radius: $radius-sm;
   background: transparent;
   cursor: pointer;
-  flex-shrink: 0;
+  // Own fixed element now, not a flex child of .nav (see its comment in
+  // Layout.tsx for why) — top/left reproduce exactly where .nav's own
+  // padding used to place it as that row's first item, so nothing moves
+  // visually. z-index above .drawer's own 300, not just .nav's 200 — this
+  // button already morphs into the drawer's ✕ close affordance (see
+  // .burgerOpen below) and has to actually render above the drawer to stay
+  // reachable while it's open.
+  position: fixed;
+  top: calc(#{$spacing-sm} + env(safe-area-inset-top));
+  left: $spacing-md;
+  z-index: 301;
 
   span {
     display: block;
@@ -357,7 +381,13 @@
   display: flex;
   flex-direction: column;
   padding: $spacing-xl $spacing-lg $spacing-lg;
-  padding-top: calc(#{$spacing-xl} + env(safe-area-inset-top));
+  // Clears .burger — now a fixed element sitting on top of this drawer (see
+  // its own comment), not one of this drawer's children — so nothing here
+  // pushes it down on its own the way a normal flex/document-flow sibling
+  // would. $spacing-sm/$burger-size reproduce exactly where that button
+  // sits and how tall it is, +$spacing-md for a real gap below it, so the
+  // first drawer row (Поиск) doesn't render underneath it.
+  padding-top: calc(#{$spacing-sm} + #{$burger-size} + #{$spacing-md} + env(safe-area-inset-top));
   padding-bottom: calc(#{$spacing-lg} + env(safe-area-inset-bottom));
   gap: $spacing-md;
   transform: translateX(-100%);
@@ -374,8 +404,12 @@
   font-size: $font-size-base;
   font-weight: 600;
   color: $color-text;
-  padding-bottom: $spacing-md;
-  border-bottom: 1px solid $color-border;
+  text-align: center;
+  // Was the drawer's first element (padding/border-bottom separating it
+  // from the links below) — now sits just above Выйти instead, so the
+  // separator moves to the top edge.
+  padding-top: $spacing-md;
+  border-top: 1px solid $color-border;
 }
 
 .drawerLinks {
@@ -391,6 +425,18 @@
     font-size: $font-size-base;
     border-radius: $radius-sm;
   }
+}
+
+// Icon + label for the "Поиск" row specifically — the only drawer row
+// that's an action rather than a route link, so text alone (especially on
+// a plain reset <button>, see .navLink's own comment) read as much less
+// clearly a real tappable thing than the rest of the list.
+.drawerSearchLabel {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+
+  svg { width: 18px; height: 18px; flex-shrink: 0; }
 }
 
 .drawerLogout {

@@ -367,16 +367,25 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
 
   return (
     <div className={styles.layout}>
-      <nav className={styles.nav}>
-        {/* Mobile burger — leftmost */}
-        <button
-          className={`${styles.burger}${menuOpen ? ' ' + styles.burgerOpen : ''}`}
-          onClick={() => setMenuOpen(o => !o)}
-          aria-label="Меню"
-        >
-          <span /><span /><span />
-        </button>
+      {/* Mobile burger — its own fixed element, not a child of .nav. .nav
+          establishes its own stacking context (position: fixed + z-index),
+          so a z-index on a element INSIDE it can only out-rank other
+          children of .nav — it can never climb above .drawer (a sibling of
+          .nav, not a descendant), no matter how high. Since this button
+          already morphs into the drawer's own ✕ close affordance when open
+          (see .burgerOpen), it has to actually live above .drawer to stay
+          reachable — moving it out here, positioned to land in exactly the
+          same visual spot .nav's own padding used to place it in, is what
+          makes that possible. */}
+      <button
+        className={`${styles.burger}${menuOpen ? ' ' + styles.burgerOpen : ''}`}
+        onClick={() => setMenuOpen(o => !o)}
+        aria-label="Меню"
+      >
+        <span /><span /><span />
+      </button>
 
+      <nav className={styles.nav}>
         <a className={styles.brand} href="/">Movies API</a>
 
         {/* Desktop — data-top-nav wraps the search button, the link pill row
@@ -426,10 +435,13 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
 
       {/* Mobile drawer */}
       <div className={`${styles.drawer}${menuOpen ? ' ' + styles.drawerOpen : ''}`}>
-        <div className={styles.drawerUser}>{user?.username}</div>
         <div className={styles.drawerLinks}>
+          <button type="button" className={styles.navLink} onClick={() => { setMenuOpen(false); handleBottomSearch() }}>
+            <span className={styles.drawerSearchLabel}><SearchIcon /> Поиск</span>
+          </button>
           {links}
         </div>
+        <div className={styles.drawerUser}>{user?.username}</div>
         <select className={styles.drawerThemeSelect} value={theme} onChange={handleThemeChange} aria-label="Тема">
           {THEMES.map(t => (
             <option key={t.id} value={t.id}>{t.label}</option>
