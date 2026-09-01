@@ -314,7 +314,13 @@
   // of this box, solid and unblurred, extends the same background color
   // that far past this element's real bottom edge without affecting layout,
   // closing that last sliver of visible fixed backdrop before the footer.
-  box-shadow: 0 80px 0 0 $color-bg;
+  // Spread must match Layout's own .main padding-bottom formula on mobile
+  // (see its comment) — a flat 80px (just $spacing-lg + $bottom-nav-height,
+  // no safe-area) undershot it on an iPhone PWA with a home-indicator inset,
+  // leaving exactly that sliver of backdrop visible above the footer.
+  // Over-covers on desktop (.main has no bottom-nav reservation there at
+  // all) — harmless, it's the same solid background color either way.
+  box-shadow: 0 calc(#{$spacing-lg} + #{$bottom-nav-height} + env(safe-area-inset-bottom)) 0 0 $color-bg;
 }
 
 // .progressWrap's own max-width: 360px (below) suits the classic layout's
