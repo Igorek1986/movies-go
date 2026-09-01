@@ -20,6 +20,7 @@ type User struct {
 	CardLayout        *string    `db:"card_layout"`         // "hero" (default) or "classic"
 	BrowseLayout      *string    `db:"browse_layout"`       // "hero" (default) or "classic"
 	SettingsLayout    *string    `db:"settings_layout"`     // "remote" (default) or "classic"
+	Theme             *string    `db:"theme"`               // "classic" (default) or "glass"
 }
 
 type Session struct {

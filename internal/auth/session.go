@@ -57,7 +57,7 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 
 	var u models.User
 	var totpSecret, backupCodes, blockReason, bottomNavKeys, bottomNavPosition *string
-	var cardLayout, browseLayout, settingsLayout *string
+	var cardLayout, browseLayout, settingsLayout, theme *string
 	var premiumUntil, blockedAt *time.Time
 
 	err := postgres.Pool.QueryRow(ctx, `
@@ -65,7 +65,7 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 		       u.totp_secret, u.totp_enabled, u.backup_codes,
 		       u.premium_until, u.blocked_at, u.block_reason, u.created_at,
 		       u.bottom_nav_keys, u.bottom_nav_position,
-		       u.card_layout, u.browse_layout, u.settings_layout
+		       u.card_layout, u.browse_layout, u.settings_layout, u.theme
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.key = $1 AND s.expires_at > now()`,
@@ -75,7 +75,7 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 		&totpSecret, &u.TotpEnabled, &backupCodes,
 		&premiumUntil, &blockedAt, &blockReason, &u.CreatedAt,
 		&bottomNavKeys, &bottomNavPosition,
-		&cardLayout, &browseLayout, &settingsLayout,
+		&cardLayout, &browseLayout, &settingsLayout, &theme,
 	)
 	if err != nil {
 		return nil
@@ -90,6 +90,7 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 	u.CardLayout = cardLayout
 	u.BrowseLayout = browseLayout
 	u.SettingsLayout = settingsLayout
+	u.Theme = theme
 
 	// sliding window — extend session on use
 	postgres.Pool.Exec(ctx, //nolint:errcheck

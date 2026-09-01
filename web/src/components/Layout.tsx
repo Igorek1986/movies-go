@@ -6,7 +6,7 @@ import { ProfileSwitcher } from '@/components/ProfileSwitcher'
 import { BottomNav, BOTTOM_NAV_ICONS, SearchIcon, type BottomNavItem } from '@/components/BottomNav'
 import { BOTTOM_NAV_OPTIONS, resolveBottomNavKeys, resolveBottomNavPosition, type BottomNavConfig } from '@/utils/bottomNavConfig'
 import { requestFocusCatalogSearch } from '@/utils/catalogSearchFocus'
-import { applyTheme, getStoredTheme, THEMES, type ThemeId } from '@/utils/theme'
+import { applyTheme, getStoredTheme, resolveTheme, saveTheme, THEMES, type ThemeId } from '@/utils/theme'
 import { loadTTLCache, saveTTLCache } from '@/utils/ttlCache'
 import { ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS } from '@/utils/adminStatsCache'
 import styles from './Layout.module.scss'
@@ -16,13 +16,24 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   const nav = useNavigate()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
+  // getStoredTheme (this device's local cache) for the instant first paint —
+  // resolveTheme(user?.theme) below (the real per-account value, once /api/me
+  // resolves) is the source of truth and can override it, e.g. after
+  // switching theme on a different device.
   const [theme, setTheme] = useState<ThemeId>(() => getStoredTheme())
+  useEffect(() => {
+    if (!user) return
+    const resolved = resolveTheme(user.theme)
+    setTheme(resolved)
+    applyTheme(resolved)
+  }, [user?.theme]) // eslint-disable-line react-hooks/exhaustive-deps
   const searchWarmupRef = useRef<HTMLInputElement>(null)
 
   function handleThemeChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = e.target.value as ThemeId
     applyTheme(next)
     setTheme(next)
+    saveTheme(next)
   }
 
   const [navKeys, setNavKeys] = useState<string[]>(() => resolveBottomNavKeys(undefined))

@@ -107,6 +107,7 @@ var interfacePrefColumns = map[string]string{
 	"card_layout":     "card_layout",
 	"browse_layout":   "browse_layout",
 	"settings_layout": "settings_layout",
+	"theme":           "theme",
 }
 
 // SetUserInterfacePref saves one per-account UI layout preference (card

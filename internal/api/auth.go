@@ -133,6 +133,12 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 	if u.SettingsLayout != nil && *u.SettingsLayout != "" {
 		settingsLayout = *u.SettingsLayout
 	}
+	// Default is "classic" — see THEMES/DEFAULT_THEME on the frontend, which
+	// must stay in sync.
+	theme := "classic"
+	if u.Theme != nil && *u.Theme != "" {
+		theme = *u.Theme
+	}
 	JSON(w, http.StatusOK, map[string]any{
 		"id":                  u.ID,
 		"username":            u.Username,
@@ -147,6 +153,7 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		"card_layout":         cardLayout,
 		"browse_layout":       browseLayout,
 		"settings_layout":     settingsLayout,
+		"theme":               theme,
 	})
 }
 
@@ -208,17 +215,19 @@ func handleSaveBottomNav(w http.ResponseWriter, r *http.Request) {
 }
 
 // Allowed values per field — must stay in sync with CARD_LAYOUTS/
-// BROWSE_LAYOUTS/SETTINGS_LAYOUTS on the frontend.
+// BROWSE_LAYOUTS/SETTINGS_LAYOUTS/THEMES on the frontend.
 var validInterfacePrefValues = map[string]map[string]bool{
 	"card_layout":     {"hero": true, "classic": true},
 	"browse_layout":   {"hero": true, "classic": true},
 	"settings_layout": {"classic": true, "remote": true},
+	"theme":           {"classic": true, "glass": true},
 }
 
 // POST /api/me/interface — save one or more per-account UI layout
-// preferences (card/browse/settings-page layout — see utils/*Layout.ts on
-// the frontend). Body: {"card_layout": "hero"} or any subset of the three
-// fields; fields not present are left unchanged.
+// preferences (card/browse/settings-page layout, site theme — see
+// utils/*Layout.ts and utils/theme.ts on the frontend). Body:
+// {"card_layout": "hero"} or any subset of these fields; fields not present
+// are left unchanged.
 func handleSaveInterfacePrefs(w http.ResponseWriter, r *http.Request) {
 	key := auth.SessionFromRequest(r)
 	if key == "" {

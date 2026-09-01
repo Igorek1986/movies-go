@@ -581,3 +581,8 @@ ON CONFLICT (device_id, url) DO NOTHING;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS card_layout VARCHAR(10);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS browse_layout VARCHAR(10);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS settings_layout VARCHAR(10);
+
+-- Migration: site theme (Layout's theme switcher) — same reasoning as the
+-- three above, previously per-device localStorage only, so switching theme
+-- on one device never followed the account to another.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS theme VARCHAR(10);

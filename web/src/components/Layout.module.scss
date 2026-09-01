@@ -63,6 +63,34 @@
   text-decoration: none;
   letter-spacing: -0.5px;
   flex-shrink: 0;
+
+  // Mobile header is just burger — brand — avatar, laid out with
+  // justify-content: space-between (see .nav/flex-between) — that only
+  // visually centers the middle item when the two outer ones are the same
+  // width, which .burger (fixed 36px) and ProfileSwitcher's avatar button
+  // (wider, has its own padding/chevron) aren't, so the title sat visibly
+  // left of true center. Taking it out of the flex flow and centering it
+  // against .nav itself (already `position: fixed`, a valid containing
+  // block) fixes that regardless of how wide either side ends up — .burger
+  // and the avatar then naturally take the two ends of what's left, since
+  // space-between with just the two of them puts one at each edge.
+  //
+  // top/bottom (not top:50%+transform) matched to .nav's own padding, not
+  // its full box — .nav's padding-top grows with env(safe-area-inset-top)
+  // on notched phones, which top:50% (relative to the whole padding box)
+  // doesn't account for, so it drifted above the flex-centered burger/
+  // avatar by roughly half that inset. Pinning top/bottom to the exact same
+  // edges the flex content box uses, then centering within THAT via flex,
+  // keeps this aligned with them at any inset value.
+  @media (max-width: $bp-lg) {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: calc(#{$spacing-sm} + env(safe-area-inset-top));
+    bottom: $spacing-sm;
+    display: flex;
+    align-items: center;
+  }
 }
 
 // Wraps the search button + the link pill row — see the data-top-nav
@@ -214,8 +242,30 @@
   padding: $spacing-xs $spacing-sm;
   border: 1px solid $color-border;
   border-radius: $radius-sm;
-  background: transparent;
-  color: $color-text-muted;
+  // Solid background + full-contrast text, not transparent + muted — a
+  // muted-gray label sitting directly on .nav's own $color-bg-card read as
+  // barely legible (the whole point of this control is picking a theme, so
+  // it should be the one thing NOT designed to blend into the background).
+  // color-scheme: dark tells the browser to render this <select>'s own
+  // native chrome (the dropdown arrow, etc.) as dark too — every theme in
+  // THEMES is dark, so this is never wrong, and without it some browsers
+  // fall back to light-mode chrome for parts our CSS can't reach, clashing
+  // with the surrounding dark UI.
+  background: $color-bg-input;
+  color: $color-text;
+  color-scheme: dark;
+  // appearance: none + a drawn-in arrow — still visibly unreadable on iOS
+  // Safari even with the two rules above, because it paints its own native
+  // control chrome (background gradient + text baseline) over parts of a
+  // <select> regardless of author background/color unless appearance is
+  // reset first. Losing native appearance also loses the built-in dropdown
+  // caret, hence the background-image chevron replacing it.
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%238a8fa8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right $spacing-sm center;
+  padding-right: $spacing-lg;
   font-size: $font-size-sm;
   cursor: pointer;
   white-space: nowrap;
@@ -366,8 +416,20 @@
   padding: $spacing-sm;
   border: 1px solid $color-border;
   border-radius: $radius-sm;
-  background: transparent;
-  color: $color-text-muted;
+  // See .themeSelect's identical comment — same fix, same reasoning.
+  background-color: $color-bg-input;
+  color: $color-text;
+  color-scheme: dark;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%238a8fa8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right $spacing-md center;
+  // Both sides, not just right — text-align: center below only centers
+  // within a symmetric box; padding-right alone (just enough to clear the
+  // arrow) would've pushed the visible label off-center to the left.
+  padding-left: $spacing-xl;
+  padding-right: $spacing-xl;
   font-size: $font-size-sm;
   cursor: pointer;
   text-align: center;

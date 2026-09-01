@@ -12,6 +12,7 @@ interface User {
   card_layout?: string | null
   browse_layout?: string | null
   settings_layout?: string | null
+  theme?: string | null
 }
 
 interface AuthState {
