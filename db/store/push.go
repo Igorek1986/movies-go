@@ -87,6 +87,17 @@ type NewEpisodeNotification struct {
 // episodes (same aired-cutoff as the watched/unwatched logic, see AiredCutoffDate)
 // of shows that profile is actively watching, that haven't been notified about
 // yet (see push_notified_episodes).
+//
+// "Actively watching" here means subjective_statuses.status = 'watching' —
+// the exact same gate store.UnwatchedTVShows uses for "Непросмотренные" (see
+// its own doc comment: marking "Смотрю" with zero progress qualifies, no
+// timecode required). This used to instead require an existing timecodes row
+// for the card, which is a DIFFERENT, narrower definition — a show could
+// satisfy one and not the other, most visibly as a push notification firing
+// for a show that then doesn't show up in "Непросмотренные" at all (own
+// timecode-based join happened to match a stale/unrelated timecode, or the
+// user marked "Смотрю" without ever actually pressing play — see
+// UnwatchedTVShows, "zero progress... qualifies too").
 func FindNewEpisodeNotifications(ctx context.Context) []NewEpisodeNotification {
 	cutoff := AiredCutoffDate(ctx)
 	//nolint:gosec // cutoff comes from AiredCutoffDate (admin setting only), not user input
@@ -96,10 +107,10 @@ func FindNewEpisodeNotifications(ctx context.Context) []NewEpisodeNotification {
 		FROM push_subscriptions ps
 		CROSS JOIN LATERAL (
 			SELECT DISTINCT mc.card_id, mc.title, COALESCE(e.title, '') AS episode_title, e.season, e.episode
-			FROM timecodes tc
-			JOIN media_cards mc ON mc.card_id = tc.card_id AND mc.media_type = 'tv'
+			FROM subjective_statuses ss
+			JOIN media_cards mc ON mc.card_id = ss.card_id AND mc.media_type = 'tv'
 			JOIN episodes e ON e.tmdb_show_id = mc.tmdb_id AND NOT e.is_special
-			WHERE tc.device_id = ps.device_id AND tc.profile_id = ps.profile_id
+			WHERE ss.device_id = ps.device_id AND ss.profile_id = ps.profile_id AND ss.status = 'watching'
 			  AND e.air_date IS NOT NULL AND e.air_date <= `+cutoff+`
 			  -- Hard age cap, independent of push_notified_episodes bookkeeping — a
 			  -- push claiming an episode just "aired" is meaningless (and spammy) for
@@ -150,13 +161,21 @@ func MarkEpisodeNotified(ctx context.Context, deviceID int64, profileID, cardID 
 // silently swallow that real notification instead of sending it on the next tick.
 func SeedNotifiedEpisodes(ctx context.Context) {
 	cutoff := AiredCutoffDate(ctx)
+	// Must match FindNewEpisodeNotifications' own "actively watching" gate
+	// (subjective_statuses.status = 'watching', not a timecodes join) — this
+	// runs once when a subscription is first created, specifically to mark
+	// every already-aired episode as "already notified" so subscribing
+	// doesn't immediately fire a backlog of pushes. Using a narrower gate
+	// here than the one actually used to send pushes would under-seed: a
+	// show that qualifies for the real send but not this seed would still
+	// dump its entire back catalog as pushes the moment the next poll runs.
 	//nolint:gosec // cutoff comes from AiredCutoffDate (admin setting only), not user input
 	tag, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO push_notified_episodes (device_id, profile_id, card_id, season, episode)
 		SELECT DISTINCT ps.device_id, ps.profile_id, mc.card_id, e.season, e.episode
 		FROM push_subscriptions ps
-		JOIN timecodes tc ON tc.device_id = ps.device_id AND tc.profile_id = ps.profile_id
-		JOIN media_cards mc ON mc.card_id = tc.card_id AND mc.media_type = 'tv'
+		JOIN subjective_statuses ss ON ss.device_id = ps.device_id AND ss.profile_id = ps.profile_id AND ss.status = 'watching'
+		JOIN media_cards mc ON mc.card_id = ss.card_id AND mc.media_type = 'tv'
 		JOIN episodes e ON e.tmdb_show_id = mc.tmdb_id AND NOT e.is_special
 		WHERE e.air_date IS NOT NULL AND e.air_date <= `+cutoff+`
 		ON CONFLICT DO NOTHING`)

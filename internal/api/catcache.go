@@ -274,6 +274,16 @@ func invalidateUnwatchedPrefix(prefix string) {
 // the show's aired-episode count just changed, so its watched/unwatched status may
 // have too. Cheaper than a full wipe: only profiles that actually track this show
 // pay for a recompute, and only on their next request.
+//
+// This only reaches cache entries that ALREADY reference cardID — it cannot help
+// a profile whose cached "Непросмотренные" list doesn't include this card yet
+// (nothing indexed it there to find). That's fine for most callers (a timecode
+// write, MyShows sync, etc. all touch a card the profile is already presumed to
+// be tracking) but wrong for the one case where a card is about to become newly
+// relevant to profiles that don't have it cached at all yet — the aired-cutoff
+// crossing (see StartUnwatchedCutoffInvalidation/replayMissedCutoffs), which is
+// exactly when a show with zero unwatched episodes yesterday can suddenly qualify
+// today. Those callers use InvalidateAllUnwatched (below) instead/in addition.
 func InvalidateWatchedForCard(cardID string) {
 	watchedMu.Lock()
 	for k := range watchedCardIndex[cardID] {
@@ -287,6 +297,22 @@ func InvalidateWatchedForCard(cardID string) {
 		delete(unwatchedCache, k)
 	}
 	delete(unwatchedCardIndex, cardID)
+	unwatchedMu.Unlock()
+}
+
+// InvalidateAllUnwatched drops every cached "Непросмотренные" list, regardless of
+// which cards they reference — the reverse-index-based InvalidateWatchedForCard
+// can't be used for this (see its own comment): a show crossing the aired cutoff
+// can make it newly eligible for profiles whose cached list was computed before
+// that, and no cache entry currently references the card to find via the index.
+// A full wipe is the simplest correct fix — this only runs once per aired-cutoff
+// crossing (at most a handful of times a day, see StartUnwatchedCutoffInvalidation),
+// not per-request, so the lost warmth (every profile recomputes its list once, on
+// its next request) is a non-issue next to serving a permanently-wrong list.
+func InvalidateAllUnwatched() {
+	unwatchedMu.Lock()
+	unwatchedCache = map[string][]store.UnwatchedTVShow{}
+	unwatchedCardIndex = map[string]map[string]struct{}{}
 	unwatchedMu.Unlock()
 }
 

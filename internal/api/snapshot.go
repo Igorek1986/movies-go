@@ -158,6 +158,13 @@ func replayMissedCutoffs(ctx context.Context, since time.Time) {
 		}
 	}
 	if total > 0 {
+		// InvalidateWatchedForCard only reaches unwatched-cache entries restored
+		// from the snapshot that already referenced one of these cards. A show
+		// that crossed the cutoff during the downtime and had zero unwatched
+		// episodes as of the snapshot (so wasn't in any list captured in it) has
+		// no such entry to invalidate through — see InvalidateAllUnwatched's own
+		// comment in catcache.go. Wipe the whole list cache to be correct.
+		InvalidateAllUnwatched()
 		log.Printf("catcache: replayed missed aired-cutoff crossings since snapshot, invalidated %d show(s)", total)
 	}
 }
