@@ -70,6 +70,26 @@ export function RemoteDialog({
       e.preventDefault()
       const next = Math.min(Math.max(i + (e.key === 'ArrowDown' ? 1 : -1), 0), focusable.length - 1)
       focusable[next]?.focus()
+      return
+    }
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && rootRef.current) {
+      // Same edge-only bridging as Up/Down above — a single-line input or
+      // textarea keeps native cursor movement until Left/Right hits the
+      // start/end of its text, only then does it hop to Отмена/Сохранить.
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        const el = target as HTMLInputElement | HTMLTextAreaElement
+        const start = el.selectionStart ?? 0
+        const end = el.selectionEnd ?? el.value.length
+        const pos = e.key === 'ArrowLeft' ? 0 : el.value.length
+        if (start !== pos || end !== pos) return
+      }
+      const focusable = Array.from(rootRef.current.querySelectorAll<HTMLElement>('[data-nav-item]'))
+      const i = focusable.indexOf(document.activeElement as HTMLElement)
+      if (i === -1) return
+      e.preventDefault()
+      const next = Math.min(Math.max(i + (e.key === 'ArrowRight' ? 1 : -1), 0), focusable.length - 1)
+      focusable[next]?.focus()
     }
   }
 

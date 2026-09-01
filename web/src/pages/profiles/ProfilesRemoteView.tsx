@@ -18,9 +18,16 @@ import { useProfilesPageState } from './useProfilesPageState'
 import classicStyles from './ProfilesClassicView.module.scss'
 import styles from './ProfilesRemoteView.module.scss'
 
+// Only elements where Backspace actually edits text — a focused radio/
+// checkbox/number/etc <input> doesn't consume Backspace at all, so it must
+// NOT count here, or the capture-phase "Назад" listener below silently does
+// nothing whenever focus happens to be on one (e.g. any settings radio row).
+const TEXT_EDITING_INPUT_TYPES = new Set(['text', 'password', 'email', 'search', 'tel', 'url', 'number', ''])
 function isTypingTarget(el: Element | null) {
   const tag = el?.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || (el as HTMLElement | null)?.isContentEditable
+  if (tag === 'TEXTAREA' || (el as HTMLElement | null)?.isContentEditable) return true
+  if (tag === 'INPUT') return TEXT_EDITING_INPUT_TYPES.has((el as HTMLInputElement).type)
+  return false
 }
 
 type SectionId =
@@ -33,7 +40,7 @@ type SectionId =
 // one level instead of three).
 type InterfaceSubId = 'bottomNav' | 'cardLayout' | 'browseLayout' | 'settingsLayout'
 const INTERFACE_SUBMENU: { id: InterfaceSubId; title: string }[] = [
-  { id: 'bottomNav', title: 'Панель навигации (моб./планшет)' },
+  { id: 'bottomNav', title: 'Панель навигации' },
   { id: 'cardLayout', title: 'Вид карточки фильма/сериала' },
   { id: 'browseLayout', title: 'Вид Каталога и Моё' },
   { id: 'settingsLayout', title: 'Дизайн страницы «Настройки»' },
@@ -300,10 +307,14 @@ export default function ProfilesRemoteView() {
   function goBack() {
     const { activeSection: sec, deviceSubview: sub, profilePluginsView: ppv, interfaceSubview: isub } = navRef.current
     if (ppv) {
-      pendingRefocusRowId.current = `profile-${ppv.deviceId}-${ppv.profileId || '__default__'}-bottom`
+      // profile-{key}-bottom holds several buttons (Детский/Год рождения/
+      // Параметры/Плагины ›) — data-focus-id picks out specifically the one
+      // that opened this view, not just whichever comes first in the row.
+      pendingRefocusRowId.current = `profile-${ppv.deviceId}-${ppv.profileId || '__default__'}-plugins`
       setProfilePluginsView(null)
     } else if (sub) {
-      pendingRefocusRowId.current = `device-${sub.deviceId}`
+      // Same idea — device-{id} holds both Профили › and Плагины ›.
+      pendingRefocusRowId.current = `device-${sub.deviceId}-${sub.view}`
       setDeviceSubview(null)
     } else if (isub) {
       pendingRefocusRowId.current = `iface-menu-${isub}`
@@ -317,13 +328,45 @@ export default function ProfilesRemoteView() {
     if (!pendingRefocusRowId.current) return
     const id = pendingRefocusRowId.current
     pendingRefocusRowId.current = null
-    document.querySelector<HTMLElement>(`[data-row-id="${id}"] [data-nav-item]`)?.focus()
+    // data-focus-id targets one specific button directly (see goBack's
+    // device/profile-plugins branches); everything else still has exactly
+    // one [data-nav-item] per [data-row-id] row, so falling back to that
+    // covers menu-*/iface-menu-* the same as before.
+    const el = document.querySelector<HTMLElement>(`[data-focus-id="${CSS.escape(id)}"]`)
+      ?? document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(id)}"] [data-nav-item]`)
+    el?.focus()
   }, [activeSection, deviceSubview, profilePluginsView, interfaceSubview])
+
+  // Same idea as pendingRefocusRowId above, but for RemoteIconPicker/the
+  // birth-year RemoteSelect (forceOpen mode has no trigger button of its
+  // own to remember, unlike RemoteSelect's normal closed/open mode — see
+  // its own triggerRef) — closing either one refocuses whichever profile
+  // row button opened it, instead of stranding focus at <body>.
+  const prevIconPickerFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (prevIconPickerFor.current && !iconPickerFor) {
+      document.querySelector<HTMLElement>(`[data-icon-trigger="${prevIconPickerFor.current}"]`)?.focus()
+    }
+    prevIconPickerFor.current = iconPickerFor
+  }, [iconPickerFor])
+  const prevYearPickerProfileId = useRef<string | null>(null)
+  useEffect(() => {
+    if (prevYearPickerProfileId.current !== null && !yearPickerProfile) {
+      document.querySelector<HTMLElement>(`[data-year-trigger="${prevYearPickerProfileId.current}"]`)?.focus()
+    }
+    prevYearPickerProfileId.current = yearPickerProfile?.profile_id ?? null
+  }, [yearPickerProfile])
 
   useEffect(() => {
     function onBackspaceCapture(e: KeyboardEvent) {
       if (e.key !== 'Backspace') return
       if (isTypingTarget(document.activeElement)) return
+      // A RemoteDialog/RemoteSelect/RemoteIconPicker overlay owns Backspace
+      // itself (closes just the overlay) — this listener runs in the
+      // capture phase, ahead of that overlay's own bubble-phase onKeyDown,
+      // so without this guard it always won the race and popped a whole
+      // drill-down level instead of just closing the overlay on top of it.
+      if ((document.activeElement as HTMLElement | null)?.closest('[data-remote-overlay]')) return
       const { activeSection: sec, deviceSubview: sub, profilePluginsView: ppv, interfaceSubview: isub } = navRef.current
       if (!sec && !sub && !ppv && !isub) return
       e.preventDefault()
@@ -450,10 +493,10 @@ export default function ProfilesRemoteView() {
                     </span>
                   </div>
                   <div className={styles.deviceActions} data-row-id={`device-${d.id}`}>
-                    <button className={classicStyles.btnSm} data-nav-item onClick={() => { if (openProfilesFor !== d.id) openProfiles(d.id); setDeviceSubview({ deviceId: d.id, view: 'profiles' }) }}>
+                    <button className={classicStyles.btnSm} data-nav-item data-focus-id={`device-${d.id}-profiles`} onClick={() => { if (openProfilesFor !== d.id) openProfiles(d.id); setDeviceSubview({ deviceId: d.id, view: 'profiles' }) }}>
                       Профили ›
                     </button>
-                    <button className={classicStyles.btnSm} data-nav-item onClick={() => { if (openPluginsFor !== d.id) openDevicePlugins(d.id); setDeviceSubview({ deviceId: d.id, view: 'plugins' }) }}>
+                    <button className={classicStyles.btnSm} data-nav-item data-focus-id={`device-${d.id}-plugins`} onClick={() => { if (openPluginsFor !== d.id) openDevicePlugins(d.id); setDeviceSubview({ deviceId: d.id, view: 'plugins' }) }}>
                       Плагины ›
                     </button>
                     <button className={classicStyles.btnSm} data-nav-item onClick={() => handleRename(d.id, d.name)}>Переименовать</button>
@@ -504,6 +547,7 @@ export default function ProfilesRemoteView() {
                             <button
                               className={classicStyles.profileIconBtn}
                               data-nav-item
+                              data-icon-trigger={p.profile_id}
                               title="Изменить иконку"
                               onClick={() => setIconPickerFor(iconPickerFor === p.profile_id ? null : p.profile_id)}
                             >
@@ -535,7 +579,7 @@ export default function ProfilesRemoteView() {
                         Детский {p.child ? '✓' : ''}
                       </button>
                       {p.child && (
-                        <button className={classicStyles.btnSm} data-nav-item onClick={() => handleSetBirthYear(p)} title="Год рождения ребёнка">
+                        <button className={classicStyles.btnSm} data-nav-item data-year-trigger={p.profile_id} onClick={() => handleSetBirthYear(p)} title="Год рождения ребёнка">
                           {p.child_birth_year ? `${p.child_birth_year} (${new Date().getFullYear() - p.child_birth_year} лет)` : 'Год рождения'}
                         </button>
                       )}
@@ -543,6 +587,7 @@ export default function ProfilesRemoteView() {
                       <button
                         className={classicStyles.btnSm}
                         data-nav-item
+                        data-focus-id={`profile-${key}-plugins`}
                         onClick={() => { if (profilePluginsFor !== p.profile_id) openProfilePlugins(p.profile_id); setProfilePluginsView({ deviceId: currentDevice.id, profileId: p.profile_id }) }}
                       >
                         Плагины ›
@@ -588,19 +633,22 @@ export default function ProfilesRemoteView() {
               {devicePlugins.length === 0 && <p className={classicStyles.empty}>Плагинов ещё нет</p>}
               {devicePlugins.map(p => (
                 <div key={p.id} className={classicStyles.profileCard} data-row-id={`devplugin-${currentDevice.id}-${p.id}`}>
-                  <div className={classicStyles.profileCardTop}>
-                    <div className={classicStyles.profileCardLeft}>
-                      <strong className={classicStyles.profileName}>{p.name || 'Без названия'}</strong>
-                      <code className={classicStyles.profileId} style={{ wordBreak: 'break-all' }}>{p.url}</code>
-                    </div>
-                    <div className={classicStyles.profileCardActions}>
-                      <button className={`${classicStyles.btnSm} ${p.enabled ? classicStyles.active : ''}`} data-nav-item onClick={() => handleToggleDevicePlugin(p)}>
-                        {p.enabled ? 'Включён ✓' : 'Выключен'}
-                      </button>
-                      <button className={classicStyles.btnIcon} data-nav-item title="Переименовать" onClick={() => handleRenamePlugin(p)}>✏️</button>
-                      <button className={classicStyles.btnIcon} data-nav-item title="Изменить URL" onClick={() => handleEditPluginUrl(p)}>🔗</button>
-                      <button className={`${classicStyles.btnSm} ${classicStyles.danger}`} data-nav-item onClick={() => handleDeletePlugin(p)}>Удалить</button>
-                    </div>
+                  <div className={classicStyles.profileCardLeft}>
+                    <strong className={classicStyles.profileName}>{p.name || 'Без названия'}</strong>
+                    <code className={classicStyles.profileId} style={{ wordBreak: 'break-all' }}>{p.url}</code>
+                  </div>
+                  {/* Always its own row below the title/URL (not the split-row
+                      .profileCardTop layout) — that one puts actions inline to
+                      the right only while there's room, so a short plugin name
+                      looked different from a long URL that wraps the actions
+                      underneath. Same actions, consistent position either way. */}
+                  <div className={classicStyles.profileCardBottom}>
+                    <button className={`${classicStyles.btnSm} ${p.enabled ? classicStyles.active : ''}`} data-nav-item onClick={() => handleToggleDevicePlugin(p)}>
+                      {p.enabled ? 'Включён ✓' : 'Выключен'}
+                    </button>
+                    <button className={classicStyles.btnIcon} data-nav-item title="Переименовать" onClick={() => handleRenamePlugin(p)}>✏️</button>
+                    <button className={classicStyles.btnIcon} data-nav-item title="Изменить URL" onClick={() => handleEditPluginUrl(p)}>🔗</button>
+                    <button className={`${classicStyles.btnSm} ${classicStyles.danger}`} data-nav-item onClick={() => handleDeletePlugin(p)}>Удалить</button>
                   </div>
                 </div>
               ))}
@@ -630,30 +678,38 @@ export default function ProfilesRemoteView() {
                 const key = `${profilePluginsView.deviceId}-${profilePluginsView.profileId || '__default__'}`
                 return (
                   <div key={pp.url} className={classicStyles.profileCard} data-row-id={`profplugin-${key}-${pp.url}`}>
-                    <div className={classicStyles.profileCardTop}>
-                      <div className={classicStyles.profileCardLeft}>
-                        <span className={classicStyles.profileName}>
-                          {pp.name || (pp.in_device_list ? pp.url : 'Без названия')}
-                        </span>
-                        {!pp.in_device_list && <span className={classicStyles.profileMeta}>только для профиля</span>}
-                      </div>
-                      <div className={classicStyles.profileCardActions}>
-                        <button className={`${classicStyles.btnSm} ${effective ? classicStyles.active : ''}`} data-nav-item onClick={() => handleSetProfileOverride(pp.url, !effective)}>
-                          {effective ? 'Вкл ✓' : 'Выкл'}
-                        </button>
-                        {!pp.in_device_list && (
-                          <>
-                            <button className={classicStyles.btnIcon} data-nav-item title="Переименовать" onClick={() => handleRenameProfilePlugin(pp)}>✏️</button>
-                            <button className={classicStyles.btnIcon} data-nav-item title="Изменить URL" onClick={() => handleEditProfilePluginUrl(pp)}>🔗</button>
-                          </>
-                        )}
-                        {pp.override !== null && pp.in_device_list && (
-                          <button className={classicStyles.btnSm} data-nav-item onClick={() => handleClearProfileOverride(pp.url)}>Сброс</button>
-                        )}
-                        {!pp.in_device_list && (
-                          <button className={`${classicStyles.btnSm} ${classicStyles.danger}`} data-nav-item onClick={() => handleClearProfileOverride(pp.url)}>Удалить</button>
-                        )}
-                      </div>
+                    <div className={classicStyles.profileCardLeft}>
+                      <span className={classicStyles.profileName}>
+                        {pp.name || (pp.in_device_list ? pp.url : 'Без названия')}
+                      </span>
+                      {!pp.in_device_list && (
+                        <>
+                          <span className={classicStyles.profileMeta}>только для профиля</span>
+                          <code className={classicStyles.profileId} style={{ wordBreak: 'break-all' }}>{pp.url}</code>
+                        </>
+                      )}
+                    </div>
+                    {/* Own row below the title, always — same fix as the
+                        device plugin list above: a right-aligned action group
+                        whose button count varies per row (2 here, 4 there)
+                        looked staggered/inconsistent lined up next to titles
+                        of different lengths. */}
+                    <div className={classicStyles.profileCardBottom}>
+                      <button className={`${classicStyles.btnSm} ${effective ? classicStyles.active : ''}`} data-nav-item onClick={() => handleSetProfileOverride(pp.url, !effective)}>
+                        {effective ? 'Вкл ✓' : 'Выкл'}
+                      </button>
+                      {!pp.in_device_list && (
+                        <>
+                          <button className={classicStyles.btnIcon} data-nav-item title="Переименовать" onClick={() => handleRenameProfilePlugin(pp)}>✏️</button>
+                          <button className={classicStyles.btnIcon} data-nav-item title="Изменить URL" onClick={() => handleEditProfilePluginUrl(pp)}>🔗</button>
+                        </>
+                      )}
+                      {pp.override !== null && pp.in_device_list && (
+                        <button className={classicStyles.btnSm} data-nav-item onClick={() => handleClearProfileOverride(pp.url)}>Сброс</button>
+                      )}
+                      {!pp.in_device_list && (
+                        <button className={`${classicStyles.btnSm} ${classicStyles.danger}`} data-nav-item onClick={() => handleClearProfileOverride(pp.url)}>Удалить</button>
+                      )}
                     </div>
                   </div>
                 )
@@ -662,7 +718,7 @@ export default function ProfilesRemoteView() {
                 <input
                   className={classicStyles.input}
                   data-nav-item
-                  placeholder="Доп. URL плагина только для этого профиля"
+                  placeholder="URL плагина только для профиля"
                   value={newProfilePluginUrl}
                   onChange={e => setNewProfilePluginUrl(e.target.value)}
                 />
@@ -1035,10 +1091,10 @@ export default function ProfilesRemoteView() {
             ))}
           </div>
         )}
-        {interfaceSubview === 'bottomNav' && <BottomNavSettings bare />}
-        {interfaceSubview === 'cardLayout' && <CardLayoutSettings bare />}
-        {interfaceSubview === 'browseLayout' && <BrowseLayoutSettings bare />}
-        {interfaceSubview === 'settingsLayout' && <SettingsLayoutSettings bare />}
+        {interfaceSubview === 'bottomNav' && <div className={styles.sectionBody}><BottomNavSettings bare /></div>}
+        {interfaceSubview === 'cardLayout' && <div className={styles.sectionBody}><CardLayoutSettings bare /></div>}
+        {interfaceSubview === 'browseLayout' && <div className={styles.sectionBody}><BrowseLayoutSettings bare /></div>}
+        {interfaceSubview === 'settingsLayout' && <div className={styles.sectionBody}><SettingsLayoutSettings bare /></div>}
 
         {/* ── Account settings ── */}
           {activeSection === 'account' && (

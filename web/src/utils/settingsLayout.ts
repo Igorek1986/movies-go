@@ -9,8 +9,8 @@
 export type SettingsLayout = 'classic' | 'remote'
 
 export const SETTINGS_LAYOUTS: { id: SettingsLayout; label: string }[] = [
-  { id: 'classic', label: 'Классический' },
   { id: 'remote', label: 'Управление (для клавиатуры/пульта)' },
+  { id: 'classic', label: 'Классический' },
 ]
 
 const DEFAULT_LAYOUT: SettingsLayout = 'remote'

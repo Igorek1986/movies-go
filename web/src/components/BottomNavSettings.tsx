@@ -81,6 +81,9 @@ export function BottomNavSettings({ bare }: Props = {}) {
       <p className={pageStyles.hint}>
         Расположение на планшетном экране (768–1024px) — на телефоне панель всегда снизу.
       </p>
+      <p className={pageStyles.hint}>
+        На десктопе эта же панель вызывается стрелками ← / → (когда фокус не внутри строки с настройками) — всплывает сбоку, между кнопками переключаетесь стрелками ↑ / ↓, закрывается клавишей Escape или стрелкой в обратную сторону.
+      </p>
       <div className={styles.positionRow} data-row-id="bottomnav-position">
         <label className={pageStyles.checkLabel}>
           <input type="radio" name="bottomNavPosition" data-nav-item checked={position === 'bottom'} onChange={() => setPosition('bottom')} />
@@ -130,7 +133,7 @@ export function BottomNavSettings({ bare }: Props = {}) {
 
   return (
     <details className={pageStyles.details}>
-      <summary className={pageStyles.summary}>Панель навигации (моб./планшет)</summary>
+      <summary className={pageStyles.summary}>Панель навигации</summary>
       <div className={pageStyles.detailsBody}>{body}</div>
     </details>
   )

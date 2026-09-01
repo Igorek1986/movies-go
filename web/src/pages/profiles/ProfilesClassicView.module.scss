@@ -713,6 +713,7 @@
 
 .backupActions {
   display: flex;
+  align-items: center;
   gap: $spacing-sm;
   flex-wrap: wrap;
   margin-top: $spacing-sm;

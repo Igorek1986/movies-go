@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { RemoteDialog } from './RemoteDialog'
 
 interface PendingDialog {
@@ -29,14 +29,21 @@ interface PromptOpts {
 // each call site (await confirmDialog(...) instead of confirm(...)).
 export function useRemoteDialog() {
   const [pending, setPending] = useState<PendingDialog | null>(null)
+  // Whatever had focus when the dialog opened (the button that triggered
+  // it — rename/delete/edit params/etc, dozens of different call sites
+  // sharing this one hook) — restored on close so answering a confirm
+  // doesn't strand focus back at the top of the row-nav.
+  const triggerRef = useRef<HTMLElement | null>(null)
 
   function confirmDialog(message: string, opts?: ConfirmOpts): Promise<boolean> {
+    triggerRef.current = document.activeElement as HTMLElement | null
     return new Promise(resolve => {
       setPending({ mode: 'confirm', message, resolve: v => resolve(v as boolean), ...opts })
     })
   }
 
   function promptDialog(message: string, initialValue = '', opts?: PromptOpts): Promise<string | null> {
+    triggerRef.current = document.activeElement as HTMLElement | null
     return new Promise(resolve => {
       setPending({ mode: 'prompt', message, initialValue, resolve: v => resolve(v as string | null), ...opts })
     })
@@ -45,6 +52,8 @@ export function useRemoteDialog() {
   function settle(value: boolean | string | null) {
     pending?.resolve(value)
     setPending(null)
+    triggerRef.current?.focus()
+    triggerRef.current = null
   }
 
   const dialogEl = pending ? (
