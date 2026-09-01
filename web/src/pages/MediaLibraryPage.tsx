@@ -500,11 +500,15 @@ export default function MediaLibraryPage() {
   const profileId = activeProfile?.profile_id ?? ''
 
   // Drop the cross-remount row cache when the active profile actually
-  // changes — same reasoning as CatalogPage's _cache.profileKey check, run
-  // synchronously during render for the same reason (LibraryRow reads
-  // _rowCache[status] as initialCache in this same pass).
+  // changes — same reasoning as CatalogPage's _cache.profileKey check
+  // (including dropping the `!== null` guard — see its comment for why:
+  // every row here is profile-dependent, so without this every single one
+  // could poison itself with an empty result fetched before activeProfile
+  // resolves for the first time), run synchronously during render for the
+  // same reason (LibraryRow reads _rowCache[status] as initialCache in this
+  // same pass).
   const profileKey = activeProfile ? `${activeProfile.device_id}:${activeProfile.profile_id}` : null
-  if (_libProfileKey !== null && _libProfileKey !== profileKey) {
+  if (_libProfileKey !== profileKey) {
     for (const k of Object.keys(_rowCache) as StatusKey[]) delete _rowCache[k]
   }
   _libProfileKey = profileKey

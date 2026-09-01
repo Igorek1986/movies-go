@@ -937,7 +937,17 @@ export default function CatalogPage() {
   // _cache.rows[cat.id] as initialCache in this same render pass, before any
   // effect would get a chance to clear it.
   const profileKey = activeProfile ? `${activeProfile.device_id}:${activeProfile.profile_id}` : null
-  if (_cache.profileKey !== null && _cache.profileKey !== profileKey) {
+  // No `!== null` guard on the stored side — a profile-dependent row (only
+  // "Непросмотренные" today) can fetch and cache an empty/wrong result
+  // BEFORE activeProfile resolves for the first time (token/profileId are
+  // still '' at that point), and that first transition is exactly
+  // _cache.profileKey going from null to a real value. Skipping the clear
+  // on that transition (the old behavior) left the poisoned empty cache
+  // entry in place forever — the row's key-driven remount that follows
+  // would just pick the bad cached result back up via initialCache instead
+  // of refetching, which is what made it need a manual profile switch (a
+  // guaranteed-non-null → different-non-null transition) to ever recover.
+  if (_cache.profileKey !== profileKey) {
     _cache.rows = {}
     _cache.catView = null
   }

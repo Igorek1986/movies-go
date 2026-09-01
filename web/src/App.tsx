@@ -1,5 +1,5 @@
 import { useEffect, useRef, lazy, Suspense } from 'react'
-import { Routes, Route, Navigate, Link, useLocation, useNavigationType } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet, Link, useLocation, useNavigationType } from 'react-router-dom'
 
 // Skipped on POP (browser back/forward) and on Layout's own handleBottomBack
 // (Backspace / the nav panel's "Назад", marked via state.isBack — see its
@@ -72,11 +72,28 @@ const UsersListPage = lazy(() => import('@/pages/UsersListPage'))
 const DevicesListPage = lazy(() => import('@/pages/DevicesListPage'))
 const TimecodesListPage = lazy(() => import('@/pages/TimecodesListPage'))
 
-function PrivateRoute({ children }: { children: React.ReactNode }) {
+// One shared parent route for every authenticated page (react-router "layout
+// route" — matched children render via <Outlet/>, and THIS component stays
+// mounted across navigation between them, only unmounting when leaving the
+// private route tree entirely). ActiveProfileProvider lives here, not
+// wrapping the whole app (see App's own history) — mounted above the public/
+// private split, its one-shot refresh() fired /api/devices before login even
+// happened (an anonymous 401), and since it never remounts on the client-side
+// navigate() a successful login does, that failed result stuck around for
+// the rest of the session: devices/profiles empty, and Каталог's category
+// rows stuck fetching with no token/profile_id forever — needing a real page
+// reload to get a fresh mount with the cookie already present. Scoping it to
+// only the routes that are gated on `user` already being resolved means its
+// first-ever mount always has a valid session.
+function PrivateShell() {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
-  return <>{children}</>
+  return (
+    <ActiveProfileProvider>
+      <Outlet />
+    </ActiveProfileProvider>
+  )
 }
 
 function CatalogCategoryRedirect() {
@@ -138,7 +155,7 @@ export default function App() {
   }, [])
 
   return (
-    <ActiveProfileProvider>
+    <>
       <ScrollToTop />
       <div style={{ flex: 1 }}>
       <Suspense fallback={null}>
@@ -154,47 +171,51 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-      {/* Приватные */}
-      <Route path="/" element={<PrivateRoute><Navigate to="/catalog" replace /></PrivateRoute>} />
-      <Route path="/profiles" element={<PrivateRoute><ProfilesPage /></PrivateRoute>} />
-      <Route path="/catalog" element={<PrivateRoute><CatalogPage /></PrivateRoute>} />
-      <Route path="/catalog/:category" element={<PrivateRoute><CatalogCategoryRedirect /></PrivateRoute>} />
-      <Route path="/calendar" element={<PrivateRoute><CalendarPage /></PrivateRoute>} />
-      <Route path="/media-library" element={<PrivateRoute><MediaLibraryPage /></PrivateRoute>} />
-      <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
-      <Route path="/card/:cardId" element={<PrivateRoute><CardDetailPage /></PrivateRoute>} />
-      <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
-      <Route path="/sessions" element={<PrivateRoute><SessionsPage /></PrivateRoute>} />
-      <Route path="/stats" element={<PrivateRoute><StatsPage /></PrivateRoute>} />
-      <Route path="/setup-2fa" element={<PrivateRoute><Setup2FAPage /></PrivateRoute>} />
-      <Route path="/actor/:personId" element={<PrivateRoute><ActorPage /></PrivateRoute>} />
-      <Route path="/admin/settings" element={<PrivateRoute><AdminSettingsPage /></PrivateRoute>} />
-      <Route path="/admin/parsers" element={<PrivateRoute><ParsersPage /></PrivateRoute>} />
-      <Route path="/admin/proxies" element={<PrivateRoute><ProxiesPage /></PrivateRoute>} />
-      <Route path="/admin/logs" element={<PrivateRoute><LogsPage /></PrivateRoute>} />
-      <Route path="/admin/bot" element={<PrivateRoute><BotPage /></PrivateRoute>} />
-      <Route path="/admin/tmdb-missing" element={<PrivateRoute><TMDBMissingPage /></PrivateRoute>} />
-      <Route path="/admin/cards-today" element={<PrivateRoute><NewCardsPage /></PrivateRoute>} />
-      <Route path="/admin/all-cards" element={<PrivateRoute><AllCardsPage /></PrivateRoute>} />
-      <Route path="/admin/popular" element={<PrivateRoute><PopularPage /></PrivateRoute>} />
-      <Route path="/admin/popular-source" element={<PrivateRoute><PopularSourcePage /></PrivateRoute>} />
-      <Route path="/admin/no-runtime-movies" element={<PrivateRoute><AllCardsPage noRuntime="movie" /></PrivateRoute>} />
-      <Route path="/admin/no-runtime-tv" element={<PrivateRoute><AllCardsPage noRuntime="tv" /></PrivateRoute>} />
-      <Route path="/admin/actors" element={<PrivateRoute><PersonsAdminPage /></PrivateRoute>} />
-      <Route path="/admin/directors" element={<PrivateRoute><PersonsAdminPage /></PrivateRoute>} />
-      <Route path="/admin/users-today" element={<PrivateRoute><UsersTodayPage /></PrivateRoute>} />
-      <Route path="/admin/devices-today" element={<PrivateRoute><DevicesTodayPage /></PrivateRoute>} />
-      <Route path="/admin/timecodes-today" element={<PrivateRoute><TimecodesTodayPage /></PrivateRoute>} />
-      <Route path="/admin/tmdb-refreshed-today" element={<PrivateRoute><TMDBRefreshedTodayPage /></PrivateRoute>} />
-      <Route path="/admin/users-list" element={<PrivateRoute><UsersListPage /></PrivateRoute>} />
-      <Route path="/admin/devices-list" element={<PrivateRoute><DevicesListPage /></PrivateRoute>} />
-      <Route path="/admin/timecodes-list" element={<PrivateRoute><TimecodesListPage /></PrivateRoute>} />
+      {/* Приватные — общий родитель PrivateShell (см. её комментарий) держит
+          ActiveProfileProvider смонтированным один раз на всё время работы с
+          приватными страницами, не раньше и не позже. */}
+      <Route element={<PrivateShell />}>
+        <Route path="/" element={<Navigate to="/catalog" replace />} />
+        <Route path="/profiles" element={<ProfilesPage />} />
+        <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/catalog/:category" element={<CatalogCategoryRedirect />} />
+        <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/media-library" element={<MediaLibraryPage />} />
+        <Route path="/history" element={<HistoryPage />} />
+        <Route path="/card/:cardId" element={<CardDetailPage />} />
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/sessions" element={<SessionsPage />} />
+        <Route path="/stats" element={<StatsPage />} />
+        <Route path="/setup-2fa" element={<Setup2FAPage />} />
+        <Route path="/actor/:personId" element={<ActorPage />} />
+        <Route path="/admin/settings" element={<AdminSettingsPage />} />
+        <Route path="/admin/parsers" element={<ParsersPage />} />
+        <Route path="/admin/proxies" element={<ProxiesPage />} />
+        <Route path="/admin/logs" element={<LogsPage />} />
+        <Route path="/admin/bot" element={<BotPage />} />
+        <Route path="/admin/tmdb-missing" element={<TMDBMissingPage />} />
+        <Route path="/admin/cards-today" element={<NewCardsPage />} />
+        <Route path="/admin/all-cards" element={<AllCardsPage />} />
+        <Route path="/admin/popular" element={<PopularPage />} />
+        <Route path="/admin/popular-source" element={<PopularSourcePage />} />
+        <Route path="/admin/no-runtime-movies" element={<AllCardsPage noRuntime="movie" />} />
+        <Route path="/admin/no-runtime-tv" element={<AllCardsPage noRuntime="tv" />} />
+        <Route path="/admin/actors" element={<PersonsAdminPage />} />
+        <Route path="/admin/directors" element={<PersonsAdminPage />} />
+        <Route path="/admin/users-today" element={<UsersTodayPage />} />
+        <Route path="/admin/devices-today" element={<DevicesTodayPage />} />
+        <Route path="/admin/timecodes-today" element={<TimecodesTodayPage />} />
+        <Route path="/admin/tmdb-refreshed-today" element={<TMDBRefreshedTodayPage />} />
+        <Route path="/admin/users-list" element={<UsersListPage />} />
+        <Route path="/admin/devices-list" element={<DevicesListPage />} />
+        <Route path="/admin/timecodes-list" element={<TimecodesListPage />} />
+      </Route>
 
       <Route path="*" element={<NotFoundPage />} />
       </Routes>
       </Suspense>
       </div>
       <AppFooter />
-    </ActiveProfileProvider>
+    </>
   )
 }
