@@ -952,11 +952,22 @@ export default function MediaLibraryPage() {
                     }
                   }}
                 />
-                {searchValue && (
-                  <button className={styles.searchClear} onClick={() => handleSearchChange('')} title="Очистить">✕</button>
-                )}
               </div>
-              <button className={styles.floatingClose} onClick={() => setSearchOpen(false)} title="Закрыть">✕</button>
+              {/* One button, not clear+close side by side — a single ✕ that
+                  both empties the field and exits search reads clearer than
+                  making the user pick which of two identical glyphs to tap.
+                  onMouseDown preventDefault — see CatalogPage's identical
+                  button for the full reasoning: without it, tapping this on
+                  iOS Safari blurs the input (buttons don't take focus on
+                  tap there), which fires .floatingBar's own onBlur and
+                  unmounts this button before the deferred click ever
+                  arrives — closes but never clears. */}
+              <button
+                className={styles.floatingClose}
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => { setSearchValue(''); setSearchQuery(''); setSearchOpen(false) }}
+                title="Закрыть"
+              >✕</button>
             </div>
           </div>
         )}

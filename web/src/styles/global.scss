@@ -72,6 +72,30 @@ svg {
   outline-offset: 2px;
 }
 
+// ── iOS input auto-zoom ──────────────────────────────────────────────────
+// iOS Safari/PWA zooms the whole page in on focus when a text input's
+// computed font-size is under 16px — a platform quirk, not a design choice,
+// so one rule here beats chasing every input's own font-size across every
+// page's module.scss (and covers any input added later for free — see
+// feedback_dry_avoid_duplication in memory). Only one input in the codebase
+// (CatalogPage's .searchInput) had already worked around this per-input;
+// everything else — every other search box, admin form field, profile/
+// remote-dialog input, textarea — sat at 12–14px and would trigger it.
+// !important: a bare element/attribute selector here has LOWER specificity
+// than any of those .foo { font-size: ... } class rules, so without it this
+// would silently lose to every single one of them.
+input:not([type]),
+input[type="text"],
+input[type="search"],
+input[type="email"],
+input[type="password"],
+input[type="tel"],
+input[type="url"],
+input[type="number"],
+textarea {
+  font-size: 16px !important;
+}
+
 // Утилиты
 .visually-hidden {
   position: absolute;

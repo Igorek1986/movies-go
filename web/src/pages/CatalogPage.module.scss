@@ -100,7 +100,8 @@
   height: 36px;
   width: 220px;
   border-radius: $radius-sm;
-  padding-right: 28px;
+  // Room for the bigger .searchClear below (was 28px for a 12px glyph).
+  padding-right: 36px;
   // iOS Safari auto-zooms the page on focus for any input with a computed
   // font-size under 16px — this is that threshold, not a visual choice.
   // Kept unconditional (not just under some breakpoint): a landscape phone
@@ -115,15 +116,17 @@
 
 .searchClear {
   position: absolute;
-  right: 6px;
+  right: 2px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
   border: none;
-  padding: 0 2px;
+  // Was font-size 12px + padding 0 2px — a ~16×12px hit target, too small
+  // to reliably tap on a phone. Bigger glyph + real padding on all sides.
+  padding: $spacing-xs;
   cursor: pointer;
   color: $color-text-muted;
-  font-size: 12px;
+  font-size: $font-size-lg;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -593,17 +596,19 @@
   width: 100%;
   font-size: $font-size-sm;
   border-radius: $radius-sm;
-  padding-right: 28px;
 }
 
 .floatingClose {
   flex-shrink: 0;
   background: none;
   border: none;
-  padding: $spacing-xs;
+  padding: $spacing-sm;
   cursor: pointer;
   color: $color-text-muted;
-  font-size: $font-size-sm;
+  // Bigger than a plain "close" glyph would need — this button now also
+  // clears the query (see its onClick), not just closes, so it's a more
+  // important target than before and needs to read/tap as one.
+  font-size: $font-size-lg;
   line-height: 1;
 
   &:hover { color: $color-text; }

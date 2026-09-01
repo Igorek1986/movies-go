@@ -1520,11 +1520,26 @@ export default function CatalogPage() {
                     }
                   }}
                 />
-                {searchValue && (
-                  <button className={styles.searchClear} onClick={() => handleSearchChange('')} title="Очистить">✕</button>
-                )}
               </div>
-              <button className={styles.floatingClose} onClick={() => setSearchOpen(false)} title="Закрыть">✕</button>
+              {/* One button, not clear+close side by side — a single ✕ that
+                  both empties the field and exits search reads clearer than
+                  making the user pick which of two identical glyphs to tap.
+                  onMouseDown preventDefault is required, not decoration:
+                  buttons don't take focus on tap in iOS Safari, so tapping
+                  this one blurs the input straight to nothing — which fires
+                  .floatingBar's own onBlur (searchOpen -> false) and unmounts
+                  this button BEFORE the deferred click event it's waiting on
+                  ever arrives, silently dropping onClick (closes but never
+                  clears). Preventing mousedown's default stops the browser
+                  from shifting focus away from the input at all, so onBlur
+                  never fires from this tap and the click below still lands
+                  on a button that still exists. */}
+              <button
+                className={styles.floatingClose}
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => { setSearchValue(''); setSearchQuery(''); setSearchOpen(false) }}
+                title="Закрыть"
+              >✕</button>
             </div>
           </div>
         )}

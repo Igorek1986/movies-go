@@ -411,17 +411,19 @@
   width: 100%;
   font-size: $font-size-sm;
   border-radius: $radius-sm;
-  padding-right: 28px;
 }
 
 .floatingClose {
   flex-shrink: 0;
   background: none;
   border: none;
-  padding: $spacing-xs;
+  padding: $spacing-sm;
   cursor: pointer;
   color: $color-text-muted;
-  font-size: $font-size-sm;
+  // See CatalogPage's identical comment — bigger because this button now
+  // also clears the query, not just closes, so it's a more important
+  // target than before.
+  font-size: $font-size-lg;
   line-height: 1;
 
   &:hover { color: $color-text; }
@@ -429,23 +431,4 @@
 
 .searchWrap {
   flex-shrink: 0;
-  position: relative;
-}
-
-.searchClear {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  padding: 0 2px;
-  cursor: pointer;
-  color: $color-text-muted;
-  font-size: 12px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-
-  &:hover { color: $color-text; }
 }
