@@ -1021,6 +1021,15 @@
   font-weight: 600;
 }
 
+.epAirDate {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  opacity: 0.7;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .epSpecialBadge {
   color: $color-primary;
   font-size: 13px;

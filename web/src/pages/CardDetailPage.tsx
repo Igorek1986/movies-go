@@ -69,6 +69,13 @@ function fmtTime(sec: number): string {
   return `${m}:${String(s).padStart(2,'0')}`
 }
 
+function fmtEpAirDate(airDate: string | null): string {
+  if (!airDate) return ''
+  const d = new Date(airDate)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('ru-RU')
+}
+
 function epLabel(ep: { season: number; episode: number }) {
   return `S${String(ep.season).padStart(2,'0')}E${String(ep.episode).padStart(2,'0')}`
 }
@@ -525,6 +532,7 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
           <div className={styles.epTop}>
             <span className={styles.epCode}>{epCode(sn, ep.episode)}</span>
             {ep.title && <span className={styles.epTitle}>{ep.title}</span>}
+            {fmtEpAirDate(ep.air_date) && <span className={styles.epAirDate}>{fmtEpAirDate(ep.air_date)}</span>}
           </div>
           <div className={styles.epBottom}>
             <InteractiveBar
