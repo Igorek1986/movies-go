@@ -58,6 +58,16 @@
 .pageHero {
   gap: 0;
   padding-bottom: 0;
+  // Mirrors .heroFull's own margin-top: -$spacing-xl (see its comment) —
+  // that one cancels .main's TOP padding so the hero lands flush against the
+  // real viewport top; nothing canceled the BOTTOM padding, so those same
+  // 32px right before the footer were never covered by any of .page's own
+  // opaque sections — just .main's plain (non-positioned) background, which
+  // loses the paint order to the fixed, positioned .heroFullBg behind
+  // everything. Visible on every hero-layout card, not just TMDB-only ones —
+  // cards with a long torrents/cast/similar tail just scroll past it fast
+  // enough that a bare 32px sliver at the very bottom goes unnoticed.
+  margin-bottom: -$spacing-xl;
 }
 
 .loading,
