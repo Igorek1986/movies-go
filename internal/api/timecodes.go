@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"movies-api/db/models"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
 	"movies-api/movies/tmdb"
@@ -97,6 +98,14 @@ func refreshCardFromTMDB(cardID string) {
 	isMovie := mediaType == "movie"
 	ent := tmdb.GetVideoDetails(isMovie, tmdbID)
 	if ent == nil {
+		return
+	}
+	if updatedAt == nil {
+		// Card doesn't exist yet — the user is watching something never parsed
+		// from our own trackers (another source). Create a metadata-only card
+		// (no torrents) so it displays correctly everywhere (История, Продолжить
+		// просмотр, /card/*) instead of a blank title/poster with just a timecode.
+		store.UpsertMediaCard(ent, &models.TorrentDetails{})
 		return
 	}
 	// Сохраняем только TMDB-поля (без перезаписи torrent-специфичных данных).
