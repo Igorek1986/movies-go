@@ -7,8 +7,8 @@ import { resolveCardLayout } from '@/utils/cardLayout'
 import { qualityLabel, runtimeLabel } from '@/utils/mediaFormat'
 import { useAuth } from '@/hooks/useAuth'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
-import { invalidateUnwatchedRow } from './CatalogPage'
-import { invalidateLibraryRows } from './MediaLibraryPage'
+import { invalidateRowCachesAfterStatusChange } from '@/utils/rowCacheSync'
+import { getWebClientId, subscribeLiveSync } from '@/hooks/useLiveSync'
 import styles from './CardDetailPage.module.scss'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -523,7 +523,15 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
       const durSec = ep.duration_sec ?? tc?.duration_sec ?? epDurSec
       const timeSec = tc?.time ?? 0
       const profileId = tc?.profile_id ?? defaultProfileId
-      const pct = tc?.percent ?? ep.percent
+      // ep.percent — снимок из apiEpisodes на момент открытия карточки, не
+      // обновляется вызовами loadTimecodes(). Использовать его как фолбэк
+      // стоит только пока настоящие таймкоды ещё не загрузились (быстрая
+      // отрисовка без "моргания" в непросмотренное) — как только tcMap
+      // реально загружен, отсутствие записи там означает "сброшено", а не
+      // "данных ещё нет", и его нужно доверять безоговорочно, иначе сброс
+      // таймкода не отражался на полоске конкретной серии (хотя агрегатный
+      // счётчик серии, который берёт данные только из tcMap, уже обновлялся).
+      const pct = tc?.percent ?? (timecodesLoaded ? 0 : ep.percent)
       // catalog_special = real special from episodes DB (e.g. season 0 extras)
       // user_special = user manually marked via ★ button
       // Show "спец" only for catalog specials; user-watched (via MyShows sync) shows as green bar
@@ -1014,6 +1022,19 @@ export default function CardDetailPage() {
       .catch(() => {})
   }, [cardId, activeDevice, defaultProfileId])
 
+  // Живое обновление, пока эта же карточка открыта и статус/таймкод меняют
+  // где-то ещё (другое Lampa-устройство, веб на другой вкладке) — без этого
+  // приходилось закрывать и открывать карточку заново, чтобы увидеть чужое
+  // изменение (см. useLiveSync — тот же WS, что уже используют Lampa-плагины).
+  useEffect(() => {
+    if (!cardId || !activeDevice) return
+    return subscribeLiveSync((msg) => {
+      if (msg.card_id !== cardId) return
+      if (msg.type === 'status') setWatchStatus(msg.status || '')
+      else if (msg.type === 'timecode') loadTimecodes(cardId, activeDevice.id)
+    })
+  }, [cardId, activeDevice, loadTimecodes])
+
   async function toggleWatchStatus(next: string) {
     if (!activeDevice || !cardId || statusBusy) return
     // Clicking the already-active status is a no-op, not a "clear it" —
@@ -1044,18 +1065,21 @@ export default function CardDetailPage() {
             body: JSON.stringify({
               tmdb_id: card.tmdb_id, media_type: card.media_type,
               device_id: activeDevice.id, profile_id: defaultProfileId, status,
+              client_id: getWebClientId(),
             }),
           })
         : await fetch('/api/web/set-status', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, profile_id: defaultProfileId, status }),
+            body: JSON.stringify({
+              device_id: activeDevice.id, card_id: cardId, profile_id: defaultProfileId, status,
+              client_id: getWebClientId(),
+            }),
           })
       if (res.ok) {
         setWatchStatus(status)
         if (card && !card.in_catalog) setCard({ ...card, in_catalog: true })
-        invalidateUnwatchedRow()
-        invalidateLibraryRows()
+        invalidateRowCachesAfterStatusChange()
       }
     } finally {
       setStatusBusy(false)
@@ -1189,7 +1213,7 @@ export default function CardDetailPage() {
     await fetch('/api/web/set-timecode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item: ctx.item, percent, profile_id: ctx.profileId }),
+      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item: ctx.item, percent, profile_id: ctx.profileId, client_id: getWebClientId() }),
     })
     loadTimecodes(cardId, activeDevice.id)
     // Percent≥90 can imply "Просмотрел" (movie) server-side (EnsureImpliedStatus) —
@@ -1204,7 +1228,7 @@ export default function CardDetailPage() {
       fetch('/api/web/set-timecode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item, percent: 100, profile_id: profileId }),
+        body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item, percent: 100, profile_id: profileId, client_id: getWebClientId() }),
       })
     ))
     loadTimecodes(cardId, activeDevice.id)
@@ -1216,7 +1240,7 @@ export default function CardDetailPage() {
     await fetch('/api/web/mark-special', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item, profile_id: profileId }),
+      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item, profile_id: profileId, client_id: getWebClientId() }),
     })
     loadTimecodes(cardId, activeDevice.id)
     loadWatchStatus() // MarkSpecialTimecode implies "Смотрю" for TV — refresh to show it
@@ -1228,14 +1252,14 @@ export default function CardDetailPage() {
     await fetch('/api/web/unmark-special', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item, profile_id: profileId }),
+      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item, profile_id: profileId, client_id: getWebClientId() }),
     })
     loadTimecodes(cardId, activeDevice.id)
   }
 
   async function deleteEpisodeTimecode(item: string, profileId: string) {
     if (!activeDevice || !cardId) return
-    const qs = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, item, profile_id: profileId })
+    const qs = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, item, profile_id: profileId, client_id: getWebClientId() })
     await fetch(`/api/episode-timecode?${qs}`, { method: 'DELETE' })
     loadTimecodes(cardId, activeDevice.id)
     checkBackwardCascade(item, profileId)
@@ -1273,14 +1297,14 @@ export default function CardDetailPage() {
         fetch('/api/web/mark-special', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item: ep.hash, profile_id: state.profileId }),
+          body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item: ep.hash, profile_id: state.profileId, client_id: getWebClientId() }),
         })
       ))
       loadTimecodes(cardId, activeDevice.id)
       loadWatchStatus()
     } else if (state.kind === 'cascadeBackward') {
       await Promise.all(state.episodes.map(ep => {
-        const qs = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, item: ep.hash, profile_id: state.profileId })
+        const qs = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, item: ep.hash, profile_id: state.profileId, client_id: getWebClientId() })
         return fetch(`/api/episode-timecode?${qs}`, { method: 'DELETE' })
       }))
       loadTimecodes(cardId, activeDevice.id)

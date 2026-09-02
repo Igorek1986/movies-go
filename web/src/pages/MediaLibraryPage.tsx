@@ -5,6 +5,7 @@ import { posterUrl } from '@/utils/poster'
 import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLDOWN_MS, CATEGORY_WHEEL_COOLDOWN_MS, focusTopNavActive } from '@/utils/scrollNav'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { useAuth } from '@/hooks/useAuth'
+import { subscribeLiveSync } from '@/hooks/useLiveSync'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
 import styles from './MediaLibraryPage.module.scss'
@@ -34,6 +35,15 @@ interface LibraryResponse {
 }
 
 type StatusKey = 'favorite' | 'continues' | 'watching' | 'completed' | 'planned' | 'stopped'
+
+// subjective_statuses-значение (см. PUT /timecode/status) → строка «Моё» с этим
+// значением — используется для живого удаления карточки из уже отрисованной
+// строки, когда статус сменили на другой (другое устройство/вкладка). Строки
+// без записи здесь ('favorite'/'continues') статусом не управляются —
+// избранное отдельный WS-тип, «Продолжить просмотр» вообще не про статус.
+const STATUS_TO_ROW_KEY: Partial<Record<string, StatusKey>> = {
+  watching: 'watching', planned: 'planned', stopped: 'stopped', watched: 'completed',
+}
 
 interface RowCache { items: LibraryItem[]; totalPages: number }
 
@@ -136,6 +146,11 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
   const rowScrollRef = useRef<HTMLDivElement>(null)
   const loadedRef = useRef(!!initialCache)
   const autoFocusAppliedRef = useRef(false)
+  // Свежий items для обработчика WS-события ниже, не завязываясь на него как
+  // на зависимость эффекта (иначе подписка пересоздавалась бы на каждую
+  // загрузку строки) — см. CatalogPage's CategoryRow для того же паттерна.
+  const itemsRef = useRef(items)
+  itemsRef.current = items
 
   // Shared by the ArrowLeft/Right keydown handler below and the wheel
   // handler further down — see CatalogPage's identical moveCardFocus for
@@ -238,6 +253,67 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
     if (items !== null && items.length === 0) onEmpty?.()
   }, [items, onEmpty])
 
+  // Живое добавление/удаление в уже отрисованной статусной строке по WS-
+  // статусу — источник не важен (Lampa, эта же вкладка, другая вкладка веба).
+  // Зеркало syncMineRows в np_unwatched.js, через React state вместо DOM.
+  // 'favorite'/'continues' не подписываются — их членство статусом не
+  // определяется (см. STATUS_TO_ROW_KEY).
+  useEffect(() => {
+    if (status !== 'watching' && status !== 'planned' && status !== 'stopped' && status !== 'completed') return
+    return subscribeLiveSync((msg) => {
+      if (msg.type !== 'status' || !msg.card_id) return
+      const current = itemsRef.current
+      if (!current) return
+      const idx = current.findIndex(item => `${item.id}_${item.media_type}` === msg.card_id)
+      const targetKey = STATUS_TO_ROW_KEY[msg.status || '']
+
+      if (targetKey === status) {
+        if (idx !== -1) return // уже в списке
+        // WS не несёт данные карточки (постер/название) — дотягиваем сами с
+        // нашего же бэкенда (тот же эндпоинт, что открытие карточки на вебе).
+        fetch(`/api/media-card/${encodeURIComponent(msg.card_id)}`)
+          .then(r => r.ok ? r.json() : null)
+          .then((data: { tmdb_id?: number; media_type?: string; title?: string; poster_path?: string | null; backdrop_path?: string | null; release_date?: string; first_air_date?: string } | null) => {
+            if (!data?.tmdb_id || !data.media_type) return
+            const latest = itemsRef.current
+            if (!latest || latest.some(item => `${item.id}_${item.media_type}` === msg.card_id)) return
+            const item: LibraryItem = {
+              id: data.tmdb_id,
+              media_type: data.media_type,
+              title: data.title || '',
+              name: data.media_type === 'tv' ? (data.title || '') : '',
+              poster_path: data.poster_path ?? null,
+              backdrop_path: data.backdrop_path,
+              release_date: data.release_date || '',
+              first_air_date: data.first_air_date || '',
+            }
+            const next = [item, ...latest]
+            setItems(next)
+            onItemsLoaded?.(status, { items: next, totalPages })
+          })
+          .catch(() => {})
+        return
+      }
+
+      if (idx === -1) return
+      // Если удаляемая карточка сейчас в фокусе — переносим фокус на соседнюю
+      // (слева, иначе справа) ДО того, как React уберёт её из DOM — см.
+      // CatalogPage's CategoryRow для того же фикса и полного объяснения.
+      const cardEl = document.getElementById(msg.card_id)
+      const activeEl = document.activeElement as HTMLElement | null
+      if (cardEl && activeEl && cardEl.contains(activeEl)) {
+        const siblings = Array.from(rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]') ?? [])
+        const activeIdx = siblings.indexOf(activeEl)
+        const neighbor = activeIdx > 0 ? siblings[activeIdx - 1] : siblings[activeIdx + 1]
+        neighbor?.focus({ preventScroll: true })
+      }
+
+      const next = current.filter((_, i) => i !== idx)
+      setItems(next)
+      onItemsLoaded?.(status, { items: next, totalPages })
+    })
+  }, [status, totalPages, onItemsLoaded])
+
   useEffect(() => {
     // Back to loading (a real profile switch wipes the row) — re-arm, so the
     // restore runs again once the items return instead of being skipped by a
@@ -298,7 +374,7 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
         >
           {items === null && <div className={styles.rowLoading}>Загрузка…</div>}
           {items?.map(item => (
-            <div key={cardIdOf(item)} className={styles.rowCard}>
+            <div key={cardIdOf(item)} id={cardIdOf(item)} className={styles.rowCard}>
               <Card
                 item={item}
                 onClick={() => onCardClick(item)}

@@ -125,6 +125,13 @@ func handleWebUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	// Без этого Lampa-устройства узнавали об изменении имени/иконки, сделанном
+	// на вебе, только когда что-то ещё (переоткрытие переключателя профилей)
+	// само дёргало свежий REST — см. handleUpdateProfile, тот же бродкаст для
+	// Lampa-инициированных изменений уже был.
+	if req.Name != nil || req.Icon != nil {
+		go broadcastProfileUpdated(u.ID, 0, "", profileID, req.Name, req.Icon)
+	}
 	JSON(w, http.StatusOK, map[string]any{"ok": true, "profile_id": profileID})
 }
 

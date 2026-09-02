@@ -191,7 +191,16 @@ func handleDeleteTimecode(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "card_id and item required")
 		return
 	}
-	store.DeleteTimecode(r.Context(), d.ID, r.URL.Query().Get("profile_id"), cardID, item)
+	profileID := r.URL.Query().Get("profile_id")
+	store.DeleteTimecode(r.Context(), d.ID, profileID, cardID, item)
+	// Удаление = "как будто не смотрели вовсе" — для получателя (тот же
+	// onWsTimecode/Timeline.update, что и на 0%) неотличимо от установки
+	// нулевого прогресса; отдельного WS-типа "удалено" в протоколе нет. Без
+	// этого сброс таймкода в Lampa никогда не долетал до веба вообще (в
+	// отличие от установки конкретного процента) — маскировалось следующим
+	// любым таймкод-событием, которое дёргало полный рефетч и попутно
+	// подхватывало уже верное значение.
+	go broadcastTimecode(d.UserID, d.ID, r.URL.Query().Get("client_id"), profileID, cardID, item, `{"time":0,"duration":0,"percent":0}`)
 	JSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -395,6 +404,15 @@ func broadcastStatus(userID, deviceID int64, clientID, profileID, cardID, status
 		"status":     status,
 	})
 	TimecodeHub.Broadcast(userID, deviceID, clientID, msg)
+}
+
+// BroadcastStatus is broadcastStatus exported for store.OnStatusChanged (see
+// cmd/main.go) — EnsureImpliedStatus lives in db/store, which can't import
+// internal/api (would cycle back through store), so it notifies via a
+// package-level callback wired at startup instead, same pattern as
+// store.OnWatchedChanged.
+func BroadcastStatus(userID, deviceID int64, clientID, profileID, cardID, status string) {
+	broadcastStatus(userID, deviceID, clientID, profileID, cardID, status)
 }
 
 func broadcastFavorite(userID, deviceID int64, clientID, profileID string, favorite any) {

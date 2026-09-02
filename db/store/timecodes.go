@@ -267,8 +267,10 @@ func GetCardTimecodes(ctx context.Context, deviceID int64, cardID string) []Card
 	return result
 }
 
-// SetCardTimecode upserts a timecode with given percent, preserving duration if known.
-func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string, percent float64) error {
+// SetCardTimecode upserts a timecode with given percent, preserving duration if
+// known. Returns the stored data JSON ({time,duration,percent}) so the caller
+// can broadcast the exact same payload over WS without recomputing it.
+func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string, percent float64) (string, error) {
 	percent = max(0, min(100, percent))
 
 	// Read existing to preserve duration
@@ -326,7 +328,7 @@ func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, ite
 		notifyWatchedChanged(deviceID, profileID)
 		EnsureImpliedStatus(ctx, deviceID, profileID, cardID, percent)
 	}
-	return err
+	return string(newData), err
 }
 
 // SetCardTimecodeWatched upserts a timecode with percent=100 and a specific watched date.
@@ -355,7 +357,8 @@ func SetCardTimecodeWatched(ctx context.Context, deviceID int64, profileID, card
 }
 
 // MarkSpecialTimecode saves a timecode with percent=100 and special=true.
-func MarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string) error {
+// Returns the stored data JSON so the caller can broadcast it over WS.
+func MarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string) (string, error) {
 	data, _ := json.Marshal(map[string]any{"time": 0, "duration": 0, "percent": 100, "special": true})
 	today := time.Now().Format("2006-01-02")
 	_, err := postgres.Pool.Exec(ctx, `
@@ -370,11 +373,12 @@ func MarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID,
 		notifyWatchedChanged(deviceID, profileID)
 		EnsureImpliedStatus(ctx, deviceID, profileID, cardID, 100)
 	}
-	return err
+	return string(data), err
 }
 
-// UnmarkSpecialTimecode resets a special-marked timecode to percent=0.
-func UnmarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string) error {
+// UnmarkSpecialTimecode resets a special-marked timecode to percent=0. Returns
+// the stored data JSON so the caller can broadcast it over WS.
+func UnmarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string) (string, error) {
 	data, _ := json.Marshal(map[string]any{"time": 0, "duration": 0, "percent": 0})
 	_, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO timecodes (device_id, profile_id, card_id, item, data, counted_at, view_count)
@@ -386,7 +390,7 @@ func UnmarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardI
 	if err == nil {
 		notifyWatchedChanged(deviceID, profileID)
 	}
-	return err
+	return string(data), err
 }
 
 // DeleteCardTimecodes removes all timecodes for device+card (all profiles).

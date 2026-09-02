@@ -170,7 +170,16 @@ func EnsureImpliedStatus(ctx context.Context, deviceID int64, profileID, cardID 
 	if override, ok := watchingThresholdOverride(ctx, deviceID, profileID); ok {
 		watchingThreshold = override
 	}
-	_, err := postgres.Pool.Exec(ctx, `
+	// WHERE on the conflict update + RETURNING — the only way to tell whether
+	// this call actually CHANGED the status (fresh insert, or a real
+	// transition) versus just re-confirming a status already set (every
+	// subsequent timecode save past the threshold for the same episode would
+	// otherwise match too). Only a real change is worth notifying about —
+	// physically watching something implies a status exactly like clicking
+	// the status button does, but unlike that button click, this path had no
+	// broadcast at all (see notifyStatusChanged below).
+	var newStatus string
+	err := postgres.Pool.QueryRow(ctx, `
 		INSERT INTO subjective_statuses (device_id, profile_id, card_id, status)
 		SELECT $1, $2, $3::varchar, CASE WHEN mc.media_type = 'movie' THEN 'watched' ELSE 'watching' END
 		FROM media_cards mc
@@ -180,11 +189,35 @@ func EnsureImpliedStatus(ctx context.Context, deviceID int64, profileID, cardID 
 		     OR (mc.media_type != 'movie' AND $4::float8 >= $6::int)
 		      )
 		ON CONFLICT (device_id, profile_id, card_id) DO UPDATE
-		SET status = EXCLUDED.status, updated_at = now()`,
-		deviceID, profileID, cardID, percent, watchedThreshold, watchingThreshold)
+		SET status = EXCLUDED.status, updated_at = now()
+		WHERE subjective_statuses.status IS DISTINCT FROM EXCLUDED.status
+		RETURNING status`,
+		deviceID, profileID, cardID, percent, watchedThreshold, watchingThreshold,
+	).Scan(&newStatus)
 	if err != nil {
-		log.Printf("store: ensure implied status: %v", err)
+		return // no row returned = status didn't actually change (the common case) — not an error
 	}
+	notifyStatusChanged(ctx, deviceID, profileID, cardID, newStatus)
+}
+
+// OnStatusChanged is called whenever EnsureImpliedStatus actually changes a
+// card's status by real watch activity (crossing watching/watched_threshold) —
+// wired in cmd/main.go to broadcast it over WS, the same way the explicit
+// set-status HTTP handlers already do for a manual status-button click. Not
+// used by SetSubjectiveStatus/ClearSubjectiveStatus — those already broadcast
+// at their own API-handler call sites (they know the request's client_id for
+// self-echo exclusion, which this store-layer path doesn't have).
+var OnStatusChanged func(userID, deviceID int64, profileID, cardID, status string)
+
+func notifyStatusChanged(ctx context.Context, deviceID int64, profileID, cardID, status string) {
+	if OnStatusChanged == nil {
+		return
+	}
+	var userID int64
+	if err := postgres.Pool.QueryRow(ctx, `SELECT user_id FROM devices WHERE id = $1`, deviceID).Scan(&userID); err != nil {
+		return
+	}
+	OnStatusChanged(userID, deviceID, profileID, cardID, status)
 }
 
 // BackfillImpliedStatuses is EnsureImpliedStatus applied in bulk across every

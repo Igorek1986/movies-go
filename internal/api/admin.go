@@ -505,6 +505,7 @@ type setTimecodeBody struct {
 	Item      string  `json:"item"`
 	Percent   float64 `json:"percent"`
 	ProfileID string  `json:"profile_id"`
+	ClientID  string  `json:"client_id"` // веб-вкладка, см. useLiveSync.ts — исключить эхо себе же
 }
 
 // POST /api/web/set-timecode
@@ -526,10 +527,12 @@ func handleWebSetTimecode(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	if err := store.SetCardTimecode(r.Context(), body.DeviceID, body.ProfileID, body.CardID, body.Item, body.Percent); err != nil {
+	data, err := store.SetCardTimecode(r.Context(), body.DeviceID, body.ProfileID, body.CardID, body.Item, body.Percent)
+	if err != nil {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	go broadcastTimecode(u.ID, 0, body.ClientID, body.ProfileID, body.CardID, body.Item, data)
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -570,6 +573,7 @@ func handleWebSetStatus(w http.ResponseWriter, r *http.Request) {
 		CardID    string `json:"card_id"`
 		ProfileID string `json:"profile_id"`
 		Status    string `json:"status"` // "" clears back to implied
+		ClientID  string `json:"client_id"` // веб-вкладка, см. useLiveSync.ts — исключить эхо себе же
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		Error(w, http.StatusBadRequest, "bad request")
@@ -584,6 +588,11 @@ func handleWebSetStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Status == "" {
 		store.ClearSubjectiveStatus(r.Context(), body.DeviceID, body.ProfileID, body.CardID)
+		// deviceID=0 — исключать тут нечего: body.DeviceID это устройство Lampa, на
+		// которое веб действует удалённо, а не источник этого WS-соединения (веб-сессии
+		// регистрируются в хабе с DeviceID=0, см. handleWebWS) — то самое устройство
+		// как раз ДОЛЖНО получить это событие.
+		go broadcastStatus(u.ID, 0, body.ClientID, body.ProfileID, body.CardID, "")
 		JSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
@@ -595,6 +604,7 @@ func handleWebSetStatus(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	go broadcastStatus(u.ID, 0, body.ClientID, body.ProfileID, body.CardID, body.Status)
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -715,6 +725,7 @@ func handleWebAddFromTMDB(w http.ResponseWriter, r *http.Request) {
 		DeviceID  int64  `json:"device_id"`
 		ProfileID string `json:"profile_id"`
 		Status    string `json:"status"`
+		ClientID  string `json:"client_id"` // см. handleWebSetStatus
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil ||
 		body.TmdbID <= 0 || (body.MediaType != "movie" && body.MediaType != "tv") {
@@ -743,6 +754,7 @@ func handleWebAddFromTMDB(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	go broadcastStatus(u.ID, 0, body.ClientID, body.ProfileID, cardID, body.Status)
 	JSON(w, http.StatusOK, map[string]any{"ok": true, "card_id": cardID})
 }
 
@@ -874,6 +886,7 @@ func handleWebMarkSpecial(w http.ResponseWriter, r *http.Request) {
 		CardID    string `json:"card_id"`
 		Item      string `json:"item"`
 		ProfileID string `json:"profile_id"`
+		ClientID  string `json:"client_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Item == "" {
 		Error(w, http.StatusBadRequest, "bad request")
@@ -886,10 +899,12 @@ func handleWebMarkSpecial(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	if err := store.MarkSpecialTimecode(r.Context(), body.DeviceID, body.ProfileID, body.CardID, body.Item); err != nil {
+	data, err := store.MarkSpecialTimecode(r.Context(), body.DeviceID, body.ProfileID, body.CardID, body.Item)
+	if err != nil {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	go broadcastTimecode(u.ID, 0, body.ClientID, body.ProfileID, body.CardID, body.Item, data)
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -905,6 +920,7 @@ func handleWebUnmarkSpecial(w http.ResponseWriter, r *http.Request) {
 		CardID    string `json:"card_id"`
 		Item      string `json:"item"`
 		ProfileID string `json:"profile_id"`
+		ClientID  string `json:"client_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Item == "" {
 		Error(w, http.StatusBadRequest, "bad request")
@@ -917,10 +933,12 @@ func handleWebUnmarkSpecial(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	if err := store.UnmarkSpecialTimecode(r.Context(), body.DeviceID, body.ProfileID, body.CardID, body.Item); err != nil {
+	data, err := store.UnmarkSpecialTimecode(r.Context(), body.DeviceID, body.ProfileID, body.CardID, body.Item)
+	if err != nil {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	go broadcastTimecode(u.ID, 0, body.ClientID, body.ProfileID, body.CardID, body.Item, data)
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -1015,6 +1033,10 @@ func handleDeleteEpisodeTimecode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store.DeleteTimecode(r.Context(), deviceID, profileID, cardID, item)
+	// Удаление таймкода = "как будто не смотрели вовсе" — для получателя (тот же
+	// onWsTimecode/Timeline.update, что и на 0%) это ничем не отличается от
+	// установки нулевого прогресса, отдельного WS-типа "удалено" в протоколе нет.
+	go broadcastTimecode(u.ID, 0, q.Get("client_id"), profileID, cardID, item, `{"time":0,"duration":0,"percent":0}`)
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

@@ -137,6 +137,15 @@ func main() {
 			api.InvalidateContinues(deviceID, profileID)
 		}
 	}
+	// Физически досмотрел (не нажал кнопку статуса) — EnsureImpliedStatus меняет
+	// subjective_statuses сама, без похода через handleSetSubjectiveStatus/
+	// handleWebSetStatus, поэтому без этого такой переход никогда не рассылался
+	// по WS (кнопкой — рассылался всегда). clientID="" — у этого пути нет
+	// исходного HTTP-запроса со своим client_id для исключения эха себе же,
+	// exceptDeviceID уже достаточно исключает то же устройство.
+	store.OnStatusChanged = func(userID, deviceID int64, profileID, cardID, status string) {
+		api.BroadcastStatus(userID, deviceID, "", profileID, cardID, status)
+	}
 
 	// HTTP сервер
 	srv := &http.Server{

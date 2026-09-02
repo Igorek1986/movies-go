@@ -22,6 +22,7 @@ function ScrollToTop() {
   return null
 }
 import { useAuth } from '@/hooks/useAuth'
+import { useLiveSync } from '@/hooks/useLiveSync'
 import { ActiveProfileProvider } from '@/contexts/ActiveProfileContext'
 import { setImgProxy } from '@/utils/poster'
 import { setWatchedThreshold } from '@/utils/config'
@@ -85,12 +86,21 @@ const TimecodesListPage = lazy(() => import('@/pages/TimecodesListPage'))
 // reload to get a fresh mount with the cookie already present. Scoping it to
 // only the routes that are gated on `user` already being resolved means its
 // first-ever mount always has a valid session.
+// useLiveSync reads useActiveProfile(), so it has to run below the provider,
+// not inside PrivateShell itself — a tiny no-render child keeps the hook call
+// out of PrivateShell's own body.
+function LiveSync() {
+  useLiveSync()
+  return null
+}
+
 function PrivateShell() {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
   return (
     <ActiveProfileProvider>
+      <LiveSync />
       <Outlet />
     </ActiveProfileProvider>
   )

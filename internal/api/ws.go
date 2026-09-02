@@ -29,27 +29,47 @@ const (
 
 // GET /timecode/ws?token=
 func handleTimecodeWS(w http.ResponseWriter, r *http.Request) {
-	serveHubWS(TimecodeHub, w, r)
-}
-
-// GET /api/plugin-settings/ws?token=
-func handlePluginSettingsWS(w http.ResponseWriter, r *http.Request) {
-	serveHubWS(SettingsHub, w, r)
-}
-
-func serveHubWS(hub *ws.Hub, w http.ResponseWriter, r *http.Request) {
 	d := deviceFromRequest(r)
 	if d == nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	serveHubWS(TimecodeHub, d.UserID, d.ID, w, r)
+}
+
+// GET /api/plugin-settings/ws?token=
+func handlePluginSettingsWS(w http.ResponseWriter, r *http.Request) {
+	d := deviceFromRequest(r)
+	if d == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	serveHubWS(SettingsHub, d.UserID, d.ID, w, r)
+}
+
+// GET /api/web/ws — веб-эквивалент handleTimecodeWS: тот же TimecodeHub (статус/
+// таймкод/избранное/профиль), но авторизация по сессионной cookie вместо
+// device-токена — браузер токена устройства не получает и не должен (см.
+// обсуждение в dev-заметках: отдавать его в JS небезопасно). deviceID=0 —
+// у веб-соединения нет своего устройства; исключение эха собственных изменений
+// идёт через client_id (см. handleWebSetStatus), а не через DeviceID.
+func handleWebWS(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	if u == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	serveHubWS(TimecodeHub, u.ID, 0, w, r)
+}
+
+func serveHubWS(hub *ws.Hub, userID, deviceID int64, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	c := &ws.Conn{UserID: d.UserID, DeviceID: d.ID, ClientID: r.URL.Query().Get("client_id"), WS: conn}
+	c := &ws.Conn{UserID: userID, DeviceID: deviceID, ClientID: r.URL.Query().Get("client_id"), WS: conn}
 	hub.Register(c)
 	defer hub.Unregister(c)
 

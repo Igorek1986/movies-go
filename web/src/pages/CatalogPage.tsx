@@ -6,6 +6,7 @@ import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLD
 import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { useAuth } from '@/hooks/useAuth'
+import { subscribeLiveSync } from '@/hooks/useLiveSync'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
 import styles from './CatalogPage.module.scss'
@@ -292,6 +293,11 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
   const rowScrollRef = useRef<HTMLDivElement>(null)
   const loadedRef = useRef(!!initialCache)
   const autoFocusAppliedRef = useRef(false)
+  // Свежий items для обработчика WS-события ниже, не завязываясь на него как
+  // на зависимость эффекта (иначе подписка пересоздавалась бы на каждую
+  // загрузку строки).
+  const itemsRef = useRef(items)
+  itemsRef.current = items
 
   // Shared by the ArrowLeft/Right keydown handler below and the wheel
   // handler further down — moves focus to the next/previous card exactly
@@ -392,6 +398,70 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
   useEffect(() => {
     if (items !== null && items.length === 0) onEmpty?.()
   }, [items, onEmpty])
+
+  // Живое добавление/удаление в уже отрисованной строке «Непросмотренные» по
+  // WS-статусу — источник не важен: Lampa, эта же вкладка или другая вкладка
+  // веба, все идут через один и тот же канал. Зеркало insertCardIntoLine/
+  // removeCardEverywhere в np_unwatched.js, через React state вместо DOM.
+  useEffect(() => {
+    if (category.id !== 'unwatched') return
+    return subscribeLiveSync((msg) => {
+      if (msg.type !== 'status' || !msg.card_id) return
+      const current = itemsRef.current
+      if (!current) return
+      const idx = current.findIndex(item => `${item.id}_${item.media_type}` === msg.card_id)
+
+      if (msg.status === 'watching') {
+        if (idx !== -1) return // уже в списке
+        // WS не несёт данные карточки (постер/название) — дотягиваем сами с
+        // нашего же бэкенда (тот же эндпоинт, что открытие карточки на вебе).
+        fetch(`/api/media-card/${encodeURIComponent(msg.card_id)}`)
+          .then(r => r.ok ? r.json() : null)
+          .then((data: { tmdb_id?: number; media_type?: string; title?: string; poster_path?: string | null; backdrop_path?: string | null; vote_average?: number; release_date?: string; first_air_date?: string; certification_ru?: string } | null) => {
+            if (!data?.tmdb_id || !data.media_type) return
+            const latest = itemsRef.current
+            if (!latest || latest.some(item => `${item.id}_${item.media_type}` === msg.card_id)) return
+            const item: MediaItem = {
+              id: data.tmdb_id,
+              media_type: data.media_type,
+              title: data.title || '',
+              name: data.media_type === 'tv' ? data.title : undefined,
+              poster_path: data.poster_path ?? null,
+              backdrop_path: data.backdrop_path,
+              vote_average: data.vote_average ?? 0,
+              release_date: data.release_date || '',
+              first_air_date: data.first_air_date || '',
+              release_quality: '',
+              certification_ru: data.certification_ru,
+            }
+            const next = [item, ...latest]
+            setItems(next)
+            onItemsLoaded(category.id, { items: next, totalPages })
+          })
+          .catch(() => {})
+        return
+      }
+
+      if (idx === -1) return
+      // Если удаляемая карточка сейчас в фокусе — переносим фокус на соседнюю
+      // (слева, иначе справа) ДО того, как React уберёт её из DOM. Иначе фокус
+      // улетает на body, и герой-фон/подсветка карточки замирают на уже
+      // удалённой карточке — тот же класс бага, что чинили в np_unwatched.js
+      // для фокуса в Lampa, только здесь речь о нативном DOM-фокусе браузера.
+      const cardEl = document.getElementById(msg.card_id)
+      const activeEl = document.activeElement as HTMLElement | null
+      if (cardEl && activeEl && cardEl.contains(activeEl)) {
+        const siblings = Array.from(rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]') ?? [])
+        const activeIdx = siblings.indexOf(activeEl)
+        const neighbor = activeIdx > 0 ? siblings[activeIdx - 1] : siblings[activeIdx + 1]
+        neighbor?.focus({ preventScroll: true })
+      }
+
+      const next = current.filter((_, i) => i !== idx)
+      setItems(next)
+      onItemsLoaded(category.id, { items: next, totalPages })
+    })
+  }, [category.id, totalPages, onItemsLoaded])
 
   useEffect(() => {
     if (autoFocusIdx === undefined || autoFocusAppliedRef.current || !items?.length) return
