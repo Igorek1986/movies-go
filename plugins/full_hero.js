@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.0.0';
+    var VERSION = '1.0.1';
 
     window.full_hero_plugin = true;
 
