@@ -68,6 +68,16 @@
   // cards with a long torrents/cast/similar tail just scroll past it fast
   // enough that a bare 32px sliver at the very bottom goes unnoticed.
   margin-bottom: -$spacing-xl;
+
+  // .main's own padding-bottom is a DIFFERENT value below $bp-lg (see Layout's
+  // .main) - it reserves room for the fixed bottom nav bar instead of the
+  // plain $spacing-xl. Missing this is exactly why the desktop fix above
+  // still left a gap on phones (iOS PWA/Safari): -$spacing-xl there cancels
+  // only part of the real padding, leaving the rest (mostly $bottom-nav-height)
+  // still exposing the fixed backdrop right above the footer.
+  @media (max-width: $bp-lg) {
+    margin-bottom: calc(-1 * (#{$spacing-lg} + #{$bottom-nav-height} + env(safe-area-inset-bottom)));
+  }
 }
 
 .loading,
