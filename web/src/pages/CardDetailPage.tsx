@@ -25,6 +25,11 @@ interface CardDetail {
   genres: Genre[]; best_video_quality: number
   torrent_date: string; category: string; imdb_id: string
   movie_item: string
+  // false only for a card served live from TMDB (handleMediaCardFromTMDB) —
+  // no media_cards row exists yet, so toggleWatchStatus must create one
+  // (add-from-tmdb) instead of plain set-status. See db/store/continues.go's
+  // "Русская пятёрка" case for why a card can have no row at all.
+  in_catalog: boolean
 }
 interface Genre   { id: number; name: string }
 interface Season  { season_number: number; name: string; episode_count: number; air_date: string }
@@ -1026,12 +1031,28 @@ export default function CardDetailPage() {
     const focused = document.activeElement as HTMLElement | null
     setStatusBusy(true)
     try {
-      const res = await fetch('/api/web/set-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, profile_id: defaultProfileId, status }),
-      })
-      if (res.ok) setWatchStatus(status)
+      // Not in our catalog yet (found via the Каталог TMDB-search fallback) —
+      // set-status alone would silently do nothing useful: the status would
+      // save, but with no media_cards row "Моё" has nothing to display. Create
+      // the row and set the status in one call instead.
+      const res = card && !card.in_catalog
+        ? await fetch('/api/web/add-from-tmdb', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tmdb_id: card.tmdb_id, media_type: card.media_type,
+              device_id: activeDevice.id, profile_id: defaultProfileId, status,
+            }),
+          })
+        : await fetch('/api/web/set-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, profile_id: defaultProfileId, status }),
+          })
+      if (res.ok) {
+        setWatchStatus(status)
+        if (card && !card.in_catalog) setCard({ ...card, in_catalog: true })
+      }
     } finally {
       setStatusBusy(false)
       requestAnimationFrame(() => focused?.focus())

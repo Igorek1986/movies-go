@@ -117,6 +117,9 @@ func handleMediaCard(w http.ResponseWriter, r *http.Request) {
 		"torrent_date":      torrentDate,
 		"category":          strVal(rutorCat),
 		"imdb_id":           strVal(imdbID),
+		// in_catalog: true — this row is a real media_cards hit (whether it has
+		// torrents or not). false only comes from handleMediaCardFromTMDB below.
+		"in_catalog":        true,
 		"movie_item":        func() string {
 			if mediaType == "movie" && origTitle != "" {
 				return mediaHash(origTitle)
@@ -214,6 +217,7 @@ func handleMediaCardFromTMDB(w http.ResponseWriter, cardID string) {
 		"torrent_date":       "",
 		"category":           "",
 		"imdb_id":            ent.ImdbID,
+		"in_catalog":         false,
 		"movie_item":         movieItem,
 	})
 }

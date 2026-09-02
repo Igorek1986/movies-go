@@ -63,6 +63,10 @@ func InvalidateCategoryCache() {
 	requirePosterCached = nil
 	requirePosterMu.Unlock()
 
+	showNoTorrentMu.Lock()
+	showNoTorrentCached = nil
+	showNoTorrentMu.Unlock()
+
 	childKeywordsMu.Lock()
 	childKeywordsCached = nil
 	childKeywordsLoaded = false
@@ -545,6 +549,9 @@ var (
 	requirePosterMu     sync.RWMutex
 	requirePosterCached *bool
 
+	showNoTorrentMu     sync.RWMutex
+	showNoTorrentCached *bool
+
 	childKeywordsMu     sync.RWMutex
 	childKeywordsCached []int
 	childKeywordsLoaded bool
@@ -578,6 +585,33 @@ func cachedRequirePoster() bool {
 		val = s != "0"
 	}
 	requirePosterCached = &val
+	return val
+}
+
+// cachedShowNoTorrent returns true if cards without any torrent (added manually
+// from TMDB search, or auto-created from a timecode on unparsed content — see
+// handleWebAddFromTMDB / refreshCardFromTMDB) should be shown in the general
+// catalog/genre listings alongside regular cards. Default: true. "Моё"/История
+// show such cards regardless of this setting — it only gates ListCategory's
+// generic browse paths. Reset by InvalidateCategoryCache.
+func cachedShowNoTorrent() bool {
+	showNoTorrentMu.RLock()
+	v := showNoTorrentCached
+	showNoTorrentMu.RUnlock()
+	if v != nil {
+		return *v
+	}
+
+	showNoTorrentMu.Lock()
+	defer showNoTorrentMu.Unlock()
+	if showNoTorrentCached != nil {
+		return *showNoTorrentCached
+	}
+	val := true // default: enabled
+	if s, ok := store.GetSetting(context.Background(), "catalog_show_no_torrent"); ok {
+		val = s != "0"
+	}
+	showNoTorrentCached = &val
 	return val
 }
 

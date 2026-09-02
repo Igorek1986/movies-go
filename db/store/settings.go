@@ -96,6 +96,11 @@ var SettingDefaults = map[string]string{
 	"tmdb_refresh_age_days":       "30",
 	// Catalog
 	"catalog_require_poster": "1",
+	// Карточки без раздач (добавленные вручную из TMDB-поиска или созданные
+	// автоматически при таймкоде на непарсенный контент) — показывать ли их
+	// в Каталоге/Подборках наравне с обычными. "Моё"/История видят их всегда,
+	// независимо от этой настройки — она только про общий каталог.
+	"catalog_show_no_torrent": "1",
 	"images_cache_enabled":       "1", // дисковый кеш /imgproxy — сам включает раздачу картинок через сервер
 	"images_cache_limit_mb":      "3072",
 	"images_cache_warm_original": "1", // прогревать ли фон в размере original (тяжёлый — не урезан TMDB-ресайзом) при WarmSibling

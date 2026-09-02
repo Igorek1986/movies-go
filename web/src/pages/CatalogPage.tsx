@@ -29,6 +29,10 @@ interface MediaItem {
   watched_count?: number
   aired_count?: number
   next_episode?: string
+  // Only set on results from the TMDB search fallback (see loadSearchPage) —
+  // the card isn't in our catalog (no torrents), so the badge tells the user
+  // this came straight from TMDB rather than something we can actually stream.
+  tmdb_only?: boolean
 }
 
 interface CatalogResponse {
@@ -175,6 +179,7 @@ function MediaCard({ item, onClick, onActivate, isHeroActive, compact }: CardPro
           : <div className={styles.posterPlaceholder}>{title || 'Нет постера'}</div>
         }
         {item.media_type === 'tv' && <span className={styles.typeBadge}>Сериал</span>}
+        {item.tmdb_only && <span className={styles.tmdbBadge}>TMDB</span>}
         {!!item.unwatched_count && (
           <span className={styles.unwatchedBadge}>{item.unwatched_count}</span>
         )}
@@ -750,6 +755,9 @@ export default function CatalogPage() {
   const [searchHasMore, setSearchHasMore] = useState(false)
   const searchSentinelRef = useRef<HTMLDivElement>(null)
   const searchPageRef = useRef(1)
+  // Guards the TMDB fallback fetch (see loadSearchPage) against a slow response
+  // for an already-superseded query landing after the user has typed further.
+  const searchQueryRef = useRef('')
 
   const { activeDevice, activeProfile } = useActiveProfile()
   const { user } = useAuth()
@@ -991,6 +999,25 @@ export default function CatalogPage() {
     loadCategories()
   }, [])
 
+  // TMDB fallback (web-only — Lampa has its own search, see np.js): appended
+  // after the local catalog results so a title we haven't parsed still turns
+  // up, badged, with the option to track it (see CardDetailPage's status
+  // buttons + /api/web/add-from-tmdb). Only run for a fresh query (page 1),
+  // not on infinite-scroll pages of the local results.
+  const loadTmdbFallback = useCallback((query: string, localRows: MediaItem[]) => {
+    const known = new Set(localRows.map(r => `${r.id}_${r.media_type}`))
+    fetch(`/api/web/tmdb-search?q=${encodeURIComponent(query)}`)
+      .then(r => r.ok ? r.json() : { results: [] })
+      .then(data => {
+        if (searchQueryRef.current !== query) return // superseded by a newer query
+        const extra: MediaItem[] = (data.results || []).filter(
+          (r: MediaItem) => !known.has(`${r.id}_${r.media_type}`)
+        )
+        if (extra.length) setSearchResults(prev => [...(prev ?? []), ...extra])
+      })
+      .catch(() => {})
+  }, [])
+
   const loadSearchPage = useCallback((query: string, page: number, reset: boolean) => {
     setSearchLoading(true)
     fetch(`/api/search?q=${encodeURIComponent(query)}&page=${page}`)
@@ -1001,14 +1028,16 @@ export default function CatalogPage() {
         setSearchHasMore((data.total_pages ?? 1) > page)
         searchPageRef.current = page
         setSearchLoading(false)
+        if (reset) loadTmdbFallback(query, rows)
       })
       .catch(() => {
         if (reset) setSearchResults([])
         setSearchLoading(false)
       })
-  }, [])
+  }, [loadTmdbFallback])
 
   useEffect(() => {
+    searchQueryRef.current = searchQuery
     if (searchQuery.length < 3 || expandedCategory) {
       setSearchResults(null)
       setSearchHasMore(false)

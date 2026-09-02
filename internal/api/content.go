@@ -477,6 +477,7 @@ func applyCatalogTrackers(f *store.CategoryFilter) {
 		}
 	}
 	f.RequirePoster = cachedRequirePoster()
+	f.AllowNoTorrents = cachedShowNoTorrent()
 }
 
 // lampaAgeToChildAge maps Lampa's "до N лет" age to our cert level.

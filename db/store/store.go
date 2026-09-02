@@ -908,6 +908,12 @@ type CategoryFilter struct {
 	WatchedCardIDs []string
 	RequirePoster   bool // exclude cards with empty/null poster_path
 	RecentDays      int  // if > 0, only cards that have a torrent added to tracker within last N days
+	// AllowNoTorrents, when true, skips the "must have a torrent" guard in
+	// categoryWhere — lets metadata-only cards (added manually from TMDB search,
+	// or auto-created from a timecode on unparsed content) appear in general
+	// browsing alongside regular cards. Set from the catalog_show_no_torrent
+	// admin setting via applyCatalogTrackers.
+	AllowNoTorrents bool
 	// CardIDs, when non-empty, restricts results to this explicit set of card_ids and
 	// orders them in the given order (e.g. profile-personalized lists like "unwatched").
 	CardIDs []string
@@ -981,10 +987,15 @@ func ListCategory(f CategoryFilter) (rows []MediaRow, total int) {
 func categoryWhere(f CategoryFilter) (where []string, args []interface{}, n int, cardIDsIdx int) {
 	n = 1
 
-	// Каталог/Подборки показывают только карточки с раздачами. Метаданные-only
-	// карточки (например, дозагруженные из TMDB под список MyShows) не имеют
-	// торрентов и не должны всплывать в каталоге.
-	where = append(where, "EXISTS (SELECT 1 FROM torrents t WHERE t.card_id = m.card_id)")
+	// Каталог/Подборки по умолчанию показывают только карточки с раздачами.
+	// Метаданные-only карточки (дозагруженные из TMDB — вручную через поиск или
+	// автоматически по таймкоду, см. handleWebAddFromTMDB/refreshCardFromTMDB) не
+	// имеют торрентов; AllowNoTorrents (catalog_show_no_torrent, default on)
+	// решает, всплывают ли они в общем каталоге наравне с обычными — "Моё"/История
+	// им не подчиняются, они используют этот же CategoryFilter.CardIDs путь.
+	if !f.AllowNoTorrents {
+		where = append(where, "EXISTS (SELECT 1 FROM torrents t WHERE t.card_id = m.card_id)")
+	}
 
 	if f.NewOnly || f.OldOnly {
 		delta := f.YearDelta
@@ -1107,8 +1118,15 @@ func categoryWhere(f CategoryFilter) (where []string, args []interface{}, n int,
 		}
 	}
 	if len(f.TrackerFilter) > 0 {
-		where = append(where, fmt.Sprintf(
-			"EXISTS (SELECT 1 FROM torrents t WHERE t.card_id = m.card_id AND t.tracker = ANY($%d))", n))
+		cond := fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM torrents t WHERE t.card_id = m.card_id AND t.tracker = ANY($%d))", n)
+		if f.AllowNoTorrents {
+			// Don't let the tracker filter exclude no-torrent cards outright —
+			// it's meant to hide content sourced only from disabled trackers,
+			// not cards that were never torrent-sourced in the first place.
+			cond = fmt.Sprintf("(%s OR NOT EXISTS (SELECT 1 FROM torrents t2 WHERE t2.card_id = m.card_id))", cond)
+		}
+		where = append(where, cond)
 		args = append(args, f.TrackerFilter)
 		n++
 	}

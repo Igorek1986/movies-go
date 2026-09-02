@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"movies-api/config"
+	"movies-api/db/models"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
 	"movies-api/internal/bot"
@@ -18,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -594,6 +596,130 @@ func handleWebSetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// GET /api/web/tmdb-search?q=
+// Веб-фоллбэк поиска (Каталог), когда в нашей базе ничего не нашлось — ищет
+// напрямую в TMDB. Ничего не сохраняет: карточка появится в БД только когда
+// пользователь отметит статус (см. handleWebAddFromTMDB). Только веб — у Lampa
+// свой поиск, этот эндпоинт не используется в np.js.
+func handleWebTMDBSearch(w http.ResponseWriter, r *http.Request) {
+	if u := userFromCtx(r); u == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		JSON(w, http.StatusOK, map[string]any{"results": []any{}})
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit < 1 || limit > 30 {
+		limit = 12
+	}
+
+	// TMDB ranks its own /search results by popularity, not by match quality —
+	// for a generic query ("Русская") a well-known blockbuster containing the
+	// word outranks an exact/prefix title match that's just less popular, and
+	// our own `limit` cutoff can drop the latter entirely before the caller
+	// ever sees it (narrowing the query to "Русская п" then finds it, because
+	// far fewer titles qualify at all). Re-rank by match quality first, TMDB's
+	// order as tiebreaker, and cut to `limit` only after that.
+	type scored struct {
+		item  map[string]any
+		score int
+	}
+	nq := normTitle(q)
+	var all []scored
+	for _, mt := range [...]struct {
+		isMovie bool
+		name    string
+	}{{true, "movie"}, {false, "tv"}} {
+		for _, ent := range tmdb.Search(mt.isMovie, q) {
+			if ent.Title == "" && ent.Name == "" {
+				continue
+			}
+			nt := normTitle(ent.Title)
+			no := normTitle(ent.OriginalTitle)
+			score := 3
+			switch {
+			case nt == nq || no == nq:
+				score = 0
+			case strings.HasPrefix(nt, nq) || strings.HasPrefix(no, nq):
+				score = 1
+			case strings.Contains(nt, nq) || strings.Contains(no, nq):
+				score = 2
+			}
+			all = append(all, scored{score: score, item: map[string]any{
+				"id":             ent.ID,
+				"media_type":     mt.name,
+				"title":          ent.Title,
+				"original_title": ent.OriginalTitle,
+				"poster_path":    ent.PosterPath,
+				"release_date":   ent.ReleaseDate,
+				"first_air_date": ent.FirstAirDate,
+				"vote_average":   ent.VoteAverage,
+				"tmdb_only":      true,
+			}})
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].score < all[j].score })
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	results := make([]map[string]any, len(all))
+	for i, s := range all {
+		results[i] = s.item
+	}
+	JSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+// POST /api/web/add-from-tmdb
+// Body: {tmdb_id, media_type, device_id, profile_id, status}
+// Материализует результат handleWebTMDBSearch в БД: создаёт карточку без раздач
+// (тот же путь, что и findOrFetchCard в myshows_sync.go для контента вне каталога)
+// и сразу ставит выбранный статус — одно действие пользователя вместо двух.
+func handleWebAddFromTMDB(w http.ResponseWriter, r *http.Request) {
+	u := userFromCtx(r)
+	if u == nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		TmdbID    int64  `json:"tmdb_id"`
+		MediaType string `json:"media_type"`
+		DeviceID  int64  `json:"device_id"`
+		ProfileID string `json:"profile_id"`
+		Status    string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil ||
+		body.TmdbID <= 0 || (body.MediaType != "movie" && body.MediaType != "tv") {
+		Error(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	var ownerID int64
+	if err := postgres.Pool.QueryRow(r.Context(),
+		`SELECT user_id FROM devices WHERE id=$1`, body.DeviceID,
+	).Scan(&ownerID); err != nil || ownerID != u.ID {
+		Error(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	cardID := fmt.Sprintf("%d_%s", body.TmdbID, body.MediaType)
+	if !validStatusesFor(cardID)[body.Status] {
+		Error(w, http.StatusBadRequest, "invalid status for this media type")
+		return
+	}
+	ent := tmdb.GetVideoDetails(body.MediaType == "movie", body.TmdbID)
+	if ent == nil {
+		Error(w, http.StatusNotFound, "not found on tmdb")
+		return
+	}
+	store.UpsertMediaCard(ent, &models.TorrentDetails{})
+	if err := store.SetSubjectiveStatus(r.Context(), body.DeviceID, body.ProfileID, cardID, body.Status); err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"ok": true, "card_id": cardID})
 }
 
 // GET /api/web/favorite?device_id=&profile_id=

@@ -118,6 +118,8 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireSession).Post("/web/unmark-special", handleWebUnmarkSpecial)
 			r.With(requireSession).Get("/web/status", handleWebGetStatus)
 			r.With(requireSession).Post("/web/set-status", handleWebSetStatus)
+			r.With(requireSession).Get("/web/tmdb-search", handleWebTMDBSearch)
+			r.With(requireSession).Post("/web/add-from-tmdb", handleWebAddFromTMDB)
 			r.With(requireSession).Get("/web/favorite", handleWebGetFavorite)
 			r.With(requireSession).Post("/web/favorite", handleWebSetFavorite)
 			r.With(requireSession).Get("/history", handleWebHistoryAll)

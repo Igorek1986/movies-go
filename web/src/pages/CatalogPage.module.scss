@@ -433,6 +433,19 @@
   backdrop-filter: blur(4px);
 }
 
+.tmdbBadge {
+  position: absolute;
+  top: $spacing-xs;
+  right: $spacing-xs;
+  padding: 2px $spacing-xs;
+  border-radius: $radius-sm;
+  background: rgba(#01b4e4, 0.9); // TMDB brand blue — signals "not in our catalog yet"
+  color: #fff;
+  font-size: $font-size-xs;
+  font-weight: 700;
+  backdrop-filter: blur(4px);
+}
+
 .unwatchedBadge {
   position: absolute;
   top: $spacing-xs;

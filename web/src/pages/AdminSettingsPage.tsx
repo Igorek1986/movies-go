@@ -713,12 +713,14 @@ const CHECKBOX_KEYS: Record<string, string> = {
   yandex_metrika_enabled:   'yandex_metrika_id',
   google_analytics_enabled: 'google_analytics_id',
   catalog_require_poster:   '',
+  catalog_show_no_torrent:  '',
   images_cache_enabled:     '',
   images_cache_warm_original: '',
 }
 
 const DESCRIPTIONS: Record<string, string> = {
   popular_source_url: 'URL публичного парсера для категории «Популярное» и форвардинга play events. Если не задан — Популярное берётся из локальной БД.',
+  catalog_show_no_torrent: 'Карточки без раздач появляются, когда пользователь находит фильм/сериал через поиск по TMDB (вне нашей базы) и ставит статус, либо когда сервер получает таймкод на непарсенный контент. В «Моё» и Истории они видны всегда — настройка влияет только на обычный Каталог/Подборки.',
   rutor_host:   'Домен трекера Rutor.info. Меняйте на зеркало, если основной домен заблокирован.',
   kinozal_host: 'Домен трекера Kinozal.tv. Меняйте на зеркало, если основной домен заблокирован.',
   nnmclub_host: 'Домен трекера NNMClub.to. Меняйте на зеркало, если основной домен заблокирован.',
@@ -799,6 +801,7 @@ const LABELS: Record<string, string> = {
   movies_4k_year_delta:    'Новые 4K фильмы — за сколько лет (YearDelta)',
   movies_new_min_quality:  'Новые фильмы — мин. качество (0=любое, 100=720p+, 200=1080p+, 300=4K+)',
   catalog_require_poster:  'Скрывать карточки без постера',
+  catalog_show_no_torrent: 'Показывать в Каталоге карточки без раздач (добавленные вручную из TMDB)',
   images_cache_enabled:    'Дисковый кеш картинок',
   images_cache_limit_mb:   'Лимит дискового кеша картинок (МБ)',
   images_cache_warm_original: 'Прогревать фон в original',
@@ -885,6 +888,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   ], requiresRestart: true },
   { name: 'Настройки каталога', keys: [
     'catalog_require_poster',
+    'catalog_show_no_torrent',
     'images_cache_enabled',
     'images_cache_limit_mb',
     'images_cache_warm_original',
