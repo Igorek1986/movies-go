@@ -90,6 +90,19 @@ const _cache = {
   // the plain Каталог view instead of the search results you'd left.
   searchValue: '' as string,
   searchQuery: '' as string,
+  // The search results themselves + where pagination/TMDB "load more" had
+  // gotten to — without this, remounting after a detail-page round trip
+  // re-fetched from page 1 (see the skip-once-on-mount logic around
+  // searchResults' effect below) and the restored scroll position (generic
+  // _cache.scrollY) had nothing tall enough to scroll to yet, since the grid
+  // was momentarily empty again.
+  searchResults: null as MediaItem[] | null,
+  searchHasMore: false,
+  searchPage: 1,
+  searchLocalRows: [] as MediaItem[],
+  searchTmdbResults: [] as MediaItem[],
+  searchTmdbHasMore: false,
+  searchTmdbLimit: 12,
 }
 
 export function invalidateCatalogCache() {
@@ -758,25 +771,35 @@ export default function CatalogPage() {
   const [searchQuery, setSearchQuery] = useState(() => _cache.searchQuery)
   useEffect(() => { _cache.searchValue = searchValue }, [searchValue])
   useEffect(() => { _cache.searchQuery = searchQuery }, [searchQuery])
-  const [searchResults, setSearchResults] = useState<MediaItem[] | null>(null)
+  const [searchResults, setSearchResults] = useState<MediaItem[] | null>(() => _cache.searchResults)
   const [searchLoading, setSearchLoading] = useState(false)
-  const [searchHasMore, setSearchHasMore] = useState(false)
+  const [searchHasMore, setSearchHasMore] = useState(() => _cache.searchHasMore)
   const searchSentinelRef = useRef<HTMLDivElement>(null)
-  const searchPageRef = useRef(1)
+  const searchPageRef = useRef(_cache.searchPage)
   // Guards the TMDB fallback fetch (see loadSearchPage) against a slow response
   // for an already-superseded query landing after the user has typed further.
   const searchQueryRef = useRef('')
   // TMDB fallback results — kept separate from searchResults (not merged in)
   // so "Показать ещё из TMDB" can replace just this slice with a bigger one
   // instead of finding/splicing it out of a combined array.
-  const [tmdbResults, setTmdbResults] = useState<MediaItem[]>([])
-  const [tmdbHasMore, setTmdbHasMore] = useState(false)
+  const [tmdbResults, setTmdbResults] = useState<MediaItem[]>(() => _cache.searchTmdbResults)
+  const [tmdbHasMore, setTmdbHasMore] = useState(() => _cache.searchTmdbHasMore)
   const [tmdbLoadingMore, setTmdbLoadingMore] = useState(false)
   const TMDB_PAGE_SIZE = 12
-  const tmdbLimitRef = useRef(TMDB_PAGE_SIZE)
+  const tmdbLimitRef = useRef(_cache.searchTmdbLimit)
   // The local /api/search page-1 rows for the current query, kept around so
   // "Показать ещё из TMDB" can re-dedupe against them without a network call.
-  const localSearchRowsRef = useRef<MediaItem[]>([])
+  const localSearchRowsRef = useRef<MediaItem[]>(_cache.searchLocalRows)
+  // First effect run after mount only: if we just restored a non-empty result
+  // set for this exact query from cache (see the two useState initializers
+  // above), don't let the searchQuery effect immediately refetch page 1 and
+  // stomp over it — that's exactly the "scrolled through many cards, opened
+  // one, came back at the top again" bug this cache exists to prevent.
+  const skipInitialSearchFetchRef = useRef(_cache.searchQuery !== '' && _cache.searchResults !== null)
+  useEffect(() => { _cache.searchResults = searchResults }, [searchResults])
+  useEffect(() => { _cache.searchHasMore = searchHasMore }, [searchHasMore])
+  useEffect(() => { _cache.searchTmdbResults = tmdbResults }, [tmdbResults])
+  useEffect(() => { _cache.searchTmdbHasMore = tmdbHasMore }, [tmdbHasMore])
 
   const { activeDevice, activeProfile } = useActiveProfile()
   const { user } = useAuth()
@@ -909,7 +932,10 @@ export default function CatalogPage() {
     // its own horizontal scroll math, fought with that instead of doing
     // anything useful, landing the row on a half-scrolled position that
     // matched neither the hash card nor whichever one autoFocusIdx focused.
-    if (layout === 'hero') return
+    // Search results render as a plain scrollable grid even under the hero
+    // layout (showSearch forces carouselActive off), so this skip must not
+    // apply while restoring back into a search — hence the query-length check.
+    if (layout === 'hero' && searchQuery.length < 3) return
 
     if (_cache.categories.length > 0 && _cache.scrollY > 0) {
       window.scrollTo({ top: _cache.scrollY, behavior: 'instant' })
@@ -1046,6 +1072,7 @@ export default function CatalogPage() {
     if (tmdbLoadingMore) return
     setTmdbLoadingMore(true)
     tmdbLimitRef.current += TMDB_PAGE_SIZE
+    _cache.searchTmdbLimit = tmdbLimitRef.current
     loadTmdbFallback(searchQuery, localSearchRowsRef.current, tmdbLimitRef.current)
   }
 
@@ -1058,10 +1085,13 @@ export default function CatalogPage() {
         setSearchResults(prev => reset ? rows : [...(prev ?? []), ...rows])
         setSearchHasMore((data.total_pages ?? 1) > page)
         searchPageRef.current = page
+        _cache.searchPage = page
         setSearchLoading(false)
         if (reset) {
           localSearchRowsRef.current = rows
+          _cache.searchLocalRows = rows
           tmdbLimitRef.current = TMDB_PAGE_SIZE
+          _cache.searchTmdbLimit = TMDB_PAGE_SIZE
           loadTmdbFallback(query, rows, TMDB_PAGE_SIZE)
         }
       })
@@ -1078,6 +1108,13 @@ export default function CatalogPage() {
       setSearchHasMore(false)
       setTmdbResults([])
       setTmdbHasMore(false)
+      return
+    }
+    if (skipInitialSearchFetchRef.current) {
+      // Mounted with this exact query's results already restored from cache
+      // (see the useState initializers above) — a normal fetch here would
+      // reset straight back to page 1 and undo the whole point of caching them.
+      skipInitialSearchFetchRef.current = false
       return
     }
     loadSearchPage(searchQuery, 1, true)
