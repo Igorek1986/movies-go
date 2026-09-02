@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"movies-api/db/models"
 	"movies-api/db/store"
+	"movies-api/movies/tmdb"
 	"net"
 	"net/http"
 	"strconv"
@@ -613,6 +614,41 @@ func sendCategoryResponse(w http.ResponseWriter, rows []store.MediaRow, total, p
 
 // ─── Continues ────────────────────────────────────────────────────────────────
 
+// fillMissingContinuesFromTMDB backfills title/poster/date for continues entries
+// whose card_id has no media_cards row — content watched through some other
+// source (never parsed+TMDB-matched by us), where a timecode still synced. Without
+// this the client would render a blank card with only a progress bar.
+func fillMissingContinuesFromTMDB(entries []store.ContinuesEntry) {
+	for i := range entries {
+		if entries[i].Found {
+			continue
+		}
+		parts := strings.SplitN(entries[i].CardID, "_", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		id, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil {
+			continue
+		}
+		isMovie := parts[1] == "movie"
+		ent := tmdb.GetVideoDetails(isMovie, id)
+		if ent == nil {
+			continue
+		}
+		entries[i].ID = ent.ID
+		entries[i].MediaType = parts[1]
+		entries[i].Title = ent.Title
+		entries[i].OriginalTitle = ent.OriginalTitle
+		entries[i].PosterPath = ent.PosterPath
+		entries[i].BackdropPath = ent.BackdropPath
+		entries[i].Overview = ent.Overview
+		entries[i].ReleaseDate = ent.ReleaseDate
+		entries[i].FirstAirDate = ent.FirstAirDate
+		entries[i].VoteAverage = ent.VoteAverage
+	}
+}
+
 func handleContinues(w http.ResponseWriter, r *http.Request, category, profileID string, page, perPage int) {
 	d := deviceFromRequest(r)
 	if d == nil {
@@ -635,6 +671,7 @@ func handleContinues(w http.ResponseWriter, r *http.Request, category, profileID
 
 	agg := cachedContinuesAgg(r.Context(), d.ID, profileID, mediaFilter, minPct)
 	entries, total := store.GetContinues(r.Context(), agg, page, perPage)
+	fillMissingContinuesFromTMDB(entries)
 	totalPages := (total + perPage - 1) / perPage
 	if totalPages < 1 {
 		totalPages = 1

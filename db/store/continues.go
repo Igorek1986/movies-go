@@ -21,6 +21,12 @@ type ContinuesEntry struct {
 	FirstAirDate  string  `json:"first_air_date"`
 	VoteAverage   float64 `json:"vote_average"`
 	MaxPercent    float64 `json:"max_percent"`
+	// CardID/Found are not serialized — they let the caller (handleContinues)
+	// spot timecodes for cards outside our own catalog (watched via some other
+	// source, so never parsed+TMDB-matched into media_cards) and backfill the
+	// title/poster/date with a live TMDB lookup instead of shipping a blank card.
+	CardID string `json:"-"`
+	Found  bool   `json:"-"`
 }
 
 // ContinuesAgg is one card's in-progress timecode aggregate — the expensive,
@@ -145,7 +151,7 @@ func GetContinues(ctx context.Context, all []ContinuesAgg, page, perPage int) ([
 
 	var result []ContinuesEntry
 	for _, a := range page_items {
-		m := mcMap[a.CardID]
+		m, found := mcMap[a.CardID]
 		release := ""
 		if m.releaseDate != nil {
 			release = *m.releaseDate
@@ -166,6 +172,8 @@ func GetContinues(ctx context.Context, all []ContinuesAgg, page, perPage int) ([
 			FirstAirDate:  firstAir,
 			VoteAverage:   m.voteAvg,
 			MaxPercent:    a.MaxPercent,
+			CardID:        a.CardID,
+			Found:         found,
 		})
 	}
 	return result, total
