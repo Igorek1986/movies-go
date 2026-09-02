@@ -84,6 +84,12 @@ const _cache = {
   // lastRowFocusIdx above (component state alone forgot this across a
   // detail-page round trip, snapping back to the first row every time).
   activeCategoryIndex: 0,
+  // Search box text + debounced query — same detail-page round-trip problem
+  // as everything else here: component state alone forgot what was typed,
+  // so clicking into a card from search results and coming back landed on
+  // the plain Каталог view instead of the search results you'd left.
+  searchValue: '' as string,
+  searchQuery: '' as string,
 }
 
 export function invalidateCatalogCache() {
@@ -748,8 +754,10 @@ export default function CatalogPage() {
   })
   useEffect(() => { _cache.expandedCategory = expandedCategory }, [expandedCategory])
   const [expandedFocusIdx, setExpandedFocusIdx] = useState<number | undefined>(undefined)
-  const [searchValue, setSearchValue] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchValue, setSearchValue] = useState(() => _cache.searchValue)
+  const [searchQuery, setSearchQuery] = useState(() => _cache.searchQuery)
+  useEffect(() => { _cache.searchValue = searchValue }, [searchValue])
+  useEffect(() => { _cache.searchQuery = searchQuery }, [searchQuery])
   const [searchResults, setSearchResults] = useState<MediaItem[] | null>(null)
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchHasMore, setSearchHasMore] = useState(false)
