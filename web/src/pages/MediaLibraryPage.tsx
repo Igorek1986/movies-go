@@ -42,6 +42,13 @@ interface RowCache { items: LibraryItem[]; totalPages: number }
 // without this, flipping back to an already-visited status in the carousel
 // would always show "Загрузка…" and refetch instead of redisplaying instantly.
 const _rowCache: Partial<Record<StatusKey, RowCache>> = {}
+
+// Called after a status change on the card detail page — a plain SPA
+// back-nav reads this module cache instead of refetching, so without this
+// the "Моё" rows keep showing pre-change contents until a hard reload.
+export function invalidateLibraryRows() {
+  for (const k of Object.keys(_rowCache) as StatusKey[]) delete _rowCache[k]
+}
 // Profile the cache belongs to — cleared on switch (see CatalogPage's
 // _cache.profileKey for the same reasoning).
 let _libProfileKey: string | null = null

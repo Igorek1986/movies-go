@@ -111,6 +111,16 @@ export function invalidateCatalogCache() {
   _cache.catView = null
 }
 
+// Called after a status change on the card detail page (Смотрю/Брошено/…) —
+// that flips server-side which shows /unwatched returns, but this module's
+// cache is what a plain SPA back-nav reads instead of a fresh fetch, so
+// without this the row keeps showing whatever it had before the change
+// until a hard reload.
+export function invalidateUnwatchedRow() {
+  delete _cache.rows['unwatched']
+  if (_cache.catView?.id === 'unwatched') _cache.catView = null
+}
+
 function getItemTitle(item: MediaItem): string {
   return item.title || item.name || ''
 }

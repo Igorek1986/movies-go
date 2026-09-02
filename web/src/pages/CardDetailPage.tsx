@@ -7,6 +7,8 @@ import { resolveCardLayout } from '@/utils/cardLayout'
 import { qualityLabel, runtimeLabel } from '@/utils/mediaFormat'
 import { useAuth } from '@/hooks/useAuth'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
+import { invalidateUnwatchedRow } from './CatalogPage'
+import { invalidateLibraryRows } from './MediaLibraryPage'
 import styles from './CardDetailPage.module.scss'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1052,6 +1054,8 @@ export default function CardDetailPage() {
       if (res.ok) {
         setWatchStatus(status)
         if (card && !card.in_catalog) setCard({ ...card, in_catalog: true })
+        invalidateUnwatchedRow()
+        invalidateLibraryRows()
       }
     } finally {
       setStatusBusy(false)
