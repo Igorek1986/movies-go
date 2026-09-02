@@ -758,6 +758,17 @@ export default function CatalogPage() {
   // Guards the TMDB fallback fetch (see loadSearchPage) against a slow response
   // for an already-superseded query landing after the user has typed further.
   const searchQueryRef = useRef('')
+  // TMDB fallback results — kept separate from searchResults (not merged in)
+  // so "Показать ещё из TMDB" can replace just this slice with a bigger one
+  // instead of finding/splicing it out of a combined array.
+  const [tmdbResults, setTmdbResults] = useState<MediaItem[]>([])
+  const [tmdbHasMore, setTmdbHasMore] = useState(false)
+  const [tmdbLoadingMore, setTmdbLoadingMore] = useState(false)
+  const TMDB_PAGE_SIZE = 12
+  const tmdbLimitRef = useRef(TMDB_PAGE_SIZE)
+  // The local /api/search page-1 rows for the current query, kept around so
+  // "Показать ещё из TMDB" can re-dedupe against them without a network call.
+  const localSearchRowsRef = useRef<MediaItem[]>([])
 
   const { activeDevice, activeProfile } = useActiveProfile()
   const { user } = useAuth()
@@ -1003,20 +1014,32 @@ export default function CatalogPage() {
   // after the local catalog results so a title we haven't parsed still turns
   // up, badged, with the option to track it (see CardDetailPage's status
   // buttons + /api/web/add-from-tmdb). Only run for a fresh query (page 1),
-  // not on infinite-scroll pages of the local results.
-  const loadTmdbFallback = useCallback((query: string, localRows: MediaItem[]) => {
+  // not on infinite-scroll pages of the local results — `limit` grows via
+  // "Показать ещё из TMDB" (handleTmdbLoadMore) instead of true pagination,
+  // since a bigger limit just re-slices the same already-fetched TMDB pool
+  // server-side (see handleWebTMDBSearch), no extra TMDB calls needed here.
+  const loadTmdbFallback = useCallback((query: string, localRows: MediaItem[], limit: number) => {
     const known = new Set(localRows.map(r => `${r.id}_${r.media_type}`))
-    fetch(`/api/web/tmdb-search?q=${encodeURIComponent(query)}`)
-      .then(r => r.ok ? r.json() : { results: [] })
+    fetch(`/api/web/tmdb-search?q=${encodeURIComponent(query)}&limit=${limit}`)
+      .then(r => r.ok ? r.json() : { results: [], has_more: false })
       .then(data => {
         if (searchQueryRef.current !== query) return // superseded by a newer query
         const extra: MediaItem[] = (data.results || []).filter(
           (r: MediaItem) => !known.has(`${r.id}_${r.media_type}`)
         )
-        if (extra.length) setSearchResults(prev => [...(prev ?? []), ...extra])
+        setTmdbResults(extra)
+        setTmdbHasMore(!!data.has_more)
       })
       .catch(() => {})
+      .finally(() => setTmdbLoadingMore(false))
   }, [])
+
+  function handleTmdbLoadMore() {
+    if (tmdbLoadingMore) return
+    setTmdbLoadingMore(true)
+    tmdbLimitRef.current += TMDB_PAGE_SIZE
+    loadTmdbFallback(searchQuery, localSearchRowsRef.current, tmdbLimitRef.current)
+  }
 
   const loadSearchPage = useCallback((query: string, page: number, reset: boolean) => {
     setSearchLoading(true)
@@ -1028,7 +1051,11 @@ export default function CatalogPage() {
         setSearchHasMore((data.total_pages ?? 1) > page)
         searchPageRef.current = page
         setSearchLoading(false)
-        if (reset) loadTmdbFallback(query, rows)
+        if (reset) {
+          localSearchRowsRef.current = rows
+          tmdbLimitRef.current = TMDB_PAGE_SIZE
+          loadTmdbFallback(query, rows, TMDB_PAGE_SIZE)
+        }
       })
       .catch(() => {
         if (reset) setSearchResults([])
@@ -1041,6 +1068,8 @@ export default function CatalogPage() {
     if (searchQuery.length < 3 || expandedCategory) {
       setSearchResults(null)
       setSearchHasMore(false)
+      setTmdbResults([])
+      setTmdbHasMore(false)
       return
     }
     loadSearchPage(searchQuery, 1, true)
@@ -1400,18 +1429,28 @@ export default function CatalogPage() {
 
         {!expandedCategory && showSearch && (
           <div>
-            {searchResults !== null && searchResults.length === 0 && !searchLoading && (
+            {searchResults !== null && searchResults.length === 0 && tmdbResults.length === 0 && !searchLoading && (
               <div className={styles.empty}>Ничего не найдено</div>
             )}
-            {searchResults !== null && searchResults.length > 0 && (
+            {searchResults !== null && (searchResults.length > 0 || tmdbResults.length > 0) && (
               <div className={styles.grid}>
-                {searchResults.map(item => {
+                {[...searchResults, ...tmdbResults].map(item => {
                   const cardId = `${item.id}_${item.media_type}`
                   return (
                     <MediaCard key={cardId} item={item} onClick={() => handleCardClick(item)} />
                   )
                 })}
               </div>
+            )}
+            {tmdbHasMore && (
+              <button
+                type="button"
+                className={styles.tmdbLoadMore}
+                onClick={handleTmdbLoadMore}
+                disabled={tmdbLoadingMore}
+              >
+                {tmdbLoadingMore ? 'Загрузка…' : 'Показать ещё из TMDB'}
+              </button>
             )}
             {searchLoading && <div className={styles.loading}>Поиск…</div>}
             <div ref={searchSentinelRef} className={styles.sentinel} />

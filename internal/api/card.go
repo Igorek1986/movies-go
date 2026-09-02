@@ -129,6 +129,20 @@ func handleMediaCard(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// isoDate converts a date already reformatted DD.MM.YYYY by movies/tmdb's
+// fixEntity (via FixDate — every *models.Entity coming out of the tmdb package
+// carries dates in this display format, not TMDB's native ISO) back to ISO
+// (YYYY-MM-DD), the format every other release_date/first_air_date field in
+// this API uses (media_cards stores/returns Postgres DATE columns as ISO
+// text). Returns "" on empty/unparseable input.
+func isoDate(ddmmyyyy string) string {
+	t, err := time.Parse("02.01.2006", ddmmyyyy)
+	if err != nil {
+		return ""
+	}
+	return t.Format("2006-01-02")
+}
+
 // handleMediaCardFromTMDB — fallback when card_id is not in the local DB.
 // card_id format: "{tmdb_id}_{media_type}", e.g. "1150420_movie".
 func handleMediaCardFromTMDB(w http.ResponseWriter, cardID string) {
@@ -163,9 +177,11 @@ func handleMediaCardFromTMDB(w http.ResponseWriter, cardID string) {
 	if releaseDate == "" {
 		releaseDate = ent.FirstAirDate
 	}
+	// releaseDate is DD.MM.YYYY here (see isoDate) — slicing it directly gave
+	// the day+month ("11.0") instead of the year. Go through ISO to get it right.
 	year := ""
-	if len(releaseDate) >= 4 {
-		year = releaseDate[:4]
+	if iso := isoDate(releaseDate); len(iso) >= 4 {
+		year = iso[:4]
 	}
 
 	type genreOut struct {

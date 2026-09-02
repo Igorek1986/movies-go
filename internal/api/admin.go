@@ -626,8 +626,10 @@ func handleWebTMDBSearch(w http.ResponseWriter, r *http.Request) {
 	// far fewer titles qualify at all). Re-rank by match quality first, TMDB's
 	// order as tiebreaker, and cut to `limit` only after that.
 	type scored struct {
-		item  map[string]any
-		score int
+		item      map[string]any
+		score     int
+		hasPoster bool
+		voteAvg   float64
 	}
 	nq := normTitle(q)
 	var all []scored
@@ -650,28 +652,50 @@ func handleWebTMDBSearch(w http.ResponseWriter, r *http.Request) {
 			case strings.Contains(nt, nq) || strings.Contains(no, nq):
 				score = 2
 			}
-			all = append(all, scored{score: score, item: map[string]any{
-				"id":             ent.ID,
-				"media_type":     mt.name,
-				"title":          ent.Title,
-				"original_title": ent.OriginalTitle,
-				"poster_path":    ent.PosterPath,
-				"release_date":   ent.ReleaseDate,
-				"first_air_date": ent.FirstAirDate,
-				"vote_average":   ent.VoteAverage,
-				"tmdb_only":      true,
-			}})
+			all = append(all, scored{
+				score:     score,
+				hasPoster: ent.PosterPath != "",
+				voteAvg:   ent.VoteAverage,
+				item: map[string]any{
+					"id":             ent.ID,
+					"media_type":     mt.name,
+					"title":          ent.Title,
+					"original_title": ent.OriginalTitle,
+					"poster_path":    ent.PosterPath,
+					// ent's dates are DD.MM.YYYY (fixEntity/FixDate) — every other
+					// MediaItem in the Каталог (local search, categories) gives ISO,
+					// and getItemYear's slice(0,4) on the frontend assumes that; back
+					// to ISO here so the badge shows a year instead of "11.0".
+					"release_date":   isoDate(ent.ReleaseDate),
+					"first_air_date": isoDate(ent.FirstAirDate),
+					"vote_average":   ent.VoteAverage,
+					"tmdb_only":      true,
+				},
+			})
 		}
 	}
-	sort.SliceStable(all, func(i, j int) bool { return all[i].score < all[j].score })
-	if len(all) > limit {
+	// Match quality first (see above), then — within the same tier — cards with
+	// a poster before posterless ones regardless of rating, then by rating: a
+	// highly-rated result nobody can even see a poster for is worse to lead
+	// with than a well-rated one that looks like an actual card.
+	sort.SliceStable(all, func(i, j int) bool {
+		if all[i].score != all[j].score {
+			return all[i].score < all[j].score
+		}
+		if all[i].hasPoster != all[j].hasPoster {
+			return all[i].hasPoster
+		}
+		return all[i].voteAvg > all[j].voteAvg
+	})
+	hasMore := len(all) > limit
+	if hasMore {
 		all = all[:limit]
 	}
 	results := make([]map[string]any, len(all))
 	for i, s := range all {
 		results[i] = s.item
 	}
-	JSON(w, http.StatusOK, map[string]any{"results": results})
+	JSON(w, http.StatusOK, map[string]any{"results": results, "has_more": hasMore})
 }
 
 // POST /api/web/add-from-tmdb
