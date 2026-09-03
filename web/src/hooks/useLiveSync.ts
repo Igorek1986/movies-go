@@ -83,6 +83,19 @@ export function useLiveSync(): void {
           return
         }
 
+        // Пересечение aired_cutoff (см. StartUnwatchedCutoffInvalidation на
+        // бэкенде) — рассылается TimecodeHub.BroadcastAll всем подряд, без
+        // profile_id (это не действие конкретного профиля/устройства), поэтому
+        // не проходит через фильтр sameProfile ниже. Строка «Непросмотренные»
+        // сама разберётся (см. подписку в CatalogPage) — здесь только чистим
+        // кеш, чтобы немонтированная строка тоже перезапросила данные при
+        // следующем открытии.
+        if (msg.type === 'unwatched_stale') {
+          invalidateRowCachesAfterStatusChange()
+          listeners.forEach(l => l(msg))
+          return
+        }
+
         // profile_id в сообщении — профиль устройства-отправителя; сверяем с
         // активным на вебе, чтобы не дёргать кеш зря при изменениях в другом
         // профиле того же аккаунта (тот же принцип, что и в np_unwatched.js —

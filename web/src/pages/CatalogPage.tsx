@@ -406,6 +406,27 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
   useEffect(() => {
     if (category.id !== 'unwatched') return
     return subscribeLiveSync((msg) => {
+      // Пересечение aired_cutoff на бэкенде: новый эпизод "появился" по дате
+      // выхода, без предшествующего 'status'/'timecode' конкретной карточки —
+      // добавить её адресно (как ниже) нечем, перезапрашиваем всю строку тем
+      // же запросом, что и первичная загрузка (loadItems выше).
+      if (msg.type === 'unwatched_stale') {
+        if (!token || profileId == null) return
+        const params = new URLSearchParams({ per_page: '20', page: '1', token, profile_id: profileId })
+        fetch(`/unwatched?${params}`)
+          .then(r => r.ok ? r.json() : null)
+          .then((data: CatalogResponse | null) => {
+            if (!data) return
+            const results = data.results || []
+            const tp = data.total_pages || 1
+            setTotalPages(tp)
+            setItems(results)
+            onItemsLoaded(category.id, { items: results, totalPages: tp })
+          })
+          .catch(() => {})
+        return
+      }
+
       if (msg.type !== 'status' || !msg.card_id) return
       const current = itemsRef.current
       if (!current) return
@@ -461,7 +482,7 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
       setItems(next)
       onItemsLoaded(category.id, { items: next, totalPages })
     })
-  }, [category.id, totalPages, onItemsLoaded])
+  }, [category.id, totalPages, onItemsLoaded, token, profileId])
 
   useEffect(() => {
     if (autoFocusIdx === undefined || autoFocusAppliedRef.current || !items?.length) return
