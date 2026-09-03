@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.17.0';
+    var VERSION = '1.17.1';
 
     // Флаг для других плагинов (см. full_hero.js): по нему можно решить, ждать
     // ли событие np-unwatched-progress ниже, или сразу считать свой лёгкий
@@ -1608,6 +1608,14 @@
     // insertCardIntoLine всё, чего там ещё нет — она сама дедуплицирует по
     // cardIdOf среди уже отрисованных карточек, так что повторный вызов для
     // уже присутствующих сериалов — просто холостой обход DOM.
+    //
+    // Заодно убираем обратное расхождение: карточку, которая отрисована в
+    // строке, но сервер её больше не вернул (обычный forward-cutoff сам
+    // никогда не убирает сериалы — см. AiredCutoffDate/UnwatchedTVShows, —
+    // но откат/исправление aired_cutoff_hour/days назад на бэкенде резолвится
+    // молча, без адресного 'status', см. комментарий у
+    // StartUnwatchedCutoffInvalidation). Без этого такая карточка виснет в
+    // строке до следующего реального захода на Главную.
     function syncUnwatchedRow() {
         if (!_unwatchedLine || !_unwatchedLine.render) return;
         var html = _unwatchedLine.render(true);
@@ -1616,10 +1624,22 @@
 
         fetchUnwatchedMain(1, UNWATCHED_MAIN_PAGE_SIZE, function (json) {
             if (!json || !json.results) return;
+
+            var freshIds = {};
             for (var i = 0; i < json.results.length; i++) {
                 var cardData = json.results[i];
                 var cardId = cardIdOf(cardData);
-                if (cardId) insertCardIntoLine(_unwatchedLine, cardId, cardIdOf, cardData);
+                if (!cardId) continue;
+                freshIds[cardId] = true;
+                insertCardIntoLine(_unwatchedLine, cardId, cardIdOf, cardData);
+            }
+
+            var existing = dom.querySelectorAll('.card');
+            for (var j = 0; j < existing.length; j++) {
+                var el = existing[j];
+                var existingData = el.card_data || el.data;
+                var existingId = existingData && cardIdOf(existingData);
+                if (existingId && !freshIds[existingId]) removeCompletedRowCard(el, _unwatchedLine);
             }
         });
     }
