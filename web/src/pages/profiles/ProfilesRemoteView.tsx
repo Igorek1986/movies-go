@@ -6,6 +6,7 @@ import { CardLayoutSettings } from '@/components/CardLayoutSettings'
 import { BrowseLayoutSettings } from '@/components/BrowseLayoutSettings'
 import { SettingsLayoutSettings } from '@/components/SettingsLayoutSettings'
 import { HideWatchedSettings } from '@/components/HideWatchedSettings'
+import { UnwatchedSortSettings } from '@/components/UnwatchedSortSettings'
 import { RemoteDialog } from '@/components/remote/RemoteDialog'
 import { RemoteSelect } from '@/components/remote/RemoteSelect'
 import { RemoteIconPicker } from '@/components/remote/RemoteIconPicker'
@@ -55,13 +56,14 @@ type SectionId =
 // The four layout/appearance settings, grouped under one "Интерфейс" menu
 // item with its own one-level submenu (same drill-down idea as devices, just
 // one level instead of three).
-type InterfaceSubId = 'bottomNav' | 'cardLayout' | 'browseLayout' | 'settingsLayout' | 'hideWatched'
+type InterfaceSubId = 'bottomNav' | 'cardLayout' | 'browseLayout' | 'settingsLayout' | 'hideWatched' | 'unwatchedSort'
 const INTERFACE_SUBMENU: { id: InterfaceSubId; title: string }[] = [
   { id: 'bottomNav', title: 'Панель навигации' },
   { id: 'cardLayout', title: 'Вид карточки фильма/сериала' },
   { id: 'browseLayout', title: 'Вид Каталога и Моё' },
   { id: 'settingsLayout', title: 'Дизайн страницы «Настройки»' },
   { id: 'hideWatched', title: 'Просмотренное в ленте' },
+  { id: 'unwatchedSort', title: 'Сортировка «Непросмотренные»' },
 ]
 
 export default function ProfilesRemoteView() {
@@ -1114,6 +1116,7 @@ export default function ProfilesRemoteView() {
         {interfaceSubview === 'browseLayout' && <div className={styles.sectionBody}><BrowseLayoutSettings bare /></div>}
         {interfaceSubview === 'settingsLayout' && <div className={styles.sectionBody}><SettingsLayoutSettings bare /></div>}
         {interfaceSubview === 'hideWatched' && <div className={styles.sectionBody}><HideWatchedSettings bare /></div>}
+        {interfaceSubview === 'unwatchedSort' && <div className={styles.sectionBody}><UnwatchedSortSettings bare /></div>}
 
         {/* ── Account settings ── */}
           {activeSection === 'account' && (

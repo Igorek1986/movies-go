@@ -8,6 +8,7 @@ import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { useAuth } from '@/hooks/useAuth'
 import { subscribeLiveSync } from '@/hooks/useLiveSync'
 import { useHideWatchedFilter, applyHideWatchedParams } from '@/hooks/useHideWatchedFilter'
+import { useUnwatchedSort } from '@/hooks/useUnwatchedSort'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
 import styles from './CatalogPage.module.scss'
@@ -289,6 +290,11 @@ interface CategoryRowProps {
   hideWatched: boolean
   hidePercent: number
   hideWatchedLoaded: boolean
+  // См. useUnwatchedSort — та же per-профильная настройка, что
+  // np_unwatched_sort_order в np_unwatched.js (Lampa). Применяется только к
+  // категории "unwatched" (шлётся как ?sort=), другие категории её игнорируют.
+  unwatchedSort: string
+  unwatchedSortLoaded: boolean
   onExpandCategory: (id: string, focusAfterIdx?: number) => void
   onCardClick: (item: MediaItem) => void
   onActivate?: (item: MediaItem) => void
@@ -319,7 +325,7 @@ interface CategoryRowProps {
   hideHeader?: boolean
 }
 
-function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, onExpandCategory, onCardClick, onActivate, activeCardId, dragHandlers, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: CategoryRowProps) {
+function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded, onExpandCategory, onCardClick, onActivate, activeCardId, dragHandlers, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: CategoryRowProps) {
   const [items, setItems] = useState<MediaItem[] | null>(initialCache?.items ?? null)
   const [totalPages, setTotalPages] = useState(initialCache?.totalPages ?? 1)
   const [error, setError] = useState(false)
@@ -430,6 +436,7 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
     // so they're deliberately not gated here.
     if (category.id === 'unwatched' && !token) return
     if (!hideWatchedLoaded) return
+    if (category.id === 'unwatched' && !unwatchedSortLoaded) return
     loadedRef.current = true
     try {
       const params = new URLSearchParams({ per_page: '20', page: '1' })
@@ -438,6 +445,7 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
         params.set('profile_id', profileId)
         applyHideWatchedParams(params, hideWatched, hidePercent)
       }
+      if (category.id === 'unwatched') params.set('sort', unwatchedSort)
       const res = await fetch(`/${encodeURIComponent(category.id)}?${params}`)
       if (!res.ok) throw new Error('HTTP ' + res.status)
       const data: CatalogResponse = await res.json()
@@ -455,7 +463,7 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
     } catch {
       setError(true)
     }
-  }, [category.id, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, onItemsLoaded])
+  }, [category.id, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded, onItemsLoaded])
 
   // Carousel mode: this category has nothing to show — tell the parent to
   // advance instead of leaving a blank screen (Classic layout doesn't pass
@@ -477,7 +485,7 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
       // же запросом, что и первичная загрузка (loadItems выше).
       if (msg.type === 'unwatched_stale') {
         if (!token || profileId == null) return
-        const params = new URLSearchParams({ per_page: '20', page: '1', token, profile_id: profileId })
+        const params = new URLSearchParams({ per_page: '20', page: '1', token, profile_id: profileId, sort: unwatchedSort })
         applyHideWatchedParams(params, hideWatched, hidePercent)
         fetch(`/unwatched?${params}`)
           .then(r => r.ok ? r.json() : null)
@@ -548,7 +556,7 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
       setItems(next)
       onItemsLoaded(category.id, { items: next, totalPages })
     })
-  }, [category.id, totalPages, onItemsLoaded, token, profileId, hideWatched, hidePercent])
+  }, [category.id, totalPages, onItemsLoaded, token, profileId, hideWatched, hidePercent, unwatchedSort])
 
   useEffect(() => {
     if (autoFocusIdx === undefined || autoFocusAppliedRef.current || !items?.length) return
@@ -706,12 +714,14 @@ interface CategoryViewProps {
   hideWatched: boolean
   hidePercent: number
   hideWatchedLoaded: boolean
+  unwatchedSort: string
+  unwatchedSortLoaded: boolean
   onBack: () => void
   onCardClick: (item: MediaItem) => void
   focusAfterIdx?: number
 }
 
-function CategoryView({ category, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, onBack, onCardClick, focusAfterIdx }: CategoryViewProps) {
+function CategoryView({ category, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded, onBack, onCardClick, focusAfterIdx }: CategoryViewProps) {
   const cached = _cache.catView?.id === category.id ? _cache.catView : null
 
   const [items, setItemsRaw] = useState<MediaItem[]>(cached?.items ?? [])
@@ -736,6 +746,7 @@ function CategoryView({ category, token, profileId, hideWatched, hidePercent, hi
   const prevProfileRef = useRef(profileId)
   const prevHideWatchedRef = useRef(hideWatched)
   const prevHidePercentRef = useRef(hidePercent)
+  const prevUnwatchedSortRef = useRef(unwatchedSort)
 
   // Init cache entry on mount, save scroll position continuously
   useEffect(() => {
@@ -784,6 +795,7 @@ function CategoryView({ category, token, profileId, hideWatched, hidePercent, hi
         params.set('profile_id', profileId)
         applyHideWatchedParams(params, hideWatched, hidePercent)
       }
+      if (category.id === 'unwatched') params.set('sort', unwatchedSort)
       const res = await fetch(`/${encodeURIComponent(category.id)}?${params}`)
       if (!res.ok) throw new Error('HTTP ' + res.status)
       const data: CatalogResponse = await res.json()
@@ -810,22 +822,25 @@ function CategoryView({ category, token, profileId, hideWatched, hidePercent, hi
       loadingRef.current = false
       setLoading(false)
     }
-  }, [category.id, token, profileId, hideWatched, hidePercent])
+  }, [category.id, token, profileId, hideWatched, hidePercent, unwatchedSort])
 
   useEffect(() => {
     if (!hideWatchedLoaded) return
+    if (category.id === 'unwatched' && !unwatchedSortLoaded) return
     const searchChanged = searchQuery !== prevSearchRef.current
     const tokenChanged = token !== prevTokenRef.current
     const profileChanged = profileId !== prevProfileRef.current
     const hideWatchedChanged = hideWatched !== prevHideWatchedRef.current
     const hidePercentChanged = hidePercent !== prevHidePercentRef.current
+    const sortChanged = category.id === 'unwatched' && unwatchedSort !== prevUnwatchedSortRef.current
     prevSearchRef.current = searchQuery
     prevTokenRef.current = token
     prevProfileRef.current = profileId
     prevHideWatchedRef.current = hideWatched
     prevHidePercentRef.current = hidePercent
-    if (!searchChanged && !tokenChanged && !profileChanged && !hideWatchedChanged && !hidePercentChanged && loadedRef.current) return
-    if (tokenChanged || profileChanged || hideWatchedChanged || hidePercentChanged) {
+    prevUnwatchedSortRef.current = unwatchedSort
+    if (!searchChanged && !tokenChanged && !profileChanged && !hideWatchedChanged && !hidePercentChanged && !sortChanged && loadedRef.current) return
+    if (tokenChanged || profileChanged || hideWatchedChanged || hidePercentChanged || sortChanged) {
       setItemsRaw([])
       setEmpty(false)
       if (_cache.catView?.id === category.id) {
@@ -837,7 +852,7 @@ function CategoryView({ category, token, profileId, hideWatched, hidePercent, hi
     loadedRef.current = true
     pageRef.current = 1
     loadPage(1, searchQuery, true)
-  }, [searchQuery, loadPage, hideWatched, hidePercent, hideWatchedLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchQuery, loadPage, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded, category.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-focus after N-th card loads (opened via keyboard ArrowRight on last row card)
   useEffect(() => {
@@ -1370,6 +1385,7 @@ export default function CatalogPage() {
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
   const { hideWatched, minProgress: hidePercent, hideWatchedLoaded } = useHideWatchedFilter(profileId)
+  const { unwatchedSort, unwatchedSortLoaded } = useUnwatchedSort(profileId)
 
   function onDragStart(_e: React.DragEvent, id: string) {
     dragSrcRef.current = id
@@ -1653,6 +1669,8 @@ export default function CatalogPage() {
             hideWatched={hideWatched}
             hidePercent={hidePercent}
             hideWatchedLoaded={hideWatchedLoaded}
+            unwatchedSort={unwatchedSort}
+            unwatchedSortLoaded={unwatchedSortLoaded}
             onBack={handleBack}
             onCardClick={handleCardClick}
             focusAfterIdx={expandedFocusIdx}
@@ -1725,13 +1743,15 @@ export default function CatalogPage() {
               {transition && categories[transition.prevIndex] && (
                 <div className={`${styles.carouselLayerOut} ${transition.dir > 0 ? styles.carouselOutToTop : styles.carouselOutToBottom}`}>
                   <CategoryRow
-                    key={`${categories[transition.prevIndex].id}_${token}_${profileId}_${hideWatchedLoaded}`}
+                    key={`${categories[transition.prevIndex].id}_${token}_${profileId}_${hideWatchedLoaded}_${unwatchedSortLoaded}`}
                     category={categories[transition.prevIndex]}
                     token={token}
                     profileId={profileId}
                     hideWatched={hideWatched}
                     hidePercent={hidePercent}
                     hideWatchedLoaded={hideWatchedLoaded}
+                    unwatchedSort={unwatchedSort}
+                    unwatchedSortLoaded={unwatchedSortLoaded}
                     onExpandCategory={handleExpandCategory}
                     onCardClick={handleCardClick}
                     initialCache={_cache.rows[categories[transition.prevIndex].id]}
@@ -1742,13 +1762,15 @@ export default function CatalogPage() {
               )}
               <div className={transition ? (transition.dir > 0 ? styles.carouselInFromBottom : styles.carouselInFromTop) : undefined}>
                 <CategoryRow
-                  key={`${categories[activeCategoryIndex].id}_${token}_${profileId}_${hideWatchedLoaded}`}
+                  key={`${categories[activeCategoryIndex].id}_${token}_${profileId}_${hideWatchedLoaded}_${unwatchedSortLoaded}`}
                   category={categories[activeCategoryIndex]}
                   token={token}
                   profileId={profileId}
                   hideWatched={hideWatched}
                   hidePercent={hidePercent}
                   hideWatchedLoaded={hideWatchedLoaded}
+                  unwatchedSort={unwatchedSort}
+                  unwatchedSortLoaded={unwatchedSortLoaded}
                   onExpandCategory={handleExpandCategory}
                   onCardClick={handleCardClick}
                   onActivate={handleActivate}
@@ -1768,13 +1790,15 @@ export default function CatalogPage() {
           <div className={styles.rows}>
             {categories.map(cat => (
               <CategoryRow
-                key={`${cat.id}_${token}_${profileId}_${hideWatchedLoaded}`}
+                key={`${cat.id}_${token}_${profileId}_${hideWatchedLoaded}_${unwatchedSortLoaded}`}
                 category={cat}
                 token={token}
                 profileId={profileId}
                 hideWatched={hideWatched}
                 hidePercent={hidePercent}
                 hideWatchedLoaded={hideWatchedLoaded}
+                unwatchedSort={unwatchedSort}
+                unwatchedSortLoaded={unwatchedSortLoaded}
                 onExpandCategory={handleExpandCategory}
                 onCardClick={handleCardClick}
                 dragHandlers={{ onDragStart, onDragEnd, onDragOver, onDrop }}
