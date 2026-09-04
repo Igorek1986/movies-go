@@ -123,6 +123,8 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireSession).Post("/web/add-from-tmdb", handleWebAddFromTMDB)
 			r.With(requireSession).Get("/web/favorite", handleWebGetFavorite)
 			r.With(requireSession).Post("/web/favorite", handleWebSetFavorite)
+			r.With(requireSession).Get("/web/plugin-setting", handleWebGetPluginSetting)
+			r.With(requireSession).Patch("/web/plugin-setting", handleWebPatchPluginSetting)
 			r.With(requireSession).Get("/history", handleWebHistoryAll)
 			r.With(requireSession).Get("/card-timecodes", handleWebCardTimecodes)
 			r.With(requireSession).Delete("/card-timecodes", handleWebDeleteCardTimecodes)

@@ -1,4 +1,4 @@
-import { invalidateUnwatchedRow } from '@/pages/CatalogPage'
+import { invalidateUnwatchedRow, invalidateAllCatalogRows } from '@/pages/CatalogPage'
 import { invalidateLibraryRows } from '@/pages/MediaLibraryPage'
 
 // Инвалидация построчных кешей Каталога/Моё после изменения статуса/таймкода/
@@ -9,4 +9,14 @@ import { invalidateLibraryRows } from '@/pages/MediaLibraryPage'
 export function invalidateRowCachesAfterStatusChange(): void {
   invalidateUnwatchedRow()
   invalidateLibraryRows()
+}
+
+// То же самое, плюс полный сброс ВСЕХ построчных кешей Каталога — см.
+// invalidateAllCatalogRows на CatalogPage.tsx за тем, почему это отдельная,
+// более тяжёлая функция, а не просто расширение invalidateRowCachesAfterStatusChange
+// (её же вызывает частый WS-путь, где полный сброс был бы избыточен). Только
+// для локальных действий на CardDetailPage.
+export function invalidateCatalogRowsForWatchedFilter(): void {
+  invalidateRowCachesAfterStatusChange()
+  invalidateAllCatalogRows()
 }

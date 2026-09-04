@@ -7,7 +7,7 @@ import { resolveCardLayout } from '@/utils/cardLayout'
 import { qualityLabel, runtimeLabel } from '@/utils/mediaFormat'
 import { useAuth } from '@/hooks/useAuth'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
-import { invalidateRowCachesAfterStatusChange } from '@/utils/rowCacheSync'
+import { invalidateCatalogRowsForWatchedFilter } from '@/utils/rowCacheSync'
 import { getWebClientId, subscribeLiveSync } from '@/hooks/useLiveSync'
 import styles from './CardDetailPage.module.scss'
 
@@ -1079,7 +1079,7 @@ export default function CardDetailPage() {
       if (res.ok) {
         setWatchStatus(status)
         if (card && !card.in_catalog) setCard({ ...card, in_catalog: true })
-        invalidateRowCachesAfterStatusChange()
+        invalidateCatalogRowsForWatchedFilter()
       }
     } finally {
       setStatusBusy(false)
@@ -1213,12 +1213,16 @@ export default function CardDetailPage() {
     await fetch('/api/web/set-timecode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item: ctx.item, percent, profile_id: ctx.profileId, client_id: getWebClientId() }),
+      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item: ctx.item, percent, duration_sec: ctx.maxSec, profile_id: ctx.profileId, client_id: getWebClientId() }),
     })
     loadTimecodes(cardId, activeDevice.id)
     // Percent≥90 can imply "Просмотрел" (movie) server-side (EnsureImpliedStatus) —
     // watchStatus is separate local state, doesn't refresh on its own.
     loadWatchStatus()
+    // Может пересечь порог hide_watched (см. useHideWatchedFilter) — карточка
+    // впервые пометилась/перестала быть "просмотренной", а этот факт нужно
+    // подхватить любой строке Каталога, не только «Непросмотренные».
+    invalidateCatalogRowsForWatchedFilter()
     if (card?.media_type === 'tv' && percent >= watchedThreshold()) checkForwardCascade(ctx.item, ctx.profileId)
   }
 
@@ -1233,6 +1237,7 @@ export default function CardDetailPage() {
     ))
     loadTimecodes(cardId, activeDevice.id)
     loadWatchStatus()
+    invalidateCatalogRowsForWatchedFilter()
   }
 
   async function markSpecial(item: string, profileId: string) {
@@ -1244,6 +1249,7 @@ export default function CardDetailPage() {
     })
     loadTimecodes(cardId, activeDevice.id)
     loadWatchStatus() // MarkSpecialTimecode implies "Смотрю" for TV — refresh to show it
+    invalidateCatalogRowsForWatchedFilter()
     checkForwardCascade(item, profileId)
   }
 
@@ -1255,6 +1261,7 @@ export default function CardDetailPage() {
       body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item, profile_id: profileId, client_id: getWebClientId() }),
     })
     loadTimecodes(cardId, activeDevice.id)
+    invalidateCatalogRowsForWatchedFilter()
   }
 
   async function deleteEpisodeTimecode(item: string, profileId: string) {
@@ -1262,6 +1269,7 @@ export default function CardDetailPage() {
     const qs = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, item, profile_id: profileId, client_id: getWebClientId() })
     await fetch(`/api/episode-timecode?${qs}`, { method: 'DELETE' })
     loadTimecodes(cardId, activeDevice.id)
+    invalidateCatalogRowsForWatchedFilter()
     checkBackwardCascade(item, profileId)
   }
 
@@ -1282,6 +1290,7 @@ export default function CardDetailPage() {
     await fetch(`/api/web/card-timecodes?${qs}`, { method: 'DELETE' })
     setTimecodes([])
     loadWatchStatus()
+    invalidateCatalogRowsForWatchedFilter()
   }
 
   async function runConfirm() {

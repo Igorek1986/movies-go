@@ -5,6 +5,7 @@ import { BottomNavSettings } from '@/components/BottomNavSettings'
 import { CardLayoutSettings } from '@/components/CardLayoutSettings'
 import { BrowseLayoutSettings } from '@/components/BrowseLayoutSettings'
 import { SettingsLayoutSettings } from '@/components/SettingsLayoutSettings'
+import { HideWatchedSettings } from '@/components/HideWatchedSettings'
 import { RemoteDialog } from '@/components/remote/RemoteDialog'
 import { RemoteSelect } from '@/components/remote/RemoteSelect'
 import { RemoteIconPicker } from '@/components/remote/RemoteIconPicker'
@@ -38,12 +39,13 @@ type SectionId =
 // The four layout/appearance settings, grouped under one "Интерфейс" menu
 // item with its own one-level submenu (same drill-down idea as devices, just
 // one level instead of three).
-type InterfaceSubId = 'bottomNav' | 'cardLayout' | 'browseLayout' | 'settingsLayout'
+type InterfaceSubId = 'bottomNav' | 'cardLayout' | 'browseLayout' | 'settingsLayout' | 'hideWatched'
 const INTERFACE_SUBMENU: { id: InterfaceSubId; title: string }[] = [
   { id: 'bottomNav', title: 'Панель навигации' },
   { id: 'cardLayout', title: 'Вид карточки фильма/сериала' },
   { id: 'browseLayout', title: 'Вид Каталога и Моё' },
   { id: 'settingsLayout', title: 'Дизайн страницы «Настройки»' },
+  { id: 'hideWatched', title: 'Просмотренное в ленте' },
 ]
 
 export default function ProfilesRemoteView() {
@@ -1095,6 +1097,7 @@ export default function ProfilesRemoteView() {
         {interfaceSubview === 'cardLayout' && <div className={styles.sectionBody}><CardLayoutSettings bare /></div>}
         {interfaceSubview === 'browseLayout' && <div className={styles.sectionBody}><BrowseLayoutSettings bare /></div>}
         {interfaceSubview === 'settingsLayout' && <div className={styles.sectionBody}><SettingsLayoutSettings bare /></div>}
+        {interfaceSubview === 'hideWatched' && <div className={styles.sectionBody}><HideWatchedSettings bare /></div>}
 
         {/* ── Account settings ── */}
           {activeSection === 'account' && (

@@ -268,9 +268,13 @@ func GetCardTimecodes(ctx context.Context, deviceID int64, cardID string) []Card
 }
 
 // SetCardTimecode upserts a timecode with given percent, preserving duration if
-// known. Returns the stored data JSON ({time,duration,percent}) so the caller
-// can broadcast the exact same payload over WS without recomputing it.
-func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string, percent float64) (string, error) {
+// known. durationHint (seconds) is the caller's own duration for this specific
+// item (e.g. TV episode runtime, which varies per-episode and can't be
+// inferred from media_cards.runtime — that's the card-level/movie duration,
+// wrong for episodes) — used only when no duration was stored yet. Returns
+// the stored data JSON ({time,duration,percent}) so the caller can broadcast
+// the exact same payload over WS without recomputing it.
+func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string, percent, durationHint float64) (string, error) {
 	percent = max(0, min(100, percent))
 
 	// Read existing to preserve duration
@@ -287,6 +291,9 @@ func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, ite
 		if json.Unmarshal([]byte(existingData), &m) == nil {
 			duration, _ = m["duration"].(float64)
 		}
+	}
+	if duration == 0 && durationHint > 0 {
+		duration = durationHint
 	}
 	if duration == 0 {
 		var runtimeMin int

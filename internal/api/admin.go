@@ -500,12 +500,13 @@ func handleWebCardTimecodes(w http.ResponseWriter, r *http.Request) {
 }
 
 type setTimecodeBody struct {
-	DeviceID  int64   `json:"device_id"`
-	CardID    string  `json:"card_id"`
-	Item      string  `json:"item"`
-	Percent   float64 `json:"percent"`
-	ProfileID string  `json:"profile_id"`
-	ClientID  string  `json:"client_id"` // веб-вкладка, см. useLiveSync.ts — исключить эхо себе же
+	DeviceID    int64   `json:"device_id"`
+	CardID      string  `json:"card_id"`
+	Item        string  `json:"item"`
+	Percent     float64 `json:"percent"`
+	DurationSec float64 `json:"duration_sec"` // см. SetCardTimecode — точная длительность именно этой серии/фильма
+	ProfileID   string  `json:"profile_id"`
+	ClientID    string  `json:"client_id"` // веб-вкладка, см. useLiveSync.ts — исключить эхо себе же
 }
 
 // POST /api/web/set-timecode
@@ -527,7 +528,7 @@ func handleWebSetTimecode(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	data, err := store.SetCardTimecode(r.Context(), body.DeviceID, body.ProfileID, body.CardID, body.Item, body.Percent)
+	data, err := store.SetCardTimecode(r.Context(), body.DeviceID, body.ProfileID, body.CardID, body.Item, body.Percent, body.DurationSec)
 	if err != nil {
 		Error(w, http.StatusInternalServerError, "db error")
 		return

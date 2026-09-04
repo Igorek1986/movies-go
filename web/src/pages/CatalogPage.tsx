@@ -7,6 +7,7 @@ import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { useAuth } from '@/hooks/useAuth'
 import { subscribeLiveSync } from '@/hooks/useLiveSync'
+import { useHideWatchedFilter, applyHideWatchedParams } from '@/hooks/useHideWatchedFilter'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
 import styles from './CatalogPage.module.scss'
@@ -51,8 +52,13 @@ interface Category {
 const LS_ROW_ORDER    = 'catalog_row_order'
 
 // Module-level cache — survives SPA navigation, resets on full page reload.
-interface RowCache { items: MediaItem[]; totalPages: number }
-interface CatViewCache { id: string; items: MediaItem[]; totalPages: number; currentPage: number; scrollY: number }
+// stale (see invalidateAllCatalogRows/invalidateUnwatchedRow): the row still
+// renders these items immediately on remount — a plain SPA back-nav stays a
+// soft, instant return instead of flashing "Загрузка…" — but CategoryRow
+// treats itself as not-yet-loaded and quietly refetches once its own
+// IntersectionObserver fires, swapping in the corrected list in place.
+interface RowCache { items: MediaItem[]; totalPages: number; stale?: boolean }
+interface CatViewCache { id: string; items: MediaItem[]; totalPages: number; currentPage: number; scrollY: number; stale?: boolean }
 const _cache = {
   categories: [] as Category[],
   rows: {} as Record<string, RowCache>,
@@ -118,8 +124,28 @@ export function invalidateCatalogCache() {
 // without this the row keeps showing whatever it had before the change
 // until a hard reload.
 export function invalidateUnwatchedRow() {
-  delete _cache.rows['unwatched']
-  if (_cache.catView?.id === 'unwatched') _cache.catView = null
+  const row = _cache.rows['unwatched']
+  if (row) row.stale = true
+  if (_cache.catView?.id === 'unwatched') _cache.catView.stale = true
+}
+
+// Called after a local timecode/status change that might cross the
+// hide_watched threshold (see useHideWatchedFilter) — a card can newly need
+// hiding (or showing again, if a timecode got reset) in ANY category row, not
+// just "Непросмотренные", and there's no client-side index of which cached
+// rows a given card_id appears in. Only called from CardDetailPage's own
+// local actions (a handful of clicks per session), never from the WS
+// listener in useLiveSync — 'timecode' messages arrive there roughly every
+// 15s during active playback elsewhere (see np.js's SYNC_THROTTLE_MS), and
+// wiping every row on each tick would be wasteful.
+//
+// Marks stale rather than deleting (see RowCache.stale) — deleting outright
+// made every single row (and the expanded grid, via CatViewCache.stale) flash
+// "Загрузка…" on the very next SPA back-nav, even though only whichever row
+// actually contains this one card needed a recheck.
+export function invalidateAllCatalogRows() {
+  for (const row of Object.values(_cache.rows)) row.stale = true
+  if (_cache.catView) _cache.catView.stale = true
 }
 
 function getItemTitle(item: MediaItem): string {
@@ -254,6 +280,15 @@ interface CategoryRowProps {
   category: Category
   token: string
   profileId: string
+  // См. useHideWatchedFilter — та же per-профильная настройка, что и
+  // numparser_hide_watched в np.js, шлётся в запрос теми же query-параметрами
+  // (applyHideWatchedParams), которые уже понимает бэкенд (applyHideWatched).
+  // hideWatchedLoaded гейтит самый первый фетч строки — иначе он мог уйти
+  // раньше, чем настройка подтянулась с сервера (default false), и просмотренное
+  // проскочило бы в уже отрисованный список до следующей полной перезагрузки.
+  hideWatched: boolean
+  hidePercent: number
+  hideWatchedLoaded: boolean
   onExpandCategory: (id: string, focusAfterIdx?: number) => void
   onCardClick: (item: MediaItem) => void
   onActivate?: (item: MediaItem) => void
@@ -284,14 +319,18 @@ interface CategoryRowProps {
   hideHeader?: boolean
 }
 
-function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick, onActivate, activeCardId, dragHandlers, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: CategoryRowProps) {
+function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, onExpandCategory, onCardClick, onActivate, activeCardId, dragHandlers, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: CategoryRowProps) {
   const [items, setItems] = useState<MediaItem[] | null>(initialCache?.items ?? null)
   const [totalPages, setTotalPages] = useState(initialCache?.totalPages ?? 1)
   const [error, setError] = useState(false)
   const rowRef = useRef<HTMLElement>(null)
   const rowInnerRef = useRef<HTMLDivElement>(null)
   const rowScrollRef = useRef<HTMLDivElement>(null)
-  const loadedRef = useRef(!!initialCache)
+  // stale (see RowCache.stale): render the old cached items immediately (no
+  // "Загрузка…" flash on SPA back-nav) but still treat this as not-loaded, so
+  // the IntersectionObserver below fires a real, quiet refetch that swaps in
+  // the corrected list once it resolves.
+  const loadedRef = useRef(!!initialCache && !initialCache.stale)
   const autoFocusAppliedRef = useRef(false)
   // Свежий items для обработчика WS-события ниже, не завязываясь на него как
   // на зависимость эффекта (иначе подписка пересоздавалась бы на каждую
@@ -358,6 +397,24 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
     return () => el.removeEventListener('wheel', onWheel)
   }, [hideHeader])
 
+  // Shared by every path that can silently drop the currently-focused card
+  // out of `items` (initial/background refetch below, the live WS 'status'
+  // removal further down) — if that card had real DOM focus, removing it
+  // without moving focus first sends it to <body>, which freezes the hero
+  // banner/background on the now-gone card until the user manually moves
+  // focus themselves.
+  function focusNeighborForRemoved(removedIds: Set<string>) {
+    const activeEl = document.activeElement as HTMLElement | null
+    if (!activeEl) return
+    const cardWrapper = activeEl.closest<HTMLElement>('[id]')
+    if (!cardWrapper || !removedIds.has(cardWrapper.id)) return
+    const siblings = Array.from(rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]') ?? [])
+    const activeIdx = siblings.indexOf(activeEl)
+    if (activeIdx === -1) return
+    const neighbor = activeIdx > 0 ? siblings[activeIdx - 1] : siblings[activeIdx + 1]
+    neighbor?.focus({ preventScroll: true })
+  }
+
   const loadItems = useCallback(async () => {
     if (loadedRef.current) return
     // "Непросмотренные" is per-profile — fetching it before the active
@@ -372,25 +429,33 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
     // empty one first. Every other category doesn't need a profile at all,
     // so they're deliberately not gated here.
     if (category.id === 'unwatched' && !token) return
+    if (!hideWatchedLoaded) return
     loadedRef.current = true
     try {
       const params = new URLSearchParams({ per_page: '20', page: '1' })
       if (token && profileId != null) {
         params.set('token', token)
         params.set('profile_id', profileId)
+        applyHideWatchedParams(params, hideWatched, hidePercent)
       }
       const res = await fetch(`/${encodeURIComponent(category.id)}?${params}`)
       if (!res.ok) throw new Error('HTTP ' + res.status)
       const data: CatalogResponse = await res.json()
       const results = data.results || []
       const tp = data.total_pages || 1
+      const prevItems = itemsRef.current
+      if (prevItems?.length) {
+        const nextIds = new Set(results.map(it => `${it.id}_${it.media_type}`))
+        const removedIds = new Set(prevItems.map(it => `${it.id}_${it.media_type}`).filter(id => !nextIds.has(id)))
+        if (removedIds.size) focusNeighborForRemoved(removedIds)
+      }
       setTotalPages(tp)
       setItems(results)
       onItemsLoaded(category.id, { items: results, totalPages: tp })
     } catch {
       setError(true)
     }
-  }, [category.id, token, profileId, onItemsLoaded])
+  }, [category.id, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, onItemsLoaded])
 
   // Carousel mode: this category has nothing to show — tell the parent to
   // advance instead of leaving a blank screen (Classic layout doesn't pass
@@ -413,12 +478,19 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
       if (msg.type === 'unwatched_stale') {
         if (!token || profileId == null) return
         const params = new URLSearchParams({ per_page: '20', page: '1', token, profile_id: profileId })
+        applyHideWatchedParams(params, hideWatched, hidePercent)
         fetch(`/unwatched?${params}`)
           .then(r => r.ok ? r.json() : null)
           .then((data: CatalogResponse | null) => {
             if (!data) return
             const results = data.results || []
             const tp = data.total_pages || 1
+            const prevItems = itemsRef.current
+            if (prevItems?.length) {
+              const nextIds = new Set(results.map(it => `${it.id}_${it.media_type}`))
+              const removedIds = new Set(prevItems.map(it => `${it.id}_${it.media_type}`).filter(id => !nextIds.has(id)))
+              if (removedIds.size) focusNeighborForRemoved(removedIds)
+            }
             setTotalPages(tp)
             setItems(results)
             onItemsLoaded(category.id, { items: results, totalPages: tp })
@@ -465,24 +537,18 @@ function CategoryRow({ category, token, profileId, onExpandCategory, onCardClick
 
       if (idx === -1) return
       // Если удаляемая карточка сейчас в фокусе — переносим фокус на соседнюю
-      // (слева, иначе справа) ДО того, как React уберёт её из DOM. Иначе фокус
-      // улетает на body, и герой-фон/подсветка карточки замирают на уже
-      // удалённой карточке — тот же класс бага, что чинили в np_unwatched.js
-      // для фокуса в Lampa, только здесь речь о нативном DOM-фокусе браузера.
-      const cardEl = document.getElementById(msg.card_id)
-      const activeEl = document.activeElement as HTMLElement | null
-      if (cardEl && activeEl && cardEl.contains(activeEl)) {
-        const siblings = Array.from(rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]') ?? [])
-        const activeIdx = siblings.indexOf(activeEl)
-        const neighbor = activeIdx > 0 ? siblings[activeIdx - 1] : siblings[activeIdx + 1]
-        neighbor?.focus({ preventScroll: true })
-      }
+      // ДО того, как React уберёт её из DOM (см. focusNeighborForRemoved).
+      // Иначе фокус улетает на body, и герой-фон/подсветка карточки замирают
+      // на уже удалённой карточке — тот же класс бага, что чинили в
+      // np_unwatched.js для фокуса в Lampa, только здесь речь о нативном
+      // DOM-фокусе браузера.
+      focusNeighborForRemoved(new Set([msg.card_id]))
 
       const next = current.filter((_, i) => i !== idx)
       setItems(next)
       onItemsLoaded(category.id, { items: next, totalPages })
     })
-  }, [category.id, totalPages, onItemsLoaded, token, profileId])
+  }, [category.id, totalPages, onItemsLoaded, token, profileId, hideWatched, hidePercent])
 
   useEffect(() => {
     if (autoFocusIdx === undefined || autoFocusAppliedRef.current || !items?.length) return
@@ -637,12 +703,15 @@ interface CategoryViewProps {
   category: Category
   token: string
   profileId: string
+  hideWatched: boolean
+  hidePercent: number
+  hideWatchedLoaded: boolean
   onBack: () => void
   onCardClick: (item: MediaItem) => void
   focusAfterIdx?: number
 }
 
-function CategoryView({ category, token, profileId, onBack, onCardClick, focusAfterIdx }: CategoryViewProps) {
+function CategoryView({ category, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, onBack, onCardClick, focusAfterIdx }: CategoryViewProps) {
   const cached = _cache.catView?.id === category.id ? _cache.catView : null
 
   const [items, setItemsRaw] = useState<MediaItem[]>(cached?.items ?? [])
@@ -659,10 +728,14 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
   const loadingRef = useRef(false)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const focusAppliedRef = useRef(false)
-  const loadedRef = useRef(!!cached)
+  // stale (see CatViewCache.stale): same idea as CategoryRow's loadedRef —
+  // render the cached grid immediately, but still trigger one quiet refetch.
+  const loadedRef = useRef(!!cached && !cached.stale)
   const prevSearchRef = useRef('')
   const prevTokenRef = useRef(token)
   const prevProfileRef = useRef(profileId)
+  const prevHideWatchedRef = useRef(hideWatched)
+  const prevHidePercentRef = useRef(hidePercent)
 
   // Init cache entry on mount, save scroll position continuously
   useEffect(() => {
@@ -709,6 +782,7 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
       if (token && profileId != null) {
         params.set('token', token)
         params.set('profile_id', profileId)
+        applyHideWatchedParams(params, hideWatched, hidePercent)
       }
       const res = await fetch(`/${encodeURIComponent(category.id)}?${params}`)
       if (!res.ok) throw new Error('HTTP ' + res.status)
@@ -723,7 +797,10 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
       }
       setItemsRaw(prev => {
         const next = reset ? results : [...prev, ...results]
-        if (_cache.catView?.id === category.id) _cache.catView.items = next
+        if (_cache.catView?.id === category.id) {
+          _cache.catView.items = next
+          _cache.catView.stale = false
+        }
         return next
       })
       if (pg === 1 && results.length === 0) setEmpty(true)
@@ -733,17 +810,22 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
       loadingRef.current = false
       setLoading(false)
     }
-  }, [category.id, token, profileId])
+  }, [category.id, token, profileId, hideWatched, hidePercent])
 
   useEffect(() => {
+    if (!hideWatchedLoaded) return
     const searchChanged = searchQuery !== prevSearchRef.current
     const tokenChanged = token !== prevTokenRef.current
     const profileChanged = profileId !== prevProfileRef.current
+    const hideWatchedChanged = hideWatched !== prevHideWatchedRef.current
+    const hidePercentChanged = hidePercent !== prevHidePercentRef.current
     prevSearchRef.current = searchQuery
     prevTokenRef.current = token
     prevProfileRef.current = profileId
-    if (!searchChanged && !tokenChanged && !profileChanged && loadedRef.current) return
-    if (tokenChanged || profileChanged) {
+    prevHideWatchedRef.current = hideWatched
+    prevHidePercentRef.current = hidePercent
+    if (!searchChanged && !tokenChanged && !profileChanged && !hideWatchedChanged && !hidePercentChanged && loadedRef.current) return
+    if (tokenChanged || profileChanged || hideWatchedChanged || hidePercentChanged) {
       setItemsRaw([])
       setEmpty(false)
       if (_cache.catView?.id === category.id) {
@@ -755,7 +837,7 @@ function CategoryView({ category, token, profileId, onBack, onCardClick, focusAf
     loadedRef.current = true
     pageRef.current = 1
     loadPage(1, searchQuery, true)
-  }, [searchQuery, loadPage]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchQuery, loadPage, hideWatched, hidePercent, hideWatchedLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-focus after N-th card loads (opened via keyboard ArrowRight on last row card)
   useEffect(() => {
@@ -1287,6 +1369,7 @@ export default function CatalogPage() {
 
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
+  const { hideWatched, minProgress: hidePercent, hideWatchedLoaded } = useHideWatchedFilter(profileId)
 
   function onDragStart(_e: React.DragEvent, id: string) {
     dragSrcRef.current = id
@@ -1567,6 +1650,9 @@ export default function CatalogPage() {
             category={expandedCat}
             token={token}
             profileId={profileId}
+            hideWatched={hideWatched}
+            hidePercent={hidePercent}
+            hideWatchedLoaded={hideWatchedLoaded}
             onBack={handleBack}
             onCardClick={handleCardClick}
             focusAfterIdx={expandedFocusIdx}
@@ -1639,10 +1725,13 @@ export default function CatalogPage() {
               {transition && categories[transition.prevIndex] && (
                 <div className={`${styles.carouselLayerOut} ${transition.dir > 0 ? styles.carouselOutToTop : styles.carouselOutToBottom}`}>
                   <CategoryRow
-                    key={`${categories[transition.prevIndex].id}_${token}_${profileId}`}
+                    key={`${categories[transition.prevIndex].id}_${token}_${profileId}_${hideWatchedLoaded}`}
                     category={categories[transition.prevIndex]}
                     token={token}
                     profileId={profileId}
+                    hideWatched={hideWatched}
+                    hidePercent={hidePercent}
+                    hideWatchedLoaded={hideWatchedLoaded}
                     onExpandCategory={handleExpandCategory}
                     onCardClick={handleCardClick}
                     initialCache={_cache.rows[categories[transition.prevIndex].id]}
@@ -1653,10 +1742,13 @@ export default function CatalogPage() {
               )}
               <div className={transition ? (transition.dir > 0 ? styles.carouselInFromBottom : styles.carouselInFromTop) : undefined}>
                 <CategoryRow
-                  key={`${categories[activeCategoryIndex].id}_${token}_${profileId}`}
+                  key={`${categories[activeCategoryIndex].id}_${token}_${profileId}_${hideWatchedLoaded}`}
                   category={categories[activeCategoryIndex]}
                   token={token}
                   profileId={profileId}
+                  hideWatched={hideWatched}
+                  hidePercent={hidePercent}
+                  hideWatchedLoaded={hideWatchedLoaded}
                   onExpandCategory={handleExpandCategory}
                   onCardClick={handleCardClick}
                   onActivate={handleActivate}
@@ -1676,10 +1768,13 @@ export default function CatalogPage() {
           <div className={styles.rows}>
             {categories.map(cat => (
               <CategoryRow
-                key={`${cat.id}_${token}_${profileId}`}
+                key={`${cat.id}_${token}_${profileId}_${hideWatchedLoaded}`}
                 category={cat}
                 token={token}
                 profileId={profileId}
+                hideWatched={hideWatched}
+                hidePercent={hidePercent}
+                hideWatchedLoaded={hideWatchedLoaded}
                 onExpandCategory={handleExpandCategory}
                 onCardClick={handleCardClick}
                 dragHandlers={{ onDragStart, onDragEnd, onDragOver, onDrop }}
