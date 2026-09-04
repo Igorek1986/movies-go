@@ -28,6 +28,13 @@ interface MediaItem {
   release_quality: string
   certification_ru?: string
   certification_us?: string
+  // Already present in the list endpoint's own response (toMediaItem) — read
+  // by BrowseHero as an instant fallback so the hero doesn't have to wait on
+  // its own separate /api/media-card detail fetch to show them (see its
+  // rawBackdrop-adjacent comment there).
+  overview?: string
+  status?: string
+  number_of_seasons?: number
   category_name?: string
   year?: string
   unwatched_count?: number

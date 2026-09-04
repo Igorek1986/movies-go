@@ -23,6 +23,12 @@ export interface HeroLiteItem {
   first_air_date?: string
   certification_ru?: string
   release_quality?: string
+  // Same idea as backdrop_path above — already in the list response, shown
+  // immediately instead of waiting on the detail fetch (see rawBackdrop's
+  // comment for why detail still wins once it resolves).
+  overview?: string
+  status?: string
+  number_of_seasons?: number
   // "Непросмотренные" only (see CatalogPage's MediaCard) — next unwatched
   // episode + watch progress for the show, shown here instead of/alongside
   // the card's own overlay badges.
@@ -313,12 +319,14 @@ export function BrowseHero({ item, detail, onOpen }: {
   const certification = detail?.certification_ru || item.certification_ru
   const year = heroYear(item, detail)
   const genres = detail?.genres ?? []
-  const status = detail?.status ? statusLabel(detail.status) : ''
+  const rawStatus = detail?.status || item.status
+  const status = rawStatus ? statusLabel(rawStatus) : ''
+  const numberOfSeasons = detail?.number_of_seasons ?? item.number_of_seasons
 
   const tags: string[] = []
   if (year) tags.push(year)
   if (certification) tags.push(certification.endsWith('+') ? certification : certification + '+')
-  if (isTV && detail?.number_of_seasons) tags.push(`Сезонов ${detail.number_of_seasons}`)
+  if (isTV && numberOfSeasons) tags.push(`Сезонов ${numberOfSeasons}`)
   if (isTV && detail?.number_of_episodes) tags.push(`Эпизодов ${detail.number_of_episodes}`)
   if (detail?.age_rating) tags.push(`${detail.age_rating}+`)
   if (status) tags.push(status)
@@ -369,7 +377,7 @@ export function BrowseHero({ item, detail, onOpen }: {
               {genres.map(g => <span key={g.id} className={styles.genre}>{g.name}</span>)}
             </div>
           )}
-          {detail?.overview && <p className={styles.descr}>{detail.overview}</p>}
+          {(detail?.overview || item.overview) && <p className={styles.descr}>{detail?.overview || item.overview}</p>}
           {!!aired && (
             <div className={styles.episodeProgress}>
               {progressLabel && <span className={styles.episodeProgressLabel}>{progressLabel}</span>}

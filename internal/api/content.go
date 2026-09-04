@@ -67,7 +67,7 @@ func proxyToPopularSource(w http.ResponseWriter, r *http.Request) {
 	}
 	var results []map[string]any
 	if json.Unmarshal(payload["results"], &results) == nil {
-		store.OverrideWithLocalImages(r.Context(), results)
+		store.OverrideWithLocalCardData(r.Context(), results)
 		if b, err := json.Marshal(results); err == nil {
 			payload["results"] = b
 		}

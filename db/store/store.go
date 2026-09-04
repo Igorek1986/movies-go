@@ -1520,13 +1520,18 @@ func nilIntSlice(s []int) interface{} {
 	return s
 }
 
-// OverrideWithLocalImages replaces poster_path/backdrop_path in-place for any
-// result item (shape: TMDB-style "id"/"media_type" fields, as returned by
-// np_popular) whose {id}_{media_type} matches a card we have locally — see
+// OverrideWithLocalCardData replaces poster_path/backdrop_path/overview/
+// status/number_of_seasons in-place for any result item (shape: TMDB-style
+// "id"/"media_type" fields, as returned by np_popular) whose
+// {id}_{media_type} matches a card we have locally — see
 // proxyToPopularSource's comment for why this matters (a remote
-// popular_source_url instance's own TMDB scrape can pick a different
-// backdrop/poster for the same movie than ours).
-func OverrideWithLocalImages(ctx context.Context, results []map[string]any) {
+// popular_source_url instance runs its own independent TMDB scrape/text,
+// which can differ from ours for the same card). Covers exactly the fields
+// BrowseHero shows immediately from the list item, before its own debounced
+// /api/media-card fetch resolves — anything wrong here would otherwise
+// flash to the correct value a beat later, same as the image mismatch this
+// was first written for.
+func OverrideWithLocalCardData(ctx context.Context, results []map[string]any) {
 	byCardID := make(map[string]map[string]any, len(results))
 	cardIDs := make([]string, 0, len(results))
 	for _, it := range results {
@@ -1544,7 +1549,8 @@ func OverrideWithLocalImages(ctx context.Context, results []map[string]any) {
 	}
 
 	rows, err := postgres.Pool.Query(ctx,
-		`SELECT card_id, poster_path, backdrop_path FROM media_cards WHERE card_id = ANY($1)`,
+		`SELECT card_id, poster_path, backdrop_path, overview, status, number_of_seasons
+		 FROM media_cards WHERE card_id = ANY($1)`,
 		cardIDs)
 	if err != nil {
 		return
@@ -1553,8 +1559,9 @@ func OverrideWithLocalImages(ctx context.Context, results []map[string]any) {
 
 	for rows.Next() {
 		var cardID string
-		var poster, backdrop *string
-		if rows.Scan(&cardID, &poster, &backdrop) != nil {
+		var poster, backdrop, overview, status *string
+		var numSeasons *int
+		if rows.Scan(&cardID, &poster, &backdrop, &overview, &status, &numSeasons) != nil {
 			continue
 		}
 		it, ok := byCardID[cardID]
@@ -1566,6 +1573,15 @@ func OverrideWithLocalImages(ctx context.Context, results []map[string]any) {
 		}
 		if backdrop != nil && *backdrop != "" {
 			it["backdrop_path"] = *backdrop
+		}
+		if overview != nil && *overview != "" {
+			it["overview"] = *overview
+		}
+		if status != nil && *status != "" {
+			it["status"] = *status
+		}
+		if numSeasons != nil && *numSeasons > 0 {
+			it["number_of_seasons"] = *numSeasons
 		}
 	}
 }
