@@ -1519,3 +1519,53 @@ func nilIntSlice(s []int) interface{} {
 	}
 	return s
 }
+
+// OverrideWithLocalImages replaces poster_path/backdrop_path in-place for any
+// result item (shape: TMDB-style "id"/"media_type" fields, as returned by
+// np_popular) whose {id}_{media_type} matches a card we have locally — see
+// proxyToPopularSource's comment for why this matters (a remote
+// popular_source_url instance's own TMDB scrape can pick a different
+// backdrop/poster for the same movie than ours).
+func OverrideWithLocalImages(ctx context.Context, results []map[string]any) {
+	byCardID := make(map[string]map[string]any, len(results))
+	cardIDs := make([]string, 0, len(results))
+	for _, it := range results {
+		idNum, ok := it["id"].(float64)
+		mediaType, _ := it["media_type"].(string)
+		if !ok || idNum <= 0 || mediaType == "" {
+			continue
+		}
+		cardID := fmt.Sprintf("%d_%s", int64(idNum), mediaType)
+		byCardID[cardID] = it
+		cardIDs = append(cardIDs, cardID)
+	}
+	if len(cardIDs) == 0 {
+		return
+	}
+
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT card_id, poster_path, backdrop_path FROM media_cards WHERE card_id = ANY($1)`,
+		cardIDs)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cardID string
+		var poster, backdrop *string
+		if rows.Scan(&cardID, &poster, &backdrop) != nil {
+			continue
+		}
+		it, ok := byCardID[cardID]
+		if !ok {
+			continue
+		}
+		if poster != nil && *poster != "" {
+			it["poster_path"] = *poster
+		}
+		if backdrop != nil && *backdrop != "" {
+			it["backdrop_path"] = *backdrop
+		}
+	}
+}

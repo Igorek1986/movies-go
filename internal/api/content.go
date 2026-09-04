@@ -25,8 +25,58 @@ func getPopularSourceURL(ctx context.Context) string {
 	return strings.TrimRight(v, "/")
 }
 
+// proxyToPopularSource is like proxyToPopularSourcePath, but for the actual
+// card list (not /np_popular_daily's stats-only payload) it also swaps in
+// our own local poster_path/backdrop_path wherever we have a matching local
+// media_cards row — the remote instance runs its own independent TMDB
+// scrape, which can pick a different backdrop/poster for the same movie
+// than ours (TMDB offers several candidates per card). CardDetailPage always
+// shows our local value, so leaving the remote one in the list response just
+// means the hero/preview flashes from that image to the real one the moment
+// the card is focused/opened (see BrowseHero's rawBackdrop comment) — fixing
+// it here means every consumer of this list gets the consistent value from
+// the start, no client-side reconciliation needed.
 func proxyToPopularSource(w http.ResponseWriter, r *http.Request) {
-	proxyToPopularSourcePath(w, r, "/np_popular")
+	target := getPopularSourceURL(r.Context()) + "/np_popular"
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
+	if err != nil {
+		Error(w, http.StatusBadGateway, "popular source unavailable")
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		Error(w, http.StatusBadGateway, "popular source unavailable")
+		return
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		w.WriteHeader(resp.StatusCode)
+		w.Write(body) //nolint:errcheck
+		return
+	}
+
+	var payload map[string]json.RawMessage
+	if json.Unmarshal(body, &payload) != nil {
+		w.Write(body) //nolint:errcheck
+		return
+	}
+	var results []map[string]any
+	if json.Unmarshal(payload["results"], &results) == nil {
+		store.OverrideWithLocalImages(r.Context(), results)
+		if b, err := json.Marshal(results); err == nil {
+			payload["results"] = b
+		}
+	}
+	if out, err := json.Marshal(payload); err == nil {
+		w.Write(out) //nolint:errcheck
+		return
+	}
+	w.Write(body) //nolint:errcheck
 }
 
 func proxyToPopularSourcePath(w http.ResponseWriter, r *http.Request, path string) {

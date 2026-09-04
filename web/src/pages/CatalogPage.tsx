@@ -12,7 +12,7 @@ import { useUnwatchedSort } from '@/hooks/useUnwatchedSort'
 import { useMenuOrder } from '@/hooks/useMenuOrder'
 import { fetchCatalogCategories, applyMenuOrder, shuffleArray, isCollectionsBlockMember, collapseCollectionsBlock } from '@/utils/catalogCategories'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
-import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
+import { BrowseHero, useHeroPreview, getCachedHeroDetail } from '@/components/BrowseHero'
 import styles from './CatalogPage.module.scss'
 
 interface MediaItem {
@@ -986,7 +986,7 @@ export default function CatalogPage() {
   const profileId = activeProfile?.profile_id ?? ''
   const { hideWatched, minProgress: hidePercent, hideWatchedLoaded } = useHideWatchedFilter(profileId)
   const { unwatchedSort, unwatchedSortLoaded } = useUnwatchedSort(profileId)
-  const { order: menuOrder, setOrder: setMenuOrder, hidden: menuHidden } = useMenuOrder(profileId)
+  const { order: menuOrder, setOrder: setMenuOrder, hidden: menuHidden, orderLoaded, hiddenLoaded } = useMenuOrder(profileId)
 
   // Per-account (server) — see BrowseLayoutSettings on /profiles. Read fresh
   // from `user` on every mount, same convention as CardDetailPage's
@@ -1217,6 +1217,13 @@ export default function CatalogPage() {
 
   useEffect(() => {
     if (_cache.rawCategories.length > 0) return
+    // Ждём реальных menuOrder/menuHidden, а не считаем сразу с дефолтными
+    // ([]) — иначе первый рендер показывал строки в "естественном" порядке,
+    // а через мгновение (как только настройка подгружалась с сервера)
+    // список резко перекладывался/что-то исчезало — тот самый видимый
+    // "флэш" при каждом открытии Каталога, если порядок/скрытие реально
+    // настроены.
+    if (!orderLoaded || !hiddenLoaded) return
     async function loadCategories() {
       // "Непросмотренные" — личная подборка (сериалы с невыпущенным новым
       // эпизодом), не идёт через общий /api/categories (его же читает np.js
@@ -1231,7 +1238,7 @@ export default function CatalogPage() {
     }
     loadCategories()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [orderLoaded, hiddenLoaded])
 
   // Пересчитать порядок/видимость при изменении numparser_menu_sort/
   // numparser_menu_hide (после первой загрузки — см. эффект выше, который
@@ -1382,7 +1389,21 @@ export default function CatalogPage() {
     const backUrl = expandedCategory
       ? `/catalog?cat=${encodeURIComponent(expandedCategory)}#${cardId}`
       : `/catalog#${cardId}`
-    navigate(`/card/${cardId}`, { state: { backUrl } })
+    // Lets CardDetailPage paint its Hero background with this same image
+    // immediately, instead of a blank "Загрузка…" screen until its own
+    // fetch resolves — see the preview read there. Prefer the already-
+    // resolved local detail (see getCachedHeroDetail's comment) over the
+    // list item's own backdrop_path where available — for remote-sourced
+    // categories (np_popular via popular_source_url) that field can be a
+    // different TMDB backdrop than our own, which would otherwise flash
+    // from that preview to the real one the instant the card loads.
+    const cachedDetail = getCachedHeroDetail(cardId)
+    navigate(`/card/${cardId}`, {
+      state: { backUrl, preview: {
+        poster_path: item.poster_path,
+        backdrop_path: cachedDetail?.backdrop_path ?? item.backdrop_path ?? null,
+      } },
+    })
   }
 
   function onDragStart(_e: React.DragEvent, id: string) {
@@ -1741,7 +1762,7 @@ export default function CatalogPage() {
               {transition && categories[transition.prevIndex] && (
                 <div className={`${styles.carouselLayerOut} ${transition.dir > 0 ? styles.carouselOutToTop : styles.carouselOutToBottom}`}>
                   <CategoryRow
-                    key={`${categories[transition.prevIndex].id}_${token}_${profileId}_${hideWatchedLoaded}_${unwatchedSortLoaded}`}
+                    key={`${categories[transition.prevIndex].id}_${token}_${profileId}`}
                     category={categories[transition.prevIndex]}
                     token={token}
                     profileId={profileId}
@@ -1760,7 +1781,7 @@ export default function CatalogPage() {
               )}
               <div className={transition ? (transition.dir > 0 ? styles.carouselInFromBottom : styles.carouselInFromTop) : undefined}>
                 <CategoryRow
-                  key={`${categories[activeCategoryIndex].id}_${token}_${profileId}_${hideWatchedLoaded}_${unwatchedSortLoaded}`}
+                  key={`${categories[activeCategoryIndex].id}_${token}_${profileId}`}
                   category={categories[activeCategoryIndex]}
                   token={token}
                   profileId={profileId}
@@ -1788,7 +1809,7 @@ export default function CatalogPage() {
           <div className={styles.rows}>
             {categories.map(cat => (
               <CategoryRow
-                key={`${cat.id}_${token}_${profileId}_${hideWatchedLoaded}_${unwatchedSortLoaded}`}
+                key={`${cat.id}_${token}_${profileId}`}
                 category={cat}
                 token={token}
                 profileId={profileId}

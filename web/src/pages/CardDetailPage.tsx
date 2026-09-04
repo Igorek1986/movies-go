@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useLayoutEffect, useCallback, useMemo } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl, tmdbUrl } from '@/utils/poster'
 import { watchedThreshold } from '@/utils/config'
@@ -661,6 +661,15 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
 export default function CardDetailPage() {
   const { cardId } = useParams<{ cardId: string }>()
   const { user }   = useAuth()
+  const location = useLocation()
+  // Poster/backdrop the caller (Catalog's Hero carousel, most visibly) had
+  // already loaded and on screen the instant before this navigation — see
+  // handleCardClick. Only used below while the real card is still loading:
+  // without it, the Hero layout's full-bleed background briefly vanished
+  // (replaced by a bare "Загрузка…" screen) on every single card open, even
+  // though the exact same image was already painted a moment earlier.
+  const preview = (location.state as { preview?: { poster_path?: string | null; backdrop_path?: string | null } } | null)?.preview
+  const cardLayout = resolveCardLayout(user?.card_layout)
 
   const { activeDevice, activeProfile } = useActiveProfile()
 
@@ -672,9 +681,21 @@ export default function CardDetailPage() {
   const [timecodesLoaded, setTimecodesLoaded] = useState(false)
   const [tpCtx,        setTpCtx]      = useState<TimePickerCtx | null>(null)
   const [apiEpisodes,  setApiEpisodes] = useState<EpisodeData[] | null>(null)
+  // Set after the FIRST /api/episodes response (not the myshows-sync retries
+  // that can keep going after it) — tvTotalEps below falls back to the
+  // TMDB-season sum (includes unaired episodes) until apiEpisodes has real
+  // data, which briefly shows an inflated total ("10 серий") that then drops
+  // once the aired-only count ("8 серий") arrives a moment later. Gating the
+  // total's display on this avoids that flash — see tvProgressBlock.
+  const [episodesLoaded, setEpisodesLoaded] = useState(false)
   const [refreshing,   setRefreshing]  = useState(false)
   const [refreshed,    setRefreshed]   = useState(false)
   const [watchStatus,  setWatchStatus] = useState('')
+  // '' is both "genuinely not watching" (the implicit default) AND "haven't
+  // fetched the real status yet" — without this flag, the button row briefly
+  // highlights "Не смотрю" on every card open before the real status (often
+  // something else) arrives and it jumps to the correct button.
+  const [watchStatusLoaded, setWatchStatusLoaded] = useState(false)
   const [statusBusy,   setStatusBusy]  = useState(false)
   const [isFavorite,   setIsFavorite]  = useState(false)
   // Which watch-status button (or 'favorite') currently has keyboard
@@ -987,7 +1008,7 @@ export default function CardDetailPage() {
 
   useEffect(() => {
     if (!cardId) return
-    setLoading(true); setTimecodes([]); setApiEpisodes(null); setTimecodesLoaded(false)
+    setLoading(true); setTimecodes([]); setApiEpisodes(null); setTimecodesLoaded(false); setWatchStatusLoaded(false); setEpisodesLoaded(false)
 
     fetch(`/api/media-card/${cardId}`)
       .then(r => r.ok ? r.json() : null)
@@ -1007,19 +1028,26 @@ export default function CardDetailPage() {
 
   // Reload timecodes when active device changes
   useEffect(() => {
-    if (!cardId || !activeDevice) return
+    if (!cardId) return
+    // No device linked at all — there's nothing to fetch, and the reveal
+    // gate below would otherwise wait on this forever.
+    if (!activeDevice) { setTimecodesLoaded(true); return }
     loadTimecodes(cardId, activeDevice.id)
   }, [cardId, activeDevice?.id, loadTimecodes])
 
   // Subjective status ("Моё") — Смотрю/Буду смотреть/Брошено/Не смотрю for
   // TV, Просмотрел/Буду смотреть/Брошено/Не смотрю for movies.
   useEffect(() => {
-    if (!cardId || !activeDevice || !defaultProfileId) return
+    if (!cardId) return
+    // No device/profile — nothing to fetch, and the reveal gate below would
+    // otherwise wait on this forever.
+    if (!activeDevice || !defaultProfileId) { setWatchStatusLoaded(true); return }
     const params = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, profile_id: defaultProfileId })
     fetch(`/api/web/status?${params}`)
       .then(r => r.ok ? r.json() : { status: '' })
       .then(d => setWatchStatus(d.status || ''))
       .catch(() => {})
+      .finally(() => setWatchStatusLoaded(true))
   }, [cardId, activeDevice, defaultProfileId])
 
   // Живое обновление, пока эта же карточка открыта и статус/таймкод меняют
@@ -1042,7 +1070,7 @@ export default function CardDetailPage() {
     // ('not_watching' is also the implicit display default when no status
     // is set at all, see the `active` check in watchStatusRow — clicking
     // it while THAT'S why it looks active is a no-op too.)
-    const isActive = watchStatus === next || (!watchStatus && next === 'not_watching')
+    const isActive = watchStatus === next || (watchStatusLoaded && !watchStatus && next === 'not_watching')
     if (isActive) return
     const status = next
     // disabled={statusBusy} below blurs whichever button was focused (a
@@ -1174,9 +1202,11 @@ export default function CardDetailPage() {
       if (cancelled) return
       try {
         const r = await fetch(`/api/episodes?${qs}`)
-        if (!r.ok || cancelled) return
+        if (!r.ok) { if (!cancelled) setEpisodesLoaded(true); return }
+        if (cancelled) return
         const d = await r.json()
         if (d?.episodes?.length) setApiEpisodes(d.episodes)
+        if (!cancelled) setEpisodesLoaded(true)
         if (d?.source !== 'myshows' && retries < 3) {
           if (retries === 0 && dev && dev.token) {
             fetch(`/api/refresh-card-episodes?card_id=${encodeURIComponent(cid)}&token=${encodeURIComponent(dev.token)}`)
@@ -1185,7 +1215,7 @@ export default function CardDetailPage() {
           retries++
           setTimeout(load, 4000)
         }
-      } catch {}
+      } catch { if (!cancelled) setEpisodesLoaded(true) }
     }
     load()
     return () => { cancelled = true }
@@ -1361,15 +1391,50 @@ export default function CardDetailPage() {
     setTpCtx({ initialSec: initSec, maxSec: dur, item, profileId: bestTc?.profile_id ?? defaultProfileId })
   }
 
-  if (loading) return <Layout><div className={styles.loading}>Загрузка…</div></Layout>
-
-  if (!card) return (
-    <Layout>
-      <div className={styles.notFound}>
-        <p>Карточка не найдена</p>
-      </div>
-    </Layout>
-  )
+  // Keep the loading screen up until EVERYTHING the first real paint reads —
+  // not just the card itself, but watch status/timecodes/(for TV) the aired
+  // episode count too — has actually resolved. Those come from separate
+  // requests that finish a beat after `card` does; revealing the page the
+  // instant `card` arrives painted them with placeholder defaults for that
+  // gap (status defaulting to "Не смотрю", the episode total inflated by
+  // unaired episodes, the progress bar animating up from 0%) and then
+  // visibly correcting a moment later. `card` itself may still be genuinely
+  // in flight too, hence `loading` staying in this same condition.
+  if (loading || !card || !watchStatusLoaded || !timecodesLoaded || (card.media_type === 'tv' && !episodesLoaded)) {
+    if (!loading && !card) return (
+      <Layout>
+        <div className={styles.notFound}>
+          <p>Карточка не найдена</p>
+        </div>
+      </Layout>
+    )
+    // Poster fallback ONLY when there's no backdrop to show at all — a
+    // portrait poster stretched into the full-bleed landscape hero, then
+    // yanked out and replaced by the real (differently framed) backdrop
+    // once it's known, was worse than plain "Загрузка…" text. Prefer the
+    // real card's own backdrop/poster once it's arrived (still waiting on
+    // status/timecodes/episodes at that point) — falls back to the
+    // lightweight router-state preview from the catalog row while `card`
+    // itself is still in flight.
+    const bgPath = card ? card.backdrop_path : (preview?.backdrop_path ?? null)
+    const posterPath = card ? card.poster_path : (preview?.poster_path ?? null)
+    const previewBackdrop = cardLayout === 'hero' ? tmdbUrl(bgPath, 'w1280') : null
+    const previewBg = previewBackdrop || (cardLayout === 'hero' ? tmdbUrl(posterPath, 'w500') : null)
+    if (previewBg) {
+      return (
+        <Layout>
+          <div className={`${styles.page} ${styles.pageHero}`}>
+            <div className={styles.heroFull}>
+              <div className={`${styles.heroFullBg}${!previewBackdrop ? ' ' + styles.heroFullBgPoster : ''}`}>
+                <img src={previewBg} alt="" aria-hidden />
+              </div>
+            </div>
+          </div>
+        </Layout>
+      )
+    }
+    return <Layout><div className={styles.loading}>Загрузка…</div></Layout>
+  }
 
   const backdropSrc  = tmdbUrl(card.backdrop_path, 'w1280')
   const posterImgUrl = tmdbUrl(card.poster_path, 'w500') || posterUrl(card.poster_path)
@@ -1405,6 +1470,12 @@ export default function CardDetailPage() {
       const n = apiEpisodes.filter(ep => !ep.future && !ep.catalog_special).length
       if (n > 0) return n
     }
+    // Season-count fallback includes unaired episodes — showing it before
+    // apiEpisodes has had a chance to load means the total briefly reads too
+    // high, then drops once the aired-only count arrives (see episodesLoaded's
+    // comment). Only fall back to it once that first load has actually
+    // settled, so it's a genuine "no better data" fallback, not a placeholder.
+    if (!episodesLoaded) return 0
     return (card.seasons ?? []).filter(s => s.season_number > 0).reduce((s, ss) => s + ss.episode_count, 0)
   })() : 0
   const tvWatchedEps = isTV
@@ -1414,10 +1485,6 @@ export default function CardDetailPage() {
 
   const epDurSec = (card.episode_run_time || 0) * 60
 
-  // Per-account (server) — see CardLayoutSettings on /profiles. Read fresh
-  // from `user` (already fetched above) on every mount, no live-update
-  // needed (can't change it without navigating away from this page).
-  const cardLayout = resolveCardLayout(user?.card_layout)
   // No separate full-bleed background exists without an image — falls back
   // to the poster (blurred/darkened, see .heroFullBgPoster) rather than
   // leaving the hero visually empty, same idea as full_hero.js's
@@ -1438,9 +1505,12 @@ export default function CardDetailPage() {
     <div className={styles.watchStatusRow} data-row-id="status">
       {(isTV ? TV_STATUS_OPTIONS : MOVIE_STATUS_OPTIONS).map(opt => {
         // No status set at all (never touched) displays as "Не смотрю" —
-        // that's the implicit default, just not written to the DB
-        // until the user actually picks something.
-        const active = watchStatus === opt.status || (!watchStatus && opt.status === 'not_watching')
+        // that's the implicit default, just not written to the DB until the
+        // user actually picks something. Gated on watchStatusLoaded so this
+        // default doesn't flash on every card open before the real status
+        // (fetched separately, after `loading` already cleared) arrives —
+        // until then, no button shows as active at all.
+        const active = watchStatus === opt.status || (watchStatusLoaded && !watchStatus && opt.status === 'not_watching')
         const focused = focusedStatusKey === opt.status
         return (
           <button
