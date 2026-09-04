@@ -346,25 +346,42 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
   // like pressing the arrow key would, rather than just nudging scrollLeft
   // (a mouse-wheel move over the cards should feel identical to using the
   // keyboard, hero preview activation included).
-  function moveCardFocus(dir: 1 | -1) {
+  // bridgeToMenu: ArrowLeft on the row's very first card jumps focus straight
+  // up to the active nav link instead of doing nothing — otherwise reaching
+  // the menu from deep in a long row meant ArrowUp-ing all the way to the
+  // top first. Keyboard-only (not the wheel handler further down) — an
+  // over-scroll on a trackpad accidentally bouncing focus out of the row
+  // entirely would be surprising, not just a convenience. Returns whether it
+  // bridged — Layout.tsx has its own window-level keydown listener that
+  // ALSO reacts to ArrowLeft/Right once focus is inside [data-top-nav]
+  // (cycling between top links); without stopping propagation on this same
+  // event once we've just moved focus there ourselves, that listener fires
+  // right after and immediately cycles focus one more step, landing one
+  // link off from the one actually meant.
+  function moveCardFocus(dir: 1 | -1, bridgeToMenu = false): boolean {
     const cards = Array.from(rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]') ?? [])
     const idx = cards.indexOf(document.activeElement as HTMLElement)
-    if (idx === -1) return
+    if (idx === -1) return false
     if (dir === 1) {
       if (idx === cards.length - 1) {
         // See the keydown handler's identical comment — ArrowRight/wheel
         // forward past the last real card opens the category directly.
         if (totalPages > 1) onExpandCategory(category.id, items?.length ?? 0)
-        return
+        return false
       }
       const next = cards[idx + 1]
       next?.focus({ preventScroll: true })
       if (next) scrollH(next)
     } else {
+      if (idx === 0) {
+        if (bridgeToMenu) { focusTopNavActive(); return true }
+        return false
+      }
       const prev = cards[idx - 1]
       prev?.focus({ preventScroll: true })
       if (prev) scrollH(prev)
     }
+    return false
   }
   // moveCardFocus closes over items/totalPages, which change on every load —
   // a ref keeps the wheel effect below from needing to re-attach its
@@ -655,7 +672,7 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
             if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
             e.preventDefault()
             if (shouldThrottleKeyRepeat(e, arrowRepeatRef)) return
-            moveCardFocus(e.key === 'ArrowRight' ? 1 : -1)
+            if (moveCardFocus(e.key === 'ArrowRight' ? 1 : -1, true)) e.stopPropagation()
           }}
         >
           {items === null && !error && (
@@ -1671,6 +1688,17 @@ export default function CatalogPage() {
       setSearchValue('')
       setSearchQuery('')
       setSearchOpen(false)
+      // Clicking "Каталог" while it's already the active page only reaches
+      // this listener at all (a genuine navigation TO /catalog remounts the
+      // page instead, with nothing yet listening) — treat it as "start over"
+      // rather than a no-op: back to the first row/top of the page, with a
+      // quiet background refresh of whatever's cached (see
+      // invalidateAllCatalogRows — stale cache still renders instantly, no
+      // flash, just refetches once each row's actually shown again).
+      setActiveCategoryIndex(0)
+      _cache.scrollY = 0
+      window.scrollTo({ top: 0, behavior: 'instant' })
+      invalidateAllCatalogRows()
     }
     window.addEventListener('catalog:back', onCatalogBack)
     return () => window.removeEventListener('catalog:back', onCatalogBack)

@@ -158,23 +158,33 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
   // handler further down — see CatalogPage's identical moveCardFocus for
   // the full rationale (moves real focus + hero activation, not just
   // scrollLeft).
-  function moveCardFocus(dir: 1 | -1) {
+  // bridgeToMenu — see CatalogPage's identical moveCardFocus for the full
+  // rationale (keyboard-only ArrowLeft on the row's first card jumps to the
+  // nav instead of doing nothing) and why it returns whether it bridged
+  // (Layout.tsx's own top-nav Left/Right cycling re-fires on this same
+  // event otherwise, immediately moving focus one more step).
+  function moveCardFocus(dir: 1 | -1, bridgeToMenu = false): boolean {
     const cards = Array.from(rowInnerRef.current?.querySelectorAll<HTMLElement>('[data-card]') ?? [])
     const idx = cards.indexOf(document.activeElement as HTMLElement)
-    if (idx === -1) return
+    if (idx === -1) return false
     if (dir === 1) {
       if (idx === cards.length - 1) {
         if (totalPages > 1) onExpand(status)
-        return
+        return false
       }
       const next = cards[idx + 1]
       next?.focus({ preventScroll: true })
       if (next) scrollH(next)
     } else {
+      if (idx === 0) {
+        if (bridgeToMenu) { focusTopNavActive(); return true }
+        return false
+      }
       const prev = cards[idx - 1]
       prev?.focus({ preventScroll: true })
       if (prev) scrollH(prev)
     }
+    return false
   }
   const moveCardFocusRef = useRef(moveCardFocus)
   moveCardFocusRef.current = moveCardFocus
@@ -372,7 +382,7 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
             if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
             e.preventDefault()
             if (shouldThrottleKeyRepeat(e, arrowRepeatRef)) return
-            moveCardFocus(e.key === 'ArrowRight' ? 1 : -1)
+            if (moveCardFocus(e.key === 'ArrowRight' ? 1 : -1, true)) e.stopPropagation()
           }}
         >
           {items === null && <div className={styles.rowLoading}>Загрузка…</div>}
