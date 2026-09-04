@@ -7,6 +7,7 @@ import { BrowseLayoutSettings } from '@/components/BrowseLayoutSettings'
 import { SettingsLayoutSettings } from '@/components/SettingsLayoutSettings'
 import { HideWatchedSettings } from '@/components/HideWatchedSettings'
 import { UnwatchedSortSettings } from '@/components/UnwatchedSortSettings'
+import { MenuOrderSettings } from '@/components/MenuOrderSettings'
 import { RemoteDialog } from '@/components/remote/RemoteDialog'
 import { RemoteSelect } from '@/components/remote/RemoteSelect'
 import { RemoteIconPicker } from '@/components/remote/RemoteIconPicker'
@@ -14,6 +15,7 @@ import { useRemoteDialog } from '@/components/remote/useRemoteDialog'
 import { focusTopNavActive } from '@/utils/scrollNav'
 import { profileIconSrc } from '@/utils/profileIcon'
 import { useProfilesPageState } from './useProfilesPageState'
+import { getUnsavedChangesGuard } from '@/utils/unsavedChangesGuard'
 // Shared look with Classic — inputs/buttons/text styles that don't change
 // between views live here; ProfilesRemoteView.module.scss only adds the
 // accordion/row-nav-specific rules.
@@ -56,7 +58,7 @@ type SectionId =
 // The four layout/appearance settings, grouped under one "Интерфейс" menu
 // item with its own one-level submenu (same drill-down idea as devices, just
 // one level instead of three).
-type InterfaceSubId = 'bottomNav' | 'cardLayout' | 'browseLayout' | 'settingsLayout' | 'hideWatched' | 'unwatchedSort'
+type InterfaceSubId = 'bottomNav' | 'cardLayout' | 'browseLayout' | 'settingsLayout' | 'hideWatched' | 'unwatchedSort' | 'menuOrder'
 const INTERFACE_SUBMENU: { id: InterfaceSubId; title: string }[] = [
   { id: 'bottomNav', title: 'Панель навигации' },
   { id: 'cardLayout', title: 'Вид карточки фильма/сериала' },
@@ -64,6 +66,7 @@ const INTERFACE_SUBMENU: { id: InterfaceSubId; title: string }[] = [
   { id: 'settingsLayout', title: 'Дизайн страницы «Настройки»' },
   { id: 'hideWatched', title: 'Просмотренное в ленте' },
   { id: 'unwatchedSort', title: 'Сортировка «Непросмотренные»' },
+  { id: 'menuOrder', title: 'Порядок и видимость категорий' },
 ]
 
 export default function ProfilesRemoteView() {
@@ -324,7 +327,18 @@ export default function ProfilesRemoteView() {
   // still-drilled-in DOM and found nothing (focus then fell back to
   // <body>).
   const pendingRefocusRowId = useRef<string | null>(null)
-  function goBack() {
+  async function goBack() {
+    // Экран, из которого сейчас выходим, мог зарегистрировать несохранённые
+    // правки (см. MenuOrderSettings/registerUnsavedChangesGuard) — вместо
+    // молчаливой потери спрашиваем, сохранить ли, перед тем как реально
+    // сворачивать уровень навигации ниже. Либо выбор — выходим в любом
+    // случае, разница только сохраняем ли перед этим.
+    const guard = getUnsavedChangesGuard()
+    if (guard?.isDirty()) {
+      if (await confirmDialog('Есть несохранённые изменения. Сохранить перед выходом?', { confirmLabel: 'Сохранить' })) {
+        await guard.save()
+      }
+    }
     const { activeSection: sec, deviceSubview: sub, profilePluginsView: ppv, interfaceSubview: isub } = navRef.current
     if (ppv) {
       // profile-{key}-bottom holds several buttons (Детский/Год рождения/
@@ -1117,6 +1131,7 @@ export default function ProfilesRemoteView() {
         {interfaceSubview === 'settingsLayout' && <div className={styles.sectionBody}><SettingsLayoutSettings bare /></div>}
         {interfaceSubview === 'hideWatched' && <div className={styles.sectionBody}><HideWatchedSettings bare /></div>}
         {interfaceSubview === 'unwatchedSort' && <div className={styles.sectionBody}><UnwatchedSortSettings bare /></div>}
+        {interfaceSubview === 'menuOrder' && <div className={styles.sectionBody}><MenuOrderSettings bare /></div>}
 
         {/* ── Account settings ── */}
           {activeSection === 'account' && (

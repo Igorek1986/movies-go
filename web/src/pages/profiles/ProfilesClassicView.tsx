@@ -7,6 +7,7 @@ import { BrowseLayoutSettings } from '@/components/BrowseLayoutSettings'
 import { SettingsLayoutSettings } from '@/components/SettingsLayoutSettings'
 import { HideWatchedSettings } from '@/components/HideWatchedSettings'
 import { UnwatchedSortSettings } from '@/components/UnwatchedSortSettings'
+import { MenuOrderSettings } from '@/components/MenuOrderSettings'
 import { PROFILE_ICON_IDS, profileIconSrc } from '@/utils/profileIcon'
 import { useProfilesPageState } from './useProfilesPageState'
 import styles from './ProfilesClassicView.module.scss'
@@ -874,6 +875,7 @@ export default function ProfilesClassicView() {
               <SettingsLayoutSettings />
               <HideWatchedSettings />
               <UnwatchedSortSettings />
+              <MenuOrderSettings />
             </div>
           </details>
 

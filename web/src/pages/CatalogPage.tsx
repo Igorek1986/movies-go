@@ -9,6 +9,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { subscribeLiveSync } from '@/hooks/useLiveSync'
 import { useHideWatchedFilter, applyHideWatchedParams } from '@/hooks/useHideWatchedFilter'
 import { useUnwatchedSort } from '@/hooks/useUnwatchedSort'
+import { useMenuOrder } from '@/hooks/useMenuOrder'
+import { fetchCatalogCategories, applyMenuOrder, shuffleArray, isCollectionsBlockMember, collapseCollectionsBlock } from '@/utils/catalogCategories'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
 import styles from './CatalogPage.module.scss'
@@ -50,8 +52,6 @@ interface Category {
 }
 
 
-const LS_ROW_ORDER    = 'catalog_row_order'
-
 // Module-level cache — survives SPA navigation, resets on full page reload.
 // stale (see invalidateAllCatalogRows/invalidateUnwatchedRow): the row still
 // renders these items immediately on remount — a plain SPA back-nav stays a
@@ -61,6 +61,20 @@ const LS_ROW_ORDER    = 'catalog_row_order'
 interface RowCache { items: MediaItem[]; totalPages: number; stale?: boolean }
 interface CatViewCache { id: string; items: MediaItem[]; totalPages: number; currentPage: number; scrollY: number; stale?: boolean }
 const _cache = {
+  // Raw list from fetchCatalogCategories (API + synthetic "unwatched"), before
+  // numparser_menu_sort/numparser_menu_hide are applied — kept separately from
+  // `categories` below so a settings change can recompute display order
+  // without re-fetching or re-shuffling.
+  rawCategories: [] as Category[],
+  // Genre/actor/director pool shuffled once per fetch (see applyMenuOrder) —
+  // re-applying order/hidden on a settings change must reuse this, not
+  // reshuffle, or toggling an unrelated category's visibility would jumble
+  // every genre row's position along with it.
+  shuffledBlock: [] as Category[],
+  // Last computed display list (rawCategories + shuffledBlock with order/
+  // hidden applied) — what the categories useState initializer below reads
+  // synchronously on an SPA remount, before the settings-driven effect has a
+  // chance to run.
   categories: [] as Category[],
   rows: {} as Record<string, RowCache>,
   scrollY: 0,
@@ -114,6 +128,8 @@ const _cache = {
 }
 
 export function invalidateCatalogCache() {
+  _cache.rawCategories = []
+  _cache.shuffledBlock = []
   _cache.categories = []
   _cache.rows = {}
   _cache.catView = null
@@ -169,40 +185,6 @@ function getCertification(item: MediaItem): string {
   if (item.certification_ru) return item.certification_ru
   if (item.certification_us) return US_TO_RU[item.certification_us] || ''
   return ''
-}
-
-function shuffleArray<T>(arr: T[]): T[] {
-  const a = [...arr]
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[a[i], a[j]] = [a[j], a[i]]
-  }
-  return a
-}
-
-// Shuffle genre_* and actor_* rows in place; keep other categories in their original positions.
-function randomizeGenres(categories: Category[]): Category[] {
-  const shuffleIds = new Set(categories.filter(c => c.id.startsWith('genre_') || c.id.startsWith('actor_') || c.id.startsWith('director_')).map(c => c.id))
-  const shuffled = shuffleArray(categories.filter(c => shuffleIds.has(c.id)))
-  let gi = 0
-  return categories.map(c => (shuffleIds.has(c.id) ? shuffled[gi++] : c))
-}
-
-function applyRowOrder(categories: Category[]): Category[] {
-  try {
-    const saved: string[] = JSON.parse(localStorage.getItem(LS_ROW_ORDER) || '[]')
-    if (!saved.length) return categories
-    const map = Object.fromEntries(categories.map(c => [c.id, c]))
-    const ordered = saved.filter(id => map[id]).map(id => map[id])
-    const rest = categories.filter(c => !saved.includes(c.id))
-    return [...ordered, ...rest]
-  } catch {
-    return categories
-  }
-}
-
-function saveRowOrder(ids: string[]) {
-  try { localStorage.setItem(LS_ROW_ORDER, JSON.stringify(ids)) } catch {}
 }
 
 interface CardProps {
@@ -957,8 +939,7 @@ function CategoryView({ category, token, profileId, hideWatched, hidePercent, hi
 export default function CatalogPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [categories, setCategories] = useState<Category[]>(() => applyRowOrder(_cache.categories))
-  const [hasCustomOrder, setHasCustomOrder] = useState(() => !!localStorage.getItem(LS_ROW_ORDER))
+  const [categories, setCategories] = useState<Category[]>(() => _cache.categories)
   const [expandedCategory, setExpandedCategory] = useState<string | null>(() => {
     const p = new URLSearchParams(window.location.search)
     return p.get('cat') ?? _cache.expandedCategory
@@ -1001,6 +982,11 @@ export default function CatalogPage() {
 
   const { activeDevice, activeProfile } = useActiveProfile()
   const { user } = useAuth()
+  const token = activeDevice?.token ?? ''
+  const profileId = activeProfile?.profile_id ?? ''
+  const { hideWatched, minProgress: hidePercent, hideWatchedLoaded } = useHideWatchedFilter(profileId)
+  const { unwatchedSort, unwatchedSortLoaded } = useUnwatchedSort(profileId)
+  const { order: menuOrder, setOrder: setMenuOrder, hidden: menuHidden } = useMenuOrder(profileId)
 
   // Per-account (server) — see BrowseLayoutSettings on /profiles. Read fresh
   // from `user` on every mount, same convention as CardDetailPage's
@@ -1034,6 +1020,14 @@ export default function CatalogPage() {
   // always landed back on the first one.
   const [activeCategoryIndex, setActiveCategoryIndex] = useState(() => _cache.activeCategoryIndex)
   useEffect(() => { _cache.activeCategoryIndex = activeCategoryIndex }, [activeCategoryIndex])
+  // Категории теперь могут живо сжаться (скрыли строку в Порядок и
+  // видимость категорий, см. useMenuOrder) — без этого activeCategoryIndex
+  // мог указывать за пределы нового массива, и Hero-карусель просто гасла.
+  useEffect(() => {
+    if (categories.length > 0 && activeCategoryIndex >= categories.length) {
+      setActiveCategoryIndex(categories.length - 1)
+    }
+  }, [categories, activeCategoryIndex])
   // Drum-carousel row switch — both the outgoing (prevIndex) and incoming
   // (activeCategoryIndex) rows render at once, sliding together the same
   // direction (see .carouselViewport/CAROUSEL_TRANSITION_MS), for as long as
@@ -1222,25 +1216,34 @@ export default function CatalogPage() {
   _cache.profileKey = profileKey
 
   useEffect(() => {
-    if (_cache.categories.length > 0) {
-      setCategories(applyRowOrder(_cache.categories))
-      return
-    }
+    if (_cache.rawCategories.length > 0) return
     async function loadCategories() {
-      try {
-        const res = await fetch('/api/categories')
-        if (!res.ok) return
-        const cats: Category[] = await res.json()
-        // "Непросмотренные" — личная подборка (сериалы с невыпущенным новым эпизодом),
-        // не идёт через общий /api/categories (его же читает np.js для Lampa).
-        const withUnwatched: Category[] = [{ id: 'unwatched', name: 'Непросмотренные' }, ...cats]
-        const randomized = randomizeGenres(withUnwatched)
-        _cache.categories = randomized
-        setCategories(applyRowOrder(randomized))
-      } catch {}
+      // "Непросмотренные" — личная подборка (сериалы с невыпущенным новым
+      // эпизодом), не идёт через общий /api/categories (его же читает np.js
+      // для Lampa) — добавлена внутри fetchCatalogCategories.
+      const cats = await fetchCatalogCategories()
+      if (!cats.length) return
+      _cache.rawCategories = cats
+      _cache.shuffledBlock = shuffleArray(cats.filter(c => isCollectionsBlockMember(c.id)))
+      const display = applyMenuOrder(cats, _cache.shuffledBlock, menuOrder, menuHidden)
+      _cache.categories = display
+      setCategories(display)
     }
     loadCategories()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Пересчитать порядок/видимость при изменении numparser_menu_sort/
+  // numparser_menu_hide (после первой загрузки — см. эффект выше, который
+  // сам применит текущие menuOrder/menuHidden при первом фетче) — не
+  // реюфлит shuffledBlock (см. его комментарий), только перекладывает уже
+  // отрисованные категории.
+  useEffect(() => {
+    if (!_cache.rawCategories.length) return
+    const display = applyMenuOrder(_cache.rawCategories, _cache.shuffledBlock, menuOrder, menuHidden)
+    _cache.categories = display
+    setCategories(display)
+  }, [menuOrder, menuHidden])
 
   // TMDB fallback (web-only — Lampa has its own search, see np.js): appended
   // after the local catalog results so a title we haven't parsed still turns
@@ -1382,26 +1385,21 @@ export default function CatalogPage() {
     navigate(`/card/${cardId}`, { state: { backUrl } })
   }
 
-  const token = activeDevice?.token ?? ''
-  const profileId = activeProfile?.profile_id ?? ''
-  const { hideWatched, minProgress: hidePercent, hideWatchedLoaded } = useHideWatchedFilter(profileId)
-  const { unwatchedSort, unwatchedSortLoaded } = useUnwatchedSort(profileId)
-
   function onDragStart(_e: React.DragEvent, id: string) {
     dragSrcRef.current = id
   }
 
   function onDragEnd() {
-    const ids = categories.map(c => c.id)
-    saveRowOrder(ids)
-    setHasCustomOrder(true)
+    // genre_*/actor_*/director_* ids are ephemeral (re-randomized every
+    // fetch, see isCollectionsBlockMember) — can't save them individually,
+    // collapse the run to the one 'collections_block' placeholder np.js
+    // itself uses (see applyMenuOrder for how that's expanded back).
+    setMenuOrder(collapseCollectionsBlock(categories).map(c => c.id))
     dragSrcRef.current = null
   }
 
   function resetRowOrder() {
-    try { localStorage.removeItem(LS_ROW_ORDER) } catch {}
-    setCategories(_cache.categories)
-    setHasCustomOrder(false)
+    setMenuOrder([])
   }
 
   function onDragOver(e: React.DragEvent, targetId: string) {
@@ -1651,7 +1649,7 @@ export default function CatalogPage() {
   return (
     <Layout>
       <div ref={carouselPageRef} className={`${styles.page}${carouselActive ? ' ' + styles.pageLocked : ''}`}>
-        {!expandedCat && hasCustomOrder && layout === 'classic' && (
+        {!expandedCat && menuOrder.length > 0 && layout === 'classic' && (
           <div className={styles.toolbar}>
             <div className={styles.toolbarTop}>
               <button className={styles.resetOrderBtn} onClick={resetRowOrder} title="Вернуть порядок по умолчанию">

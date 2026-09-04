@@ -17,6 +17,70 @@
   padding: $spacing-xs $spacing-sm;
   border: 1px solid $color-border;
   border-radius: $radius-sm;
+  background: $color-bg-card;
+  // Press-and-hold to drag (see MenuOrderSettings) would otherwise trigger
+  // the browser's own long-press text selection / iOS copy-paste callout on
+  // the row's label text before our drag even starts.
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+// Touch press-and-hold drag (see MenuOrderSettings) — lifts the row being
+// dragged above its siblings so it visually reads as "picked up" while the
+// pointer moves it past them.
+.itemDragging {
+  position: relative;
+  z-index: 1;
+  border-color: $color-primary;
+  box-shadow: var(--shadow-card, 0 4px 12px rgba(0, 0, 0, 0.3));
+}
+
+// MenuOrderSettings' drag handle only — touch-action must be 'none' from the
+// very first touch, not just once the hold timer confirms a drag. A browser
+// decides whether a touch sequence pans the page by looking at touch-action
+// (and whether any listener called preventDefault) at/just after touchstart,
+// for the WHOLE sequence — setting it dynamically once the hold timer fires
+// is too late; that decision was already locked in as "pannable" the moment
+// the finger touched down. Scoped to just the handle (not the whole row) so
+// an ordinary scroll swipe can still start anywhere else on a category —
+// this list is most of the screen, and losing swipe-to-scroll over every row
+// would have been a much bigger regression than requiring the handle to
+// start a drag.
+.dragRow {
+  touch-action: none;
+}
+
+.dragHandle {
+  // Touch and mouse each get one reordering control, not both at once — a
+  // long-press handle has no equivalent for a mouse (nothing to "hold"
+  // meaningfully), and the ↑/↓ buttons are a poor fit for touch (see
+  // .dragRow's comment: dragging can't share touch-action with a mouse-only
+  // element anyway). (pointer: coarse) is the same primary-input heuristic
+  // used elsewhere in this app for the mouse-vs-touch split.
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -#{$spacing-xs};
+  color: $color-text-muted;
+  cursor: grab;
+  // .item's own user-select/-webkit-touch-callout: none above already
+  // covers this glyph too — repeated here as belt-and-suspenders since it's
+  // specifically the long-press target.
+  -webkit-touch-callout: none;
+
+  @media (pointer: coarse) {
+    display: flex;
+  }
+}
+
+.arrowBtn {
+  @media (pointer: coarse) {
+    display: none;
+  }
 }
 
 .icon {
