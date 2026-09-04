@@ -31,6 +31,22 @@ function isTypingTarget(el: Element | null) {
   return false
 }
 
+// Programmatic focus restoration (closing a drilled-into section/icon-picker/
+// year-picker refocuses whichever row opened it — see pendingRefocusRowId and
+// the icon/year-picker effects below) exists for keyboard/pult users
+// continuing arrow-key navigation from where they left off. On a touch
+// device there's no such continuation, but iOS Safari's :focus-visible
+// heuristic (see global.scss's [data-nav-item]:focus-visible) shows the
+// keyboard ring anyway for a purely scripted .focus() call — left visibly
+// stuck on that row (e.g. after leaving "Интерфейс" back to the root menu)
+// until the user taps something else. Coarse pointer (touch) devices never
+// need this restoration at all, so skip it there instead of chasing the ring.
+function focusForKeyboardNav(el: HTMLElement | null | undefined) {
+  if (!el) return
+  if (window.matchMedia('(pointer: coarse)').matches) return
+  el.focus()
+}
+
 type SectionId =
   | 'devices' | 'link' | 'myshows' | 'telegram' | 'lampacImport' | 'fileImport'
   | 'notifications' | 'interface'
@@ -336,7 +352,7 @@ export default function ProfilesRemoteView() {
     // covers menu-*/iface-menu-* the same as before.
     const el = document.querySelector<HTMLElement>(`[data-focus-id="${CSS.escape(id)}"]`)
       ?? document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(id)}"] [data-nav-item]`)
-    el?.focus()
+    focusForKeyboardNav(el)
   }, [activeSection, deviceSubview, profilePluginsView, interfaceSubview])
 
   // Same idea as pendingRefocusRowId above, but for RemoteIconPicker/the
@@ -347,14 +363,14 @@ export default function ProfilesRemoteView() {
   const prevIconPickerFor = useRef<string | null>(null)
   useEffect(() => {
     if (prevIconPickerFor.current && !iconPickerFor) {
-      document.querySelector<HTMLElement>(`[data-icon-trigger="${prevIconPickerFor.current}"]`)?.focus()
+      focusForKeyboardNav(document.querySelector<HTMLElement>(`[data-icon-trigger="${prevIconPickerFor.current}"]`))
     }
     prevIconPickerFor.current = iconPickerFor
   }, [iconPickerFor])
   const prevYearPickerProfileId = useRef<string | null>(null)
   useEffect(() => {
     if (prevYearPickerProfileId.current !== null && !yearPickerProfile) {
-      document.querySelector<HTMLElement>(`[data-year-trigger="${prevYearPickerProfileId.current}"]`)?.focus()
+      focusForKeyboardNav(document.querySelector<HTMLElement>(`[data-year-trigger="${prevYearPickerProfileId.current}"]`))
     }
     prevYearPickerProfileId.current = yearPickerProfile?.profile_id ?? null
   }, [yearPickerProfile])
