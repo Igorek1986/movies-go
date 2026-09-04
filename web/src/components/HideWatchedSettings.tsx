@@ -1,5 +1,5 @@
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
-import { usePluginSetting } from '@/hooks/usePluginSetting'
+import { useHideWatchedFilter } from '@/hooks/useHideWatchedFilter'
 // Reuses ProfilesPage's own <details>/<summary>/checkbox styles — see BottomNavSettings.
 import pageStyles from '@/pages/profiles/ProfilesClassicView.module.scss'
 
@@ -18,16 +18,14 @@ interface Props {
 export function HideWatchedSettings({ bare }: Props = {}) {
   const { activeProfile } = useActiveProfile()
   const profileId = activeProfile?.profile_id ?? ''
-  const { value: hideWatched, setValue: setHideWatched, loaded } = usePluginSetting<boolean>(
-    'np', 'numparser_hide_watched', profileId, false,
-  )
+  const { hideWatched, setHideWatched, hideWatchedLoaded: loaded, minProgress } = useHideWatchedFilter(profileId)
 
   const profileName = activeProfile && activeProfile.profile_id !== '' ? activeProfile.name : 'Основной'
 
   const body = (
     <>
       <p className={pageStyles.hint}>
-        Не показывать в Каталоге фильмы и сериалы, которые уже почти или полностью просмотрены — та же настройка, что в Lampa (общая для профиля «{profileName}» на всех устройствах).
+        Не показывать в Каталоге фильмы и сериалы, просмотренные на {minProgress}% и более (общая для профиля «{profileName}» на всех устройствах).
       </p>
       <label className={pageStyles.checkLabel}>
         <input

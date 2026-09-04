@@ -1082,7 +1082,7 @@ export default function ProfilesRemoteView() {
 
         {/* ── Интерфейс: submenu, then whichever sub-section is drilled into ── */}
         {activeSection === 'interface' && !interfaceSubview && (
-          <div className={styles.menu}>
+          <div className={styles.sectionMenu}>
             {INTERFACE_SUBMENU.map(item => (
               <div key={item.id} className={styles.menuRow} data-row-id={`iface-menu-${item.id}`}>
                 <button type="button" className={styles.menuRowBtn} data-nav-item onClick={() => setInterfaceSubview(item.id)}>

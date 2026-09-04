@@ -73,6 +73,20 @@
   min-height: 0;
 }
 
+// Same row list as .menu (Интерфейс submenu), but nested INSIDE an already-
+// rounded .section — first level (.section itself, header + this list) reads
+// as one open panel; giving this inner list its own independent border/
+// radius/shadow on top of that stacked a second rounded box directly under
+// the header with no gap, showing as a stray rounded corner poking out right
+// above the first row. No card styling here — .menuRow's own border-bottom
+// already separates rows, same as .sectionBody's plain list-less content.
+.sectionMenu {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .menuRow {
   border-bottom: 1px solid $color-border;
   &:last-child { border-bottom: none; }
