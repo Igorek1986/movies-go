@@ -173,6 +173,15 @@
   &:active {
     cursor: grabbing;
   }
+
+  // Native HTML5 drag-and-drop (draggable attribute, onDragStart/etc. — see
+  // CategoryRow) only works with a mouse; touch just ignores it entirely.
+  // Showing this handle there implied a capability that silently did
+  // nothing — reordering now has its own touch-friendly screen instead
+  // (Настройки → Интерфейс → Порядок и видимость категорий).
+  @media (pointer: coarse) {
+    display: none;
+  }
 }
 
 .rowTitle {
