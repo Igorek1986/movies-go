@@ -484,6 +484,19 @@ func setCached(key string, r cachedResp) {
 // immediately and a background refresh recomputes it via refreshCatCache.
 func withCategoryCache(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// hide_watched (see applyHideWatched) depends on the profile's own
+		// progress, which changes far more often than a parser run — the only
+		// thing that invalidates this cache (see InvalidateCategoryCache).
+		// Caching a hide_watched response by its exact URL would keep serving
+		// an already-watched card until the next parser run, same class of bug
+		// continues/unwatched are excluded from this wrapper for entirely
+		// (see router.go) — those just always skip the wrapper since ALL their
+		// requests are profile-dependent; this one only skips the subset that is.
+		hw := r.URL.Query().Get("hide_watched")
+		if hw == "1" || hw == "true" {
+			h.ServeHTTP(w, r)
+			return
+		}
 		key := r.URL.RequestURI()
 
 		if entry, ok, stale := getCached(key); ok {
