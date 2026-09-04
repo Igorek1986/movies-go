@@ -2,9 +2,37 @@
 // MenuOrderSettings.tsx (the management screen) — same shuffle/grouping
 // rules np.js applies for Lampa, so "как в Lampa" holds for both clients.
 
+import { applyHideWatchedParams } from '@/hooks/useHideWatchedFilter'
+
 export interface CatalogCategory {
   id: string
   name: string
+}
+
+export interface CategoryPageResult<T> {
+  items: T[]
+  totalPages: number
+}
+
+// Fetches page 1 of a category row — the exact same request CategoryRow's
+// own loadItems makes, factored out so CatalogPage's row-ahead prefetch (see
+// its own comment) can populate _cache.rows for a category BEFORE the user
+// ever navigates to it, without duplicating this URL-building logic.
+export async function fetchCategoryPage<T>(
+  categoryId: string,
+  opts: { token: string; profileId: string; hideWatched: boolean; hidePercent: number; unwatchedSort?: string },
+): Promise<CategoryPageResult<T>> {
+  const params = new URLSearchParams({ per_page: '20', page: '1' })
+  if (opts.token && opts.profileId != null) {
+    params.set('token', opts.token)
+    params.set('profile_id', opts.profileId)
+    applyHideWatchedParams(params, opts.hideWatched, opts.hidePercent)
+  }
+  if (categoryId === 'unwatched' && opts.unwatchedSort) params.set('sort', opts.unwatchedSort)
+  const res = await fetch(`/${encodeURIComponent(categoryId)}?${params}`)
+  if (!res.ok) throw new Error('HTTP ' + res.status)
+  const data = await res.json()
+  return { items: data.results || [], totalPages: data.total_pages || 1 }
 }
 
 export function shuffleArray<T>(arr: T[]): T[] {

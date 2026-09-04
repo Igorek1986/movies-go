@@ -10,7 +10,7 @@ import { subscribeLiveSync } from '@/hooks/useLiveSync'
 import { useHideWatchedFilter, applyHideWatchedParams } from '@/hooks/useHideWatchedFilter'
 import { useUnwatchedSort } from '@/hooks/useUnwatchedSort'
 import { useMenuOrder } from '@/hooks/useMenuOrder'
-import { fetchCatalogCategories, applyMenuOrder, shuffleArray, isCollectionsBlockMember, collapseCollectionsBlock } from '@/utils/catalogCategories'
+import { fetchCatalogCategories, applyMenuOrder, shuffleArray, isCollectionsBlockMember, collapseCollectionsBlock, fetchCategoryPage } from '@/utils/catalogCategories'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview, getCachedHeroDetail } from '@/components/BrowseHero'
 import styles from './CatalogPage.module.scss'
@@ -84,6 +84,11 @@ const _cache = {
   // chance to run.
   categories: [] as Category[],
   rows: {} as Record<string, RowCache>,
+  // In-flight row-ahead prefetches (see the effect that reads this) — a Set,
+  // not just relying on _cache.rows already having the key, because a fetch
+  // takes a moment: without this, rapidly flipping past the same not-yet-
+  // cached category twice would fire the request twice.
+  prefetching: new Set<string>(),
   scrollY: 0,
   catView: null as CatViewCache | null,
   // Which category is currently expanded (classic layout's "full grid" view)
@@ -431,18 +436,9 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
     if (category.id === 'unwatched' && !unwatchedSortLoaded) return
     loadedRef.current = true
     try {
-      const params = new URLSearchParams({ per_page: '20', page: '1' })
-      if (token && profileId != null) {
-        params.set('token', token)
-        params.set('profile_id', profileId)
-        applyHideWatchedParams(params, hideWatched, hidePercent)
-      }
-      if (category.id === 'unwatched') params.set('sort', unwatchedSort)
-      const res = await fetch(`/${encodeURIComponent(category.id)}?${params}`)
-      if (!res.ok) throw new Error('HTTP ' + res.status)
-      const data: CatalogResponse = await res.json()
-      const results = data.results || []
-      const tp = data.total_pages || 1
+      const { items: results, totalPages: tp } = await fetchCategoryPage<MediaItem>(category.id, {
+        token, profileId, hideWatched, hidePercent, unwatchedSort,
+      })
       const prevItems = itemsRef.current
       if (prevItems?.length) {
         const nextIds = new Set(results.map(it => `${it.id}_${it.media_type}`))
@@ -1039,6 +1035,40 @@ export default function CatalogPage() {
       setActiveCategoryIndex(categories.length - 1)
     }
   }, [categories, activeCategoryIndex])
+  // Row-ahead prefetch, like np.js/Lampa fetching several lines at once
+  // instead of one at a time — without this, each CategoryRow only fetches
+  // once IT mounts (becomes the active hero row), so flipping quickly
+  // through several categories in a row shows a brief "Загрузка…" on every
+  // one not visited yet this session. Fetches the next few (and the
+  // previous one, since ArrowUp is just as common as ArrowDown) straight
+  // into _cache.rows — CategoryRow's own initialCache prop picks it up the
+  // moment it actually mounts, with nothing left to fetch.
+  useEffect(() => {
+    if (layout !== 'hero') return
+    if (!hideWatchedLoaded || (categories.some(c => c.id === 'unwatched') && !unwatchedSortLoaded)) return
+    const AHEAD = 3
+    const targets = new Set<number>()
+    for (let i = 1; i <= AHEAD; i++) targets.add(activeCategoryIndex + i)
+    targets.add(activeCategoryIndex - 1)
+    for (const idx of targets) {
+      const cat = categories[idx]
+      if (!cat) continue
+      if (cat.id === 'unwatched' && !token) continue
+      if (_cache.rows[cat.id] && !_cache.rows[cat.id].stale) continue
+      if (_cache.prefetching.has(cat.id)) continue
+      _cache.prefetching.add(cat.id)
+      fetchCategoryPage<MediaItem>(cat.id, { token, profileId, hideWatched, hidePercent, unwatchedSort })
+        .then(({ items, totalPages }) => {
+          // A real mount may have started (and finished) its own fetch for
+          // this category while this prefetch was in flight — don't clobber
+          // fresher data (or data a live WS update already corrected) with
+          // a stale response landing late.
+          if (!_cache.rows[cat.id]) _cache.rows[cat.id] = { items, totalPages }
+        })
+        .catch(() => {})
+        .finally(() => { _cache.prefetching.delete(cat.id) })
+    }
+  }, [layout, categories, activeCategoryIndex, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded])
   // Drum-carousel row switch — both the outgoing (prevIndex) and incoming
   // (activeCategoryIndex) rows render at once, sliding together the same
   // direction (see .carouselViewport/CAROUSEL_TRANSITION_MS), for as long as
