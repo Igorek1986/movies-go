@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
+import { getWebClientId, subscribeLiveSync } from '@/hooks/useLiveSync'
+
+// Зеркалит pluginSettingKey на бэкенде (internal/api/web_plugin_settings.go) —
+// нужно, чтобы сверять msg.key из живого SettingsHub-события (там всегда
+// полный ключ) с этим (plugin, key, profileId).
+function fullSettingKey(profileId: string, key: string): string {
+  return profileId ? `${key}_profile_${profileId}` : key
+}
 
 // Читает/пишет один ключ из plugin_settings (та же таблица и те же ключи,
 // которыми Lampa-плагины (np.js, np_unwatched.js) обмениваются между
@@ -26,9 +34,21 @@ export function usePluginSetting<T>(plugin: string, key: string, profileId: stri
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plugin, key, profileId])
 
+  // Живое обновление, если этот же ключ поменяли на другом устройстве/вкладке
+  // (Lampa через __NMSync или другая открытая вкладка веба) — без этого
+  // галочка отражала бы чужое изменение только после перезагрузки страницы.
+  useEffect(() => {
+    const fullKey = fullSettingKey(profileId, key)
+    return subscribeLiveSync((msg) => {
+      if (msg.plugin !== plugin || msg.key !== fullKey) return
+      setValue(msg.value !== undefined && msg.value !== null ? (msg.value as T) : defaultValue)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plugin, key, profileId])
+
   const save = useCallback((next: T): Promise<boolean> => {
     setValue(next)
-    const params = new URLSearchParams({ plugin, key, profile_id: profileId })
+    const params = new URLSearchParams({ plugin, key, profile_id: profileId, client_id: getWebClientId() })
     return fetch(`/api/web/plugin-setting?${params}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

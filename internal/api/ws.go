@@ -34,7 +34,7 @@ func handleTimecodeWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	serveHubWS(TimecodeHub, d.UserID, d.ID, w, r)
+	serveHubWS(d.UserID, d.ID, w, r, TimecodeHub)
 }
 
 // GET /api/plugin-settings/ws?token=
@@ -44,25 +44,29 @@ func handlePluginSettingsWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	serveHubWS(SettingsHub, d.UserID, d.ID, w, r)
+	serveHubWS(d.UserID, d.ID, w, r, SettingsHub)
 }
 
-// GET /api/web/ws — веб-эквивалент handleTimecodeWS: тот же TimecodeHub (статус/
-// таймкод/избранное/профиль), но авторизация по сессионной cookie вместо
-// device-токена — браузер токена устройства не получает и не должен (см.
-// обсуждение в dev-заметках: отдавать его в JS небезопасно). deviceID=0 —
-// у веб-соединения нет своего устройства; исключение эха собственных изменений
-// идёт через client_id (см. handleWebSetStatus), а не через DeviceID.
+// GET /api/web/ws — веб-эквивалент handleTimecodeWS+handlePluginSettingsWS в
+// одном соединении: тот же TimecodeHub (статус/таймкод/избранное/профиль) И
+// тот же SettingsHub (см. web_plugin_settings.go/HideWatchedSettings —
+// смена настройки на Lampa-устройстве или другой вкладке должна долетать
+// сюда живьём, без перезагрузки страницы), но авторизация по сессионной
+// cookie вместо device-токена — браузер токена устройства не получает и не
+// должен (см. обсуждение в dev-заметках: отдавать его в JS небезопасно).
+// deviceID=0 — у веб-соединения нет своего устройства; исключение эха
+// собственных изменений идёт через client_id (см. handleWebSetStatus), а не
+// через DeviceID.
 func handleWebWS(w http.ResponseWriter, r *http.Request) {
 	u := userFromCtx(r)
 	if u == nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	serveHubWS(TimecodeHub, u.ID, 0, w, r)
+	serveHubWS(u.ID, 0, w, r, TimecodeHub, SettingsHub)
 }
 
-func serveHubWS(hub *ws.Hub, userID, deviceID int64, w http.ResponseWriter, r *http.Request) {
+func serveHubWS(userID, deviceID int64, w http.ResponseWriter, r *http.Request, hubs ...*ws.Hub) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -70,8 +74,14 @@ func serveHubWS(hub *ws.Hub, userID, deviceID int64, w http.ResponseWriter, r *h
 	defer conn.Close()
 
 	c := &ws.Conn{UserID: userID, DeviceID: deviceID, ClientID: r.URL.Query().Get("client_id"), WS: conn}
-	hub.Register(c)
-	defer hub.Unregister(c)
+	for _, hub := range hubs {
+		hub.Register(c)
+	}
+	defer func() {
+		for _, hub := range hubs {
+			hub.Unregister(c)
+		}
+	}()
 
 	conn.SetReadLimit(512)
 	conn.SetReadDeadline(time.Now().Add(wsPongWait)) //nolint:errcheck

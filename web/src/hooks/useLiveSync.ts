@@ -26,6 +26,13 @@ export interface LiveSyncMessage {
   status?: string
   item?: string
   data?: { time?: number; duration?: number; percent?: number; special?: boolean }
+  // Событие SettingsHub (см. handleWebPatchPluginSetting/handlePatchPluginSettings) —
+  // единственное без своего type: та же структура, что уже шлют друг другу
+  // Lampa-устройства через __NMSync. key — уже полный ключ с суффиксом профиля
+  // (см. pluginSettingKey на бэкенде), не голый key из usePluginSetting.
+  plugin?: string
+  key?: string
+  value?: unknown
 }
 
 // Публикация каждого входящего сообщения — единственное WS-соединение живёт в
@@ -76,7 +83,17 @@ export function useLiveSync(): void {
       ws.onmessage = (event) => {
         let msg: LiveSyncMessage
         try { msg = JSON.parse(event.data) } catch { return }
-        if (!msg.type) return
+
+        // SettingsHub-события (см. LiveSyncMessage.plugin) не несут type —
+        // только plugin/key/value/profile_id. usePluginSetting сам решает,
+        // относится ли конкретное сообщение к нему (сверяя plugin+key), а
+        // profile_id здесь не тот, что у sameProfile ниже (это профиль, для
+        // которого сохранена настройка, а не профиль устройства-отправителя,
+        // хотя обычно совпадают) — не фильтруем, просто раздаём подписчикам.
+        if (!msg.type) {
+          if (msg.plugin && msg.key) listeners.forEach(l => l(msg))
+          return
+        }
 
         if (msg.type === 'profile_updated') {
           refreshRef.current()
