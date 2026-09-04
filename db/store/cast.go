@@ -108,22 +108,37 @@ func GetPopularActors(ctx context.Context, limit int, ruOnly bool) []PopularActo
 		pool = 10
 	}
 
+	// DISTINCT ON (person_id) — GROUP BY person_id, person_name, profile_path
+	// used to produce a separate row per (id, name, path) combination, so a
+	// person whose name/photo was recorded slightly differently across cast
+	// entries (re-enrichment, encoding drift, TMDB data changes over time)
+	// came back as multiple "different" PopularActor rows for the same
+	// person_id — the same actor could then get picked more than once by
+	// PickRandomActors (which only dedupes WITHIN one pool, not against
+	// literal id collisions) and show up as several identical-looking
+	// "В ролях: X" categories on the same page.
 	var q string
 	if ruOnly {
 		q = `
-			SELECT mc.person_id, mc.person_name, COALESCE(mc.profile_path,'')
-			FROM media_card_cast mc
-			JOIN media_cards m ON mc.card_id = m.card_id
-			WHERE m.original_language = 'ru'
-			GROUP BY mc.person_id, mc.person_name, mc.profile_path
-			ORDER BY MAX(mc.popularity) DESC
+			SELECT person_id, person_name, profile_path FROM (
+				SELECT DISTINCT ON (mc.person_id)
+					mc.person_id, mc.person_name, COALESCE(mc.profile_path,'') AS profile_path, mc.popularity
+				FROM media_card_cast mc
+				JOIN media_cards m ON mc.card_id = m.card_id
+				WHERE m.original_language = 'ru'
+				ORDER BY mc.person_id, mc.popularity DESC
+			) t
+			ORDER BY popularity DESC
 			LIMIT $1`
 	} else {
 		q = `
-			SELECT person_id, person_name, COALESCE(profile_path,'')
-			FROM media_card_cast
-			GROUP BY person_id, person_name, profile_path
-			ORDER BY MAX(popularity) DESC
+			SELECT person_id, person_name, profile_path FROM (
+				SELECT DISTINCT ON (person_id)
+					person_id, person_name, COALESCE(profile_path,'') AS profile_path, popularity
+				FROM media_card_cast
+				ORDER BY person_id, popularity DESC
+			) t
+			ORDER BY popularity DESC
 			LIMIT $1`
 	}
 
@@ -272,12 +287,17 @@ func GetPopularDirectors(ctx context.Context, limit int) []PopularActor {
 	if pool < 10 {
 		pool = 10
 	}
+	// See GetPopularActors' comment — same DISTINCT ON (person_id) fix for
+	// the same duplicate-person-under-slightly-different-name/photo issue.
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT person_id, person_name, COALESCE(profile_path,'')
-		FROM media_card_crew
-		WHERE job = 'Director'
-		GROUP BY person_id, person_name, profile_path
-		ORDER BY MAX(popularity) DESC
+		SELECT person_id, person_name, profile_path FROM (
+			SELECT DISTINCT ON (person_id)
+				person_id, person_name, COALESCE(profile_path,'') AS profile_path, popularity
+			FROM media_card_crew
+			WHERE job = 'Director'
+			ORDER BY person_id, popularity DESC
+		) t
+		ORDER BY popularity DESC
 		LIMIT $1`, pool)
 	if err != nil {
 		return nil
