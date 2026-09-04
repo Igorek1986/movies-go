@@ -20,6 +20,28 @@ export const CAROUSEL_TRANSITION_MS = 280
 export const CARD_WHEEL_COOLDOWN_MS = 350
 export const CATEGORY_WHEEL_COOLDOWN_MS = 450
 
+// Holding an arrow key fires native OS key-repeat keydowns much faster than
+// scrollH/scrollV's smooth-scroll animation can finish — each one retargets
+// the in-flight scroll, which reads as the row/grid jerking or stuttering
+// instead of gliding. `cooldownRef` is a caller-owned ref (arrow move
+// handlers live in two different components, CatalogPage and
+// MediaLibraryPage, so this can't hold its own module-level state) that
+// persists the last-processed repeat's timestamp across renders. A real
+// first press (e.repeat === false) always goes through immediately; only
+// the auto-repeat stream gets throttled. Reuses CARD_WHEEL_COOLDOWN_MS
+// rather than its own constant — same goal (don't let rapid repeats queue
+// up faster than one move reads as complete), no reason for a different one.
+export function shouldThrottleKeyRepeat(e: { repeat: boolean }, cooldownRef: { current: number }): boolean {
+  const now = Date.now()
+  if (!e.repeat) {
+    cooldownRef.current = now
+    return false
+  }
+  if (now - cooldownRef.current < CARD_WHEEL_COOLDOWN_MS) return true
+  cooldownRef.current = now
+  return false
+}
+
 // Vertically center el in the area below the fixed nav bar. Animated (not
 // an instant jump) — every caller is a keyboard-driven focus move (between
 // cards/rows in Classic layout, or search results), where an un-animated

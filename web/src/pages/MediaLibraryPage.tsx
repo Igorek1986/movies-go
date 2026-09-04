@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react
 import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLDOWN_MS, CATEGORY_WHEEL_COOLDOWN_MS, focusTopNavActive } from '@/utils/scrollNav'
+import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLDOWN_MS, CATEGORY_WHEEL_COOLDOWN_MS, focusTopNavActive, shouldThrottleKeyRepeat } from '@/utils/scrollNav'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { useAuth } from '@/hooks/useAuth'
 import { subscribeLiveSync } from '@/hooks/useLiveSync'
@@ -146,6 +146,8 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
   const rowScrollRef = useRef<HTMLDivElement>(null)
   const loadedRef = useRef(!!initialCache)
   const autoFocusAppliedRef = useRef(false)
+  // See scrollNav's shouldThrottleKeyRepeat for the full rationale.
+  const arrowRepeatRef = useRef(0)
   // Свежий items для обработчика WS-события ниже, не завязываясь на него как
   // на зависимость эффекта (иначе подписка пересоздавалась бы на каждую
   // загрузку строки) — см. CatalogPage's CategoryRow для того же паттерна.
@@ -369,6 +371,7 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
           onKeyDown={e => {
             if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
             e.preventDefault()
+            if (shouldThrottleKeyRepeat(e, arrowRepeatRef)) return
             moveCardFocus(e.key === 'ArrowRight' ? 1 : -1)
           }}
         >
@@ -520,6 +523,8 @@ export default function MediaLibraryPage() {
   const [transition, setTransition] = useState<{ prevIndex: number; dir: 1 | -1 } | null>(null)
   const transitionTimerRef = useRef<number | null>(null)
   useEffect(() => () => { if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current) }, [])
+  // See scrollNav's shouldThrottleKeyRepeat for the full rationale.
+  const gridArrowRepeatRef = useRef(0)
   // Which way we were actually headed when an empty status was hit — an
   // empty status reached via ArrowUp must keep skipping backward, not
   // forward: hard-coding +1 here used to override the real direction, so
@@ -758,6 +763,7 @@ export default function MediaLibraryPage() {
       if (expanded || searchQuery.length >= 3) {
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
         e.preventDefault()
+        if (shouldThrottleKeyRepeat(e, gridArrowRepeatRef)) return
         const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-card]'))
         if (!cards.length) return
         const idx = cards.indexOf(focused as HTMLElement)

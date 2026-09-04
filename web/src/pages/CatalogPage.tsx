@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react
 import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLDOWN_MS, CATEGORY_WHEEL_COOLDOWN_MS, NAV_H, focusTopNavActive } from '@/utils/scrollNav'
+import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLDOWN_MS, CATEGORY_WHEEL_COOLDOWN_MS, NAV_H, focusTopNavActive, shouldThrottleKeyRepeat } from '@/utils/scrollNav'
 import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -320,6 +320,9 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
   // the corrected list once it resolves.
   const loadedRef = useRef(!!initialCache && !initialCache.stale)
   const autoFocusAppliedRef = useRef(false)
+  // See shouldThrottleKeyRepeat's comment — throttles held-ArrowLeft/Right
+  // auto-repeat so scrollH's smooth-scroll isn't retargeted mid-flight.
+  const arrowRepeatRef = useRef(0)
   // Свежий items для обработчика WS-события ниже, не завязываясь на него как
   // на зависимость эффекта (иначе подписка пересоздавалась бы на каждую
   // загрузку строки).
@@ -648,6 +651,7 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
           onKeyDown={e => {
             if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
             e.preventDefault()
+            if (shouldThrottleKeyRepeat(e, arrowRepeatRef)) return
             moveCardFocus(e.key === 'ArrowRight' ? 1 : -1)
           }}
         >
@@ -1035,6 +1039,9 @@ export default function CatalogPage() {
   const [transition, setTransition] = useState<{ prevIndex: number; dir: 1 | -1 } | null>(null)
   const transitionTimerRef = useRef<number | null>(null)
   const carouselPageRef = useRef<HTMLDivElement>(null)
+  // See shouldThrottleKeyRepeat's comment — throttles held-arrow auto-repeat
+  // in the expanded category/search grid so scrollV isn't retargeted mid-flight.
+  const gridArrowRepeatRef = useRef(0)
   useEffect(() => () => { if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current) }, [])
   const handleEmptyCategory = useCallback(() => {
     // This category has nothing to show — silently skip to the next one
@@ -1495,6 +1502,7 @@ export default function CatalogPage() {
       if (expandedCategory || searchQuery.length >= 3) {
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
         e.preventDefault()
+        if (shouldThrottleKeyRepeat(e, gridArrowRepeatRef)) return
         const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-card]'))
         if (!cards.length) return
         const idx = cards.indexOf(focused as HTMLElement)
