@@ -145,7 +145,16 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='tv' AND (episode_run_time IS NULL OR episode_run_time=0)`).Scan(&noRuntimeTV) //nolint:errcheck
 	})
 	run(func() {
-		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_updated_at::date = CURRENT_DATE AND tmdb_not_found_at IS NULL`).Scan(&tmdbRefreshedToday) //nolint:errcheck
+		// Границы суток по локальному времени сервера, а не CURRENT_DATE
+		// Postgres (сессия в UTC) — иначе ночной прогон RunRefreshCards
+		// (daily_task_hour, локальное время) в часовых поясах восточнее UTC
+		// физически попадает ещё в "вчера" по UTC и почти целиком выпадает
+		// из счётчика "сегодня".
+		now := time.Now()
+		todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		postgres.Pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM media_cards WHERE tmdb_updated_at >= $1 AND tmdb_not_found_at IS NULL`,
+			todayStart).Scan(&tmdbRefreshedToday) //nolint:errcheck
 	})
 	run(func() {
 		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_not_found_at IS NOT NULL`).Scan(&tmdbNotFound) //nolint:errcheck
@@ -1392,12 +1401,14 @@ func handleAPIAdminTMDBRefreshedToday(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt     string  `json:"updated_at"`
 	}
 	var results []row
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	rows, err := postgres.Pool.Query(ctx,
 		`SELECT card_id, tmdb_id, media_type, COALESCE(title,''), COALESCE(original_title,''),
 		        COALESCE(year,0), COALESCE(vote_average,0), COALESCE(vote_count,0), tmdb_updated_at
 		 FROM media_cards
-		 WHERE tmdb_updated_at::date = CURRENT_DATE AND tmdb_not_found_at IS NULL
-		 ORDER BY tmdb_updated_at DESC`)
+		 WHERE tmdb_updated_at >= $1 AND tmdb_not_found_at IS NULL
+		 ORDER BY tmdb_updated_at DESC`, todayStart)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
