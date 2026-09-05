@@ -117,7 +117,13 @@ func RunRefreshCards(parentCtx context.Context) {
 		SELECT card_id, tmdb_id, media_type FROM (
 			SELECT card_id, tmdb_id, media_type, tmdb_updated_at FROM classified
 			WHERE is_new
-			  AND (tmdb_updated_at IS NULL OR tmdb_updated_at < now() - interval '1 day')
+			  -- Порог короче суток (не 24h) специально: задача и так гоняется
+			  -- ~раз в сутки в одно и то же время (daily_task_hour) — при
+			  -- пороге ровно "1 day" карточки, обновлённые вчера прогоном,
+			  -- к сегодняшнему прогону ещё не успевают устареть больше суток
+			  -- (резонанс с расписанием), и весь пул обновляется через раз,
+			  -- а не каждый день.
+			  AND (tmdb_updated_at IS NULL OR tmdb_updated_at < now() - interval '20 hours')
 			UNION ALL
 			SELECT card_id, tmdb_id, media_type, tmdb_updated_at FROM classified
 			WHERE NOT is_new
