@@ -45,6 +45,7 @@ interface EpisodeData {
   hash: string; watched: boolean; special: boolean; user_special: boolean; catalog_special: boolean
   percent: number; duration_sec: number | null; future: boolean; air_date: string | null
   still_path: string | null
+  overview: string | null
 }
 type PendingConfirm =
   | { kind: 'deleteMovie' }
@@ -534,32 +535,62 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
       // таймкода не отражался на полоске конкретной серии (хотя агрегатный
       // счётчик серии, который берёт данные только из tcMap, уже обновлялся).
       const pct = tc?.percent ?? (timecodesLoaded ? 0 : ep.percent)
-      // catalog_special = real special from episodes DB (e.g. season 0 extras)
-      // user_special = user manually marked via ★ button
-      // Show "спец" only for catalog specials; user-watched (via MyShows sync) shows as green bar
+      // catalog_special = real special from episodes DB (e.g. season 0
+      // extras) — a fixed, non-removable ★ badge, but otherwise a real
+      // episode someone might want to watch/track like any other, so it
+      // stays fully reachable (row nav, bar, TimePicker, ✕ reset) below.
+      // user_special = user manually marked via ★ button.
       const isCatalogSpecial = ep.catalog_special
-      const isUserMarked = ep.user_special
-      const isWatched = pct >= watchedThreshold() || isUserMarked
+      // tc?.special is the live source of truth (updated by mark/unmarkSpecial
+      // right away) — ep.user_special is only a snapshot from the last
+      // apiEpisodes fetch, same staleness caveat as pct/ep.percent above.
+      const isUserMarked = timecodesLoaded ? !!tc?.special : ep.user_special
       return (
         <div
           key={ep.episode}
           className={`${styles.epRow} ${isCatalogSpecial ? styles.epRowSpecial : ''} ${ep.future ? styles.epRowFuture : ''}`}
-          data-row-id={isCatalogSpecial ? undefined : `ep-${sn}-${ep.episode}`}
+          data-row-id={`ep-${sn}-${ep.episode}`}
         >
           <div className={styles.epTop}>
             <span className={styles.epCode}>{epCode(sn, ep.episode)}</span>
             {ep.title && <span className={styles.epTitle}>{ep.title}</span>}
             {fmtEpAirDate(ep.air_date) && <span className={styles.epAirDate}>{fmtEpAirDate(ep.air_date)}</span>}
+            <span className={styles.epTime}>
+              {/* Real percent/time always — special (★) no longer implies a
+                  real watch (see markSpecial), so it gets no special-cased
+                  text here either; the badge/button to the right already
+                  covers "marked special" on its own. */}
+              {pct > 0 ? fmtTime(timeSec) : '—'}
+              /{durSec > 0 ? fmtTime(durSec) : '—'}
+            </span>
+            {isUserMarked ? (
+              <button className={styles.epUnspecial} onClick={() => onUnmarkSpecial(ep.hash, profileId)} title="Убрать отметку спецэпизода">★</button>
+            ) : isCatalogSpecial ? (
+              <span className={styles.epSpecialBadge} title="Спецэпизод">★</span>
+            ) : (
+              <button className={styles.epSpecial} onClick={() => onMarkSpecial(ep.hash, profileId)} title="Отметить как спецэпизод">★</button>
+            )}
+            {/* Real progress only — with special no longer forcing percent
+                to 100 (see markSpecial), a special-only row (pct 0) has
+                nothing of its own to reset: unmarking via the star already
+                deletes that same empty row (see UnmarkSpecialTimecode), so
+                showing this too was a redundant second way to do the exact
+                same thing. */}
+            {pct > 0 && (
+              <button className={styles.epDelete} onClick={() => onDeleteEpisode(ep, profileId)} title="Сбросить таймкод">✕</button>
+            )}
           </div>
           <div className={styles.epBottom}>
             <InteractiveBar
-              percent={isWatched ? 100 : pct}
+              // Real percent always — see the same reasoning in the Hero
+              // carousel's own bar fix: forcing 100% once "watched"
+              // contradicted the actual-progress time above it.
+              percent={pct}
               onClick={clickPct => {
-                if (isCatalogSpecial) return
                 const initSec = durSec > 0 ? Math.round(durSec * clickPct / 100) : 0
                 onPickTime({ initialSec: initSec, maxSec: durSec, item: ep.hash, profileId })
               }}
-              navItem={isCatalogSpecial ? undefined : {
+              navItem={{
                 item: ep.hash,
                 durationSec: durSec,
                 profileId,
@@ -568,20 +599,6 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
                 onBlur: () => onEpScrubBlur(ep.hash),
               }}
             />
-            <span className={`${styles.epTime} ${isCatalogSpecial ? styles.epTimeSpecial : ''}`}>
-              {isCatalogSpecial ? 'спец' : isWatched ? '✓' : pct > 0 ? fmtTime(timeSec) : '—'}
-              /{durSec > 0 && !isCatalogSpecial ? fmtTime(durSec) : '—'}
-            </span>
-            {isUserMarked ? (
-              <button className={styles.epUnspecial} onClick={() => onUnmarkSpecial(ep.hash, profileId)} title="Убрать отметку просмотра">↩</button>
-            ) : isCatalogSpecial ? (
-              <span className={styles.epSpecialBadge} title="Спецэпизод">★</span>
-            ) : (
-              <button className={styles.epSpecial} onClick={() => onMarkSpecial(ep.hash, profileId)} title="Отметить как просмотренный">★</button>
-            )}
-            {!isCatalogSpecial && (pct > 0 || isUserMarked) && (
-              <button className={styles.epDelete} onClick={() => onDeleteEpisode(ep, profileId)} title="Сбросить таймкод">✕</button>
-            )}
           </div>
         </div>
       )
@@ -603,20 +620,27 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
         <div
           key={ep}
           className={`${styles.epRow} ${isSpecial ? styles.epRowSpecial : ''}`}
-          data-row-id={isSpecial ? undefined : `ep-${sn}-${ep}`}
+          data-row-id={`ep-${sn}-${ep}`}
         >
           <div className={styles.epTop}>
             <span className={styles.epCode}>{epCode(sn, ep)}</span>
+            <span className={styles.epTime}>
+              {pct > 0 ? fmtTime(timeSec) : '—'}/{durSec > 0 ? fmtTime(durSec) : '—'}
+            </span>
+            {isSpecial ? (
+              <button className={styles.epUnspecial} onClick={() => onUnmarkSpecial(item, profileId)} title="Убрать отметку спецэпизода">★</button>
+            ) : (
+              <button className={styles.epSpecial} onClick={() => onMarkSpecial(item, profileId)} title="Отметить как спецэпизод">★</button>
+            )}
           </div>
           <div className={styles.epBottom}>
             <InteractiveBar
-              percent={isSpecial ? 100 : pct}
+              percent={pct}
               onClick={clickPct => {
-                if (isSpecial) return
                 const initSec = durSec > 0 ? Math.round(durSec * clickPct / 100) : 0
                 onPickTime({ initialSec: initSec, maxSec: durSec, item, profileId })
               }}
-              navItem={isSpecial ? undefined : {
+              navItem={{
                 item,
                 durationSec: durSec,
                 profileId,
@@ -625,14 +649,6 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
                 onBlur: () => onEpScrubBlur(item),
               }}
             />
-            <span className={`${styles.epTime} ${isSpecial ? styles.epTimeSpecial : ''}`}>
-              {isSpecial ? 'спец' : pct > 0 ? fmtTime(timeSec) : '—'}/{durSec > 0 && !isSpecial ? fmtTime(durSec) : '—'}
-            </span>
-            {isSpecial ? (
-              <button className={styles.epUnspecial} onClick={() => onUnmarkSpecial(item, profileId)} title="Убрать отметку спецэпизода">↩</button>
-            ) : (
-              <button className={styles.epSpecial} onClick={() => onMarkSpecial(item, profileId)} title="Отметить как спецэпизод (пропустить)">★</button>
-            )}
           </div>
         </div>
       )
@@ -673,7 +689,8 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
 // already accurate even before the real list replaces it.
 function HeroEpisodesCarousel({
   card, apiEpisodes, tcMap, defaultProfileId, epDurSec, timecodesLoaded, episodesFinal, epIsWatched,
-  rowFocusIdx, onQuickMark, onQuickUnmark, onMarkSpecial, onUnmarkSpecial,
+  rowFocusIdx, onQuickMark, onQuickUnmark, onMarkSpecial, onUnmarkSpecial, onPickTime,
+  epScrub, onEpScrubBlur,
 }: {
   card: CardDetail
   apiEpisodes: EpisodeData[] | null
@@ -696,6 +713,14 @@ function HeroEpisodesCarousel({
   onQuickUnmark: (ep: EpisodeData, profileId: string) => void
   onMarkSpecial: (item: string, profileId: string) => void
   onUnmarkSpecial: (item: string, profileId: string) => void
+  onPickTime: (ctx: TimePickerCtx) => void
+  // Same keyboard-scrub preview state TvEpisodeList's own bars use (see
+  // CardDetailPage's epScrub/onEpScrubBlur and the global keydown effect's
+  // data-progress-slider branch) — shared across both lists so scrubbing one
+  // episode's bar and switching to another (old list vs. this carousel)
+  // can't leave a stale preview behind.
+  epScrub: { item: string; pct: number } | null
+  onEpScrubBlur: (item: string) => void
 }) {
   // Stub fallback (apiEpisodes === null) — same source TvEpisodeList's own
   // non-API branch uses (card.seasons, falling back to a numberOfSeasons
@@ -719,7 +744,7 @@ function HeroEpisodesCarousel({
           season: sn, episode: ep, title: null,
           hash: episodeItem(sn, ep, card.original_title),
           watched: false, special: false, user_special: false, catalog_special: false,
-          percent: 0, duration_sec: null, future: false, air_date: null, still_path: null,
+          percent: 0, duration_sec: null, future: false, air_date: null, still_path: null, overview: null,
         })
       }
     }
@@ -777,11 +802,10 @@ function HeroEpisodesCarousel({
       if (nextUp) {
         // Seed the page's own row-focus memory (same map its Up/Down-between-
         // rows handler reads) with this row's DOM index for "the next
-        // episode to watch" — [data-nav-item] excludes catalog specials, so
-        // the index has to be computed over that same filtered, reverse-
-        // sorted list to line up with what the keyboard handler will
-        // actually focus once the user navigates into this row.
-        const navigable = [...eps].sort((a, b) => b.episode - a.episode).filter(ep => !ep.catalog_special)
+        // episode to watch" — every episode card is a [data-nav-item] now
+        // (catalog specials included, see renderEpisodeCard), so the index
+        // just has to match that same reverse-chronological render order.
+        const navigable = [...eps].sort((a, b) => b.episode - a.episode)
         const domIdx = navigable.findIndex(ep => ep.hash === nextUp.hash)
         if (domIdx !== -1) rowFocusIdx.current.set(`hero-eps-${sn}`, domIdx)
         pendingFocusHashRef.current = nextUp.hash
@@ -928,6 +952,29 @@ function HeroEpisodesCarousel({
     switchSeason(goingNext ? 1 : -1, true)
   }
 
+  // Moves focus to the previous/next episode CARD in the same row, switching
+  // season at the outward edge exactly like onEpRowKeyDown above — used by
+  // the star's own Left/Right (see onStarKeyDown in renderEpisodeCard). The
+  // star isn't itself a [data-nav-item], so neither onEpRowKeyDown (keyed
+  // off document.activeElement being one) nor the page's generic within-row
+  // Left/Right handler ever fires for it — this replicates just enough of
+  // both to make Left/Right behave the same regardless of which part of the
+  // card currently has focus.
+  function moveEpisodeFocus(card: HTMLElement, dir: 1 | -1) {
+    const row = card.closest<HTMLElement>('[data-row-id]')
+    if (!row) return
+    const items = Array.from(row.querySelectorAll<HTMLElement>('[data-nav-item]'))
+    const idx = items.indexOf(card)
+    if (idx === -1) return
+    if ((dir < 0 && idx === 0) || (dir > 0 && idx === items.length - 1)) {
+      switchSeason(dir, true)
+      return
+    }
+    const next = idx + dir
+    rowFocusIdx.current.set(row.dataset.rowId!, next)
+    items[next]?.focus()
+  }
+
   function seasonLabel(sn: number) {
     return sn === 0 ? 'Спецэпизоды' : `Сезон ${sn}`
   }
@@ -943,17 +990,48 @@ function HeroEpisodesCarousel({
     const timeSec = tc?.time ?? 0
     const profileId = tc?.profile_id ?? defaultProfileId
     const pct = tc?.percent ?? ep.percent ?? 0
-    const watched = epIsWatched(ep)
+    // Real progress only — deliberately NOT epIsWatched(ep) (which also ORs
+    // in the special flag, see seasonMeta/the auto-select effect above): a
+    // special mark no longer claims real playback (see markSpecial), so the
+    // ✓ badge/highlighted border/quick-watch toggle here must reflect actual
+    // percent, not "counts as done for aggregate purposes".
+    const watched = pct >= watchedThreshold()
     const img = tmdbUrl(ep.still_path, 'w300') ?? tmdbUrl(card.backdrop_path, 'w300') ?? tmdbUrl(card.poster_path, 'w300')
     const isCatalogSpecial = ep.catalog_special
     // tc?.special is the live source of truth (updated by mark/unmarkSpecial
     // right away) — ep.user_special is only a snapshot from the last
     // apiEpisodes fetch, same staleness caveat as pct/ep.percent above.
     const isUserMarked = timecodesLoaded ? !!tc?.special : ep.user_special
+    const scrubbing = epScrub?.item === ep.hash
+    const displayPct = scrubbing ? epScrub!.pct : pct
 
     function toggle() {
-      if (isCatalogSpecial) return
+      // catalog_special (TMDB/MyShows is_special) is a permanent flag, not
+      // removable — but the episode is still a real thing someone might
+      // want to watch and track progress on, same as any other, so the
+      // watched-toggle itself stays available; only the star (below) is
+      // fixed for these.
       watched ? onQuickUnmark(ep, profileId) : onQuickMark(ep, profileId)
+    }
+
+    // Up returns to the card, Down continues on to the progress bar — the
+    // middle stop of the ArrowDown/ArrowDown chain started on the card above.
+    function onStarKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+      const card = e.currentTarget.closest<HTMLElement>('[data-ep-hash]')
+      if (!card) return
+      if (e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopPropagation(); card.focus()
+      } else if (e.key === 'ArrowDown') {
+        const bar = card.querySelector<HTMLElement>('[data-progress-slider]')
+        if (bar) { e.preventDefault(); e.stopPropagation(); bar.focus() }
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        // The star sits mid-episode, not at the season's outward edge — Left/
+        // Right should move between episodes exactly like it would from the
+        // card itself, not get swallowed just because focus happens to be on
+        // the star right now.
+        e.preventDefault(); e.stopPropagation()
+        moveEpisodeFocus(card, e.key === 'ArrowRight' ? 1 : -1)
+      }
     }
 
     return (
@@ -967,14 +1045,34 @@ function HeroEpisodesCarousel({
         key={ep.hash}
         className={`${styles.heroEpCard}${watched ? ' ' + styles.heroEpCardWatched : ''}`}
         data-ep-hash={ep.hash}
-        data-nav-item={isCatalogSpecial ? undefined : true}
-        tabIndex={isCatalogSpecial ? undefined : 0}
-        role={isCatalogSpecial ? undefined : 'button'}
+        data-nav-item
+        tabIndex={0}
+        role="button"
         aria-label={`${epLabel(ep)}${ep.title ? ' ' + ep.title : ''}${watched ? ', просмотрено' : ''}`}
         onClick={toggle}
         onKeyDown={e => {
-          if (isCatalogSpecial) return
+          // Both the star and the bar live INSIDE this card (see the
+          // ArrowDown chain below/onStarKeyDown), and neither stops every
+          // key from bubbling — the bar deliberately lets ArrowDown itself
+          // through so it can continue on down the page. Without this
+          // target check, that bubbled ArrowDown (or an Enter pressed on
+          // the star/bar) re-triggers this same handler on the card,
+          // yanking focus back to the star instead of moving on, or
+          // quietly toggling the whole episode's watched state as a side
+          // effect of committing/marking something on a child control.
+          if (e.target !== e.currentTarget) return
           if (e.key === 'Enter') { e.preventDefault(); toggle() }
+          // Down/Down again reaches the star then the progress bar — the
+          // only way to reach either action from a remote (no reliable
+          // long-press on WebOS/Tizen, and Left/Right/Up/Down are already
+          // claimed by episode/season/page-row nav). See onEpStarKeyDown
+          // and the bar's own onKeyDown below for the rest of this chain.
+          // catalog_special episodes have no star button (their ★ is a
+          // fixed, non-removable badge) — go straight to the bar for them.
+          if (e.key === 'ArrowDown') {
+            const target = e.currentTarget.querySelector<HTMLElement>('[data-ep-star], [data-progress-slider]')
+            if (target) { e.preventDefault(); e.stopPropagation(); target.focus() }
+          }
         }}
       >
         <div className={styles.heroEpImgWrap}>
@@ -989,31 +1087,118 @@ function HeroEpisodesCarousel({
           ) : isUserMarked ? (
             <button
               type="button"
-              className={styles.heroEpStarBtn}
+              className={`${styles.heroEpStarBtn} ${styles.heroEpStarBtnMarked}`}
+              data-ep-star
               title="Убрать отметку спецэпизода"
               onClick={e => { e.stopPropagation(); onUnmarkSpecial(ep.hash, profileId) }}
+              onKeyDown={onStarKeyDown}
             >★</button>
           ) : (
             <button
               type="button"
               className={styles.heroEpStarBtn}
+              data-ep-star
               title="Отметить как спецэпизод"
               onClick={e => { e.stopPropagation(); onMarkSpecial(ep.hash, profileId) }}
+              onKeyDown={onStarKeyDown}
             >☆</button>
           )}
         </div>
-        {!isCatalogSpecial && (
-          <div className={styles.heroEpBar}>
-            <div className={styles.heroEpBarFill} style={{ width: `${Math.min(watched ? 100 : pct, 100)}%` }} />
+        {(
+          // Same click-to-seek-then-fine-tune as the classic list's own
+          // InteractiveBar/TimePicker below — .heroEpBar itself is the
+          // (generous, touch-friendly) hit area; the thin visual line lives
+          // in the nested .heroEpBarTrack. stopPropagation so this doesn't
+          // also fire the card's own click (quick 90%-mark/reset toggle).
+          // Rendered for catalog_special episodes too — only their star is
+          // fixed, real progress tracking works the same as any episode.
+          <div
+            className={`${styles.heroEpBar}${scrubbing ? ' ' + styles.heroEpBarScrubbing : ''}`}
+            // Reachable via the card → star → here ArrowDown chain (see
+            // onStarKeyDown above), not via data-nav-item — it deliberately
+            // stays out of the row's [data-nav-item] lists (season-edge
+            // Left/Right detection, rowFocusIdx seeding) which assume
+            // exactly one nav item per episode: the card. tabIndex 0 also
+            // lets Tab/mouse users reach it directly, same as the movie
+            // progress bar above.
+            tabIndex={0}
+            data-progress-slider
+            data-progress-kind="episode"
+            data-ep-item={ep.hash}
+            data-ep-duration={durSec}
+            data-ep-profile={profileId}
+            data-ep-pct={pct}
+            role="slider"
+            aria-label={`Просмотрено, ${epLabel(ep)}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(displayPct)}
+            onBlur={() => onEpScrubBlur(ep.hash)}
+            onKeyDown={e => {
+              // Only Up is ours to intercept — it skips back over the star
+              // straight to the card. Left/Right/Enter/Escape are already
+              // handled by the page-level data-progress-slider branch (this
+              // element carries the same data-* attributes it reads), and
+              // Down is deliberately left alone so it falls through to the
+              // generic row-switch handler and continues on down the page.
+              if (e.key !== 'ArrowUp') return
+              const card = e.currentTarget.closest<HTMLElement>('[data-ep-hash]')
+              if (card) { e.preventDefault(); e.stopPropagation(); card.focus() }
+            }}
+            onClick={e => {
+              e.stopPropagation()
+              const rect = e.currentTarget.getBoundingClientRect()
+              const clickPct = Math.min(100, Math.max(0, (e.clientX - rect.left) / rect.width * 100))
+              const initSec = durSec > 0 ? Math.round(durSec * clickPct / 100) : Math.round(clickPct)
+              onPickTime({ initialSec: initSec, maxSec: durSec, item: ep.hash, profileId })
+            }}
+          >
+            <div className={styles.heroEpBarTrack}>
+              {/* Real percent always — forcing 100% once "watched" (the old
+                  behavior) contradicted the actual-progress time text right
+                  below it (e.g. a 90%-quick-marked episode showing
+                  47:42/53:00 but a fully-filled bar). user_special (★)
+                  genuinely has percent:100 from MarkSpecialTimecode, so it
+                  still fills completely on its own. displayPct swaps in the
+                  live scrub preview while ArrowLeft/Right-adjusting. */}
+              <div className={styles.heroEpBarFill} style={{ width: `${Math.min(displayPct, 100)}%` }} />
+            </div>
           </div>
         )}
-        <div className={styles.heroEpMeta}>
-          {ep.title && <span className={styles.heroEpTitle}>{ep.title}</span>}
+        <div
+          className={styles.heroEpMeta}
+          // Same click-to-seek as .heroEpBar just above, on a much bigger
+          // (and easier to hit on a phone) target — starts from the
+          // episode's current position rather than a click x-position,
+          // since text has no "where on the timeline is this" meaning the
+          // way a bar position does.
+          onClick={e => {
+            e.stopPropagation()
+            const initSec = durSec > 0 ? Math.round(durSec * pct / 100) : 0
+            onPickTime({ initialSec: initSec, maxSec: durSec, item: ep.hash, profileId })
+          }}
+        >
+          {(ep.title || fmtEpAirDate(ep.air_date)) && (
+            <span className={styles.heroEpTitle}>
+              {[ep.title, fmtEpAirDate(ep.air_date)].filter(Boolean).join(' · ')}
+            </span>
+          )}
           <span className={styles.heroEpTime}>
-            {isCatalogSpecial ? 'спец' : watched ? '✓' : pct > 0 ? fmtTime(timeSec) : '—'}
-            {!isCatalogSpecial && durSec > 0 ? `/${fmtTime(durSec)}` : ''}
+            {/* Real percent/time always — special (★) no longer implies a
+                real watch (see markSpecial), so it gets no special-cased
+                text here either; the corner ★ badge/button already covers
+                "marked special" on its own. */}
+            {pct > 0 ? fmtTime(timeSec) : '—'}
+            {durSec > 0 ? `/${fmtTime(durSec)}` : ''}
           </span>
         </div>
+        {/* Always visible (not gated behind focus/hover) — on a touch device
+            there's no hover and no keyboard focus to reveal it on, so it has
+            to just be there for every input mode alike. Backfilled from
+            TMDB's season endpoint alongside still_path (see
+            bgBackfillEpisodeInfo) — may be empty for a while after a show is
+            first opened. */}
+        {ep.overview && <p className={styles.heroEpOverview}>{ep.overview}</p>}
       </div>
     )
   }
@@ -1028,18 +1213,27 @@ function HeroEpisodesCarousel({
   return (
     <div className={styles.heroEpisodesBlock} ref={blockRef}>
       <div className={styles.heroSeasonTitleStack}>
-        <span className={styles.heroSeasonTitleNeighbor}>
-          {activeIdx > 0 ? seasonLabel(seasonGroups[activeIdx - 1][0]) : ' '}
-        </span>
+        {/* Clickable when a neighbor exists — the only way to change season
+            on a touch device (no wheel, no arrow keys): there's no swipe
+            gesture on the row itself, so this doubles as the mobile season
+            switcher. Same switchSeason() the wheel/edge-arrow paths use, no
+            focusEdge — a mouse/touch switch shouldn't yank keyboard focus. */}
+        {activeIdx > 0 ? (
+          <button type="button" className={styles.heroSeasonTitleNeighbor} onClick={() => switchSeason(-1)}>
+            {seasonLabel(seasonGroups[activeIdx - 1][0])}
+          </button>
+        ) : <span className={styles.heroSeasonTitleNeighbor}> </span>}
         <h3 className={styles.heroSeasonTitle}>
           {seasonLabel(seasonGroups[activeIdx][0])}
           {seasonMeta(activeIdx).total > 0 && (
             <span className={styles.heroSeasonCount}>{seasonMeta(activeIdx).watched}/{seasonMeta(activeIdx).total}</span>
           )}
         </h3>
-        <span className={styles.heroSeasonTitleNeighbor}>
-          {activeIdx < seasonGroups.length - 1 ? seasonLabel(seasonGroups[activeIdx + 1][0]) : ' '}
-        </span>
+        {activeIdx < seasonGroups.length - 1 ? (
+          <button type="button" className={styles.heroSeasonTitleNeighbor} onClick={() => switchSeason(1)}>
+            {seasonLabel(seasonGroups[activeIdx + 1][0])}
+          </button>
+        ) : <span className={styles.heroSeasonTitleNeighbor}> </span>}
       </div>
 
       <div className={styles.heroEpViewport}>
@@ -1415,10 +1609,23 @@ export default function CardDetailPage() {
     return tc != null && (tc.percent >= watchedThreshold() || tc.special)
   }, [tcMap])
 
+  // Sequence guard — markSpecial/unmarkSpecial/quickMark/etc. all fire this
+  // (un-awaited) after their own POST resolves, so two calls close together
+  // (e.g. mark then immediately unmark) race two independent GETs with no
+  // guarantee the responses land in request order. Without this, the older
+  // call's response landing SECOND would silently overwrite the fresher
+  // state with stale data (special/percent flipping back, or a page that
+  // only "fixes itself" on reload) — the exact symptom reported for the
+  // classic list's star not visibly updating right after a click.
+  const loadTimecodesSeqRef = useRef(0)
   const loadTimecodes = useCallback((cid: string, devId: number) => {
+    const seq = ++loadTimecodesSeqRef.current
     fetch(`/api/web/card-timecodes?device_id=${devId}&card_id=${encodeURIComponent(cid)}`)
       .then(r => r.ok ? r.json() : [])
-      .then((rows: CardTimecode[]) => { setTimecodes(rows ?? []); setTimecodesLoaded(true) })
+      .then((rows: CardTimecode[]) => {
+        if (seq !== loadTimecodesSeqRef.current) return // superseded by a later call — discard
+        setTimecodes(rows ?? []); setTimecodesLoaded(true)
+      })
       .catch(() => {})
   }, [])
 
@@ -1644,11 +1851,12 @@ export default function CardDetailPage() {
         // (up to ~12s) before ever appearing, even on an already-synced show.
         if (!cancelled && !needsMyshowsSync) setEpisodesFinal(true)
         // Re-poll while myshows sync is still pending (as before) OR while
-        // the Hero carousel's TMDB still_path backfill is still running in
-        // the background (see bgBackfillEpisodeStills) — bounded to the same
-        // 3 retries; apiEpisodes just gets refreshed in place with newly
-        // arrived still_path values, no separate state/props needed.
-        const stillsMissing = (d?.episodes ?? []).some((e: EpisodeData) => !e.catalog_special && e.still_path == null)
+        // the Hero carousel's TMDB still_path/overview backfill is still
+        // running in the background (see bgBackfillEpisodeInfo) — bounded to
+        // the same 3 retries; apiEpisodes just gets refreshed in place with
+        // newly arrived values, no separate state/props needed.
+        const stillsMissing = (d?.episodes ?? []).some((e: EpisodeData) =>
+          !e.catalog_special && (e.still_path == null || e.overview == null))
         if ((needsMyshowsSync || stillsMissing) && retries < 3) {
           if (retries === 0 && needsMyshowsSync && dev && dev.token) {
             fetch(`/api/refresh-card-episodes?card_id=${encodeURIComponent(cid)}&token=${encodeURIComponent(dev.token)}`)
@@ -1769,8 +1977,17 @@ export default function CardDetailPage() {
 
   async function quickUnmarkWatched(ep: EpisodeData, profileId: string) {
     if (!activeDevice || !cardId) return
-    const qs = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, item: ep.hash, profile_id: profileId, client_id: getWebClientId() })
-    await fetch(`/api/episode-timecode?${qs}`, { method: 'DELETE' })
+    const durSec = ep.duration_sec ?? epDurSec
+    // percent:0 via set-timecode, not a full DELETE — special (★, an
+    // orthogonal flag now, see markSpecial) lives in the same JSON blob and
+    // must survive un-toggling a quick-watch that has nothing to do with it.
+    // SetCardTimecode on the backend preserves an existing special:true when
+    // rewriting this same item.
+    await fetch('/api/web/set-timecode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item: ep.hash, percent: 0, duration_sec: durSec, profile_id: profileId, client_id: getWebClientId() }),
+    })
     loadTimecodes(cardId, activeDevice.id)
     invalidateCatalogRowsForWatchedFilter()
   }
@@ -2185,6 +2402,9 @@ export default function CardDetailPage() {
                   onQuickUnmark={quickUnmarkWatched}
                   onMarkSpecial={markSpecial}
                   onUnmarkSpecial={unmarkSpecial}
+                  onPickTime={ctx => setTpCtx(ctx)}
+                  epScrub={epScrub}
+                  onEpScrubBlur={item => setEpScrub(cur => cur?.item === item ? null : cur)}
                 />
               )}
               {refreshBtn}

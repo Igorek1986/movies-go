@@ -286,10 +286,12 @@ func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, ite
 	).Scan(&existingData)
 
 	var duration float64
+	var special bool
 	if existingData != "" {
 		var m map[string]any
 		if json.Unmarshal([]byte(existingData), &m) == nil {
 			duration, _ = m["duration"].(float64)
+			special, _ = m["special"].(bool)
 		}
 	}
 	if duration == 0 && durationHint > 0 {
@@ -309,11 +311,19 @@ func SetCardTimecode(ctx context.Context, deviceID int64, profileID, cardID, ite
 	if duration > 0 {
 		timeSec = duration * percent / 100
 	}
-	newData, _ := json.Marshal(map[string]any{
+	dataMap := map[string]any{
 		"time":     timeSec,
 		"duration": duration,
 		"percent":  percent,
-	})
+	}
+	// Preserve an existing manual special-mark (see MarkSpecialTimecode) — it's
+	// an orthogonal flag now, not tied to percent, so a plain progress update
+	// (including the Hero carousel's own quick-watch toggle) must not silently
+	// clear it just by rewriting this same JSON blob.
+	if special {
+		dataMap["special"] = true
+	}
+	newData, _ := json.Marshal(dataMap)
 
 	today := time.Now().Format("2006-01-02")
 	var countedAt *string
@@ -363,10 +373,32 @@ func SetCardTimecodeWatched(ctx context.Context, deviceID int64, profileID, card
 	return err
 }
 
-// MarkSpecialTimecode saves a timecode with percent=100 and special=true.
+// MarkSpecialTimecode flags an episode as "special" — a pure organizational
+// marker (e.g. "skip/not real content, but still count it as done"), not a
+// claim that it was actually watched. It deliberately does NOT force
+// percent/time to 100/0 the way it used to: whatever real progress already
+// exists (or doesn't — a fresh 0%) is preserved untouched, only "special":true
+// is added on top. Watched-style aggregates (season counts, "next unwatched",
+// catalog unwatched filters) still treat a special episode as done —
+// epIsWatched and the episodeOut.Watched field both OR in the special flag
+// independently of percent — so this stays a pure UI-and-semantics split, not
+// a functional one: special episodes are still excluded from "left to watch"
+// everywhere, they just don't lie about having a real watch time.
 // Returns the stored data JSON so the caller can broadcast it over WS.
 func MarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string) (string, error) {
-	data, _ := json.Marshal(map[string]any{"time": 0, "duration": 0, "percent": 100, "special": true})
+	var existingData string
+	postgres.Pool.QueryRow(ctx, //nolint:errcheck
+		`SELECT data FROM timecodes WHERE device_id=$1 AND profile_id=$2 AND card_id=$3 AND item=$4`,
+		deviceID, profileID, cardID, item,
+	).Scan(&existingData)
+
+	dataMap := map[string]any{"time": 0.0, "duration": 0.0, "percent": 0.0}
+	if existingData != "" {
+		json.Unmarshal([]byte(existingData), &dataMap) //nolint:errcheck
+	}
+	dataMap["special"] = true
+	data, _ := json.Marshal(dataMap)
+
 	today := time.Now().Format("2006-01-02")
 	_, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO timecodes (device_id, profile_id, card_id, item, data, counted_at, view_count)
@@ -378,20 +410,40 @@ func MarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID,
 	)
 	if err == nil {
 		notifyWatchedChanged(deviceID, profileID)
-		EnsureImpliedStatus(ctx, deviceID, profileID, cardID, 100)
 	}
 	return string(data), err
 }
 
-// UnmarkSpecialTimecode resets a special-marked timecode to percent=0. Returns
-// the stored data JSON so the caller can broadcast it over WS.
+// UnmarkSpecialTimecode removes the special flag, preserving whatever real
+// progress (if any) the episode already had — the counterpart to
+// MarkSpecialTimecode no longer clobbering that progress on the way in. If
+// there's no real progress left once the flag is gone, the row is deleted
+// entirely rather than left behind as an empty 0% stub. Returns the stored
+// data JSON (or the deleted-equivalent zero JSON) so the caller can broadcast
+// it over WS.
 func UnmarkSpecialTimecode(ctx context.Context, deviceID int64, profileID, cardID, item string) (string, error) {
-	data, _ := json.Marshal(map[string]any{"time": 0, "duration": 0, "percent": 0})
+	var existingData string
+	postgres.Pool.QueryRow(ctx, //nolint:errcheck
+		`SELECT data FROM timecodes WHERE device_id=$1 AND profile_id=$2 AND card_id=$3 AND item=$4`,
+		deviceID, profileID, cardID, item,
+	).Scan(&existingData)
+
+	dataMap := map[string]any{}
+	if existingData != "" {
+		json.Unmarshal([]byte(existingData), &dataMap) //nolint:errcheck
+	}
+	delete(dataMap, "special")
+	percent, _ := dataMap["percent"].(float64)
+
+	if percent <= 0 {
+		DeleteTimecode(ctx, deviceID, profileID, cardID, item)
+		return `{"time":0,"duration":0,"percent":0}`, nil
+	}
+
+	data, _ := json.Marshal(dataMap)
 	_, err := postgres.Pool.Exec(ctx, `
-		INSERT INTO timecodes (device_id, profile_id, card_id, item, data, counted_at, view_count)
-		VALUES ($1, $2, $3, $4, $5, NULL, 0)
-		ON CONFLICT ON CONSTRAINT uq_timecode_unique DO UPDATE
-		SET data = EXCLUDED.data, updated_at = now(), counted_at = NULL`,
+		UPDATE timecodes SET data = $5, updated_at = now()
+		WHERE device_id=$1 AND profile_id=$2 AND card_id=$3 AND item=$4`,
 		deviceID, profileID, cardID, item, string(data),
 	)
 	if err == nil {

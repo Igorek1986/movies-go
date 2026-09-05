@@ -562,7 +562,7 @@
 // name/photo moving together. Matters most at 100%, where the bar is fully
 // filled and a ring alone is easy to miss.
 .progressWrap:has(.movieBar:hover),
-.progressWrap:has(.movieBar[data-nav-item]:focus-visible) {
+.progressWrap:has(.movieBar[data-nav-item]:focus) {
   .progressLabel { color: $color-primary; }
 }
 
@@ -609,21 +609,32 @@
   overflow: hidden;
   cursor: pointer;
   user-select: none;
-  transition: height $transition-fast, box-shadow $transition-fast;
+  transition: height $transition-fast;
 
-  // overflow: hidden (above, for movieBarFill's rounded corners) clips a
-  // normal outline sitting outside the box — inset box-shadow instead, same
-  // idea as the shared [data-nav-item] focus ring elsewhere. Extra
-  // [data-nav-item] in the selector beats that shared rule's specificity
-  // regardless of source order (it's defined later in this same file).
-  // $color-text (not $color-primary) — at 100% watched the fill is already
-  // $color-primary, so a same-colored ring would disappear into it. Hover
-  // gets the same ring as focus — mouse users get the same cue keyboard
-  // users do.
+  // :focus-visible was the original choice here, but Chrome's heuristic
+  // doesn't reliably treat a scripted .focus() call (this row nav moves
+  // focus programmatically, not just via Tab) as "visible" — the ring
+  // quietly never showed up for exactly the input mode it exists for. Plain
+  // :focus instead, same fix as the Hero carousel's own card/star/bar. Two
+  // separate cues, because either alone has a blind spot: recoloring the
+  // fill reads as barely-there at 100% (already $color-primary) AND is
+  // invisible outright at 0% (no fill to color) — so a box-shadow RING on
+  // the bar itself covers both, on top of the fill recolor (kept apart from
+  // .movieBarScrubbing's primary-hover below, which specifically means
+  // "actively adjusting a pending value"). Not inset — overflow:hidden
+  // above (for movieBarFill's rounded corners) doesn't clip an element's own
+  // box-shadow, so the outset ring is unaffected and stays crisp. Extra
+  // [data-nav-item] in the selector beats the shared [data-nav-item] focus
+  // rule's specificity regardless of source order (it's defined later in
+  // this same file). Hover gets the same cue as focus — mouse users get
+  // what keyboard/remote users do.
   &:hover,
-  &[data-nav-item]:focus-visible {
+  &[data-nav-item]:focus {
     outline: none;
-    box-shadow: inset 0 0 0 2px $color-text;
+    height: 12px;
+    box-shadow: 0 0 0 2px $color-text;
+
+    .movieBarFill { background: $color-text; }
   }
 }
 
@@ -655,19 +666,29 @@
   overflow: hidden;
   cursor: pointer;
   user-select: none;
-  transition: height $transition-fast, box-shadow $transition-fast;
+  transition: height $transition-fast;
 
-  // Same reasoning as .movieBar's own focus rule — overflow:hidden (above,
-  // for iBarFill's rounded corners) clips a normal outline, inset
-  // box-shadow instead. $color-text (not $color-primary) specifically —
-  // at 100% the fill is already $color-primary, so a same-colored ring
-  // disappears into it; $color-text is chosen to read against both the
-  // dark track and a full primary-colored fill. Hover gets the same ring —
-  // mouse users get the same cue keyboard users do.
+  // :focus-visible was the original choice here, but Chrome's heuristic
+  // doesn't reliably treat a scripted .focus() call (this row nav moves
+  // focus programmatically, not just via Tab) as "visible" — the ring quietly
+  // never showed up for exactly the input mode it exists for. Plain :focus
+  // instead, same fix as the Hero carousel's own card/star/bar. Two separate
+  // cues, because either alone has a blind spot: recoloring the fill reads
+  // as barely-there at 100% (already $color-primary) AND is invisible
+  // outright at 0% (no fill to color) — so a box-shadow RING on the bar
+  // itself covers both, on top of the fill recolor (kept apart from
+  // .iBarScrubbing's primary-hover below, which specifically means
+  // "actively adjusting a pending value"). Not inset — overflow:hidden above
+  // (for iBarFill's rounded corners) doesn't clip an element's own
+  // box-shadow, so the outset ring is unaffected and stays crisp. Hover gets
+  // the same cue — mouse users get what keyboard/remote users do.
   &:hover,
-  &[data-progress-slider]:focus-visible {
+  &[data-progress-slider]:focus {
     outline: none;
-    box-shadow: inset 0 0 0 2px $color-text;
+    height: 12px;
+    box-shadow: 0 0 0 2px $color-text;
+
+    .iBarFill { background: $color-text; }
   }
 }
 
@@ -993,6 +1014,9 @@
   flex-shrink: 0;
   white-space: nowrap;
   transition: color $transition-fast;
+  // Pushes itself and everything after it (★/↩/✕) to the row's right edge —
+  // .epTitle's own min-width: 0 lets it shrink to make room instead.
+  margin-left: auto;
 }
 
 // Second, independent focus/hover cue alongside the bar's own ring (see
@@ -1058,6 +1082,24 @@
   line-height: 1;
 }
 
+// .epSpecial (unmarked) / .epUnspecial (marked) share this hover/focus
+// affordance — a faint background circle, NOT a color change. Swapping the
+// glyph color on hover used to preview "what clicking would do" (grey↔blue),
+// but with the mouse realistically sitting right on the button right after
+// a click, that swap read as "did it even change?" — worse, .epSpecial's
+// hover-to-primary and .epUnspecial's own rest-primary look IDENTICAL, so
+// the one moment you'd actually check (cursor still there, just clicked)
+// was exactly when color couldn't tell you anything. Color now always means
+// the same thing regardless of hover/focus — this circle is purely "this is
+// interactive/focused", same idea as the Hero carousel's own star fix.
+@mixin ep-special-btn-affordance {
+  &:hover, &:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 50%;
+  }
+}
+
 .epSpecial {
   background: none;
   border: none;
@@ -1067,8 +1109,7 @@
   padding: 0 2px;
   line-height: 1;
   flex-shrink: 0;
-  transition: color $transition-fast;
-  &:hover { color: $color-primary; }
+  @include ep-special-btn-affordance;
 }
 
 .epUnspecial {
@@ -1080,8 +1121,7 @@
   padding: 0 2px;
   line-height: 1;
   flex-shrink: 0;
-  transition: color $transition-fast;
-  &:hover { color: $color-text-muted; }
+  @include ep-special-btn-affordance;
 }
 
 .epDelete {
@@ -1140,9 +1180,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-// Same non-interactive prev/next hint as .categoryTitleNeighbor in Catalog —
-// left/right instead of stacked above/below.
+// Same prev/next hint as .categoryTitleNeighbor in Catalog — left/right
+// instead of stacked above/below. A real <button> when a neighbor exists
+// (see HeroEpisodesCarousel) — the season switcher for touch, which has
+// neither a wheel nor arrow keys — so reset all button chrome back to this
+// same plain-text look, only adding a hover/focus cue.
 .heroSeasonTitleNeighbor {
+  font: inherit;
   font-size: $font-size-sm;
   color: $color-text-muted;
   opacity: 0.6;
@@ -1150,6 +1194,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: default;
+
+  &:is(button) {
+    cursor: pointer;
+    transition: opacity $transition-fast, color $transition-fast;
+
+    &:hover, &:focus {
+      outline: none;
+      opacity: 1;
+      color: $color-primary;
+    }
+  }
 }
 
 // Same clipping trick as Catalog's .carouselViewport — position:relative +
@@ -1209,7 +1268,13 @@
   width: 260px;
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
+  // No gap here — a flex gap belongs to the container, not to either
+  // neighbor, so a click landing exactly in it fell through to this card's
+  // own onClick (the quick watched/unwatched toggle) instead of reaching
+  // .heroEpBar or .heroEpMeta right next to it. .heroEpBar's own
+  // margin-top below reproduces the same spacing above it, but .heroEpBar
+  // and .heroEpMeta now sit flush against each other — no dead strip
+  // between the two areas that ARE supposed to open TimePicker.
   cursor: pointer;
 
   // Same reasoning as .similarCard — the image's own rounded corners
@@ -1230,7 +1295,7 @@
   border-radius: $radius-md;
   overflow: hidden;
   background: $color-bg-input;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
   transition: border-color $transition-fast;
 
   .heroEpCard:hover &,
@@ -1296,7 +1361,25 @@
   line-height: 1;
   transition: color $transition-fast;
 
-  &:hover { color: $color-primary; }
+  // Reachable via the card's own ArrowDown (see HeroEpisodesCarousel) — the
+  // browser's default focus ring on a small round button read as a stray
+  // white circle instead of a cue about the star itself; filling the glyph
+  // (same as hover) reads clearly at this size instead.
+  &:hover, &:focus { outline: none; color: $color-primary; }
+}
+
+// Modifier for the ★ (marked) variant — same base .heroEpStarBtn otherwise,
+// but at rest it needs to actually look marked (permanently primary, like
+// the classic list's own .epUnspecial and the fixed .heroEpStarBadge below),
+// not just on hover/focus like the unmarked ☆ — those were sharing the same
+// dim idle color, so a freshly-marked episode looked no different from an
+// unmarked one until the mouse/focus happened to land on it. Hover/focus
+// dims it instead (mirrors .epUnspecial) — "unlike its neighbor, THIS one
+// fades on interaction" reads as "interacting will remove the mark".
+.heroEpStarBtnMarked {
+  color: $color-primary;
+
+  &:hover, &:focus { outline: none; color: rgba(255, 255, 255, 0.7); }
 }
 
 .heroEpStarBadge {
@@ -1313,12 +1396,47 @@
   line-height: 1;
 }
 
+// .heroEpBar is the clickable hit area (tall enough for touch — a 3px line
+// alone is unusable on a phone) — .heroEpBarTrack inside it is the actual
+// thin visual line, vertically centered.
 .heroEpBar {
   position: relative;
+  height: 18px;
+  margin-top: $spacing-xs;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  outline: none;
+
+  // Reachable via Down/Down from the card (see onStarKeyDown in
+  // HeroEpisodesCarousel). Two separate cues, because either alone has a
+  // blind spot: recoloring the fill reads as barely-there at 100% (already
+  // $color-primary) AND is invisible outright at 0% (no fill to color, e.g.
+  // an episode with no timecode yet) — so a box-shadow RING on the track
+  // itself covers both, on top of the fill recolor (kept apart from
+  // .heroEpBarScrubbing below, which specifically means "actively adjusting
+  // a pending value"). Not inset — overflow:hidden on the track (for the
+  // fill's rounded corners) doesn't clip an element's own box-shadow, so the
+  // outset ring is unaffected and stays crisp.
+  &:hover .heroEpBarTrack,
+  &:focus .heroEpBarTrack {
+    height: 5px;
+    box-shadow: 0 0 0 2px $color-text;
+  }
+  &:hover .heroEpBarFill,
+  &:focus .heroEpBarFill {
+    background: $color-text;
+  }
+}
+
+.heroEpBarTrack {
+  position: relative;
+  width: 100%;
   height: 3px;
   border-radius: $radius-full;
   background: $color-border;
   overflow: hidden;
+  transition: height $transition-fast;
 }
 
 .heroEpBarFill {
@@ -1326,7 +1444,14 @@
   inset: 0 auto 0 0;
   background: $color-primary;
   border-radius: $radius-full;
-  transition: width $transition-fast;
+  transition: width 0.15s ease, background $transition-fast;
+}
+
+// Actively being scrubbed via keyboard (Left/Right) — taller + brighter
+// fill while a preview is pending, mirrors .iBarScrubbing/.movieBarScrubbing.
+.heroEpBarScrubbing {
+  .heroEpBarTrack { height: 5px; }
+  .heroEpBarFill { background: $color-primary-hover; }
 }
 
 .heroEpMeta {
@@ -1334,6 +1459,20 @@
   align-items: baseline;
   justify-content: space-between;
   gap: $spacing-xs;
+  cursor: pointer;
+}
+
+// Always shown (see renderEpisodeCard) — clamped to 2 lines so every card in
+// the row keeps the same height regardless of how long TMDB's synopsis is.
+.heroEpOverview {
+  margin: $spacing-xs 0 0;
+  color: $color-text-muted;
+  font-size: $font-size-xs;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .heroEpTitle {

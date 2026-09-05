@@ -128,26 +128,27 @@ func GetVideoDetails(isMovie bool, id int64) *models.Entity {
 	return ent
 }
 
-// GetSeasonStills fetches per-episode still_path for one season via TMDB's
-// /tv/{id}/season/{season_number} endpoint (not used anywhere else — episode
-// data itself comes from MyShows, which doesn't provide episode images).
-// Returns episode_number → still_path ("" when TMDB has no still for that
-// episode), or nil on any request error — callers should leave still_path
+// GetSeasonEpisodeInfo fetches per-episode still_path/overview for one
+// season via TMDB's /tv/{id}/season/{season_number} endpoint (not used
+// anywhere else — episode data itself comes from MyShows, which provides
+// neither). Returns episode_number → info ("" fields when TMDB has none for
+// that episode), or nil on any request error — callers should leave both
 // unset and retry on a later call.
-func GetSeasonStills(tmdbShowID int64, season int) map[int]string {
+func GetSeasonEpisodeInfo(tmdbShowID int64, season int) map[int]store.EpisodeSeasonInfo {
 	var details struct {
 		Episodes []struct {
 			EpisodeNumber int    `json:"episode_number"`
 			StillPath     string `json:"still_path"`
+			Overview      string `json:"overview"`
 		} `json:"episodes"`
 	}
 	path := "tv/" + strconv.FormatInt(tmdbShowID, 10) + "/season/" + strconv.Itoa(season)
 	if err := readPageTmdb(path, map[string]string{"language": "ru"}, &details); err != nil {
 		return nil
 	}
-	out := make(map[int]string, len(details.Episodes))
+	out := make(map[int]store.EpisodeSeasonInfo, len(details.Episodes))
 	for _, e := range details.Episodes {
-		out[e.EpisodeNumber] = e.StillPath
+		out[e.EpisodeNumber] = store.EpisodeSeasonInfo{StillPath: e.StillPath, Overview: e.Overview}
 	}
 	return out
 }

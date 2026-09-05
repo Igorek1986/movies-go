@@ -589,8 +589,13 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS theme VARCHAR(10);
 
 -- Migration: per-episode TMDB still (thumbnail) image, backfilled lazily in
 -- the background from TMDB's /tv/{id}/season/{n} endpoint (MyShows sync
--- never provides an episode image) — see bgBackfillEpisodeStills.
+-- never provides an episode image) — see bgBackfillEpisodeInfo.
 -- NULL = never checked yet; '' = checked, TMDB has no still for this
 -- episode; non-empty = a bare TMDB path (routed through /imgproxy like any
 -- other poster/backdrop, no extra backend work needed for serving it).
 ALTER TABLE episodes ADD COLUMN IF NOT EXISTS still_path VARCHAR(200);
+
+-- Migration: per-episode TMDB synopsis, backfilled in the same pass as
+-- still_path above (same TMDB endpoint returns both per episode) — same
+-- NULL/''/non-empty sentinel meaning.
+ALTER TABLE episodes ADD COLUMN IF NOT EXISTS overview TEXT;

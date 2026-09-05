@@ -18,8 +18,20 @@ type EpisodeRow struct {
 	Hash        string
 	AirDate     *time.Time
 	// StillPath: nil = never checked against TMDB yet, "" = checked, TMDB
-	// has none, non-empty = a bare TMDB path. See SetEpisodeStills.
+	// has none, non-empty = a bare TMDB path. See SetEpisodeSeasonInfo.
 	StillPath *string
+	// Overview: same nil/""/non-empty sentinel as StillPath — backfilled in
+	// the same TMDB call (the season endpoint returns both per episode).
+	Overview *string
+}
+
+// EpisodeSeasonInfo is what TMDB's /tv/{id}/season/{n} returns per episode
+// that we care about — defined here (not in movies/tmdb) so that package can
+// import db/store (it already does, for other TMDB→DB writes) without a
+// cycle.
+type EpisodeSeasonInfo struct {
+	StillPath string
+	Overview  string
 }
 
 // MediaCardEpInfo holds data needed to drive MyShows episode sync.
@@ -73,7 +85,7 @@ func HasEpisodes(ctx context.Context, tmdbShowID int64) bool {
 // GetEpisodes returns all episodes for a TMDB show ordered by season, episode.
 func GetEpisodes(ctx context.Context, tmdbShowID int64) []EpisodeRow {
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT season, episode, title, duration_sec, is_special, COALESCE(hash,''), air_date, still_path
+		SELECT season, episode, title, duration_sec, is_special, COALESCE(hash,''), air_date, still_path, overview
 		FROM episodes WHERE tmdb_show_id = $1
 		ORDER BY season, episode`, int32(tmdbShowID))
 	if err != nil {
@@ -86,7 +98,7 @@ func GetEpisodes(ctx context.Context, tmdbShowID int64) []EpisodeRow {
 		var ep EpisodeRow
 		if err := rows.Scan(
 			&ep.Season, &ep.Episode, &ep.Title, &ep.DurationSec,
-			&ep.IsSpecial, &ep.Hash, &ep.AirDate, &ep.StillPath,
+			&ep.IsSpecial, &ep.Hash, &ep.AirDate, &ep.StillPath, &ep.Overview,
 		); err == nil {
 			result = append(result, ep)
 		}
@@ -94,28 +106,30 @@ func GetEpisodes(ctx context.Context, tmdbShowID int64) []EpisodeRow {
 	return result
 }
 
-// SetEpisodeStills persists TMDB's still_path per episode for one season
-// (episode_number → path, "" meaning TMDB has none). Any local episode in
-// that season not covered by TMDB's response is also stamped with '' in the
-// same transaction, so a mismatched/renumbered episode (e.g. a MyShows-only
-// special) doesn't get re-queried against TMDB on every future view.
-func SetEpisodeStills(ctx context.Context, tmdbShowID int64, season int16, stills map[int]string) error {
+// SetEpisodeSeasonInfo persists TMDB's still_path/overview per episode for
+// one season (episode_number → info, "" meaning TMDB has none/empty). Any
+// local episode in that season not covered by TMDB's response is also
+// stamped with '' for both in the same transaction, so a mismatched/
+// renumbered episode (e.g. a MyShows-only special) doesn't get re-queried
+// against TMDB on every future view.
+func SetEpisodeSeasonInfo(ctx context.Context, tmdbShowID int64, season int16, info map[int]EpisodeSeasonInfo) error {
 	tx, err := postgres.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	for epNum, path := range stills {
+	for epNum, v := range info {
 		if _, err := tx.Exec(ctx,
-			`UPDATE episodes SET still_path=$4 WHERE tmdb_show_id=$1 AND season=$2 AND episode=$3`,
-			tmdbShowID, season, epNum, path,
+			`UPDATE episodes SET still_path=$4, overview=$5 WHERE tmdb_show_id=$1 AND season=$2 AND episode=$3`,
+			tmdbShowID, season, epNum, v.StillPath, v.Overview,
 		); err != nil {
-			return fmt.Errorf("set still s%de%d: %w", season, epNum, err)
+			return fmt.Errorf("set season info s%de%d: %w", season, epNum, err)
 		}
 	}
 	if _, err := tx.Exec(ctx,
-		`UPDATE episodes SET still_path='' WHERE tmdb_show_id=$1 AND season=$2 AND still_path IS NULL`,
+		`UPDATE episodes SET still_path=COALESCE(still_path,''), overview=COALESCE(overview,'')
+		 WHERE tmdb_show_id=$1 AND season=$2 AND (still_path IS NULL OR overview IS NULL)`,
 		tmdbShowID, season,
 	); err != nil {
 		return err

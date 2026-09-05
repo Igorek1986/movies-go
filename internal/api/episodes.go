@@ -62,7 +62,7 @@ func handleEpisodes(w http.ResponseWriter, r *http.Request) {
 	// Try episodes table first
 	dbEps := store.GetEpisodes(ctx, mc.TmdbID)
 	if len(dbEps) > 0 {
-		go bgBackfillEpisodeStills(mc.TmdbID, dbEps)
+		go bgBackfillEpisodeInfo(mc.TmdbID, dbEps)
 		JSON(w, http.StatusOK, buildFromTable(ctx, mc, dbEps, timecodeData, includeSpecials))
 		return
 	}
@@ -181,17 +181,18 @@ func bgRefreshEpisodes(cardID string) {
 	}
 }
 
-// bgBackfillEpisodeStills fetches missing TMDB episode-still images for every
-// season that has at least one still_path still NULL. Self-limiting: once a
-// season is fully backfilled (a real path or the '' sentinel), this is a
-// no-op on every later view — no separate "already synced" timestamp needed.
-// Fire-and-forget from handleEpisodes, never on the response's critical path
-// — readPageTmdb can block for up to ~50s on repeated TMDB errors (5 retries
-// × 10s), which the page's own !episodesLoaded gate can't afford to wait on.
-func bgBackfillEpisodeStills(tmdbShowID int64, eps []store.EpisodeRow) {
+// bgBackfillEpisodeInfo fetches missing TMDB episode still_path/overview for
+// every season that has at least one of either still NULL. Self-limiting:
+// once a season is fully backfilled (a real value or the '' sentinel for
+// both), this is a no-op on every later view — no separate "already synced"
+// timestamp needed. Fire-and-forget from handleEpisodes, never on the
+// response's critical path — readPageTmdb can block for up to ~50s on
+// repeated TMDB errors (5 retries × 10s), which the page's own
+// !episodesLoaded gate can't afford to wait on.
+func bgBackfillEpisodeInfo(tmdbShowID int64, eps []store.EpisodeRow) {
 	seasons := map[int16]bool{}
 	for _, ep := range eps {
-		if ep.StillPath == nil {
+		if ep.StillPath == nil || ep.Overview == nil {
 			seasons[ep.Season] = true
 		}
 	}
@@ -201,12 +202,12 @@ func bgBackfillEpisodeStills(tmdbShowID int64, eps []store.EpisodeRow) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	for sn := range seasons {
-		stills := tmdb.GetSeasonStills(tmdbShowID, int(sn))
-		if stills == nil {
+		info := tmdb.GetSeasonEpisodeInfo(tmdbShowID, int(sn))
+		if info == nil {
 			continue // TMDB error — leave NULL, retry on a later view
 		}
-		if err := store.SetEpisodeStills(ctx, tmdbShowID, sn, stills); err != nil {
-			log.Printf("episodes: backfill stills s%d show=%d: %v", sn, tmdbShowID, err)
+		if err := store.SetEpisodeSeasonInfo(ctx, tmdbShowID, sn, info); err != nil {
+			log.Printf("episodes: backfill info s%d show=%d: %v", sn, tmdbShowID, err)
 		}
 	}
 }
@@ -272,6 +273,7 @@ type episodeOut struct {
 	DurationSec    *int    `json:"duration_sec,omitempty"`
 	AirDate        *string `json:"air_date,omitempty"`
 	StillPath      *string `json:"still_path,omitempty"`
+	Overview       *string `json:"overview,omitempty"`
 }
 
 func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[string]timecodeInfo, includeSpecials bool) map[string]any {
@@ -304,6 +306,10 @@ func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.
 		if ep.StillPath != nil && *ep.StillPath != "" {
 			stillPath = ep.StillPath
 		}
+		var overview *string
+		if ep.Overview != nil && *ep.Overview != "" {
+			overview = ep.Overview
+		}
 		out = append(out, episodeOut{
 			Season:         ep.Season,
 			Episode:        ep.Episode,
@@ -317,6 +323,7 @@ func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.
 			DurationSec:    durSec,
 			AirDate:        airStr,
 			StillPath:      stillPath,
+			Overview:       overview,
 		})
 	}
 	if out == nil {
