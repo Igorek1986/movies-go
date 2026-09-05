@@ -100,17 +100,27 @@ func RunRefreshCards(parentCtx context.Context) {
 		ageDays = 30
 	}
 
-	// Новые карточки: вышли за последние newYearDelta лет — обновляем ежедневно.
-	// Старые карточки: batch из oldBatch штук, ротация по tmdb_updated_at ASC.
+	// Новые карточки: вышли за последние newYearDelta лет, ИЛИ сериал всё ещё
+	// снимается (status) независимо от даты старта — у него first_air_date это
+	// дата ПЕРВОЙ серии, а не текущей активности, и именно у таких чаще всего
+	// меняются данные (новые сезоны/серии, дата следующей серии, статус).
+	// Обновляем ежедневно. Старые карточки: batch из oldBatch штук, ротация по
+	// tmdb_updated_at ASC.
 	rows, err := postgres.Pool.Query(ctx, `
+		WITH classified AS (
+			SELECT card_id, tmdb_id, media_type, tmdb_updated_at,
+			       (COALESCE(release_date, first_air_date) > now() - ($1 * interval '1 year')
+			        OR (media_type = 'tv' AND status IN ('Returning Series', 'In Production', 'Pilot'))
+			       ) AS is_new
+			FROM media_cards
+		)
 		SELECT card_id, tmdb_id, media_type FROM (
-			SELECT card_id, tmdb_id, media_type, tmdb_updated_at FROM media_cards
-			WHERE COALESCE(release_date, first_air_date) > now() - ($1 * interval '1 year')
+			SELECT card_id, tmdb_id, media_type, tmdb_updated_at FROM classified
+			WHERE is_new
 			  AND (tmdb_updated_at IS NULL OR tmdb_updated_at < now() - interval '1 day')
 			UNION ALL
-			SELECT card_id, tmdb_id, media_type, tmdb_updated_at FROM media_cards
-			WHERE (COALESCE(release_date, first_air_date) IS NULL
-			    OR COALESCE(release_date, first_air_date) <= now() - ($1 * interval '1 year'))
+			SELECT card_id, tmdb_id, media_type, tmdb_updated_at FROM classified
+			WHERE NOT is_new
 			  AND (tmdb_updated_at IS NULL OR tmdb_updated_at < now() - ($2 * interval '1 day'))
 		) t
 		ORDER BY tmdb_updated_at ASC NULLS FIRST
