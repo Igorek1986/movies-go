@@ -2477,7 +2477,11 @@ export default function CardDetailPage() {
         )}
 
         {/* ── TV Episode List ── */}
-        {isTV && (!!apiEpisodes || (card.seasons && card.seasons.length > 0) || card.number_of_seasons > 0) && (
+        {/* Hero layout has its own carousel above (HeroEpisodesCarousel,
+            rendered near the top of the page) — this full accordion list is
+            classic-layout only now, otherwise both showed the same episodes
+            twice on the same page. */}
+        {cardLayout !== 'hero' && isTV && (!!apiEpisodes || (card.seasons && card.seasons.length > 0) || card.number_of_seasons > 0) && (
           <TvEpisodeList
             card={card}
             tcMap={tcMap}
