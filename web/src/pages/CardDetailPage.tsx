@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { invalidateCatalogRowsForWatchedFilter } from '@/utils/rowCacheSync'
 import { getWebClientId, subscribeLiveSync } from '@/hooks/useLiveSync'
-import { CAROUSEL_TRANSITION_MS, CATEGORY_WHEEL_COOLDOWN_MS } from '@/utils/scrollNav'
+import { CAROUSEL_TRANSITION_MS, CATEGORY_WHEEL_COOLDOWN_MS, scrollH } from '@/utils/scrollNav'
 import styles from './CardDetailPage.module.scss'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -662,39 +662,89 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
 
 // Hero-layout companion to TvEpisodeList above — a season/episode carousel
 // (posters from TMDB still_path, latest episodes first) instead of the
-// classic accordion list. Deliberately API-only (no card.seasons fallback,
-// no season-0 stub mode): without apiEpisodes there's no hash/still_path per
-// episode to drive it, and the classic list below still covers that case.
+// classic accordion list. Mirrors TvEpisodeList's own dual-mode split: real
+// per-episode data (title/hash/still_path) once apiEpisodes arrives from
+// MyShows, but a stub built straight from card.seasons/number_of_seasons
+// (episodeItem() hash, no title/image) so the block appears immediately
+// instead of staying blank until the MyShows sync round-trip completes —
+// same reasoning TvEpisodeList already relies on. tcMap lookups still work
+// on the stub (episodeItem() is the same canonical hash used everywhere
+// else), so watched state — and the auto-selected season/episode — is
+// already accurate even before the real list replaces it.
 function HeroEpisodesCarousel({
   card, apiEpisodes, tcMap, defaultProfileId, epDurSec, timecodesLoaded, episodesFinal, epIsWatched,
-  onQuickMark, onQuickUnmark, onMarkSpecial, onUnmarkSpecial,
+  rowFocusIdx, onQuickMark, onQuickUnmark, onMarkSpecial, onUnmarkSpecial,
 }: {
   card: CardDetail
-  apiEpisodes: EpisodeData[]
+  apiEpisodes: EpisodeData[] | null
   tcMap: Record<string, CardTimecode>
   defaultProfileId: string
   epDurSec: number
   timecodesLoaded: boolean
   episodesFinal: boolean
   epIsWatched: (ep: EpisodeData) => boolean
+  // Same row-focus memory the page's own Up/Down-between-rows handler reads
+  // (see CardDetailPage's own rowFocusIdx/focusRow) — seeded here so that
+  // when keyboard navigation first ARRIVES at this row it lands on "the next
+  // episode to watch" instead of defaulting to index 0 (the latest episode,
+  // leftmost in reverse-chronological order). Deliberately not a plain
+  // .focus() call on mount: opening the card must leave focus wherever the
+  // page normally starts (see CardDetailPage's own hero/status area) — this
+  // only takes effect once the user actually navigates into the row.
+  rowFocusIdx: React.MutableRefObject<Map<string, number>>
   onQuickMark: (ep: EpisodeData, profileId: string) => void
   onQuickUnmark: (ep: EpisodeData, profileId: string) => void
   onMarkSpecial: (item: string, profileId: string) => void
   onUnmarkSpecial: (item: string, profileId: string) => void
 }) {
+  // Stub fallback (apiEpisodes === null) — same source TvEpisodeList's own
+  // non-API branch uses (card.seasons, falling back to a numberOfSeasons
+  // stub with no per-season episode count). No title/still_path available
+  // yet, but the hash is the real, canonical one (episodeItem() — the same
+  // hash Lampa/np.js writes timecodes under), so tcMap-driven watched state
+  // is already correct.
+  const effectiveEpisodes = useMemo<EpisodeData[]>(() => {
+    if (apiEpisodes) return apiEpisodes
+    const seasonsFromCard = (card.seasons ?? [])
+      .filter(s => s.episode_count > 0)
+      .sort((a, b) => a.season_number - b.season_number)
+    const seasonNumbers = seasonsFromCard.length > 0
+      ? seasonsFromCard.map(s => s.season_number)
+      : (card.number_of_seasons > 0 ? Array.from({ length: card.number_of_seasons }, (_, i) => i + 1) : [])
+    const out: EpisodeData[] = []
+    for (const sn of seasonNumbers) {
+      const count = seasonsFromCard.find(s => s.season_number === sn)?.episode_count ?? 0
+      for (let ep = 1; ep <= count; ep++) {
+        out.push({
+          season: sn, episode: ep, title: null,
+          hash: episodeItem(sn, ep, card.original_title),
+          watched: false, special: false, user_special: false, catalog_special: false,
+          percent: 0, duration_sec: null, future: false, air_date: null, still_path: null,
+        })
+      }
+    }
+    return out
+  }, [apiEpisodes, card.seasons, card.number_of_seasons, card.original_title])
+
   const seasonGroups = useMemo(() => {
     const m = new Map<number, EpisodeData[]>()
-    for (const ep of apiEpisodes) {
+    for (const ep of effectiveEpisodes) {
       if (!m.has(ep.season)) m.set(ep.season, [])
       m.get(ep.season)!.push(ep)
     }
     return Array.from(m.entries()).sort(([a], [b]) => a - b)
-  }, [apiEpisodes])
+  }, [effectiveEpisodes])
 
   // Index into seasonGroups, not a season number — switchSeason below just
   // steps it by ±1, same idea as CatalogPage's activeCategoryIndex.
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
   const autoSelectedRef = useRef(false)
+  // Hash of the episode to land keyboard focus on once the auto-selected
+  // season's row renders — the first unwatched regular episode in it
+  // (chronological, ascending), i.e. "the next one to watch". Consumed by
+  // the focus effect below, same as pendingEdgeFocusRef but for the initial
+  // pick rather than a manual season switch.
+  const pendingFocusHashRef = useRef<string | null>(null)
 
   // Same rule as TvEpisodeList's own auto-expand effect: first season (in
   // order, excluding specials) with an unwatched regular episode is "the one
@@ -708,19 +758,43 @@ function HeroEpisodesCarousel({
   // the real, complete episode list arrives a moment later.
   useEffect(() => {
     if (autoSelectedRef.current) return
-    if (!timecodesLoaded || !episodesFinal || seasonGroups.length === 0) return
-    autoSelectedRef.current = true
+    if (!timecodesLoaded || seasonGroups.length === 0) return
+    // Provisional (stub) picks keep re-running on every relevant change
+    // until the real episode list is confirmed final — same reasoning
+    // episodesFinal exists for at all: locking in off a stub built from
+    // card.seasons (or, once apiEpisodes lands, off a still-provisional
+    // myshows sync) risks the exact "picked the wrong season and never
+    // revisits it" bug fixed above. switchSeason marks this ref true
+    // directly the moment the user manually changes season, so a later
+    // real-data update never yanks their choice back out from under them.
+    const isFinal = apiEpisodes ? episodesFinal : false
     for (let i = 0; i < seasonGroups.length; i++) {
       const [sn, eps] = seasonGroups[i]
       if (sn === 0) continue
       const regular = eps.filter(ep => !ep.catalog_special)
       if (regular.length === 0) continue
-      if (regular.some(ep => !epIsWatched(ep))) { setActiveIdx(i); return }
+      const nextUp = regular.filter(ep => !epIsWatched(ep)).sort((a, b) => a.episode - b.episode)[0]
+      if (nextUp) {
+        // Seed the page's own row-focus memory (same map its Up/Down-between-
+        // rows handler reads) with this row's DOM index for "the next
+        // episode to watch" — [data-nav-item] excludes catalog specials, so
+        // the index has to be computed over that same filtered, reverse-
+        // sorted list to line up with what the keyboard handler will
+        // actually focus once the user navigates into this row.
+        const navigable = [...eps].sort((a, b) => b.episode - a.episode).filter(ep => !ep.catalog_special)
+        const domIdx = navigable.findIndex(ep => ep.hash === nextUp.hash)
+        if (domIdx !== -1) rowFocusIdx.current.set(`hero-eps-${sn}`, domIdx)
+        pendingFocusHashRef.current = nextUp.hash
+        setActiveIdx(i)
+        if (isFinal) autoSelectedRef.current = true
+        return
+      }
     }
     let lastReal = -1
     for (let i = 0; i < seasonGroups.length; i++) if (seasonGroups[i][0] !== 0) lastReal = i
     setActiveIdx(lastReal !== -1 ? lastReal : seasonGroups.length - 1)
-  }, [seasonGroups, timecodesLoaded, episodesFinal, epIsWatched])
+    if (isFinal) autoSelectedRef.current = true
+  }, [seasonGroups, timecodesLoaded, episodesFinal, epIsWatched, apiEpisodes, rowFocusIdx])
 
   // Season switch — same drum-slide carousel as Catalog's switchCategory
   // (CatalogPage.tsx), ported to Left/Right (see onEpRowKeyDown/onWheel
@@ -739,6 +813,10 @@ function HeroEpisodesCarousel({
       if (idx === null) return idx
       const next = idx + dir
       if (next < 0 || next >= seasonGroups.length) return idx
+      // A manual switch means the user has taken over — a still-provisional
+      // stub/myshows-sync update landing later must never override this
+      // choice (see the auto-select effect's own isFinal reasoning above).
+      autoSelectedRef.current = true
       if (focusEdge) pendingEdgeFocusRef.current = dir
       setTransition({ prevIdx: idx, dir })
       if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current)
@@ -754,23 +832,55 @@ function HeroEpisodesCarousel({
     if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current)
   }, [])
 
-  // After a keyboard-edge-triggered season switch, land focus on the new
-  // row's first (arrived via Right/next) or last (via Left/prev) card —
-  // "keep moving in the same direction" instead of losing focus entirely.
+  // Two reasons this effect can need to touch the (new) row once it renders:
+  // the initial auto-select landing on "the next episode to watch"
+  // (pendingFocusHashRef) — scrolled into view only, deliberately NOT
+  // focused: opening the card must leave keyboard focus wherever the page
+  // normally starts (see CardDetailPage's own hero/status area), the row's
+  // remembered position (rowFocusIdx, seeded above) is what makes keyboard
+  // nav land there once the user actually navigates into this row — or a
+  // keyboard-edge-triggered season switch, which DOES move focus, landing on
+  // the new row's first (arrived via Right/next) or last (via Left/prev)
+  // card, "keep moving in the same direction" instead of losing focus
+  // entirely (that one starts already mid-keyboard-navigation, unlike the
+  // initial pick). preventScroll — the page itself shouldn't jump; scrollH
+  // (horizontal-only, scoped to the row's own [data-row-scroll]) is what
+  // actually brings the target into view instead.
   useEffect(() => {
+    const row = currentRowRef.current
+    if (!row) return
+
+    const hash = pendingFocusHashRef.current
+    if (hash !== null) {
+      pendingFocusHashRef.current = null
+      const target = row.querySelector<HTMLElement>(`[data-ep-hash="${CSS.escape(hash)}"]`)
+      if (target) scrollH(target, true)
+      return
+    }
+
     const dir = pendingEdgeFocusRef.current
     if (dir === null) return
     pendingEdgeFocusRef.current = null
-    const row = currentRowRef.current
-    if (!row) return
+    // Focus moves immediately — it doesn't depend on layout, and deferring
+    // it left a ~CAROUSEL_TRANSITION_MS window where nothing in this row
+    // held focus (the old row's focused card had just been unmounted, since
+    // its DOM node isn't reused across a season switch — see ep.hash as the
+    // React key), silently swallowing any keypress that landed during it
+    // (e.g. holding the arrow key to jump several seasons only ever
+    // advanced by one). scrollH is the one that has to wait: it measures
+    // live layout via getBoundingClientRect(), which mid-transform (the
+    // drum-slide CSS animation this same switchSeason call just started)
+    // reports a transform-skewed position — computing the row's scrollLeft
+    // from that settles it at the wrong offset once the animation ends,
+    // clipping the focused card against the row's own edge instead of
+    // centering it (what actually read as the card being "shifted").
     const items = Array.from(row.querySelectorAll<HTMLElement>('[data-nav-item]'))
     const target = dir > 0 ? items[0] : items[items.length - 1]
-    // preventScroll — the page itself shouldn't jump; the row's own
-    // horizontal scroll still needs to bring the newly-focused card into
-    // view (it starts scrolled to the OLD season's position otherwise).
-    // block: 'nearest' keeps this purely horizontal.
     target?.focus({ preventScroll: true })
-    target?.scrollIntoView({ inline: 'center', block: 'nearest' })
+    const t = window.setTimeout(() => {
+      if (target) scrollH(target, true)
+    }, CAROUSEL_TRANSITION_MS)
+    return () => window.clearTimeout(t)
   }, [activeIdx])
 
   // Mouse wheel over the block switches season, same as Catalog's category
@@ -848,8 +958,15 @@ function HeroEpisodesCarousel({
 
     return (
       <div
-        key={ep.episode}
+        // ep.hash, not ep.episode — the episode NUMBER resets every season
+        // (S01E10 and S02E10 both key as "10"), so keying by it let React
+        // reuse the same DOM node (focus/hover state and all) across a
+        // season switch instead of mounting a fresh card — the focus ring
+        // would then visibly land on the wrong card after switching season.
+        // hash is unique across the whole show.
+        key={ep.hash}
         className={`${styles.heroEpCard}${watched ? ' ' + styles.heroEpCardWatched : ''}`}
+        data-ep-hash={ep.hash}
         data-nav-item={isCatalogSpecial ? undefined : true}
         tabIndex={isCatalogSpecial ? undefined : 0}
         role={isCatalogSpecial ? undefined : 'button'}
@@ -962,7 +1079,7 @@ export default function CardDetailPage() {
   const preview = (location.state as { preview?: { poster_path?: string | null; backdrop_path?: string | null } } | null)?.preview
   const cardLayout = resolveCardLayout(user?.card_layout)
 
-  const { activeDevice, activeProfile } = useActiveProfile()
+  const { activeDevice, activeProfile, loaded: profileLoaded } = useActiveProfile()
 
   const [card,         setCard]        = useState<CardDetail | null>(null)
   const [cast,         setCast]        = useState<CastMember[]>([])
@@ -1328,16 +1445,28 @@ export default function CardDetailPage() {
   // Reload timecodes when active device changes
   useEffect(() => {
     if (!cardId) return
+    // Wait for ActiveProfileContext's own initial fetch before treating
+    // "no activeDevice" as final — it starts null on every mount regardless
+    // of whether a device is actually linked, so reading it before `loaded`
+    // is true can't tell "genuinely no device" apart from "context hasn't
+    // resolved yet". Deciding on that early false reading meant
+    // HeroEpisodesCarousel's auto-select effect (gated on timecodesLoaded)
+    // could see an empty tcMap and pick an already-watched episode as "next
+    // unwatched" — the decision then stayed locked in (its own guard fires
+    // only once) even after the real timecodes arrived a moment later.
+    if (!profileLoaded) return
     // No device linked at all — there's nothing to fetch, and the reveal
     // gate below would otherwise wait on this forever.
     if (!activeDevice) { setTimecodesLoaded(true); return }
     loadTimecodes(cardId, activeDevice.id)
-  }, [cardId, activeDevice?.id, loadTimecodes])
+  }, [cardId, activeDevice?.id, profileLoaded, loadTimecodes])
 
   // Subjective status ("Моё") — Смотрю/Буду смотреть/Брошено/Не смотрю for
   // TV, Просмотрел/Буду смотреть/Брошено/Не смотрю for movies.
   useEffect(() => {
     if (!cardId) return
+    // Same profileLoaded reasoning as the timecodes effect above.
+    if (!profileLoaded) return
     // No device/profile — nothing to fetch, and the reveal gate below would
     // otherwise wait on this forever.
     if (!activeDevice || !defaultProfileId) { setWatchStatusLoaded(true); return }
@@ -1347,7 +1476,7 @@ export default function CardDetailPage() {
       .then(d => setWatchStatus(d.status || ''))
       .catch(() => {})
       .finally(() => setWatchStatusLoaded(true))
-  }, [cardId, activeDevice, defaultProfileId])
+  }, [cardId, activeDevice, defaultProfileId, profileLoaded])
 
   // Живое обновление, пока эта же карточка открыта и статус/таймкод меняют
   // где-то ещё (другое Lampa-устройство, веб на другой вкладке) — без этого
@@ -2041,7 +2170,7 @@ export default function CardDetailPage() {
               {tagsRow}
               {genresRow}
               {statusLines}
-              {isTV && apiEpisodes && (
+              {isTV && (!!apiEpisodes || (card.seasons && card.seasons.length > 0) || card.number_of_seasons > 0) && (
                 <HeroEpisodesCarousel
                   card={card}
                   apiEpisodes={apiEpisodes}
@@ -2051,6 +2180,7 @@ export default function CardDetailPage() {
                   timecodesLoaded={timecodesLoaded}
                   episodesFinal={episodesFinal}
                   epIsWatched={epIsWatched}
+                  rowFocusIdx={rowFocusIdx}
                   onQuickMark={quickMarkWatched}
                   onQuickUnmark={quickUnmarkWatched}
                   onMarkSpecial={markSpecial}

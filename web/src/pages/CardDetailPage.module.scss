@@ -1174,10 +1174,20 @@
   pointer-events: none;
 }
 
-.heroEpOutToLeft   { @include carousel-out-to-left; }
-.heroEpOutToRight  { @include carousel-out-to-right; }
-.heroEpInFromLeft  { @include carousel-in-from-left; }
-.heroEpInFromRight { @include carousel-in-from-right; }
+// will-change: transform — promotes each animated layer to its own
+// compositor layer up front. Without it, a couple of TMDB stills loading
+// for the first time right as the slide starts have been seen rendering
+// partially blank/stale (left portion black, right portion the real frame)
+// until some unrelated repaint nudges the compositor — a known class of
+// Chrome/Safari glitch around transform animations combined with
+// overflow:hidden + border-radius (both present here, see .heroEpViewport/
+// .heroEpImgWrap). Only applied while these classes are (conditionally,
+// only during the transition — see the `transition` state above), so it
+// isn't left on the element afterward.
+.heroEpOutToLeft   { @include carousel-out-to-left; will-change: transform; }
+.heroEpOutToRight  { @include carousel-out-to-right; will-change: transform; }
+.heroEpInFromLeft  { @include carousel-in-from-left; will-change: transform; }
+.heroEpInFromRight { @include carousel-in-from-right; will-change: transform; }
 
 .heroEpRow {
   display: flex;
@@ -1204,8 +1214,13 @@
 
   // Same reasoning as .similarCard — the image's own rounded corners
   // (overflow: hidden on .heroEpImgWrap) would clip a real outline anyway,
-  // so the focus/hover cue lives on the image border instead.
-  &[data-nav-item]:focus-visible { outline: none; }
+  // so the focus/hover cue lives on the image border instead. Plain :focus,
+  // not :focus-visible — the "next episode to watch" card is focused
+  // programmatically on auto-select/season-switch (see the focus effects
+  // above), and Chrome's :focus-visible heuristic doesn't reliably match a
+  // scripted .focus() with no preceding keyboard interaction on the page,
+  // which would leave that card's highlight invisible on a fresh page load.
+  &[data-nav-item]:focus { outline: none; }
 }
 
 .heroEpImgWrap {
@@ -1219,7 +1234,7 @@
   transition: border-color $transition-fast;
 
   .heroEpCard:hover &,
-  .heroEpCard:focus-visible & { border-color: $color-primary; }
+  .heroEpCard:focus & { border-color: $color-primary; }
 }
 
 .heroEpImg {
