@@ -17,6 +17,9 @@ type EpisodeRow struct {
 	IsSpecial   bool
 	Hash        string
 	AirDate     *time.Time
+	// StillPath: nil = never checked against TMDB yet, "" = checked, TMDB
+	// has none, non-empty = a bare TMDB path. See SetEpisodeStills.
+	StillPath *string
 }
 
 // MediaCardEpInfo holds data needed to drive MyShows episode sync.
@@ -70,7 +73,7 @@ func HasEpisodes(ctx context.Context, tmdbShowID int64) bool {
 // GetEpisodes returns all episodes for a TMDB show ordered by season, episode.
 func GetEpisodes(ctx context.Context, tmdbShowID int64) []EpisodeRow {
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT season, episode, title, duration_sec, is_special, COALESCE(hash,''), air_date
+		SELECT season, episode, title, duration_sec, is_special, COALESCE(hash,''), air_date, still_path
 		FROM episodes WHERE tmdb_show_id = $1
 		ORDER BY season, episode`, int32(tmdbShowID))
 	if err != nil {
@@ -83,12 +86,41 @@ func GetEpisodes(ctx context.Context, tmdbShowID int64) []EpisodeRow {
 		var ep EpisodeRow
 		if err := rows.Scan(
 			&ep.Season, &ep.Episode, &ep.Title, &ep.DurationSec,
-			&ep.IsSpecial, &ep.Hash, &ep.AirDate,
+			&ep.IsSpecial, &ep.Hash, &ep.AirDate, &ep.StillPath,
 		); err == nil {
 			result = append(result, ep)
 		}
 	}
 	return result
+}
+
+// SetEpisodeStills persists TMDB's still_path per episode for one season
+// (episode_number → path, "" meaning TMDB has none). Any local episode in
+// that season not covered by TMDB's response is also stamped with '' in the
+// same transaction, so a mismatched/renumbered episode (e.g. a MyShows-only
+// special) doesn't get re-queried against TMDB on every future view.
+func SetEpisodeStills(ctx context.Context, tmdbShowID int64, season int16, stills map[int]string) error {
+	tx, err := postgres.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	for epNum, path := range stills {
+		if _, err := tx.Exec(ctx,
+			`UPDATE episodes SET still_path=$4 WHERE tmdb_show_id=$1 AND season=$2 AND episode=$3`,
+			tmdbShowID, season, epNum, path,
+		); err != nil {
+			return fmt.Errorf("set still s%de%d: %w", season, epNum, err)
+		}
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE episodes SET still_path='' WHERE tmdb_show_id=$1 AND season=$2 AND still_path IS NULL`,
+		tmdbShowID, season,
+	); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // GetStaleOngoingCards returns TV media cards that have timecodes on a device

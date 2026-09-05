@@ -7,6 +7,7 @@ import (
 	"movies-api/db/postgres"
 	"movies-api/db/store"
 	"movies-api/internal/myshows"
+	"movies-api/movies/tmdb"
 	"net/http"
 	"strconv"
 	"sync"
@@ -61,6 +62,7 @@ func handleEpisodes(w http.ResponseWriter, r *http.Request) {
 	// Try episodes table first
 	dbEps := store.GetEpisodes(ctx, mc.TmdbID)
 	if len(dbEps) > 0 {
+		go bgBackfillEpisodeStills(mc.TmdbID, dbEps)
 		JSON(w, http.StatusOK, buildFromTable(ctx, mc, dbEps, timecodeData, includeSpecials))
 		return
 	}
@@ -179,6 +181,36 @@ func bgRefreshEpisodes(cardID string) {
 	}
 }
 
+// bgBackfillEpisodeStills fetches missing TMDB episode-still images for every
+// season that has at least one still_path still NULL. Self-limiting: once a
+// season is fully backfilled (a real path or the '' sentinel), this is a
+// no-op on every later view — no separate "already synced" timestamp needed.
+// Fire-and-forget from handleEpisodes, never on the response's critical path
+// — readPageTmdb can block for up to ~50s on repeated TMDB errors (5 retries
+// × 10s), which the page's own !episodesLoaded gate can't afford to wait on.
+func bgBackfillEpisodeStills(tmdbShowID int64, eps []store.EpisodeRow) {
+	seasons := map[int16]bool{}
+	for _, ep := range eps {
+		if ep.StillPath == nil {
+			seasons[ep.Season] = true
+		}
+	}
+	if len(seasons) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	for sn := range seasons {
+		stills := tmdb.GetSeasonStills(tmdbShowID, int(sn))
+		if stills == nil {
+			continue // TMDB error — leave NULL, retry on a later view
+		}
+		if err := store.SetEpisodeStills(ctx, tmdbShowID, sn, stills); err != nil {
+			log.Printf("episodes: backfill stills s%d show=%d: %v", sn, tmdbShowID, err)
+		}
+	}
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 type timecodeInfo struct {
@@ -239,6 +271,7 @@ type episodeOut struct {
 	Percent        float64 `json:"percent"`
 	DurationSec    *int    `json:"duration_sec,omitempty"`
 	AirDate        *string `json:"air_date,omitempty"`
+	StillPath      *string `json:"still_path,omitempty"`
 }
 
 func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[string]timecodeInfo, includeSpecials bool) map[string]any {
@@ -267,6 +300,10 @@ func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.
 			s := ep.AirDate.Format("2006-01-02")
 			airStr = &s
 		}
+		var stillPath *string
+		if ep.StillPath != nil && *ep.StillPath != "" {
+			stillPath = ep.StillPath
+		}
 		out = append(out, episodeOut{
 			Season:         ep.Season,
 			Episode:        ep.Episode,
@@ -279,6 +316,7 @@ func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.
 			Percent:        td.percent,
 			DurationSec:    durSec,
 			AirDate:        airStr,
+			StillPath:      stillPath,
 		})
 	}
 	if out == nil {

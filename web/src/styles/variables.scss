@@ -198,3 +198,16 @@ $carousel-transition-ms: 280ms;
 @mixin carousel-out-to-bottom { animation: carouselOutToBottom $carousel-transition-ms ease-out forwards; }
 @mixin carousel-in-from-top    { animation: carouselInFromTop $carousel-transition-ms ease-out; }
 @mixin carousel-in-from-bottom { animation: carouselInFromBottom $carousel-transition-ms ease-out; }
+
+// Horizontal variant of the same drum-slide — CardDetailPage's Hero episode
+// carousel switches seasons left/right (Up/Down is already claimed there for
+// jumping between page sections), same $carousel-transition-ms timing.
+@keyframes carouselOutToLeft   { to   { transform: translateX(-100%); } }
+@keyframes carouselOutToRight  { to   { transform: translateX(100%); } }
+@keyframes carouselInFromLeft   { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes carouselInFromRight  { from { transform: translateX(100%); }  to { transform: translateX(0); } }
+
+@mixin carousel-out-to-left   { animation: carouselOutToLeft $carousel-transition-ms ease-out forwards; }
+@mixin carousel-out-to-right  { animation: carouselOutToRight $carousel-transition-ms ease-out forwards; }
+@mixin carousel-in-from-left   { animation: carouselInFromLeft $carousel-transition-ms ease-out; }
+@mixin carousel-in-from-right  { animation: carouselInFromRight $carousel-transition-ms ease-out; }

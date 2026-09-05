@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { invalidateCatalogRowsForWatchedFilter } from '@/utils/rowCacheSync'
 import { getWebClientId, subscribeLiveSync } from '@/hooks/useLiveSync'
+import { CAROUSEL_TRANSITION_MS, CATEGORY_WHEEL_COOLDOWN_MS } from '@/utils/scrollNav'
 import styles from './CardDetailPage.module.scss'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ interface EpisodeData {
   season: number; episode: number; title: string | null
   hash: string; watched: boolean; special: boolean; user_special: boolean; catalog_special: boolean
   percent: number; duration_sec: number | null; future: boolean; air_date: string | null
+  still_path: string | null
 }
 type PendingConfirm =
   | { kind: 'deleteMovie' }
@@ -656,6 +658,295 @@ function TvEpisodeList({ card, tcMap, defaultProfileId, epDurSec, onPickTime, on
   )
 }
 
+// ── Hero episode carousel ────────────────────────────────────────────────────
+
+// Hero-layout companion to TvEpisodeList above — a season/episode carousel
+// (posters from TMDB still_path, latest episodes first) instead of the
+// classic accordion list. Deliberately API-only (no card.seasons fallback,
+// no season-0 stub mode): without apiEpisodes there's no hash/still_path per
+// episode to drive it, and the classic list below still covers that case.
+function HeroEpisodesCarousel({
+  card, apiEpisodes, tcMap, defaultProfileId, epDurSec, timecodesLoaded, episodesFinal, epIsWatched,
+  onQuickMark, onQuickUnmark, onMarkSpecial, onUnmarkSpecial,
+}: {
+  card: CardDetail
+  apiEpisodes: EpisodeData[]
+  tcMap: Record<string, CardTimecode>
+  defaultProfileId: string
+  epDurSec: number
+  timecodesLoaded: boolean
+  episodesFinal: boolean
+  epIsWatched: (ep: EpisodeData) => boolean
+  onQuickMark: (ep: EpisodeData, profileId: string) => void
+  onQuickUnmark: (ep: EpisodeData, profileId: string) => void
+  onMarkSpecial: (item: string, profileId: string) => void
+  onUnmarkSpecial: (item: string, profileId: string) => void
+}) {
+  const seasonGroups = useMemo(() => {
+    const m = new Map<number, EpisodeData[]>()
+    for (const ep of apiEpisodes) {
+      if (!m.has(ep.season)) m.set(ep.season, [])
+      m.get(ep.season)!.push(ep)
+    }
+    return Array.from(m.entries()).sort(([a], [b]) => a - b)
+  }, [apiEpisodes])
+
+  // Index into seasonGroups, not a season number — switchSeason below just
+  // steps it by ±1, same idea as CatalogPage's activeCategoryIndex.
+  const [activeIdx, setActiveIdx] = useState<number | null>(null)
+  const autoSelectedRef = useRef(false)
+
+  // Same rule as TvEpisodeList's own auto-expand effect: first season (in
+  // order, excluding specials) with an unwatched regular episode is "the one
+  // we're currently watching" — falls back to the last season once
+  // everything's watched (unlike that effect, this carousel always needs
+  // SOME active tab, it can't just stay collapsed). Gated on episodesFinal,
+  // not just apiEpisodes being non-empty — the very first response can be a
+  // provisional TMDB/last_ep fallback covering only season 1 while myshows
+  // sync is still running; deciding off that stale, partial list would lock
+  // onto season 1 forever (autoSelectedRef only ever fires once) even after
+  // the real, complete episode list arrives a moment later.
+  useEffect(() => {
+    if (autoSelectedRef.current) return
+    if (!timecodesLoaded || !episodesFinal || seasonGroups.length === 0) return
+    autoSelectedRef.current = true
+    for (let i = 0; i < seasonGroups.length; i++) {
+      const [sn, eps] = seasonGroups[i]
+      if (sn === 0) continue
+      const regular = eps.filter(ep => !ep.catalog_special)
+      if (regular.length === 0) continue
+      if (regular.some(ep => !epIsWatched(ep))) { setActiveIdx(i); return }
+    }
+    let lastReal = -1
+    for (let i = 0; i < seasonGroups.length; i++) if (seasonGroups[i][0] !== 0) lastReal = i
+    setActiveIdx(lastReal !== -1 ? lastReal : seasonGroups.length - 1)
+  }, [seasonGroups, timecodesLoaded, episodesFinal, epIsWatched])
+
+  // Season switch — same drum-slide carousel as Catalog's switchCategory
+  // (CatalogPage.tsx), ported to Left/Right (see onEpRowKeyDown/onWheel
+  // below) since Up/Down already jumps between page sections on this page.
+  const [transition, setTransition] = useState<{ prevIdx: number; dir: 1 | -1 } | null>(null)
+  const transitionTimerRef = useRef<number | null>(null)
+  // Set only for a keyboard-driven switch (edge Left/Right) — a wheel switch
+  // shouldn't yank keyboard focus onto the new row out from under a mouse
+  // user. Consumed by the focus effect below once the new row has rendered.
+  const pendingEdgeFocusRef = useRef<1 | -1 | null>(null)
+  const currentRowRef = useRef<HTMLDivElement>(null)
+  const blockRef = useRef<HTMLDivElement>(null)
+
+  const switchSeason = useCallback((dir: 1 | -1, focusEdge = false) => {
+    setActiveIdx(idx => {
+      if (idx === null) return idx
+      const next = idx + dir
+      if (next < 0 || next >= seasonGroups.length) return idx
+      if (focusEdge) pendingEdgeFocusRef.current = dir
+      setTransition({ prevIdx: idx, dir })
+      if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current)
+      transitionTimerRef.current = window.setTimeout(() => {
+        transitionTimerRef.current = null
+        setTransition(null)
+      }, CAROUSEL_TRANSITION_MS)
+      return next
+    })
+  }, [seasonGroups.length])
+
+  useEffect(() => () => {
+    if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current)
+  }, [])
+
+  // After a keyboard-edge-triggered season switch, land focus on the new
+  // row's first (arrived via Right/next) or last (via Left/prev) card —
+  // "keep moving in the same direction" instead of losing focus entirely.
+  useEffect(() => {
+    const dir = pendingEdgeFocusRef.current
+    if (dir === null) return
+    pendingEdgeFocusRef.current = null
+    const row = currentRowRef.current
+    if (!row) return
+    const items = Array.from(row.querySelectorAll<HTMLElement>('[data-nav-item]'))
+    const target = dir > 0 ? items[0] : items[items.length - 1]
+    // preventScroll — the page itself shouldn't jump; the row's own
+    // horizontal scroll still needs to bring the newly-focused card into
+    // view (it starts scrolled to the OLD season's position otherwise).
+    // block: 'nearest' keeps this purely horizontal.
+    target?.focus({ preventScroll: true })
+    target?.scrollIntoView({ inline: 'center', block: 'nearest' })
+  }, [activeIdx])
+
+  // Mouse wheel over the block switches season, same as Catalog's category
+  // carousel — except directly over the episode row itself (data-row-scroll),
+  // which is left alone to its native horizontal-scroll/page-scroll
+  // behavior (unlike Catalog's fully page-locked hero, this page scrolls
+  // normally, so there's no need to also convert vertical wheel into
+  // horizontal row-scroll there).
+  // blockRef only points at a real node once activeIdx !== null (the whole
+  // component renders null until then, see the early return below) — this
+  // effect wouldn't otherwise re-run to pick that node up, since switchSeason
+  // itself doesn't change at that moment.
+  const mounted = activeIdx !== null
+  useEffect(() => {
+    const el = blockRef.current
+    if (!el) return
+    let cooling = false
+    function onWheel(e: WheelEvent) {
+      if ((e.target as HTMLElement).closest('[data-row-scroll]')) return
+      e.preventDefault()
+      if (cooling) return
+      cooling = true
+      window.setTimeout(() => { cooling = false }, CATEGORY_WHEEL_COOLDOWN_MS)
+      switchSeason(e.deltaY > 0 ? 1 : -1)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [switchSeason, mounted])
+
+  // At the outward edge of the row (leftmost card + Left, rightmost + Right)
+  // — switch season instead of the generic row-nav's usual "leave it for
+  // Layout's side-panel bridge" (see CardDetailPage's own keydown effect).
+  // stopPropagation keeps that outer handler from also treating this as a
+  // plain in-row move.
+  function onEpRowKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[data-nav-item]'))
+    const idx = items.indexOf(document.activeElement as HTMLElement)
+    if (idx === -1) return
+    const goingNext = e.key === 'ArrowRight' && idx === items.length - 1
+    const goingPrev = e.key === 'ArrowLeft' && idx === 0
+    if (!goingNext && !goingPrev) return
+    e.preventDefault()
+    e.stopPropagation()
+    switchSeason(goingNext ? 1 : -1, true)
+  }
+
+  function seasonLabel(sn: number) {
+    return sn === 0 ? 'Спецэпизоды' : `Сезон ${sn}`
+  }
+
+  function seasonMeta(idx: number) {
+    const regular = seasonGroups[idx][1].filter(ep => !ep.catalog_special)
+    return { total: regular.length, watched: regular.filter(epIsWatched).length }
+  }
+
+  function renderEpisodeCard(ep: EpisodeData) {
+    const tc = tcMap[ep.hash]
+    const durSec = ep.duration_sec ?? tc?.duration_sec ?? epDurSec
+    const timeSec = tc?.time ?? 0
+    const profileId = tc?.profile_id ?? defaultProfileId
+    const pct = tc?.percent ?? ep.percent ?? 0
+    const watched = epIsWatched(ep)
+    const img = tmdbUrl(ep.still_path, 'w300') ?? tmdbUrl(card.backdrop_path, 'w300') ?? tmdbUrl(card.poster_path, 'w300')
+    const isCatalogSpecial = ep.catalog_special
+    // tc?.special is the live source of truth (updated by mark/unmarkSpecial
+    // right away) — ep.user_special is only a snapshot from the last
+    // apiEpisodes fetch, same staleness caveat as pct/ep.percent above.
+    const isUserMarked = timecodesLoaded ? !!tc?.special : ep.user_special
+
+    function toggle() {
+      if (isCatalogSpecial) return
+      watched ? onQuickUnmark(ep, profileId) : onQuickMark(ep, profileId)
+    }
+
+    return (
+      <div
+        key={ep.episode}
+        className={`${styles.heroEpCard}${watched ? ' ' + styles.heroEpCardWatched : ''}`}
+        data-nav-item={isCatalogSpecial ? undefined : true}
+        tabIndex={isCatalogSpecial ? undefined : 0}
+        role={isCatalogSpecial ? undefined : 'button'}
+        aria-label={`${epLabel(ep)}${ep.title ? ' ' + ep.title : ''}${watched ? ', просмотрено' : ''}`}
+        onClick={toggle}
+        onKeyDown={e => {
+          if (isCatalogSpecial) return
+          if (e.key === 'Enter') { e.preventDefault(); toggle() }
+        }}
+      >
+        <div className={styles.heroEpImgWrap}>
+          {img
+            ? <img className={styles.heroEpImg} src={img} alt="" loading="lazy" />
+            : <span className={styles.heroEpImgPlaceholder}>{epLabel(ep)}</span>
+          }
+          <span className={styles.heroEpCode}>{epLabel(ep)}</span>
+          {watched && <span className={styles.heroEpCheck}>✓</span>}
+          {isCatalogSpecial ? (
+            <span className={styles.heroEpStarBadge} title="Спецэпизод">★</span>
+          ) : isUserMarked ? (
+            <button
+              type="button"
+              className={styles.heroEpStarBtn}
+              title="Убрать отметку спецэпизода"
+              onClick={e => { e.stopPropagation(); onUnmarkSpecial(ep.hash, profileId) }}
+            >★</button>
+          ) : (
+            <button
+              type="button"
+              className={styles.heroEpStarBtn}
+              title="Отметить как спецэпизод"
+              onClick={e => { e.stopPropagation(); onMarkSpecial(ep.hash, profileId) }}
+            >☆</button>
+          )}
+        </div>
+        {!isCatalogSpecial && (
+          <div className={styles.heroEpBar}>
+            <div className={styles.heroEpBarFill} style={{ width: `${Math.min(watched ? 100 : pct, 100)}%` }} />
+          </div>
+        )}
+        <div className={styles.heroEpMeta}>
+          {ep.title && <span className={styles.heroEpTitle}>{ep.title}</span>}
+          <span className={styles.heroEpTime}>
+            {isCatalogSpecial ? 'спец' : watched ? '✓' : pct > 0 ? fmtTime(timeSec) : '—'}
+            {!isCatalogSpecial && durSec > 0 ? `/${fmtTime(durSec)}` : ''}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  function renderSeasonEpisodes(idx: number) {
+    // Reverse chronological within the season — latest episodes first.
+    return [...seasonGroups[idx][1]].sort((a, b) => b.episode - a.episode).map(renderEpisodeCard)
+  }
+
+  if (seasonGroups.length === 0 || activeIdx === null) return null
+
+  return (
+    <div className={styles.heroEpisodesBlock} ref={blockRef}>
+      <div className={styles.heroSeasonTitleStack}>
+        <span className={styles.heroSeasonTitleNeighbor}>
+          {activeIdx > 0 ? seasonLabel(seasonGroups[activeIdx - 1][0]) : ' '}
+        </span>
+        <h3 className={styles.heroSeasonTitle}>
+          {seasonLabel(seasonGroups[activeIdx][0])}
+          {seasonMeta(activeIdx).total > 0 && (
+            <span className={styles.heroSeasonCount}>{seasonMeta(activeIdx).watched}/{seasonMeta(activeIdx).total}</span>
+          )}
+        </h3>
+        <span className={styles.heroSeasonTitleNeighbor}>
+          {activeIdx < seasonGroups.length - 1 ? seasonLabel(seasonGroups[activeIdx + 1][0]) : ' '}
+        </span>
+      </div>
+
+      <div className={styles.heroEpViewport}>
+        {transition && seasonGroups[transition.prevIdx] && (
+          <div className={`${styles.heroEpLayerOut} ${transition.dir > 0 ? styles.heroEpOutToLeft : styles.heroEpOutToRight}`}>
+            <div className={styles.heroEpRow} data-row-scroll>
+              {renderSeasonEpisodes(transition.prevIdx)}
+            </div>
+          </div>
+        )}
+        <div
+          ref={currentRowRef}
+          className={`${styles.heroEpRow}${transition ? ' ' + (transition.dir > 0 ? styles.heroEpInFromRight : styles.heroEpInFromLeft) : ''}`}
+          data-row-id={`hero-eps-${seasonGroups[activeIdx][0]}`}
+          data-row-scroll
+          onKeyDown={onEpRowKeyDown}
+        >
+          {renderSeasonEpisodes(activeIdx)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CardDetailPage() {
@@ -688,6 +979,14 @@ export default function CardDetailPage() {
   // once the aired-only count ("8 серий") arrives a moment later. Gating the
   // total's display on this avoids that flash — see tvProgressBlock.
   const [episodesLoaded, setEpisodesLoaded] = useState(false)
+  // True once the episode list has settled — either myshows-confirmed
+  // (d.source === 'myshows') or the retry budget below is exhausted. Distinct
+  // from episodesLoaded (set on the very FIRST response, which can be a
+  // provisional TMDB/last_ep fallback covering only season 1 while myshows
+  // sync is still running) — HeroEpisodesCarousel's auto-select-season effect
+  // waits for this so it doesn't lock onto season 1 just because that's all
+  // the earliest, incomplete payload happened to contain.
+  const [episodesFinal, setEpisodesFinal] = useState(false)
   const [refreshing,   setRefreshing]  = useState(false)
   const [refreshed,    setRefreshed]   = useState(false)
   const [watchStatus,  setWatchStatus] = useState('')
@@ -1008,7 +1307,7 @@ export default function CardDetailPage() {
 
   useEffect(() => {
     if (!cardId) return
-    setLoading(true); setTimecodes([]); setApiEpisodes(null); setTimecodesLoaded(false); setWatchStatusLoaded(false); setEpisodesLoaded(false)
+    setLoading(true); setTimecodes([]); setApiEpisodes(null); setTimecodesLoaded(false); setWatchStatusLoaded(false); setEpisodesLoaded(false); setEpisodesFinal(false)
 
     fetch(`/api/media-card/${cardId}`)
       .then(r => r.ok ? r.json() : null)
@@ -1202,20 +1501,39 @@ export default function CardDetailPage() {
       if (cancelled) return
       try {
         const r = await fetch(`/api/episodes?${qs}`)
-        if (!r.ok) { if (!cancelled) setEpisodesLoaded(true); return }
+        if (!r.ok) { if (!cancelled) { setEpisodesLoaded(true); setEpisodesFinal(true) }; return }
         if (cancelled) return
         const d = await r.json()
         if (d?.episodes?.length) setApiEpisodes(d.episodes)
         if (!cancelled) setEpisodesLoaded(true)
-        if (d?.source !== 'myshows' && retries < 3) {
-          if (retries === 0 && dev && dev.token) {
+        const needsMyshowsSync = d?.source !== 'myshows'
+        // The episode LIST is confirmed as soon as myshows source is
+        // reached — set this independently of the stills-retry loop below,
+        // which only concerns still_path images and has no bearing on which
+        // season is the right default. Tying episodesFinal to that too would
+        // make the whole carousel wait out the full stills retry budget
+        // (up to ~12s) before ever appearing, even on an already-synced show.
+        if (!cancelled && !needsMyshowsSync) setEpisodesFinal(true)
+        // Re-poll while myshows sync is still pending (as before) OR while
+        // the Hero carousel's TMDB still_path backfill is still running in
+        // the background (see bgBackfillEpisodeStills) — bounded to the same
+        // 3 retries; apiEpisodes just gets refreshed in place with newly
+        // arrived still_path values, no separate state/props needed.
+        const stillsMissing = (d?.episodes ?? []).some((e: EpisodeData) => !e.catalog_special && e.still_path == null)
+        if ((needsMyshowsSync || stillsMissing) && retries < 3) {
+          if (retries === 0 && needsMyshowsSync && dev && dev.token) {
             fetch(`/api/refresh-card-episodes?card_id=${encodeURIComponent(cid)}&token=${encodeURIComponent(dev.token)}`)
               .catch(() => {})
           }
           retries++
           setTimeout(load, 4000)
+        } else if (!cancelled) {
+          // Retry budget exhausted without ever reaching myshows (e.g. the
+          // lookup never resolves for this show) — best effort, this is as
+          // settled as it's going to get.
+          setEpisodesFinal(true)
         }
-      } catch { if (!cancelled) setEpisodesLoaded(true) }
+      } catch { if (!cancelled) { setEpisodesLoaded(true); setEpisodesFinal(true) } }
     }
     load()
     return () => { cancelled = true }
@@ -1301,6 +1619,31 @@ export default function CardDetailPage() {
     loadTimecodes(cardId, activeDevice.id)
     invalidateCatalogRowsForWatchedFilter()
     checkBackwardCascade(item, profileId)
+  }
+
+  // Hero episode carousel's click/Enter toggle — deliberately no confirm
+  // dialog and no forward/backward cascade prompt (unlike saveTimecodeForItem/
+  // deleteEpisodeTimecode above): the carousel's whole point is an instant
+  // mark/unmark, not the accordion list's guided flow.
+  async function quickMarkWatched(ep: EpisodeData, profileId: string) {
+    if (!activeDevice || !cardId) return
+    const durSec = ep.duration_sec ?? epDurSec
+    await fetch('/api/web/set-timecode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: activeDevice.id, card_id: cardId, item: ep.hash, percent: 90, duration_sec: durSec, profile_id: profileId, client_id: getWebClientId() }),
+    })
+    loadTimecodes(cardId, activeDevice.id)
+    loadWatchStatus()
+    invalidateCatalogRowsForWatchedFilter()
+  }
+
+  async function quickUnmarkWatched(ep: EpisodeData, profileId: string) {
+    if (!activeDevice || !cardId) return
+    const qs = new URLSearchParams({ device_id: String(activeDevice.id), card_id: cardId, item: ep.hash, profile_id: profileId, client_id: getWebClientId() })
+    await fetch(`/api/episode-timecode?${qs}`, { method: 'DELETE' })
+    loadTimecodes(cardId, activeDevice.id)
+    invalidateCatalogRowsForWatchedFilter()
   }
 
   function loadWatchStatus() {
@@ -1698,6 +2041,22 @@ export default function CardDetailPage() {
               {tagsRow}
               {genresRow}
               {statusLines}
+              {isTV && apiEpisodes && (
+                <HeroEpisodesCarousel
+                  card={card}
+                  apiEpisodes={apiEpisodes}
+                  tcMap={tcMap}
+                  defaultProfileId={defaultProfileId}
+                  epDurSec={epDurSec}
+                  timecodesLoaded={timecodesLoaded}
+                  episodesFinal={episodesFinal}
+                  epIsWatched={epIsWatched}
+                  onQuickMark={quickMarkWatched}
+                  onQuickUnmark={quickUnmarkWatched}
+                  onMarkSpecial={markSpecial}
+                  onUnmarkSpecial={unmarkSpecial}
+                />
+              )}
               {refreshBtn}
             </div>
           </>

@@ -586,3 +586,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS settings_layout VARCHAR(10);
 -- three above, previously per-device localStorage only, so switching theme
 -- on one device never followed the account to another.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS theme VARCHAR(10);
+
+-- Migration: per-episode TMDB still (thumbnail) image, backfilled lazily in
+-- the background from TMDB's /tv/{id}/season/{n} endpoint (MyShows sync
+-- never provides an episode image) — see bgBackfillEpisodeStills.
+-- NULL = never checked yet; '' = checked, TMDB has no still for this
+-- episode; non-empty = a bare TMDB path (routed through /imgproxy like any
+-- other poster/backdrop, no extra backend work needed for serving it).
+ALTER TABLE episodes ADD COLUMN IF NOT EXISTS still_path VARCHAR(200);
