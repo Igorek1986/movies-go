@@ -13,15 +13,24 @@
   color: $color-text;
 }
 
+// Fixed column counts (not auto-fill/minmax) — there are exactly 12 tiles
+// today, so a chosen count directly controls row count: 6 columns means 2
+// rows on desktop instead of however many auto-fill happens to fit per its
+// minmax width. Narrower breakpoints step down so tiles don't get too
+// cramped, same $bp-* scale as the rest of the site (variables.scss).
 .tilesGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: $spacing-md;
   // Rows auto-size to their own tallest tile by default — a 3-line tile
   // (value + sub + label) in one row left every plainer 2-line tile in a
   // different row visibly shorter. Fixing a row height everyone shares
   // makes every tile the same size regardless of which row it lands in.
   grid-auto-rows: 132px;
+
+  @include bp-up($bp-sm) { grid-template-columns: repeat(3, 1fr); }
+  @include bp-up($bp-md) { grid-template-columns: repeat(4, 1fr); }
+  @include bp-up($bp-lg) { grid-template-columns: repeat(6, 1fr); }
 }
 
 .tile {
