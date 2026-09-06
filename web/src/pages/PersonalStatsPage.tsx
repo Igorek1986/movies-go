@@ -99,6 +99,10 @@ const STATS_LIST_PAGE_SIZE = 30
 interface StatsListPage {
   items: StatsListItem[]
   totalPages: number
+  // Only present for kind=series — aggregated server-side over the FULL
+  // card_id set, not just this page's rows (see handleProfileStatsList).
+  watchedEpisodesTotal?: number
+  totalEpisodesTotal?: number
 }
 
 async function fetchStatsList(kind: ExpandedKind, token: string, profileId: string, page: number): Promise<StatsListPage> {
@@ -106,7 +110,12 @@ async function fetchStatsList(kind: ExpandedKind, token: string, profileId: stri
   const res = await fetch(`/api/stats/personal/list?${params}`)
   if (!res.ok) return { items: [], totalPages: 1 }
   const data = await res.json()
-  return { items: Array.isArray(data.results) ? data.results : [], totalPages: data.total_pages ?? 1 }
+  return {
+    items: Array.isArray(data.results) ? data.results : [],
+    totalPages: data.total_pages ?? 1,
+    watchedEpisodesTotal: data.watched_episodes_total,
+    totalEpisodesTotal: data.total_episodes_total,
+  }
 }
 
 function StatsCard({ item, kind, onOpen }: { item: StatsListItem; kind: ExpandedKind; onOpen: () => void }) {
@@ -150,6 +159,7 @@ export default function PersonalStatsPage() {
   const [itemsCache, setItemsCache] = useState<Partial<Record<ExpandedKind, StatsListItem[]>>>({})
   const [pageCache, setPageCache] = useState<Partial<Record<ExpandedKind, number>>>({})
   const [hasMoreCache, setHasMoreCache] = useState<Partial<Record<ExpandedKind, boolean>>>({})
+  const [seriesEpisodeTotals, setSeriesEpisodeTotals] = useState<{ watched: number; total: number } | null>(null)
   const [expandedLoading, setExpandedLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const lastTileRef = useRef<HTMLButtonElement | null>(null)
@@ -172,6 +182,7 @@ export default function PersonalStatsPage() {
     setItemsCache({})
     setPageCache({})
     setHasMoreCache({})
+    setSeriesEpisodeTotals(null)
   }, [loaded, token, profileId])
 
   // Loads one page of a list: page 1 (reset) replaces the cache, later pages
@@ -180,10 +191,16 @@ export default function PersonalStatsPage() {
   // way more than one page's worth of movies/series/planned/favorites.
   async function loadListPage(kind: ExpandedKind, page: number, reset: boolean) {
     if (reset) setExpandedLoading(true); else setLoadingMore(true)
-    const { items, totalPages } = await fetchStatsList(kind, token, profileId, page)
+    const { items, totalPages, watchedEpisodesTotal, totalEpisodesTotal } = await fetchStatsList(kind, token, profileId, page)
     setItemsCache(prev => ({ ...prev, [kind]: reset ? items : [...(prev[kind] ?? []), ...items] }))
     setPageCache(prev => ({ ...prev, [kind]: page }))
     setHasMoreCache(prev => ({ ...prev, [kind]: totalPages > page }))
+    // Server-aggregated over the whole list regardless of page — see
+    // handleProfileStatsList — so this is safe to just overwrite each time,
+    // unlike itemsCache which has to append.
+    if (kind === 'series' && typeof watchedEpisodesTotal === 'number' && typeof totalEpisodesTotal === 'number') {
+      setSeriesEpisodeTotals({ watched: watchedEpisodesTotal, total: totalEpisodesTotal })
+    }
     if (reset) setExpandedLoading(false); else setLoadingMore(false)
   }
 
@@ -351,16 +368,6 @@ export default function PersonalStatsPage() {
 
   const expandedItems = expanded ? itemsCache[expanded] ?? null : null
 
-  // "Развёрнутая статистика" for the series list — aggregates what's already
-  // in `s` (завершено/смотрю сейчас) with a per-episode rollup computed from
-  // the loaded cards themselves (not a separate request).
-  const seriesSummary = expanded === 'series' && expandedItems
-    ? {
-        watchedEpisodes: expandedItems.reduce((sum, i) => sum + (i.watched_episodes ?? 0), 0),
-        totalEpisodes: expandedItems.reduce((sum, i) => sum + (i.total_episodes ?? 0), 0),
-      }
-    : null
-
   function tileBody(t: (typeof tiles)[number]) {
     const main = typeof t.value === 'object' ? t.value.main : typeof t.value === 'number' ? t.value.toLocaleString('ru') : t.value
     const sub = typeof t.value === 'object' ? t.value.sub : undefined
@@ -408,8 +415,12 @@ export default function PersonalStatsPage() {
             {expanded === 'series' && (
               <p className={styles.blockSubtitle}>
                 Завершено: {s.series_completed} · Смотрю сейчас: {s.series_watching}
-                {seriesSummary && seriesSummary.totalEpisodes > 0 && (
-                  <> · Эпизодов просмотрено: {seriesSummary.watchedEpisodes} из {seriesSummary.totalEpisodes}</>
+                {seriesEpisodeTotals && seriesEpisodeTotals.total > 0 && (
+                  // Scoped to these shows only (Смотрю + Завершено) — will
+                  // legitimately differ from the "Эпизодов просмотрено"
+                  // tile above, which also counts episodes from shows now
+                  // Брошено/Не смотрю.
+                  <> · Эпизодов в этих сериалах: {seriesEpisodeTotals.watched} из {seriesEpisodeTotals.total}</>
                 )}
               </p>
             )}

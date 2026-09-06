@@ -141,10 +141,25 @@ func handleProfileStatsList(w http.ResponseWriter, r *http.Request) {
 		}
 		results = append(results, item)
 	}
-	JSON(w, http.StatusOK, map[string]any{
+
+	resp := map[string]any{
 		"page":          page,
 		"results":       results,
 		"total_pages":   totalPages,
 		"total_results": total,
-	})
+	}
+	if kind == "series" {
+		// Summed over the FULL card_id set (seriesProgress covers every show
+		// in the list, not just this page's rows) — a header summary based
+		// only on already-loaded pages would grow as the user scrolls
+		// through an infinite-scrolled list, which read as "wrong" numbers.
+		var watchedEp, totalEp int
+		for _, p := range seriesProgress {
+			watchedEp += p.Watched
+			totalEp += p.Total
+		}
+		resp["watched_episodes_total"] = watchedEp
+		resp["total_episodes_total"] = totalEp
+	}
+	JSON(w, http.StatusOK, resp)
 }
