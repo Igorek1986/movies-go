@@ -29,39 +29,23 @@
 }
 
 // .tile is also used on a real <button> for the clickable tiles (movies/
-// series/planned/stopped/favorites) — reset button-specific defaults and add
-// a persistent left accent so it reads as interactive even at rest, not just
-// on hover (a hover-only cue meant these tiles looked identical to the
-// plain, non-clickable ones until the pointer happened to be over them).
+// series/planned/stopped/favorites) — same treatment as AdminPage's
+// .statCardClickable (persistent bottom accent + lift/shadow on hover), for
+// visual consistency with the other place stat tiles double as links/buttons.
 .tileClickable {
-  position: relative;
   font: inherit;
   text-align: left;
   cursor: pointer;
-  padding-left: calc(#{$spacing-lg} + 3px);
-  overflow: hidden;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 3px;
-    background: rgba($color-primary-rgb, 0.5);
-    transition: background $transition-fast;
-  }
+  border-bottom: 2px solid $color-primary;
+  transition: box-shadow $transition-fast, transform $transition-fast;
 
   &:hover, &[aria-expanded='true'] {
-    background: rgba($color-primary-rgb, 0.06);
-  }
-
-  &:hover::before, &[aria-expanded='true']::before {
-    background: $color-primary;
+    box-shadow: 0 4px 16px rgba($color-primary-rgb, 0.18);
+    transform: translateY(-1px);
   }
 
   &:active {
-    transform: translateY(1px);
+    transform: translateY(0);
   }
 }
 

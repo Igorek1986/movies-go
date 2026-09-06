@@ -297,7 +297,7 @@ export default function PersonalStatsPage() {
 
   const tiles: { label: string; value: number | string | { main: string; sub?: string }; kind?: ExpandedKind }[] = [
     { label: 'Фильмы', value: s.movies_watched, kind: 'movies' },
-    { label: 'Сериалы', value: `${s.series_completed} / ${s.series_watching}`, kind: 'series' },
+    { label: 'Сериалы', value: s.series_completed + s.series_watching, kind: 'series' },
     { label: 'Буду смотреть — фильмы', value: s.planned_movies, kind: 'planned_movies' },
     { label: 'Буду смотреть — сериалы', value: s.planned_series, kind: 'planned_series' },
     { label: 'Брошено', value: s.stopped, kind: 'stopped' },
