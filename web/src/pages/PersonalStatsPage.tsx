@@ -1,16 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
-import ContributionCalendar from '@/components/ContributionCalendar'
+import ContributionCalendar, { formatDateRu, type DayActivity } from '@/components/ContributionCalendar'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { posterUrl, tmdbUrl } from '@/utils/poster'
 import { getGridCols, focusTopNavActive } from '@/utils/scrollNav'
 import styles from './PersonalStatsPage.module.scss'
-
-interface DayActivity {
-  date: string
-  count: number
-}
 
 interface GenreCount {
   name: string
@@ -105,6 +100,46 @@ interface StatsListPage {
   totalEpisodesTotal?: number
 }
 
+// Matches store.DayItem (backend) — what was watched on one specific day.
+interface DayItem {
+  card_id: string
+  media_type: string
+  title: string
+  poster_path: string
+  season?: number
+  episode?: number
+  episode_name?: string
+}
+
+async function fetchDayItems(token: string, profileId: string, date: string): Promise<DayItem[]> {
+  const params = new URLSearchParams({ token, profile_id: profileId, date })
+  const res = await fetch(`/api/stats/personal/day?${params}`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return Array.isArray(data.results) ? data.results : []
+}
+
+function DayItemCard({ item, onOpen }: { item: DayItem; onOpen: () => void }) {
+  const url = posterUrl(item.poster_path)
+  const hasEpisode = typeof item.season === 'number' && typeof item.episode === 'number'
+  return (
+    <button type="button" className={styles.statsCard} data-nav-item onClick={onOpen}>
+      <div className={styles.statsCardPoster}>
+        {url
+          ? <img src={url} alt={item.title} loading="lazy" />
+          : <div className={styles.posterPlaceholder}>Нет постера</div>}
+        {hasEpisode && (
+          <span className={styles.percentBadge}>
+            S{String(item.season).padStart(2, '0')}E{String(item.episode).padStart(2, '0')}
+          </span>
+        )}
+      </div>
+      <p className={styles.statsCardTitle}>{item.title}</p>
+      {hasEpisode && item.episode_name && <p className={styles.dayItemEpisode}>{item.episode_name}</p>}
+    </button>
+  )
+}
+
 async function fetchStatsList(kind: ExpandedKind, token: string, profileId: string, page: number): Promise<StatsListPage> {
   const params = new URLSearchParams({ token, profile_id: profileId, kind, page: String(page), per_page: String(STATS_LIST_PAGE_SIZE) })
   const res = await fetch(`/api/stats/personal/list?${params}`)
@@ -165,6 +200,10 @@ export default function PersonalStatsPage() {
   const lastTileRef = useRef<HTMLButtonElement | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [dayItems, setDayItems] = useState<DayItem[] | null>(null)
+  const [dayItemsLoading, setDayItemsLoading] = useState(false)
+
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
 
@@ -183,7 +222,16 @@ export default function PersonalStatsPage() {
     setPageCache({})
     setHasMoreCache({})
     setSeriesEpisodeTotals(null)
+    setSelectedDay(null)
+    setDayItems(null)
   }, [loaded, token, profileId])
+
+  async function openDay(date: string) {
+    setSelectedDay(date)
+    setDayItemsLoading(true)
+    setDayItems(await fetchDayItems(token, profileId, date))
+    setDayItemsLoading(false)
+  }
 
   // Loads one page of a list: page 1 (reset) replaces the cache, later pages
   // append — same pattern as MediaLibraryPage's search infinite scroll
@@ -246,12 +294,17 @@ export default function PersonalStatsPage() {
       // collapse.
       if (e.key === 'Backspace') {
         e.preventDefault()
-        if (expanded) { setExpanded(null); lastTileRef.current?.focus() }
+        if (selectedDay) { setSelectedDay(null); setDayItems(null) }
+        else if (expanded) { setExpanded(null); lastTileRef.current?.focus() }
         else navigate(-1)
         return
       }
       if (e.key === 'Escape') {
-        if (expanded) {
+        if (selectedDay) {
+          e.preventDefault()
+          setSelectedDay(null)
+          setDayItems(null)
+        } else if (expanded) {
           e.preventDefault()
           setExpanded(null)
           lastTileRef.current?.focus()
@@ -268,7 +321,7 @@ export default function PersonalStatsPage() {
       // its onKeyDown comment, so each page decides what "into the page"
       // means) or nowhere in particular. Same fallback as CatalogPage's
       // "focus isn't on a card → jump to the first one".
-      if (!focused.closest('[data-row-id="stats-tiles"], [data-row-id="stats-expanded"], [data-row-id="stats-actors"]')) {
+      if (!focused.closest('[data-row-id="stats-tiles"], [data-row-id="stats-expanded"], [data-row-id="stats-day"], [data-row-id="stats-actors"]')) {
         if (e.key === 'ArrowDown') {
           e.preventDefault()
           document.querySelector<HTMLElement>('[data-row-id="stats-tiles"] [data-nav-item]')?.focus()
@@ -292,7 +345,7 @@ export default function PersonalStatsPage() {
         return
       }
 
-      const expandedRow = focused.closest<HTMLElement>('[data-row-id="stats-expanded"]')
+      const expandedRow = focused.closest<HTMLElement>('[data-row-id="stats-expanded"], [data-row-id="stats-day"]')
       if (expandedRow) {
         const cards = Array.from(expandedRow.querySelectorAll<HTMLElement>('[data-nav-item]'))
         const idx = cards.indexOf(focused)
@@ -325,6 +378,7 @@ export default function PersonalStatsPage() {
         } else if (e.key === 'ArrowDown') {
           if (idx >= tiles.length - cols) {
             const next = document.querySelector<HTMLElement>('[data-row-id="stats-expanded"] [data-nav-item]')
+              ?? document.querySelector<HTMLElement>('[data-row-id="stats-day"] [data-nav-item]')
               ?? document.querySelector<HTMLElement>('[data-row-id="stats-actors"] [data-nav-item]')
             next?.focus()
           } else {
@@ -448,8 +502,34 @@ export default function PersonalStatsPage() {
         )}
 
         <div className={styles.calendarSection}>
-          <ContributionCalendar data={s.calendar} />
+          <ContributionCalendar data={s.calendar} onDayClick={openDay} />
         </div>
+
+        {selectedDay && (
+          <div className={styles.block} data-row-id="stats-day">
+            <div className={styles.expandedHeader}>
+              <h2 className={styles.blockTitle}>{formatDateRu(selectedDay)}</h2>
+              <button type="button" className={styles.closeBtn} onClick={() => { setSelectedDay(null); setDayItems(null) }}>
+                Свернуть
+              </button>
+            </div>
+            {dayItemsLoading ? (
+              <p className={styles.emptyText}>Загрузка…</p>
+            ) : !dayItems || dayItems.length === 0 ? (
+              <p className={styles.emptyText}>Нет данных</p>
+            ) : (
+              <div className={styles.expandedGrid}>
+                {dayItems.map((item, i) => (
+                  <DayItemCard
+                    key={`${item.card_id}-${item.season ?? ''}-${item.episode ?? i}`}
+                    item={item}
+                    onOpen={() => navigate(`/card/${item.card_id}`)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {s.top_genres.length > 0 && (
           <div className={styles.block}>

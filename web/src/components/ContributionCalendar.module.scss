@@ -149,8 +149,22 @@
 }
 
 .cell {
+  // Now a <button> (click opens that day's watched-items list), not a plain
+  // <span> — reset the browser's default button chrome so it still just
+  // looks like a colored square.
+  display: block;
+  padding: 0;
+  border: none;
+  font: inherit;
   background: rgba($color-border-rgb, 0.5);
   cursor: default;
+
+  &[data-level='1'],
+  &[data-level='2'],
+  &[data-level='3'],
+  &[data-level='4'] {
+    cursor: pointer;
+  }
 
   &:focus-visible {
     outline: 2px solid $color-primary;
@@ -164,12 +178,23 @@
 }
 
 .legend .cell {
+  // .cell's width:100%/aspect-ratio (for the calendar grid, where each cell
+  // fills its own grid track) makes no sense for a legend swatch sitting in
+  // a plain flex row — width:100% of the whole row shrunk it down to
+  // nothing. Fixed size again here, same as the grid's own 11px floor.
+  width: 11px;
+  height: 11px;
+  aspect-ratio: unset;
+  flex-shrink: 0;
   cursor: default;
 }
 
 .tooltip {
   position: fixed;
   transform: translate(-50%, calc(-100% - 8px));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   background: $color-bg-card;
   border: 1px solid $color-border;
   border-radius: $radius-sm;
@@ -180,4 +205,8 @@
   pointer-events: none;
   white-space: nowrap;
   z-index: 10;
+}
+
+.tooltipLine {
+  color: $color-text-muted;
 }

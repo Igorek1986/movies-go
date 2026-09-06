@@ -61,6 +61,7 @@ func NewRouter(mode string) http.Handler {
 	r.Get("/api/media-library/search", handleMediaLibrarySearch)
 	r.Get("/api/stats/personal", handleProfileStats)
 	r.Get("/api/stats/personal/list", handleProfileStatsList)
+	r.Get("/api/stats/personal/day", handleProfileStatsDay)
 	r.Get("/np_popular", cached)
 	r.Get("/np_popular_daily", handlePopularDaily)
 

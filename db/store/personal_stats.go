@@ -16,8 +16,10 @@ import (
 // "completed show" / "still watching" logic here (DRY).
 
 type DayActivity struct {
-	Date  string `json:"date"`
-	Count int    `json:"count"`
+	Date     string `json:"date"`
+	Count    int    `json:"count"`
+	Movies   int    `json:"movies"`
+	Episodes int    `json:"episodes"`
 }
 
 type ProfileStats struct {
@@ -75,7 +77,10 @@ func isMovieCardID(cardID string) bool {
 // for the contribution heatmap.
 func GetActivityCalendar(ctx context.Context, deviceID int64, profileID string, days int) []DayActivity {
 	rows, err := postgres.Pool.Query(ctx, `
-		SELECT counted_at, COUNT(*) FROM timecodes
+		SELECT counted_at, COUNT(*),
+		       COUNT(*) FILTER (WHERE card_id LIKE '%_movie'),
+		       COUNT(*) FILTER (WHERE card_id LIKE '%_tv')
+		  FROM timecodes
 		 WHERE device_id = $1 AND profile_id = $2 AND counted_at IS NOT NULL
 		   AND counted_at >= CURRENT_DATE - ($3::int * INTERVAL '1 day')
 		 GROUP BY counted_at
@@ -89,10 +94,54 @@ func GetActivityCalendar(ctx context.Context, deviceID int64, profileID string, 
 	var out []DayActivity
 	for rows.Next() {
 		var d time.Time
-		var c int
-		if rows.Scan(&d, &c) == nil {
-			out = append(out, DayActivity{Date: d.Format("2006-01-02"), Count: c})
+		var a DayActivity
+		if rows.Scan(&d, &a.Count, &a.Movies, &a.Episodes) == nil {
+			a.Date = d.Format("2006-01-02")
+			out = append(out, a)
 		}
+	}
+	return out
+}
+
+// DayItem is one movie/episode counted as watched on a specific day — backs
+// the "what did I watch that day" panel opened by clicking a calendar cell.
+type DayItem struct {
+	CardID      string `json:"card_id"`
+	MediaType   string `json:"media_type"`
+	Title       string `json:"title"`
+	PosterPath  string `json:"poster_path"`
+	Season      *int   `json:"season,omitempty"`
+	Episode     *int   `json:"episode,omitempty"`
+	EpisodeName string `json:"episode_name,omitempty"`
+}
+
+// GetDayItems lists what was watched on one specific date (counted_at) —
+// movies matched directly by card_id, TV episodes via timecodes.item (the
+// episode hash) joined against episodes for season/episode/title.
+func GetDayItems(ctx context.Context, deviceID int64, profileID, date string) []DayItem {
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT tc.card_id, mc.media_type, mc.title, COALESCE(mc.poster_path, ''),
+		       ep.season, ep.episode, COALESCE(ep.title, '')
+		  FROM timecodes tc
+		  JOIN media_cards mc ON mc.card_id = tc.card_id
+		  LEFT JOIN episodes ep ON ep.tmdb_show_id = mc.tmdb_id AND ep.hash = tc.item
+		 WHERE tc.device_id = $1 AND tc.profile_id = $2 AND tc.counted_at = $3::date
+		 ORDER BY mc.title, ep.season, ep.episode`,
+		deviceID, profileID, date)
+	if err != nil {
+		log.Printf("store: get day items: %v", err)
+		return nil
+	}
+	defer rows.Close()
+	var out []DayItem
+	for rows.Next() {
+		var d DayItem
+		if rows.Scan(&d.CardID, &d.MediaType, &d.Title, &d.PosterPath, &d.Season, &d.Episode, &d.EpisodeName) == nil {
+			out = append(out, d)
+		}
+	}
+	if out == nil {
+		out = []DayItem{}
 	}
 	return out
 }

@@ -35,6 +35,25 @@ func handleProfileStats(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, stats)
 }
 
+// GET /api/stats/personal/day?token=&profile_id=&date=YYYY-MM-DD
+// What was watched on one specific day — opened by clicking a cell in the
+// contribution calendar.
+func handleProfileStatsDay(w http.ResponseWriter, r *http.Request) {
+	d := deviceFromRequest(r)
+	if d == nil {
+		Error(w, http.StatusUnauthorized, "invalid or missing token")
+		return
+	}
+	date := r.URL.Query().Get("date")
+	if !validDate(date) {
+		Error(w, http.StatusBadRequest, "invalid date")
+		return
+	}
+	profileID := r.URL.Query().Get("profile_id")
+	items := store.GetDayItems(r.Context(), d.ID, profileID, date)
+	JSON(w, http.StatusOK, map[string]any{"date": date, "results": items})
+}
+
 func statsPageParams(r *http.Request) (page, perPage int) {
 	page, _ = strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
