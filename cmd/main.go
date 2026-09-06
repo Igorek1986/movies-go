@@ -123,6 +123,7 @@ func main() {
 
 	go api.RecomputeCategoryCounts()             // warm random-collection totals before first request
 	go api.WarmPopularPools(appCtx)              // warm actor/director pools before first /api/categories request
+	go api.WarmNPPopular()                       // warm the default np_popular request (live external round-trip)
 	go store.BackfillImpliedStatuses(appCtx)     // catch up subjective statuses for pre-existing timecodes
 	api.StartUnwatchedCutoffInvalidation(appCtx) // refresh "Непросмотренные" cache when the aired cutoff crosses
 	// Drop the cached watched-set whenever a profile's progress changes (timecode write/

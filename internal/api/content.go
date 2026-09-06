@@ -12,6 +12,7 @@ import (
 	"movies-api/movies/tmdb"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
@@ -77,6 +78,32 @@ func proxyToPopularSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write(body) //nolint:errcheck
+}
+
+// npPopularWarmKey is the query string np.js sends for the default request
+// (page 1, default language) — the request every visitor's first "Популярное"
+// row on the home screen makes. It's the only combination worth pre-warming:
+// other combos (page 2+, hide_unrated, child_age) are too numerous to enumerate
+// and still pay their own cache-miss cost on first hit.
+const npPopularWarmKey = "/np_popular?page=1&language=ru"
+
+// WarmNPPopular proactively re-fetches the default np_popular request into
+// catCache. Unlike the rest of the category cache, np_popular's "recompute" is
+// a live HTTP round-trip to an external source (see proxyToPopularSource) —
+// often several hundred ms of pure network latency — so leaving it to the
+// normal lazy/stale-refresh path still means someone's first request after a
+// parser run pays that cost. Called after each parser run (InvalidateCategoryCache)
+// and once at startup.
+func WarmNPPopular() {
+	if getPopularSourceURL(context.Background()) == "" {
+		return
+	}
+	req := httptest.NewRequest(http.MethodGet, npPopularWarmKey, nil)
+	rec := httptest.NewRecorder()
+	proxyToPopularSource(rec, req)
+	if rec.Code == http.StatusOK && rec.Body.Len() > 0 {
+		setCached(req.URL.RequestURI(), cachedResp{ContentType: rec.Header().Get("Content-Type"), Body: rec.Body.Bytes()})
+	}
 }
 
 func proxyToPopularSourcePath(w http.ResponseWriter, r *http.Request, path string) {

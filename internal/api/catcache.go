@@ -106,6 +106,11 @@ func InvalidateCategoryCache() {
 	// visit after a parser run doesn't pay the ~300ms+ aggregation cost itself
 	// (see WarmPopularPools).
 	go WarmPopularPools(context.Background())
+
+	// Eagerly rewarm the default np_popular request too (see WarmNPPopular) — it
+	// is a live round-trip to an external source, not a local query, so a cache
+	// miss on it costs whatever that source's network latency is.
+	go WarmNPPopular()
 }
 
 // ─── Watched-set cache (per device+profile) ──────────────────────────────────
