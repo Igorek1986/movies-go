@@ -75,7 +75,13 @@ export default function ContributionCalendar({ data, weeks = 53 }: Props) {
         const inRange = cursor >= start && cursor <= today
         const count = countByDate.get(key) ?? 0
         if (inRange) total += count
-        if (i === 0 && cursor.getMonth() !== lastMonth && cursor <= end) {
+        // Label a column as soon as its month first appears in the grid —
+        // checked on every day, not just Monday: a month whose 1st lands
+        // mid-week (the common case) would otherwise never get labeled
+        // until the FOLLOWING Monday, which can fall outside the `weeks`
+        // window entirely (e.g. the last column spans Aug 31 - Sep 6, so
+        // "Сен" never got its own Monday inside a 53-week grid ending there).
+        if ((i === 0 || cursor.getDate() === 1) && cursor.getMonth() !== lastMonth && cursor <= end) {
           lastMonth = cursor.getMonth()
           monthMarks.push({ label: MONTH_LABELS[lastMonth], col })
         }

@@ -16,6 +16,16 @@
     padding-bottom: env(safe-area-inset-bottom);
     background: $color-bg-card;
     border-top: 1px solid $color-border;
+    // iOS Safari/PWA (standalone, "add to home screen") has a long-standing
+    // WebKit bug where a bare `position: fixed` element can drift away from
+    // the viewport edge after client-side navigation or during scroll —
+    // never reproduced outside real iOS, reported by users on PWA. Forcing
+    // this onto its own GPU compositing layer is the standard mitigation:
+    // WebKit then re-anchors it to the visual viewport on every frame
+    // instead of only on the events it (unreliably) uses to reflow a plain
+    // fixed box.
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
   }
 }
 
