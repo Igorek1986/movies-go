@@ -15,14 +15,20 @@
 
 .tilesGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: $spacing-md;
+  // Rows auto-size to their own tallest tile by default — a 3-line tile
+  // (value + sub + label) in one row left every plainer 2-line tile in a
+  // different row visibly shorter. Fixing a row height everyone shares
+  // makes every tile the same size regardless of which row it lands in.
+  grid-auto-rows: 132px;
 }
 
 .tile {
   @include card;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: $spacing-xs;
   padding: $spacing-lg;
   transition: border-color $transition-fast, transform $transition-fast;

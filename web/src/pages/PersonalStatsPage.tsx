@@ -304,7 +304,7 @@ export default function PersonalStatsPage() {
     { label: 'В избранном', value: s.favorites, kind: 'favorites' },
     { label: 'Эпизодов просмотрено', value: s.episodes_watched },
     { label: 'Время у экрана', value: formatWatchTime(s.watch_time_minutes) },
-    { label: 'Осталось смотреть (Смотрю)', value: formatWatchTime(s.remaining_minutes) },
+    { label: 'Домотреть', value: formatWatchTime(s.remaining_minutes) },
     { label: 'Текущий стрик', value: `${s.current_streak} дн.` },
     { label: 'Самый длинный стрик', value: `${s.longest_streak} дн.` },
     { label: 'Любимый день недели', value: s.favorite_weekday >= 0 ? WEEKDAY_NAMES[s.favorite_weekday] : '—' },
