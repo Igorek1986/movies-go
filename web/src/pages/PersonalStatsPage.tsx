@@ -296,8 +296,8 @@ export default function PersonalStatsPage() {
   }
 
   const tiles: { label: string; value: number | string | { main: string; sub?: string }; kind?: ExpandedKind }[] = [
-    { label: 'Фильмов просмотрено', value: s.movies_watched, kind: 'movies' },
-    { label: 'Сериалов: завершено / смотрю сейчас', value: `${s.series_completed} / ${s.series_watching}`, kind: 'series' },
+    { label: 'Фильмы', value: s.movies_watched, kind: 'movies' },
+    { label: 'Сериалы', value: `${s.series_completed} / ${s.series_watching}`, kind: 'series' },
     { label: 'Буду смотреть — фильмы', value: s.planned_movies, kind: 'planned_movies' },
     { label: 'Буду смотреть — сериалы', value: s.planned_series, kind: 'planned_series' },
     { label: 'Брошено', value: s.stopped, kind: 'stopped' },
@@ -311,6 +311,16 @@ export default function PersonalStatsPage() {
   ]
 
   const expandedItems = expanded ? itemsCache[expanded] ?? null : null
+
+  // "Развёрнутая статистика" for the series list — aggregates what's already
+  // in `s` (завершено/смотрю сейчас) with a per-episode rollup computed from
+  // the loaded cards themselves (not a separate request).
+  const seriesSummary = expanded === 'series' && expandedItems
+    ? {
+        watchedEpisodes: expandedItems.reduce((sum, i) => sum + (i.watched_episodes ?? 0), 0),
+        totalEpisodes: expandedItems.reduce((sum, i) => sum + (i.total_episodes ?? 0), 0),
+      }
+    : null
 
   function tileBody(t: (typeof tiles)[number]) {
     const main = typeof t.value === 'object' ? t.value.main : typeof t.value === 'number' ? t.value.toLocaleString('ru') : t.value
@@ -356,6 +366,14 @@ export default function PersonalStatsPage() {
                 Свернуть
               </button>
             </div>
+            {expanded === 'series' && (
+              <p className={styles.blockSubtitle}>
+                Завершено: {s.series_completed} · Смотрю сейчас: {s.series_watching}
+                {seriesSummary && seriesSummary.totalEpisodes > 0 && (
+                  <> · Эпизодов просмотрено: {seriesSummary.watchedEpisodes} из {seriesSummary.totalEpisodes}</>
+                )}
+              </p>
+            )}
             {expandedLoading ? (
               <p className={styles.emptyText}>Загрузка…</p>
             ) : !expandedItems || expandedItems.length === 0 ? (

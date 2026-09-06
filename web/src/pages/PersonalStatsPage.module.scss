@@ -128,10 +128,15 @@
   color: inherit;
   display: flex;
   flex-direction: column;
-  transition: transform $transition-fast;
+  outline: none;
+  transition: transform $transition-fast, box-shadow $transition-fast;
 
+  // box-shadow, not the generic [data-nav-item]:focus-visible outline — that
+  // draws a plain rectangle ignoring border-radius, which looks wrong around
+  // a rounded poster card (same reasoning as MediaLibraryPage's .card).
   &:hover, &:focus-visible {
     transform: translateY(-2px);
+    box-shadow: 0 0 0 2px $color-primary;
   }
 }
 
@@ -306,6 +311,14 @@
   text-align: center;
   text-decoration: none;
   width: 96px;
+
+  // Same reasoning as CardDetailPage's .castCard: the generic
+  // [data-nav-item]:focus-visible rectangle (global.scss) reads badly
+  // against a round avatar — show focus via the photo's own border and the
+  // name's color instead (below), same as :hover.
+  &[data-nav-item]:focus-visible {
+    outline: none;
+  }
 }
 
 .actorPhoto {
@@ -318,7 +331,8 @@
   border: 2px solid $color-border;
   transition: border-color $transition-fast;
 
-  .actorCard:hover & {
+  .actorCard:hover &,
+  .actorCard:focus-visible & {
     border-color: $color-primary;
   }
 }
@@ -345,7 +359,8 @@
   width: 100%;
   transition: color $transition-fast;
 
-  .actorCard:hover & {
+  .actorCard:hover &,
+  .actorCard:focus-visible & {
     color: $color-primary;
   }
 }
