@@ -122,6 +122,7 @@ func main() {
 	imagecache.StartEvictionLoop(appCtx, 10*time.Minute)
 
 	go api.RecomputeCategoryCounts()             // warm random-collection totals before first request
+	go api.WarmPopularPools(appCtx)              // warm actor/director pools before first /api/categories request
 	go store.BackfillImpliedStatuses(appCtx)     // catch up subjective statuses for pre-existing timecodes
 	api.StartUnwatchedCutoffInvalidation(appCtx) // refresh "Непросмотренные" cache when the aired cutoff crosses
 	// Drop the cached watched-set whenever a profile's progress changes (timecode write/

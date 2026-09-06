@@ -101,6 +101,11 @@ func InvalidateCategoryCache() {
 	// Eagerly recompute the admin-stats counts too, so the first /api/admin/stats
 	// visit after a parser run doesn't pay the ~500ms recompute cost itself.
 	go refreshStatsCounts(context.Background())
+
+	// Eagerly rewarm the actor/director pools too, so the first /api/categories
+	// visit after a parser run doesn't pay the ~300ms+ aggregation cost itself
+	// (see WarmPopularPools).
+	go WarmPopularPools(context.Background())
 }
 
 // ─── Watched-set cache (per device+profile) ──────────────────────────────────
@@ -771,7 +776,9 @@ func cachedChildTextAges() []int {
 // called up to 3x per request: actors, actors_ru, directors — GROUP BY + disk
 // sort over ~1M rows) that only changes when the catalog does. Caching just the
 // pool (not the picked subset) keeps the per-request randomness while cutting
-// the DB cost. Reset by InvalidateCategoryCache.
+// the DB cost. Reset and eagerly rewarmed by InvalidateCategoryCache (see
+// WarmPopularPools) — otherwise the first /api/categories request after each
+// parser run would pay the full aggregation cost itself.
 
 type popularPool struct {
 	limit int
@@ -821,6 +828,26 @@ func cachedPopularDirectors(ctx context.Context, limit int) []store.PopularActor
 	return pool
 }
 
+// WarmPopularPools eagerly recomputes the actor/director candidate pools using
+// the same limits handleAPICategories reads, so the first /api/categories
+// request after a parser run or process start doesn't pay the aggregation cost
+// itself. Called after each parser run (InvalidateCategoryCache) and once at
+// startup.
+func WarmPopularPools(ctx context.Context) {
+	actorCount := store.GetSettingInt(ctx, "catalog_actor_count")
+	actorRuCount := store.GetSettingInt(ctx, "catalog_actor_ru_count")
+	directorCount := store.GetSettingInt(ctx, "catalog_director_count")
+	if directorCount > 0 {
+		cachedPopularDirectors(ctx, directorCount)
+	}
+	if actorCount > 0 {
+		cachedPopularActors(ctx, actorCount, false)
+	}
+	if actorRuCount > 0 {
+		cachedPopularActors(ctx, actorRuCount, true)
+	}
+}
+
 // ─── Admin-stats counts cache ────────────────────────────────────────────────
 //
 // actor_count/director_count (/api/admin/stats) are each a COUNT(DISTINCT ...)
@@ -831,8 +858,8 @@ func cachedPopularDirectors(ctx context.Context, limit int) []store.PopularActor
 // changes (parser run / backfill) or the source is reconfigured. Cached and
 // warmed eagerly in the background right after InvalidateCategoryCache runs
 // (see refreshStatsCounts call there), so the admin never pays the recompute
-// cost on the next visit — unlike the lazy popularPool cache above, which
-// still makes the first post-parse request pay full price.
+// cost on the next visit — same treatment as the popularPool cache above (see
+// WarmPopularPools).
 
 type statsCounts struct {
 	actors        int
