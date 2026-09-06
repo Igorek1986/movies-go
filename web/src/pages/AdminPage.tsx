@@ -52,6 +52,15 @@ interface Stats {
   myshows_total: StatRow[]
 }
 
+// Non-breaking space keeps the number and unit on one line inside the
+// narrow stat card (was wrapping "2859.2 МБ" onto two lines); switching to
+// ГБ past 1024 МБ also keeps the string short enough to fit at 28px.
+function formatCacheSize(bytes: number): string {
+  const mb = bytes / 1024 / 1024
+  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} ГБ`
+  return `${mb.toFixed(1)} МБ`
+}
+
 type RequestsTab = 'today' | 'all'
 
 function RequestsTable({ rows, cols }: { rows: StatRow[]; cols: [string, string] }) {
@@ -781,7 +790,7 @@ export default function AdminPage() {
             )}
             {stats.image_cache_files > 0 && (
               <div className={styles.statCard}>
-                <p className={styles.statValue}>{(stats.image_cache_bytes / 1024 / 1024).toFixed(1)} МБ</p>
+                <p className={styles.statValue}>{formatCacheSize(stats.image_cache_bytes)}</p>
                 <p className={styles.statLabel}>Кеш картинок ({stats.image_cache_files.toLocaleString()} файлов)</p>
               </div>
             )}
