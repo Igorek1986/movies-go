@@ -36,6 +36,22 @@ type ProfileStats struct {
 	Calendar         []DayActivity `json:"calendar"`
 	TopGenres        []GenreCount  `json:"top_genres"`
 	TopActors        []ActorCount  `json:"top_actors"`
+	RemainingMinutes int64         `json:"remaining_minutes"`
+}
+
+// MovieWatchDetail is a movie's own timecode row summarized for the "Фильмы"
+// detail list — a movie always has exactly one timecode row, so this is a
+// direct read, not an aggregate.
+type MovieWatchDetail struct {
+	Percent   float64 `json:"percent"`
+	ViewCount int     `json:"view_count"`
+}
+
+// SeriesProgress is a TV show's aired/watched episode counts for the
+// "Сериалы" detail list.
+type SeriesProgress struct {
+	Watched int `json:"watched_episodes"`
+	Total   int `json:"total_episodes"`
 }
 
 type GenreCount struct {
@@ -132,7 +148,113 @@ func GetProfileStats(ctx context.Context, deviceID int64, profileID string) Prof
 	s.CurrentStreak, s.LongestStreak, s.FavoriteWeekday = computeStreaks(s.Calendar)
 	s.TopGenres = GetTopGenres(ctx, deviceID, profileID, 5)
 	s.TopActors = GetTopActors(ctx, deviceID, profileID, 5)
+	s.RemainingMinutes = GetRemainingWatchMinutes(ctx, deviceID, profileID)
 	return s
+}
+
+// GetMovieWatchDetails batch-loads percent/view_count for a set of movie
+// card_ids — each has exactly one timecode row (no per-episode item), so this
+// is a plain lookup, not an aggregate.
+func GetMovieWatchDetails(ctx context.Context, deviceID int64, profileID string, cardIDs []string) map[string]MovieWatchDetail {
+	out := make(map[string]MovieWatchDetail, len(cardIDs))
+	if len(cardIDs) == 0 {
+		return out
+	}
+	rows, err := postgres.Pool.Query(ctx, `
+		SELECT card_id, COALESCE((data::jsonb->>'percent')::numeric, 0), view_count
+		FROM timecodes
+		WHERE device_id = $1 AND profile_id = $2 AND card_id = ANY($3)`,
+		deviceID, profileID, cardIDs)
+	if err != nil {
+		log.Printf("store: get movie watch details: %v", err)
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cardID string
+		var d MovieWatchDetail
+		if rows.Scan(&cardID, &d.Percent, &d.ViewCount) == nil {
+			out[cardID] = d
+		}
+	}
+	return out
+}
+
+// GetSeriesProgressBatch batch-loads aired/watched episode counts for a set
+// of TV show card_ids — same LATERAL-join shape as UnwatchedTVShowProgress
+// (see unwatched.go), but batched and without its "status = watching"
+// restriction: the caller already picked which card_ids to ask about.
+func GetSeriesProgressBatch(ctx context.Context, deviceID int64, profileID string, cardIDs []string) map[string]SeriesProgress {
+	out := make(map[string]SeriesProgress, len(cardIDs))
+	if len(cardIDs) == 0 {
+		return out
+	}
+	cutoff := AiredCutoffDate(ctx)
+	//nolint:gosec // cutoff comes from AiredCutoffDate (admin setting only), not user input
+	rows, err := postgres.Pool.Query(ctx, `
+		WITH watched_hashes AS (
+			SELECT tc.item AS hash
+			FROM timecodes tc
+			WHERE tc.device_id = $1 AND tc.profile_id = $2
+			  AND ((tc.data::jsonb->>'percent')::numeric >= $3
+			       OR (tc.data::jsonb->>'special')::boolean IS TRUE)
+		)
+		SELECT mc.card_id,
+		       COUNT(*) FILTER (WHERE e.air_date IS NOT NULL AND e.air_date <= `+cutoff+`) AS aired,
+		       COUNT(*) FILTER (WHERE e.air_date IS NOT NULL AND e.air_date <= `+cutoff+`
+		                          AND wh.hash IS NOT NULL) AS watched
+		FROM media_cards mc
+		JOIN episodes e ON e.tmdb_show_id = mc.tmdb_id AND NOT e.is_special
+		LEFT JOIN watched_hashes wh ON wh.hash = e.hash
+		WHERE mc.card_id = ANY($4) AND mc.media_type = 'tv'
+		GROUP BY mc.card_id`,
+		deviceID, profileID, WatchedThreshold(ctx), cardIDs)
+	if err != nil {
+		log.Printf("store: get series progress batch: %v", err)
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cardID string
+		var p SeriesProgress
+		if rows.Scan(&cardID, &p.Total, &p.Watched) == nil {
+			out[cardID] = p
+		}
+	}
+	return out
+}
+
+// GetRemainingWatchMinutes estimates catch-up time for shows the profile is
+// actively "Смотрю" — sum of aired-but-unwatched episode durations (falling
+// back to the show's episode_run_time when a specific episode's duration is
+// unknown). Deliberately excludes "Буду смотреть" (not started yet).
+func GetRemainingWatchMinutes(ctx context.Context, deviceID int64, profileID string) int64 {
+	watchingIDs := ListWatchingCardIDs(ctx, deviceID, profileID, 0)
+	if len(watchingIDs) == 0 {
+		return 0
+	}
+	cutoff := AiredCutoffDate(ctx)
+	//nolint:gosec // cutoff comes from AiredCutoffDate (admin setting only), not user input
+	var minutes int64
+	if err := postgres.Pool.QueryRow(ctx, `
+		WITH watched_hashes AS (
+			SELECT tc.item AS hash
+			FROM timecodes tc
+			WHERE tc.device_id = $1 AND tc.profile_id = $2
+			  AND ((tc.data::jsonb->>'percent')::numeric >= $3
+			       OR (tc.data::jsonb->>'special')::boolean IS TRUE)
+		)
+		SELECT COALESCE(SUM(COALESCE(e.duration_sec, mc.episode_run_time * 60, 0)), 0) / 60
+		FROM media_cards mc
+		JOIN episodes e ON e.tmdb_show_id = mc.tmdb_id AND NOT e.is_special
+		LEFT JOIN watched_hashes wh ON wh.hash = e.hash
+		WHERE mc.card_id = ANY($4)
+		  AND e.air_date IS NOT NULL AND e.air_date <= `+cutoff+`
+		  AND wh.hash IS NULL`,
+		deviceID, profileID, WatchedThreshold(ctx), watchingIDs).Scan(&minutes); err != nil {
+		log.Printf("store: get remaining watch minutes: %v", err)
+	}
+	return minutes
 }
 
 // watchedCardsCTE is shared by GetTopGenres/GetTopActors — cards the profile

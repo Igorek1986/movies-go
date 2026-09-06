@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import ContributionCalendar from '@/components/ContributionCalendar'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
-import { tmdbUrl } from '@/utils/poster'
+import { posterUrl, tmdbUrl } from '@/utils/poster'
+import { getGridCols, focusTopNavActive } from '@/utils/scrollNav'
 import styles from './PersonalStatsPage.module.scss'
 
 interface DayActivity {
@@ -33,12 +34,36 @@ interface ProfileStats {
   favorites: number
   episodes_watched: number
   watch_time_minutes: number
+  remaining_minutes: number
   current_streak: number
   longest_streak: number
   favorite_weekday: number // 0=Mon..6=Sun, -1 = no data
   calendar: DayActivity[]
   top_genres: GenreCount[]
   top_actors: ActorCount[]
+}
+
+// Matches toMediaItem's (backend) shape for /api/stats/personal/movies and
+// .../series — the same fields MediaLibraryPage's LibraryItem uses, plus the
+// stats-only extras merged in by each handler.
+interface StatsListItem {
+  id: number
+  media_type: string
+  title: string
+  name: string
+  poster_path: string | null
+  release_date: string
+  first_air_date: string
+  percent?: number
+  view_count?: number
+  watched_episodes?: number
+  total_episodes?: number
+}
+
+type ExpandedKind = 'movies' | 'series'
+
+function cardIdOf(item: StatsListItem): string {
+  return `${item.id}_${item.media_type}`
 }
 
 const WEEKDAY_NAMES = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
@@ -50,15 +75,63 @@ function capitalizeFirst(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-function formatHours(minutes: number): string {
+function formatWatchTime(minutes: number): string {
   const hours = Math.round(minutes / 60)
-  return `${hours.toLocaleString('ru')} ч`
+  if (hours < 24) return `${hours.toLocaleString('ru')} ч`
+  const days = Math.round((hours / 24) * 10) / 10
+  return `${hours.toLocaleString('ru')} ч (${days.toLocaleString('ru')} дн.)`
+}
+
+async function fetchStatsList(kind: ExpandedKind, token: string, profileId: string): Promise<StatsListItem[]> {
+  const params = new URLSearchParams({ token, profile_id: profileId, per_page: '60' })
+  const res = await fetch(`/api/stats/personal/${kind}?${params}`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return Array.isArray(data.results) ? data.results : []
+}
+
+function StatsCard({ item, kind, onOpen }: { item: StatsListItem; kind: ExpandedKind; onOpen: () => void }) {
+  const url = posterUrl(item.poster_path)
+  const title = item.title || item.name
+  const showRewatch = kind === 'movies' && typeof item.view_count === 'number' && item.view_count > 1
+  const showPercent = kind === 'movies' && typeof item.percent === 'number' && item.percent > 0 && item.percent < 100
+  const showProgress = kind === 'series' && typeof item.total_episodes === 'number' && item.total_episodes > 0
+  return (
+    <button type="button" className={styles.statsCard} data-nav-item onClick={onOpen}>
+      <div className={styles.statsCardPoster}>
+        {url
+          ? <img src={url} alt={title} loading="lazy" />
+          : <div className={styles.posterPlaceholder}>Нет постера</div>}
+        {showRewatch && <span className={styles.rewatchBadge}>×{item.view_count}</span>}
+        {showPercent && <span className={styles.percentBadge}>{Math.round(item.percent!)}%</span>}
+        {showProgress && (
+          <>
+            <span className={styles.progressLabel}>{item.watched_episodes ?? 0}/{item.total_episodes}</span>
+            <div className={styles.progressTrack}>
+              <div
+                className={styles.progressFill}
+                style={{ width: `${Math.min(100, ((item.watched_episodes ?? 0) / item.total_episodes!) * 100)}%` }}
+              />
+            </div>
+          </>
+        )}
+      </div>
+      <p className={styles.statsCardTitle}>{title}</p>
+    </button>
+  )
 }
 
 export default function PersonalStatsPage() {
+  const navigate = useNavigate()
   const { activeDevice, activeProfile, loaded } = useActiveProfile()
   const [stats, setStats] = useState<ProfileStats | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const [expanded, setExpanded] = useState<ExpandedKind | null>(null)
+  const [movieItems, setMovieItems] = useState<StatsListItem[] | null>(null)
+  const [seriesItems, setSeriesItems] = useState<StatsListItem[] | null>(null)
+  const [expandedLoading, setExpandedLoading] = useState(false)
+  const lastTileRef = useRef<HTMLButtonElement | null>(null)
 
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
@@ -72,7 +145,119 @@ export default function PersonalStatsPage() {
       .then(res => res.ok ? res.json() : null)
       .then(data => setStats(data))
       .finally(() => setLoading(false))
+    // Switching profile invalidates any already-fetched detail lists.
+    setExpanded(null)
+    setMovieItems(null)
+    setSeriesItems(null)
   }, [loaded, token, profileId])
+
+  async function toggleExpanded(kind: ExpandedKind, btn: HTMLButtonElement) {
+    if (expanded === kind) { setExpanded(null); return }
+    lastTileRef.current = btn
+    setExpanded(kind)
+    const cache = kind === 'movies' ? movieItems : seriesItems
+    if (cache) return
+    setExpandedLoading(true)
+    const items = await fetchStatsList(kind, token, profileId)
+    if (kind === 'movies') setMovieItems(items); else setSeriesItems(items)
+    setExpandedLoading(false)
+  }
+
+  // Basic arrow-key navigation for this page only (no site-wide focus engine
+  // yet — see project backlog #70). Follows the same recipe as
+  // CalendarPage.tsx: a page-level keydown effect moving focus between
+  // [data-nav-item] elements inside named data-row-id regions. Tiles/cards/
+  // actor links are all native <button>/<a> here, so Enter/Space activation
+  // is free — only arrow movement and closing the expanded list need code.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const tag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') return
+
+      // Layout.tsx skips its own site-wide Backspace-navigates-back handling
+      // on this page (see its onKeyDown comment) specifically so this page
+      // can decide for itself — same convention as CatalogPage: collapse the
+      // expanded list first, only navigate back once there's nothing left to
+      // collapse.
+      if (e.key === 'Backspace') {
+        e.preventDefault()
+        if (expanded) { setExpanded(null); lastTileRef.current?.focus() }
+        else navigate(-1)
+        return
+      }
+      if (e.key === 'Escape') {
+        if (expanded) {
+          e.preventDefault()
+          setExpanded(null)
+          lastTileRef.current?.focus()
+        }
+        return
+      }
+
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
+      const focused = document.activeElement as HTMLElement | null
+      if (!focused) return
+
+      const actorRow = focused.closest<HTMLElement>('[data-row-id="stats-actors"]')
+      if (actorRow) {
+        const cards = Array.from(actorRow.querySelectorAll<HTMLElement>('[data-nav-item]'))
+        const idx = cards.indexOf(focused)
+        if (e.key === 'ArrowLeft' && idx > 0) { e.preventDefault(); cards[idx - 1].focus() }
+        else if (e.key === 'ArrowRight' && idx < cards.length - 1) { e.preventDefault(); cards[idx + 1].focus() }
+        else if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          const target = document.querySelector<HTMLElement>(
+            `[data-row-id="${expanded ? 'stats-expanded' : 'stats-tiles'}"] [data-nav-item]`,
+          )
+          target?.focus()
+        }
+        return
+      }
+
+      const expandedRow = focused.closest<HTMLElement>('[data-row-id="stats-expanded"]')
+      if (expandedRow) {
+        const cards = Array.from(expandedRow.querySelectorAll<HTMLElement>('[data-nav-item]'))
+        const idx = cards.indexOf(focused)
+        if (idx === -1) return
+        const cols = getGridCols(cards)
+        e.preventDefault()
+        if (e.key === 'ArrowRight') cards[Math.min(idx + 1, cards.length - 1)]?.focus()
+        else if (e.key === 'ArrowLeft') cards[Math.max(idx - 1, 0)]?.focus()
+        else if (e.key === 'ArrowUp') {
+          if (idx < cols) document.querySelector<HTMLElement>('[data-row-id="stats-tiles"] [data-nav-item]')?.focus()
+          else cards[idx - cols]?.focus()
+        } else if (e.key === 'ArrowDown') {
+          cards[Math.min(idx + cols, cards.length - 1)]?.focus()
+        }
+        return
+      }
+
+      const tilesRow = focused.closest<HTMLElement>('[data-row-id="stats-tiles"]')
+      if (tilesRow) {
+        const tiles = Array.from(tilesRow.querySelectorAll<HTMLElement>('[data-nav-item]'))
+        const idx = tiles.indexOf(focused)
+        if (idx === -1) return
+        const cols = getGridCols(tiles)
+        e.preventDefault()
+        if (e.key === 'ArrowRight') tiles[Math.min(idx + 1, tiles.length - 1)]?.focus()
+        else if (e.key === 'ArrowLeft') tiles[Math.max(idx - 1, 0)]?.focus()
+        else if (e.key === 'ArrowUp') {
+          if (idx < cols) focusTopNavActive()
+          else tiles[idx - cols]?.focus()
+        } else if (e.key === 'ArrowDown') {
+          if (idx >= tiles.length - cols) {
+            const next = document.querySelector<HTMLElement>('[data-row-id="stats-expanded"] [data-nav-item]')
+              ?? document.querySelector<HTMLElement>('[data-row-id="stats-actors"] [data-nav-item]')
+            next?.focus()
+          } else {
+            tiles[Math.min(idx + cols, tiles.length - 1)]?.focus()
+          }
+        }
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [expanded])
 
   if (loading) {
     return <Layout><div className={styles.loading}>Загрузка…</div></Layout>
@@ -81,41 +266,83 @@ export default function PersonalStatsPage() {
   const s = stats ?? {
     movies_watched: 0, series_completed: 0, series_watching: 0,
     planned_movies: 0, planned_series: 0, stopped: 0, favorites: 0,
-    episodes_watched: 0, watch_time_minutes: 0,
+    episodes_watched: 0, watch_time_minutes: 0, remaining_minutes: 0,
     current_streak: 0, longest_streak: 0, favorite_weekday: -1,
     calendar: [] as DayActivity[],
     top_genres: [] as GenreCount[],
     top_actors: [] as ActorCount[],
   }
 
-  const tiles = [
-    { label: 'Фильмов просмотрено', value: s.movies_watched },
-    { label: 'Сериалов завершено', value: s.series_completed },
-    { label: 'Сериалов смотрю сейчас', value: s.series_watching },
+  const tiles: { label: string; value: number | string; kind?: ExpandedKind }[] = [
+    { label: 'Фильмов просмотрено', value: s.movies_watched, kind: 'movies' },
+    { label: 'Сериалов завершено', value: s.series_completed, kind: 'series' },
+    { label: 'Сериалов смотрю сейчас', value: s.series_watching, kind: 'series' },
     { label: 'Буду смотреть — фильмы', value: s.planned_movies },
     { label: 'Буду смотреть — сериалы', value: s.planned_series },
     { label: 'Брошено', value: s.stopped },
     { label: 'В избранном', value: s.favorites },
     { label: 'Эпизодов просмотрено', value: s.episodes_watched },
-    { label: 'Время у экрана', value: formatHours(s.watch_time_minutes) },
+    { label: 'Время у экрана', value: formatWatchTime(s.watch_time_minutes) },
+    { label: 'Осталось смотреть', value: formatWatchTime(s.remaining_minutes) },
     { label: 'Текущий стрик', value: `${s.current_streak} дн.` },
     { label: 'Самый длинный стрик', value: `${s.longest_streak} дн.` },
     { label: 'Любимый день недели', value: s.favorite_weekday >= 0 ? WEEKDAY_NAMES[s.favorite_weekday] : '—' },
   ]
+
+  const expandedItems = expanded === 'movies' ? movieItems : expanded === 'series' ? seriesItems : null
 
   return (
     <Layout>
       <div className={styles.page}>
         <h1 className={styles.title}>Статистика</h1>
 
-        <div className={styles.tilesGrid}>
-          {tiles.map(t => (
+        <div className={styles.tilesGrid} data-row-id="stats-tiles">
+          {tiles.map(t => t.kind ? (
+            <button
+              key={t.label}
+              type="button"
+              className={`${styles.tile} ${styles.tileClickable}`}
+              data-nav-item
+              aria-expanded={expanded === t.kind}
+              onClick={e => toggleExpanded(t.kind!, e.currentTarget)}
+            >
+              <div className={styles.tileValue}>{typeof t.value === 'number' ? t.value.toLocaleString('ru') : t.value}</div>
+              <div className={styles.tileLabel}>{t.label}</div>
+            </button>
+          ) : (
             <div key={t.label} className={styles.tile}>
               <div className={styles.tileValue}>{typeof t.value === 'number' ? t.value.toLocaleString('ru') : t.value}</div>
               <div className={styles.tileLabel}>{t.label}</div>
             </div>
           ))}
         </div>
+
+        {expanded && (
+          <div className={styles.block} data-row-id="stats-expanded">
+            <div className={styles.expandedHeader}>
+              <h2 className={styles.blockTitle}>{expanded === 'movies' ? 'Просмотренные фильмы' : 'Сериалы (смотрю + завершено)'}</h2>
+              <button type="button" className={styles.closeBtn} onClick={() => { setExpanded(null); lastTileRef.current?.focus() }}>
+                Свернуть
+              </button>
+            </div>
+            {expandedLoading ? (
+              <p className={styles.emptyText}>Загрузка…</p>
+            ) : !expandedItems || expandedItems.length === 0 ? (
+              <p className={styles.emptyText}>Нет данных</p>
+            ) : (
+              <div className={styles.expandedGrid}>
+                {expandedItems.map(item => (
+                  <StatsCard
+                    key={cardIdOf(item)}
+                    item={item}
+                    kind={expanded}
+                    onOpen={() => navigate(`/card/${cardIdOf(item)}`)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className={styles.calendarSection}>
           <ContributionCalendar data={s.calendar} />
@@ -142,11 +369,11 @@ export default function PersonalStatsPage() {
         {s.top_actors.length > 0 && (
           <div className={styles.block}>
             <h2 className={styles.blockTitle}>Любимые актёры</h2>
-            <div className={styles.actorsGrid}>
+            <div className={styles.actorsGrid} data-row-id="stats-actors">
               {s.top_actors.map(a => {
                 const photo = a.profile_path ? tmdbUrl(a.profile_path, 'w185') : null
                 return (
-                  <Link key={a.person_id} to={`/actor/${a.person_id}`} className={styles.actorCard}>
+                  <Link key={a.person_id} to={`/actor/${a.person_id}`} className={styles.actorCard} data-nav-item>
                     {photo
                       ? <img className={styles.actorPhoto} src={photo} alt={a.name} loading="lazy" />
                       : <div className={styles.actorPhotoPlaceholder}>👤</div>}

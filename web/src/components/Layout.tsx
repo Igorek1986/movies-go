@@ -247,11 +247,12 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       }
       if (onTopNav && e.key === 'ArrowDown') return
 
-      // Everything below is skipped on /catalog: it already binds Backspace
-      // itself (collapses an expanded category first) and owns all four
-      // arrows for its own grid navigation — wiring both up would
+      // Everything below is skipped on /catalog and /my-stats: each already
+      // binds Backspace itself (collapses an expanded category/list first,
+      // else navigates back the same way this handler would) and owns all
+      // four arrows for its own grid navigation — wiring both up would
       // double-fire history or fight over the arrow keys.
-      if (pathnameRef.current === '/catalog') return
+      if (pathnameRef.current === '/catalog' || pathnameRef.current === '/my-stats') return
 
       const panelHasFocus = !!desktopPanelRef.current?.contains(document.activeElement)
       // A page can opt into owning Left/Right itself by marking its rows
