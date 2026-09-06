@@ -1069,30 +1069,36 @@ export default function AdminPage() {
 
         {/* ── Requests breakdown ─────────────────────────────────────────────── */}
         {stats && (
-          <div className={styles.section}>
-            <h2 className={styles.sectionTitle}>Запросы</h2>
-            <RequestsSection
-              title="API пользователи (IP)"
-              tab={apiTab}
-              onTab={setApiTab}
-              todayContent={<RequestsTable rows={stats.api_today} cols={['IP', 'Запросов']} />}
-              allContent={<RequestsTable rows={stats.api_total} cols={['IP', 'Запросов']} />}
-            />
-            <RequestsSection
-              title="Категории"
-              tab={catsTab}
-              onTab={setCatsTab}
-              todayContent={<RequestsTable rows={stats.cats_today} cols={['Категория', 'Запросов']} />}
-              allContent={<RequestsTable rows={stats.cats_total} cols={['Категория', 'Запросов']} />}
-            />
-            <RequestsSection
-              title="MyShows"
-              tab={myshowsTab}
-              onTab={setMyshowsTab}
-              todayContent={<RequestsTable rows={stats.myshows_today} cols={['Логин', 'Синхронизаций']} />}
-              allContent={<RequestsTable rows={stats.myshows_total} cols={['Логин', 'Синхронизаций']} />}
-            />
-          </div>
+          <>
+            <h2 className={styles.groupTitle}>Запросы</h2>
+            <div className={styles.section}>
+              <RequestsSection
+                title="API пользователи (IP)"
+                tab={apiTab}
+                onTab={setApiTab}
+                todayContent={<RequestsTable rows={stats.api_today} cols={['IP', 'Запросов']} />}
+                allContent={<RequestsTable rows={stats.api_total} cols={['IP', 'Запросов']} />}
+              />
+            </div>
+            <div className={styles.section}>
+              <RequestsSection
+                title="Категории"
+                tab={catsTab}
+                onTab={setCatsTab}
+                todayContent={<RequestsTable rows={stats.cats_today} cols={['Категория', 'Запросов']} />}
+                allContent={<RequestsTable rows={stats.cats_total} cols={['Категория', 'Запросов']} />}
+              />
+            </div>
+            <div className={styles.section}>
+              <RequestsSection
+                title="MyShows"
+                tab={myshowsTab}
+                onTab={setMyshowsTab}
+                todayContent={<RequestsTable rows={stats.myshows_today} cols={['Логин', 'Синхронизаций']} />}
+                allContent={<RequestsTable rows={stats.myshows_total} cols={['Логин', 'Синхронизаций']} />}
+              />
+            </div>
+          </>
         )}
       </div>
     </Layout>

@@ -369,6 +369,16 @@
 
 // ── Requests breakdown (API/категории/MyShows) ────────────────────────────────
 
+// Own heading above the three cards below (not inside any of them) — mirrors
+// how "Пользователи"/"Действия" are plain <h2>s directly in .page, not nested
+// in one shared card with their content.
+.groupTitle {
+  margin: 0;
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $color-text;
+}
+
 .requestsBlock {
   display: flex;
   flex-direction: column;
@@ -422,8 +432,17 @@
 
 .statTable {
   width: 100%;
+  // Fixed layout + explicit column widths — otherwise each table (IP list,
+  // category names, MyShows logins) auto-sizes its first column to its own
+  // content, so "ЗАПРОСОВ"/"ДОЛЯ" land at a different x position in every
+  // block below it and the stack of cards reads as misaligned.
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: $font-size-sm;
+
+  th:first-child, td:first-child { width: 45%; }
+  th:nth-child(2), td:nth-child(2) { width: 25%; }
+  th:last-child, td:last-child { width: 30%; }
 
   th {
     text-align: left;
@@ -434,6 +453,9 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     border-bottom: 1px solid $color-border;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   td {
@@ -441,6 +463,9 @@
     border-bottom: 1px solid rgba($color-border-rgb, 0.4);
     color: $color-text;
     vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   tr:last-child td {
