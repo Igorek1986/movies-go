@@ -227,6 +227,7 @@ export default function PersonalStatsPage() {
   }, [loaded, token, profileId])
 
   async function openDay(date: string) {
+    if (selectedDay === date) { setSelectedDay(null); setDayItems(null); return }
     setSelectedDay(date)
     setDayItemsLoading(true)
     setDayItems(await fetchDayItems(token, profileId, date))
