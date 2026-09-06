@@ -60,9 +60,9 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   }, [location.pathname])
 
   // Warm the admin-stats cache from whatever page the admin happens to be
-  // on, so that by the time they actually open /admin or /stats it's
-  // usually already fresh — skipped entirely if a still-valid cache exists
-  // (no point re-fetching on every page navigation).
+  // on, so that by the time they actually open /admin it's usually already
+  // fresh — skipped entirely if a still-valid cache exists (no point
+  // re-fetching on every page navigation).
   useEffect(() => {
     if (!user?.is_admin) return
     const cached = loadTTLCache(ADMIN_STATS_CACHE_KEY, ADMIN_STATS_TTL_MS)
@@ -354,12 +354,10 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       <NavLink to="/calendar" className={linkClass} onClick={() => setMenuOpen(false)}>Календарь</NavLink>
       <NavLink to="/media-library" className={linkClass} onClick={() => { setMenuOpen(false); window.dispatchEvent(new CustomEvent('media-library:back')) }}>Моё</NavLink>
       <NavLink to="/history"  className={linkClass} onClick={() => setMenuOpen(false)}>История</NavLink>
+      <NavLink to="/my-stats" className={linkClass} onClick={() => setMenuOpen(false)}>Статистика</NavLink>
       <NavLink to="/sessions" className={linkClass} onClick={() => setMenuOpen(false)}>Сессии</NavLink>
       {user?.is_admin && (
         <NavLink to="/admin" className={linkClass} onClick={() => setMenuOpen(false)}>Админ</NavLink>
-      )}
-      {user?.is_admin && (
-        <NavLink to="/stats" className={linkClass} onClick={() => setMenuOpen(false)}>Статистика</NavLink>
       )}
       <NavLink to="/profiles" className={linkClass} onClick={() => setMenuOpen(false)}>Настройки</NavLink>
     </>

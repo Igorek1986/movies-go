@@ -1,0 +1,50 @@
+@use '@/styles/variables' as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+}
+
+.title {
+  margin: 0;
+  font-size: $font-size-xl;
+  font-weight: 700;
+  color: $color-text;
+}
+
+.tilesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: $spacing-md;
+}
+
+.tile {
+  @include card;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  padding: $spacing-lg;
+}
+
+.tileValue {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: $color-primary;
+  line-height: 1.1;
+}
+
+.tileLabel {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.calendarSection {
+  @include card;
+}
+
+.loading {
+  text-align: center;
+  color: $color-text-muted;
+  padding: $spacing-2xl 0;
+}

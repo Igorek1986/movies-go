@@ -45,7 +45,7 @@ const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
 // see utils/settingsLayout.ts — no reason to ship it in the main bundle.
 const ProfilesPage = lazy(() => import('@/pages/ProfilesPage'))
 const SessionsPage = lazy(() => import('@/pages/SessionsPage'))
-const StatsPage = lazy(() => import('@/pages/StatsPage'))
+const PersonalStatsPage = lazy(() => import('@/pages/PersonalStatsPage'))
 const Setup2FAPage = lazy(() => import('@/pages/Setup2FAPage'))
 const Verify2FAPage = lazy(() => import('@/pages/Verify2FAPage'))
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'))
@@ -192,10 +192,10 @@ export default function App() {
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/media-library" element={<MediaLibraryPage />} />
         <Route path="/history" element={<HistoryPage />} />
+        <Route path="/my-stats" element={<PersonalStatsPage />} />
         <Route path="/card/:cardId" element={<CardDetailPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/sessions" element={<SessionsPage />} />
-        <Route path="/stats" element={<StatsPage />} />
         <Route path="/setup-2fa" element={<Setup2FAPage />} />
         <Route path="/actor/:personId" element={<ActorPage />} />
         <Route path="/admin/settings" element={<AdminSettingsPage />} />

@@ -17,6 +17,11 @@ interface AdminUser {
   device_count: number
 }
 
+interface StatRow {
+  name: string
+  requests: number
+}
+
 interface Stats {
   users: number
   users_today: number
@@ -37,6 +42,68 @@ interface Stats {
   popular_source_count: number
   image_cache_bytes: number
   image_cache_files: number
+  api_ips_today: number
+  api_reqs_today: number
+  api_today: StatRow[]
+  api_total: StatRow[]
+  cats_today: StatRow[]
+  cats_total: StatRow[]
+  myshows_today: StatRow[]
+  myshows_total: StatRow[]
+}
+
+type RequestsTab = 'today' | 'all'
+
+function RequestsTable({ rows, cols }: { rows: StatRow[]; cols: [string, string] }) {
+  const total = rows.reduce((s, r) => s + r.requests, 0)
+  if (rows.length === 0) {
+    return <p className={styles.emptyText}>Нет данных</p>
+  }
+  return (
+    <table className={styles.statTable}>
+      <thead>
+        <tr>
+          <th>{cols[0]}</th>
+          <th>{cols[1]}</th>
+          <th>Доля</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr key={i}>
+            <td>{r.name}</td>
+            <td className={styles.muted}>{r.requests.toLocaleString('ru')}</td>
+            <td className={styles.muted}>
+              {total > 0 ? ((r.requests / total) * 100).toFixed(1) + '%' : '—'}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function RequestsSection({
+  title, tab, onTab, todayContent, allContent,
+}: {
+  title: string
+  tab: RequestsTab
+  onTab: (t: RequestsTab) => void
+  todayContent: React.ReactNode
+  allContent: React.ReactNode
+}) {
+  return (
+    <div className={styles.requestsBlock}>
+      <div className={styles.sectionHeader}>
+        <h3 className={styles.requestsTitle}>{title}</h3>
+        <div className={styles.tabs}>
+          <button className={`${styles.tab}${tab === 'today' ? ' ' + styles.tabActive : ''}`} onClick={() => onTab('today')}>Сегодня</button>
+          <button className={`${styles.tab}${tab === 'all' ? ' ' + styles.tabActive : ''}`} onClick={() => onTab('all')}>Всё время</button>
+        </div>
+      </div>
+      {tab === 'today' ? todayContent : allContent}
+    </div>
+  )
 }
 
 interface SystemStats {
@@ -97,6 +164,9 @@ export default function AdminPage() {
   const [restoring, setRestoring] = useState(false)
   const restoreInput = useRef<HTMLInputElement | null>(null)
   const [apiKey, setApiKey] = useState<string>('')
+  const [apiTab, setApiTab] = useState<RequestsTab>('today')
+  const [catsTab, setCatsTab] = useState<RequestsTab>('today')
+  const [myshowsTab, setMyshowsTab] = useState<RequestsTab>('today')
 
   function toast(text: string, ok = true) {
     const id = Date.now()
@@ -630,6 +700,18 @@ export default function AdminPage() {
                 </Link>
               </div>
             )}
+            {stats.api_reqs_today > 0 && (
+              <div className={styles.statCard}>
+                <p className={styles.statValue}>{stats.api_reqs_today.toLocaleString()}</p>
+                <p className={styles.statLabel}>Запросов API сегодня</p>
+              </div>
+            )}
+            {stats.api_ips_today > 0 && (
+              <div className={styles.statCard}>
+                <p className={styles.statValue}>{stats.api_ips_today.toLocaleString()}</p>
+                <p className={styles.statLabel}>IP сегодня</p>
+              </div>
+            )}
             {stats.no_runtime_movies > 0 && (
               <div className={`${styles.statCard} ${styles.statCardClickable}`}>
                 <Link to="/admin/no-runtime-movies" className={styles.statLink}>
@@ -975,6 +1057,34 @@ export default function AdminPage() {
             </>
           )}
         </div>
+
+        {/* ── Requests breakdown ─────────────────────────────────────────────── */}
+        {stats && (
+          <div className={styles.section}>
+            <h2 className={styles.sectionTitle}>Запросы</h2>
+            <RequestsSection
+              title="API пользователи (IP)"
+              tab={apiTab}
+              onTab={setApiTab}
+              todayContent={<RequestsTable rows={stats.api_today} cols={['IP', 'Запросов']} />}
+              allContent={<RequestsTable rows={stats.api_total} cols={['IP', 'Запросов']} />}
+            />
+            <RequestsSection
+              title="Категории"
+              tab={catsTab}
+              onTab={setCatsTab}
+              todayContent={<RequestsTable rows={stats.cats_today} cols={['Категория', 'Запросов']} />}
+              allContent={<RequestsTable rows={stats.cats_total} cols={['Категория', 'Запросов']} />}
+            />
+            <RequestsSection
+              title="MyShows"
+              tab={myshowsTab}
+              onTab={setMyshowsTab}
+              todayContent={<RequestsTable rows={stats.myshows_today} cols={['Логин', 'Синхронизаций']} />}
+              allContent={<RequestsTable rows={stats.myshows_total} cols={['Логин', 'Синхронизаций']} />}
+            />
+          </div>
+        )}
       </div>
     </Layout>
   )

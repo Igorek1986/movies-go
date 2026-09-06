@@ -367,6 +367,103 @@
   padding: $spacing-md 0;
 }
 
+// ── Requests breakdown (API/категории/MyShows) ────────────────────────────────
+
+.requestsBlock {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.requestsTitle {
+  margin: 0;
+  font-size: $font-size-base;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.sectionHeader {
+  @include flex-between;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+}
+
+.tabs {
+  display: flex;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  overflow: hidden;
+}
+
+.tab {
+  padding: $spacing-xs $spacing-md;
+  border: none;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: background $transition-fast, color $transition-fast;
+
+  & + & {
+    border-left: 1px solid $color-border;
+  }
+
+  &:hover {
+    background: rgba($color-primary-rgb, 0.08);
+    color: $color-primary;
+  }
+}
+
+.tabActive {
+  background: rgba($color-primary-rgb, 0.15);
+  color: $color-primary;
+  font-weight: 600;
+}
+
+.statTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $font-size-sm;
+
+  th {
+    text-align: left;
+    padding: $spacing-xs $spacing-sm;
+    color: $color-text-muted;
+    font-size: $font-size-xs;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid $color-border;
+  }
+
+  td {
+    padding: $spacing-sm;
+    border-bottom: 1px solid rgba($color-border-rgb, 0.4);
+    color: $color-text;
+    vertical-align: middle;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:hover td {
+    background: rgba($color-border-rgb, 0.15);
+  }
+}
+
+.muted {
+  color: $color-text-muted;
+}
+
+.emptyText {
+  color: $color-text-muted;
+  font-style: italic;
+  font-size: $font-size-sm;
+  margin: 0;
+  padding: $spacing-md 0;
+}
+
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
 .stats {
