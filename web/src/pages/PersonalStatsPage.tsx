@@ -1,11 +1,25 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import ContributionCalendar from '@/components/ContributionCalendar'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
+import { tmdbUrl } from '@/utils/poster'
 import styles from './PersonalStatsPage.module.scss'
 
 interface DayActivity {
   date: string
+  count: number
+}
+
+interface GenreCount {
+  name: string
+  count: number
+}
+
+interface ActorCount {
+  person_id: number
+  name: string
+  profile_path: string
   count: number
 }
 
@@ -23,6 +37,8 @@ interface ProfileStats {
   longest_streak: number
   favorite_weekday: number // 0=Mon..6=Sun, -1 = no data
   calendar: DayActivity[]
+  top_genres: GenreCount[]
+  top_actors: ActorCount[]
 }
 
 const WEEKDAY_NAMES = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
@@ -61,6 +77,8 @@ export default function PersonalStatsPage() {
     episodes_watched: 0, watch_time_minutes: 0,
     current_streak: 0, longest_streak: 0, favorite_weekday: -1,
     calendar: [] as DayActivity[],
+    top_genres: [] as GenreCount[],
+    top_actors: [] as ActorCount[],
   }
 
   const tiles = [
@@ -95,6 +113,43 @@ export default function PersonalStatsPage() {
         <div className={styles.calendarSection}>
           <ContributionCalendar data={s.calendar} />
         </div>
+
+        {s.top_genres.length > 0 && (
+          <div className={styles.block}>
+            <h2 className={styles.blockTitle}>Любимые жанры</h2>
+            <div className={styles.genreList}>
+              {s.top_genres.map(g => (
+                <div key={g.name} className={styles.genreRow}>
+                  <span className={styles.genreName}>{g.name}</span>
+                  <div className={styles.genreBarTrack}>
+                    <div className={styles.genreBarFill} style={{ width: `${(g.count / s.top_genres[0].count) * 100}%` }} />
+                  </div>
+                  <span className={styles.genreCount}>{g.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {s.top_actors.length > 0 && (
+          <div className={styles.block}>
+            <h2 className={styles.blockTitle}>Любимые актёры</h2>
+            <div className={styles.actorsGrid}>
+              {s.top_actors.map(a => {
+                const photo = a.profile_path ? tmdbUrl(a.profile_path, 'w185') : null
+                return (
+                  <Link key={a.person_id} to={`/actor/${a.person_id}`} className={styles.actorCard}>
+                    {photo
+                      ? <img className={styles.actorPhoto} src={photo} alt={a.name} loading="lazy" />
+                      : <div className={styles.actorPhotoPlaceholder}>👤</div>}
+                    <p className={styles.actorName}>{a.name}</p>
+                    <p className={styles.actorCount}>Просмотрено: {a.count}</p>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   )

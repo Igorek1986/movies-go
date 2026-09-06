@@ -34,6 +34,20 @@ type ProfileStats struct {
 	LongestStreak    int           `json:"longest_streak"`
 	FavoriteWeekday  int           `json:"favorite_weekday"` // 0=Mon..6=Sun, -1 = no data
 	Calendar         []DayActivity `json:"calendar"`
+	TopGenres        []GenreCount  `json:"top_genres"`
+	TopActors        []ActorCount  `json:"top_actors"`
+}
+
+type GenreCount struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+type ActorCount struct {
+	PersonID    int64  `json:"person_id"`
+	Name        string `json:"name"`
+	ProfilePath string `json:"profile_path"`
+	Count       int    `json:"count"`
 }
 
 func isMovieCardID(cardID string) bool {
@@ -116,7 +130,72 @@ func GetProfileStats(ctx context.Context, deviceID int64, profileID string) Prof
 
 	s.Calendar = GetActivityCalendar(ctx, deviceID, profileID, 371)
 	s.CurrentStreak, s.LongestStreak, s.FavoriteWeekday = computeStreaks(s.Calendar)
+	s.TopGenres = GetTopGenres(ctx, deviceID, profileID, 5)
+	s.TopActors = GetTopActors(ctx, deviceID, profileID, 5)
 	return s
+}
+
+// watchedCardsCTE is shared by GetTopGenres/GetTopActors — cards the profile
+// has actually watched something of (movie or at least one episode), one row
+// per card_id regardless of how many episodes/rewatches contributed.
+const watchedCardsCTE = `
+	WITH watched_cards AS (
+		SELECT DISTINCT card_id FROM timecodes
+		WHERE device_id = $1 AND profile_id = $2 AND counted_at IS NOT NULL
+	)`
+
+// GetTopGenres ranks genres by number of distinct watched cards carrying them.
+func GetTopGenres(ctx context.Context, deviceID int64, profileID string, limit int) []GenreCount {
+	rows, err := postgres.Pool.Query(ctx, watchedCardsCTE+`
+		SELECT g->>'name' AS name, COUNT(*) AS cnt
+		FROM watched_cards wc
+		JOIN media_cards mc ON mc.card_id = wc.card_id
+		CROSS JOIN LATERAL json_array_elements(COALESCE(mc.genres::json, '[]'::json)) g
+		WHERE mc.genres IS NOT NULL AND mc.genres::text <> 'null' AND g->>'name' IS NOT NULL
+		GROUP BY 1
+		ORDER BY cnt DESC
+		LIMIT $3`,
+		deviceID, profileID, limit)
+	if err != nil {
+		log.Printf("store: get top genres: %v", err)
+		return nil
+	}
+	defer rows.Close()
+	var out []GenreCount
+	for rows.Next() {
+		var g GenreCount
+		if rows.Scan(&g.Name, &g.Count) == nil {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// GetTopActors ranks main-cast actors (billing order < 10) by number of
+// distinct watched cards they appear in.
+func GetTopActors(ctx context.Context, deviceID int64, profileID string, limit int) []ActorCount {
+	rows, err := postgres.Pool.Query(ctx, watchedCardsCTE+`
+		SELECT cc.person_id, MAX(cc.person_name), MAX(COALESCE(cc.profile_path, '')), COUNT(*) AS cnt
+		FROM watched_cards wc
+		JOIN media_card_cast cc ON cc.card_id = wc.card_id
+		WHERE cc."order" < 10
+		GROUP BY cc.person_id
+		ORDER BY cnt DESC, MAX(cc.popularity) DESC
+		LIMIT $3`,
+		deviceID, profileID, limit)
+	if err != nil {
+		log.Printf("store: get top actors: %v", err)
+		return nil
+	}
+	defer rows.Close()
+	var out []ActorCount
+	for rows.Next() {
+		var a ActorCount
+		if rows.Scan(&a.PersonID, &a.Name, &a.ProfilePath, &a.Count) == nil {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // computeStreaks derives current/longest day-streaks and the most active

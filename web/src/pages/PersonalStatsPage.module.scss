@@ -43,6 +43,127 @@
   @include card;
 }
 
+// ── Любимые жанры / актёры ─────────────────────────────────────────────────
+
+.block {
+  @include card;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.blockTitle {
+  margin: 0;
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.genreList {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.genreRow {
+  display: grid;
+  grid-template-columns: 180px 1fr auto;
+  align-items: center;
+  gap: $spacing-md;
+}
+
+.genreName {
+  font-size: $font-size-sm;
+  color: $color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.genreBarTrack {
+  height: 8px;
+  border-radius: $radius-full;
+  background: rgba($color-border-rgb, 0.4);
+  overflow: hidden;
+}
+
+.genreBarFill {
+  height: 100%;
+  border-radius: $radius-full;
+  background: $color-primary;
+}
+
+.genreCount {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  min-width: 2ch;
+  text-align: right;
+}
+
+.actorsGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-lg;
+}
+
+.actorCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  text-decoration: none;
+  width: 96px;
+}
+
+.actorPhoto {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  background: $color-bg-input;
+  border: 2px solid $color-border;
+  transition: border-color $transition-fast;
+
+  .actorCard:hover & {
+    border-color: $color-primary;
+  }
+}
+
+.actorPhotoPlaceholder {
+  width: 80px;
+  height: 80px;
+  background: $color-bg-input;
+  border-radius: 50%;
+  border: 2px solid $color-border;
+  @include flex-center;
+  font-size: 32px;
+  color: $color-text-muted;
+}
+
+.actorName {
+  margin: 0;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+  transition: color $transition-fast;
+
+  .actorCard:hover & {
+    color: $color-primary;
+  }
+}
+
+.actorCount {
+  margin: 0;
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+}
+
 .loading {
   text-align: center;
   color: $color-text-muted;
