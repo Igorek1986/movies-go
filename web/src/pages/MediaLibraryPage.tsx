@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { subscribeLiveSync } from '@/hooks/useLiveSync'
 import { getEffectiveBrowseLayout } from '@/utils/browseLayout'
 import { BrowseHero, useHeroPreview } from '@/components/BrowseHero'
+import { useUnwatchedSort } from '@/hooks/useUnwatchedSort'
 import styles from './MediaLibraryPage.module.scss'
 
 interface LibraryItem {
@@ -19,6 +20,11 @@ interface LibraryItem {
   backdrop_path?: string | null
   release_date: string
   first_air_date: string
+  // Только для status === 'unwatched' (см. GET /unwatched) — прогресс по сериям.
+  unwatched_count?: number
+  watched_count?: number
+  aired_count?: number
+  next_episode?: string
 }
 
 // toMediaItem (Go) doesn't return card_id — every other catalog page builds it
@@ -34,7 +40,10 @@ interface LibraryResponse {
   results: LibraryItem[]
 }
 
-type StatusKey = 'favorite' | 'continues' | 'watching' | 'completed' | 'planned' | 'stopped'
+// 'unwatched' — не subjective_statuses, а синтетическая лента /unwatched (как в
+// CatalogPage) — сериалы с непросмотренной вышедшей серией, живёт своим WS-типом
+// ('unwatched_stale'), не входит в STATUS_TO_ROW_KEY ниже.
+type StatusKey = 'favorite' | 'unwatched' | 'continues' | 'watching' | 'completed' | 'planned' | 'stopped'
 
 // subjective_statuses-значение (см. PUT /timecode/status) → строка «Моё» с этим
 // значением — используется для живого удаления карточки из уже отрисованной
@@ -76,12 +85,42 @@ let _activeStatusIndex = 0
 // «Продолжить просмотр» — не subjective_statuses, а прогресс по таймкодам (карточки
 // с прогрессом ниже watched_threshold), отдаётся отдельным эндпоинтом /continues
 // (см. handleContinues в internal/api/content.go), не /media-library.
-function libraryUrl(status: StatusKey, params: { token: string; profile_id: string; page: string; per_page: string }): string {
+// «Непросмотренные сериалы» — тоже не subjective_statuses, эндпоинт /unwatched
+// (см. handleUnwatched), с той же сортировкой (np_unwatched_sort_order), что и
+// одноимённая категория в CatalogPage/Lampa.
+function libraryUrl(status: StatusKey, params: { token: string; profile_id: string; page: string; per_page: string; sort?: string }): string {
+  const { token, profile_id, page, per_page, sort } = params
   if (status === 'continues') {
-    const { token, profile_id, page, per_page } = params
     return `/continues?${new URLSearchParams({ token, profile_id, page, per_page })}`
   }
-  return `/media-library?${new URLSearchParams({ ...params, status })}`
+  if (status === 'unwatched') {
+    const qs = new URLSearchParams({ token, profile_id, page, per_page })
+    if (sort) qs.set('sort', sort)
+    return `/unwatched?${qs}`
+  }
+  return `/media-library?${new URLSearchParams({ token, profile_id, page, per_page, status })}`
+}
+
+// Карточка по card_id с нашего же бэкенда — WS-события статуса/unwatched не несут
+// постер/название, используется живым добавлением и в LibraryRow, и в WS-эффекте
+// строки «Непросмотренные сериалы» ниже.
+function fetchLibraryItemByCardId(cardId: string): Promise<LibraryItem | null> {
+  return fetch(`/api/media-card/${encodeURIComponent(cardId)}`)
+    .then(r => r.ok ? r.json() : null)
+    .then((data: { tmdb_id?: number; media_type?: string; title?: string; poster_path?: string | null; backdrop_path?: string | null; release_date?: string; first_air_date?: string } | null) => {
+      if (!data?.tmdb_id || !data.media_type) return null
+      return {
+        id: data.tmdb_id,
+        media_type: data.media_type,
+        title: data.title || '',
+        name: data.media_type === 'tv' ? (data.title || '') : '',
+        poster_path: data.poster_path ?? null,
+        backdrop_path: data.backdrop_path,
+        release_date: data.release_date || '',
+        first_air_date: data.first_air_date || '',
+      }
+    })
+    .catch(() => null)
 }
 
 function itemYear(item: LibraryItem): string {
@@ -105,11 +144,32 @@ function Card({ item, onClick, onActivate, isHeroActive, compact }: {
       onKeyDown={e => { if (e.key === 'Enter') onClick() }}
       onFocus={onActivate}
     >
-      {url
-        ? <img className={styles.poster} src={url} alt={title} loading="lazy" />
-        : <div className={styles.posterPlaceholder}>Нет постера</div>
-      }
-      {item.media_type === 'tv' && <span className={styles.typeBadge}>Сериал</span>}
+      <div className={styles.posterWrap}>
+        {url
+          ? <img className={styles.poster} src={url} alt={title} loading="lazy" />
+          : <div className={styles.posterPlaceholder}>Нет постера</div>
+        }
+        {item.media_type === 'tv' && <span className={styles.typeBadge}>Сериал</span>}
+        {!!item.unwatched_count && (
+          <span className={styles.unwatchedBadge}>{item.unwatched_count}</span>
+        )}
+        {item.next_episode && (
+          <span className={styles.nextEpBadge}>{item.next_episode}</span>
+        )}
+        {/* Hero mode (compact) уже показывает этот же прогресс в BrowseHero для
+            сфокусированной карточки — дублировать на каждом тумбнейле незачем. */}
+        {!compact && !!item.aired_count && (
+          <>
+            <span className={styles.progressLabel}>{item.watched_count ?? 0}/{item.aired_count}</span>
+            <div className={styles.progressTrack}>
+              <div
+                className={styles.progressFill}
+                style={{ width: `${Math.min(100, ((item.watched_count ?? 0) / item.aired_count) * 100)}%` }}
+              />
+            </div>
+          </>
+        )}
+      </div>
       {!compact && (
         <div className={styles.cardBody}>
           <p className={styles.cardTitle}>{title}</p>
@@ -122,8 +182,10 @@ function Card({ item, onClick, onActivate, isHeroActive, compact }: {
 
 // ── Row: lazy-loaded on scroll into view, horizontal, "Все →" to expand ────────
 
-function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, onActivate, activeCardId, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: {
+function LibraryRow({ status, label, token, profileId, unwatchedSort, unwatchedSortLoaded, onExpand, onCardClick, onActivate, activeCardId, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: {
   status: StatusKey; label: string; token: string; profileId: string
+  // Только для status === 'unwatched' — сортировка ленты (np_unwatched_sort_order).
+  unwatchedSort: string; unwatchedSortLoaded: boolean
   onExpand: (status: StatusKey) => void; onCardClick: (item: LibraryItem) => void
   onActivate?: (item: LibraryItem) => void
   activeCardId?: string | null
@@ -212,8 +274,13 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
 
   const loadItems = useCallback(() => {
     if (loadedRef.current || !token) return
+    // См. CatalogPage's identical gate — без него первый фетч уходит с
+    // дефолтной сортировкой до того, как подгрузится сохранённая настройка,
+    // и `loadItems` (зависимость эффекта ниже) при её приходе меняет identity,
+    // пересоздавая IntersectionObserver и перезапуская загрузку уже правильно.
+    if (status === 'unwatched' && !unwatchedSortLoaded) return
     loadedRef.current = true
-    fetch(libraryUrl(status, { token, profile_id: profileId, page: '1', per_page: '20' }))
+    fetch(libraryUrl(status, { token, profile_id: profileId, page: '1', per_page: '20', sort: unwatchedSort }))
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((data: LibraryResponse) => {
         const results = data.results || []
@@ -223,7 +290,7 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
         onItemsLoaded?.(status, { items: results, totalPages: tp })
       })
       .catch(() => setItems([]))
-  }, [status, token, profileId, onItemsLoaded])
+  }, [status, token, profileId, unwatchedSort, unwatchedSortLoaded, onItemsLoaded])
 
   // Profile (or device) switch — the row already fired its one-shot fetch under the
   // old identity, so without this the loadedRef latch would keep it stuck showing
@@ -283,27 +350,14 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
         if (idx !== -1) return // уже в списке
         // WS не несёт данные карточки (постер/название) — дотягиваем сами с
         // нашего же бэкенда (тот же эндпоинт, что открытие карточки на вебе).
-        fetch(`/api/media-card/${encodeURIComponent(msg.card_id)}`)
-          .then(r => r.ok ? r.json() : null)
-          .then((data: { tmdb_id?: number; media_type?: string; title?: string; poster_path?: string | null; backdrop_path?: string | null; release_date?: string; first_air_date?: string } | null) => {
-            if (!data?.tmdb_id || !data.media_type) return
-            const latest = itemsRef.current
-            if (!latest || latest.some(item => `${item.id}_${item.media_type}` === msg.card_id)) return
-            const item: LibraryItem = {
-              id: data.tmdb_id,
-              media_type: data.media_type,
-              title: data.title || '',
-              name: data.media_type === 'tv' ? (data.title || '') : '',
-              poster_path: data.poster_path ?? null,
-              backdrop_path: data.backdrop_path,
-              release_date: data.release_date || '',
-              first_air_date: data.first_air_date || '',
-            }
-            const next = [item, ...latest]
-            setItems(next)
-            onItemsLoaded?.(status, { items: next, totalPages })
-          })
-          .catch(() => {})
+        fetchLibraryItemByCardId(msg.card_id).then(item => {
+          if (!item) return
+          const latest = itemsRef.current
+          if (!latest || latest.some(it => `${it.id}_${it.media_type}` === msg.card_id)) return
+          const next = [item, ...latest]
+          setItems(next)
+          onItemsLoaded?.(status, { items: next, totalPages })
+        })
         return
       }
 
@@ -325,6 +379,57 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
       onItemsLoaded?.(status, { items: next, totalPages })
     })
   }, [status, totalPages, onItemsLoaded])
+
+  // Живая инвалидация строки «Непросмотренные сериалы» — источник не
+  // subjective_status, а пересечение aired_cutoff/просмотренных серий, поэтому
+  // 'unwatched_stale' триггерит полный рефетч строки (нет конкретной карточки
+  // для адресного изменения), а не точечное добавление/удаление — зеркало
+  // CatalogPage's CategoryRow (категория 'unwatched'). Статус 'watching' по
+  // тому же WS всё же добавляется точечно (только что начали смотреть — почти
+  // наверняка ещё не досмотрено), любой другой статус — убирает карточку.
+  useEffect(() => {
+    if (status !== 'unwatched') return
+    return subscribeLiveSync((msg) => {
+      if (msg.type === 'unwatched_stale') {
+        if (!token || !profileId) return
+        fetch(libraryUrl('unwatched', { token, profile_id: profileId, page: '1', per_page: '20', sort: unwatchedSort }))
+          .then(r => r.ok ? r.json() : null)
+          .then((data: LibraryResponse | null) => {
+            if (!data) return
+            const results = data.results || []
+            const tp = data.total_pages || 1
+            setItems(results)
+            setTotalPages(tp)
+            onItemsLoaded?.(status, { items: results, totalPages: tp })
+          })
+          .catch(() => {})
+        return
+      }
+
+      if (msg.type !== 'status' || !msg.card_id) return
+      const current = itemsRef.current
+      if (!current) return
+      const idx = current.findIndex(item => `${item.id}_${item.media_type}` === msg.card_id)
+
+      if (msg.status === 'watching') {
+        if (idx !== -1) return
+        fetchLibraryItemByCardId(msg.card_id).then(item => {
+          if (!item) return
+          const latest = itemsRef.current
+          if (!latest || latest.some(it => `${it.id}_${it.media_type}` === msg.card_id)) return
+          const next = [item, ...latest]
+          setItems(next)
+          onItemsLoaded?.(status, { items: next, totalPages })
+        })
+        return
+      }
+
+      if (idx === -1) return
+      const next = current.filter((_, i) => i !== idx)
+      setItems(next)
+      onItemsLoaded?.(status, { items: next, totalPages })
+    })
+  }, [status, token, profileId, unwatchedSort, totalPages, onItemsLoaded])
 
   useEffect(() => {
     // Back to loading (a real profile switch wipes the row) — re-arm, so the
@@ -410,8 +515,8 @@ function LibraryRow({ status, label, token, profileId, onExpand, onCardClick, on
 
 // ── Expanded: full paginated grid for one status, infinite scroll ──────────────
 
-function LibraryGrid({ status, token, profileId, onCardClick }: {
-  status: StatusKey; token: string; profileId: string; onCardClick: (item: LibraryItem) => void
+function LibraryGrid({ status, token, profileId, unwatchedSort, onCardClick }: {
+  status: StatusKey; token: string; profileId: string; unwatchedSort: string; onCardClick: (item: LibraryItem) => void
 }) {
   const [items, setItems] = useState<LibraryItem[]>([])
   const [page, setPage] = useState(1)
@@ -426,7 +531,7 @@ function LibraryGrid({ status, token, profileId, onCardClick }: {
     loadingRef.current = true
     setLoading(true)
     setError(false)
-    fetch(libraryUrl(status, { token, profile_id: profileId, page: String(pg), per_page: '24' }))
+    fetch(libraryUrl(status, { token, profile_id: profileId, page: String(pg), per_page: '24', sort: unwatchedSort }))
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((data: LibraryResponse) => {
         setItems(prev => reset ? (data.results || []) : [...prev, ...(data.results || [])])
@@ -435,7 +540,7 @@ function LibraryGrid({ status, token, profileId, onCardClick }: {
       })
       .catch(() => setError(true))
       .finally(() => { loadingRef.current = false; setLoading(false) })
-  }, [status, token, profileId])
+  }, [status, token, profileId, unwatchedSort])
 
   useEffect(() => { load(1, true) }, [load])
 
@@ -467,13 +572,14 @@ function LibraryGrid({ status, token, profileId, onCardClick }: {
 
 const STATUS_LABELS: Record<StatusKey, string> = {
   favorite: 'Избранное',
+  unwatched: 'Непросмотренные сериалы',
   continues: 'Продолжить просмотр',
   planned: 'Буду смотреть',
   watching: 'Смотрю',
   completed: 'Просмотрел',
   stopped: 'Брошено',
 }
-const ROW_ORDER: StatusKey[] = ['favorite', 'continues', 'planned', 'watching', 'completed', 'stopped']
+const ROW_ORDER: StatusKey[] = ['favorite', 'unwatched', 'continues', 'planned', 'watching', 'completed', 'stopped']
 
 export default function MediaLibraryPage() {
   const navigate = useNavigate()
@@ -596,6 +702,9 @@ export default function MediaLibraryPage() {
 
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
+  // Та же сортировка, что и у одноимённой категории в CatalogPage/Lampa —
+  // общая per-профильная настройка np_unwatched_sort_order.
+  const { unwatchedSort, unwatchedSortLoaded } = useUnwatchedSort(profileId)
 
   // Drop the cross-remount row cache when the active profile actually
   // changes — same reasoning as CatalogPage's _cache.profileKey check
@@ -913,7 +1022,7 @@ export default function MediaLibraryPage() {
         {!loaded ? null : expanded ? (
           <>
             <h2 className={styles.expandedTitle}>{STATUS_LABELS[expanded]}</h2>
-            <LibraryGrid status={expanded} token={token} profileId={profileId} onCardClick={openCard} />
+            <LibraryGrid status={expanded} token={token} profileId={profileId} unwatchedSort={unwatchedSort} onCardClick={openCard} />
           </>
         ) : showSearch ? (
           <div>
@@ -963,6 +1072,8 @@ export default function MediaLibraryPage() {
                         label={STATUS_LABELS[ROW_ORDER[transition.prevIndex]]}
                         token={token}
                         profileId={profileId}
+                        unwatchedSort={unwatchedSort}
+                        unwatchedSortLoaded={unwatchedSortLoaded}
                         onExpand={setExpanded}
                         onCardClick={openCard}
                         initialCache={_rowCache[ROW_ORDER[transition.prevIndex]]}
@@ -978,6 +1089,8 @@ export default function MediaLibraryPage() {
                       label={STATUS_LABELS[activeStatus]}
                       token={token}
                       profileId={profileId}
+                      unwatchedSort={unwatchedSort}
+                      unwatchedSortLoaded={unwatchedSortLoaded}
                       onExpand={setExpanded}
                       onCardClick={openCard}
                       onActivate={handleActivate}
@@ -1002,6 +1115,8 @@ export default function MediaLibraryPage() {
                     label={STATUS_LABELS[status]}
                     token={token}
                     profileId={profileId}
+                    unwatchedSort={unwatchedSort}
+                    unwatchedSortLoaded={unwatchedSortLoaded}
                     onExpand={setExpanded}
                     onCardClick={openCard}
                     initialCache={_rowCache[status]}
