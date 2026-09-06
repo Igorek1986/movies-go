@@ -296,76 +296,62 @@
   text-align: right;
 }
 
+// Same card grid as .expandedGrid (movies/series) — bigger portrait photo
+// than the old 80px circular avatar, and enough width for names to wrap to
+// two lines instead of ellipsis-truncating ("Виктор Хор…").
 .actorsGrid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $spacing-lg;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: $spacing-md;
 }
 
 .actorCard {
+  @include card;
+  padding: 0;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  text-align: center;
-  text-decoration: none;
-  width: 96px;
+  outline: none;
+  transition: transform $transition-fast, box-shadow $transition-fast;
 
-  // Same reasoning as CardDetailPage's .castCard: the generic
-  // [data-nav-item]:focus-visible rectangle (global.scss) reads badly
-  // against a round avatar — show focus via the photo's own border and the
-  // name's color instead (below), same as :hover.
-  &[data-nav-item]:focus-visible {
-    outline: none;
+  // box-shadow, not the generic [data-nav-item]:focus-visible outline —
+  // same reasoning as .statsCard: a plain rectangle ignores border-radius.
+  &:hover, &:focus-visible {
+    transform: translateY(-2px);
+    box-shadow: 0 0 0 2px $color-primary;
   }
 }
 
 .actorPhoto {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
+  width: 100%;
+  aspect-ratio: 2/3;
   object-fit: cover;
   display: block;
   background: $color-bg-input;
-  border: 2px solid $color-border;
-  transition: border-color $transition-fast;
-
-  .actorCard:hover &,
-  .actorCard:focus-visible & {
-    border-color: $color-primary;
-  }
 }
 
 .actorPhotoPlaceholder {
-  width: 80px;
-  height: 80px;
+  width: 100%;
+  aspect-ratio: 2/3;
   background: $color-bg-input;
-  border-radius: 50%;
-  border: 2px solid $color-border;
   @include flex-center;
-  font-size: 32px;
+  font-size: 40px;
   color: $color-text-muted;
 }
 
 .actorName {
   margin: 0;
+  padding: $spacing-sm $spacing-sm 0;
   font-size: $font-size-sm;
   font-weight: 600;
   color: $color-text;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  width: 100%;
-  transition: color $transition-fast;
-
-  .actorCard:hover &,
-  .actorCard:focus-visible & {
-    color: $color-primary;
-  }
 }
 
 .actorCount {
   margin: 0;
+  padding: 2px $spacing-sm $spacing-sm;
   font-size: $font-size-xs;
   color: $color-text-muted;
 }
