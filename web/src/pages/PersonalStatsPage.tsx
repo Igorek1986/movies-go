@@ -207,6 +207,19 @@ export default function PersonalStatsPage() {
       const focused = document.activeElement as HTMLElement | null
       if (!focused) return
 
+      // Focus starts outside this page's own regions entirely — on the top
+      // nav (Layout.tsx deliberately leaves ArrowDown from there alone, see
+      // its onKeyDown comment, so each page decides what "into the page"
+      // means) or nowhere in particular. Same fallback as CatalogPage's
+      // "focus isn't on a card → jump to the first one".
+      if (!focused.closest('[data-row-id="stats-tiles"], [data-row-id="stats-expanded"], [data-row-id="stats-actors"]')) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          document.querySelector<HTMLElement>('[data-row-id="stats-tiles"] [data-nav-item]')?.focus()
+        }
+        return
+      }
+
       const actorRow = focused.closest<HTMLElement>('[data-row-id="stats-actors"]')
       if (actorRow) {
         const cards = Array.from(actorRow.querySelectorAll<HTMLElement>('[data-nav-item]'))
