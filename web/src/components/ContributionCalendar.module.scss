@@ -87,6 +87,14 @@
 .monthLabel {
   font-size: $font-size-xs;
   color: $color-text-muted;
+  // Without this, a grid item's own text (e.g. "Сен") pushes its track
+  // wider than the minmax(11px, 1fr) formula calls for — 13 label tracks
+  // sized independently of .weeks's 53 cell tracks below made .months a few
+  // px wider overall, which is what was leaking out as .scroller's own
+  // phantom horizontal scrollbar even though every cell was fully visible.
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .weeks {
