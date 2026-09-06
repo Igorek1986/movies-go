@@ -233,6 +233,11 @@
   padding: $spacing-md 0;
 }
 
+// Invisible IntersectionObserver target — see the loadListPage effect.
+.sentinel {
+  height: 1px;
+}
+
 // ── Любимые жанры / актёры ─────────────────────────────────────────────────
 
 .block {

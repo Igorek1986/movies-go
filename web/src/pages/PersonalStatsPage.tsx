@@ -94,12 +94,19 @@ function formatWatchTime(minutes: number): { main: string; sub?: string } {
   return { main: `${hours.toLocaleString('ru')} ч`, sub: `≈ ${days.toLocaleString('ru')} дн.` }
 }
 
-async function fetchStatsList(kind: ExpandedKind, token: string, profileId: string): Promise<StatsListItem[]> {
-  const params = new URLSearchParams({ token, profile_id: profileId, kind, per_page: '60' })
+const STATS_LIST_PAGE_SIZE = 30
+
+interface StatsListPage {
+  items: StatsListItem[]
+  totalPages: number
+}
+
+async function fetchStatsList(kind: ExpandedKind, token: string, profileId: string, page: number): Promise<StatsListPage> {
+  const params = new URLSearchParams({ token, profile_id: profileId, kind, page: String(page), per_page: String(STATS_LIST_PAGE_SIZE) })
   const res = await fetch(`/api/stats/personal/list?${params}`)
-  if (!res.ok) return []
+  if (!res.ok) return { items: [], totalPages: 1 }
   const data = await res.json()
-  return Array.isArray(data.results) ? data.results : []
+  return { items: Array.isArray(data.results) ? data.results : [], totalPages: data.total_pages ?? 1 }
 }
 
 function StatsCard({ item, kind, onOpen }: { item: StatsListItem; kind: ExpandedKind; onOpen: () => void }) {
@@ -141,8 +148,12 @@ export default function PersonalStatsPage() {
 
   const [expanded, setExpanded] = useState<ExpandedKind | null>(null)
   const [itemsCache, setItemsCache] = useState<Partial<Record<ExpandedKind, StatsListItem[]>>>({})
+  const [pageCache, setPageCache] = useState<Partial<Record<ExpandedKind, number>>>({})
+  const [hasMoreCache, setHasMoreCache] = useState<Partial<Record<ExpandedKind, boolean>>>({})
   const [expandedLoading, setExpandedLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const lastTileRef = useRef<HTMLButtonElement | null>(null)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
@@ -159,18 +170,46 @@ export default function PersonalStatsPage() {
     // Switching profile invalidates any already-fetched detail lists.
     setExpanded(null)
     setItemsCache({})
+    setPageCache({})
+    setHasMoreCache({})
   }, [loaded, token, profileId])
 
-  async function toggleExpanded(kind: ExpandedKind, btn: HTMLButtonElement) {
+  // Loads one page of a list: page 1 (reset) replaces the cache, later pages
+  // append — same pattern as MediaLibraryPage's search infinite scroll
+  // (loadSearchPage), which every kind here shares since a profile can have
+  // way more than one page's worth of movies/series/planned/favorites.
+  async function loadListPage(kind: ExpandedKind, page: number, reset: boolean) {
+    if (reset) setExpandedLoading(true); else setLoadingMore(true)
+    const { items, totalPages } = await fetchStatsList(kind, token, profileId, page)
+    setItemsCache(prev => ({ ...prev, [kind]: reset ? items : [...(prev[kind] ?? []), ...items] }))
+    setPageCache(prev => ({ ...prev, [kind]: page }))
+    setHasMoreCache(prev => ({ ...prev, [kind]: totalPages > page }))
+    if (reset) setExpandedLoading(false); else setLoadingMore(false)
+  }
+
+  function toggleExpanded(kind: ExpandedKind, btn: HTMLButtonElement) {
     if (expanded === kind) { setExpanded(null); return }
     lastTileRef.current = btn
     setExpanded(kind)
-    if (itemsCache[kind]) return
-    setExpandedLoading(true)
-    const items = await fetchStatsList(kind, token, profileId)
-    setItemsCache(prev => ({ ...prev, [kind]: items }))
-    setExpandedLoading(false)
+    if (pageCache[kind]) return
+    loadListPage(kind, 1, true)
   }
+
+  // Infinite scroll: load the next page once the sentinel below the grid
+  // scrolls into view.
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel || !expanded) return
+    const hasMore = hasMoreCache[expanded]
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore && !loadingMore && !expandedLoading) {
+        loadListPage(expanded, (pageCache[expanded] ?? 1) + 1, false)
+      }
+    }, { rootMargin: '200px' })
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, hasMoreCache, loadingMore, expandedLoading, pageCache])
 
   // Basic arrow-key navigation for this page only (no site-wide focus engine
   // yet — see project backlog #70). Follows the same recipe as
@@ -379,16 +418,20 @@ export default function PersonalStatsPage() {
             ) : !expandedItems || expandedItems.length === 0 ? (
               <p className={styles.emptyText}>Нет данных</p>
             ) : (
-              <div className={styles.expandedGrid}>
-                {expandedItems.map(item => (
-                  <StatsCard
-                    key={cardIdOf(item)}
-                    item={item}
-                    kind={expanded}
-                    onOpen={() => navigate(`/card/${cardIdOf(item)}`)}
-                  />
-                ))}
-              </div>
+              <>
+                <div className={styles.expandedGrid}>
+                  {expandedItems.map(item => (
+                    <StatsCard
+                      key={cardIdOf(item)}
+                      item={item}
+                      kind={expanded}
+                      onOpen={() => navigate(`/card/${cardIdOf(item)}`)}
+                    />
+                  ))}
+                </div>
+                {hasMoreCache[expanded] && <div ref={sentinelRef} className={styles.sentinel} />}
+                {loadingMore && <p className={styles.emptyText}>Загрузка…</p>}
+              </>
             )}
           </div>
         )}
