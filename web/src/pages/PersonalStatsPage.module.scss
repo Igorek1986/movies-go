@@ -29,15 +29,35 @@
 }
 
 // .tile is also used on a real <button> for the clickable tiles (movies/
-// series watched) — reset button-specific defaults and add a hover/press
-// affordance so it still reads as interactive, not just as another number.
+// series/planned/stopped/favorites) — reset button-specific defaults and add
+// a persistent left accent so it reads as interactive even at rest, not just
+// on hover (a hover-only cue meant these tiles looked identical to the
+// plain, non-clickable ones until the pointer happened to be over them).
 .tileClickable {
+  position: relative;
   font: inherit;
   text-align: left;
   cursor: pointer;
+  padding-left: calc(#{$spacing-lg} + 3px);
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 3px;
+    background: rgba($color-primary-rgb, 0.5);
+    transition: background $transition-fast;
+  }
 
   &:hover, &[aria-expanded='true'] {
-    border-color: $color-primary;
+    background: rgba($color-primary-rgb, 0.06);
+  }
+
+  &:hover::before, &[aria-expanded='true']::before {
+    background: $color-primary;
   }
 
   &:active {
@@ -50,6 +70,12 @@
   font-weight: 700;
   color: $color-primary;
   line-height: 1.1;
+}
+
+.tileSub {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin-top: -2px;
 }
 
 .tileLabel {

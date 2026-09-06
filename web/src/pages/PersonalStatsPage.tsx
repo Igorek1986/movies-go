@@ -43,9 +43,9 @@ interface ProfileStats {
   top_actors: ActorCount[]
 }
 
-// Matches toMediaItem's (backend) shape for /api/stats/personal/movies and
-// .../series — the same fields MediaLibraryPage's LibraryItem uses, plus the
-// stats-only extras merged in by each handler.
+// Matches toMediaItem's (backend) shape for /api/stats/personal/list — the
+// same fields MediaLibraryPage's LibraryItem uses, plus the stats-only
+// extras handleProfileStatsList merges in for kind=movies/series.
 interface StatsListItem {
   id: number
   media_type: string
@@ -60,7 +60,16 @@ interface StatsListItem {
   total_episodes?: number
 }
 
-type ExpandedKind = 'movies' | 'series'
+type ExpandedKind = 'movies' | 'series' | 'planned_movies' | 'planned_series' | 'stopped' | 'favorites'
+
+const EXPANDED_TITLES: Record<ExpandedKind, string> = {
+  movies: 'Просмотренные фильмы',
+  series: 'Сериалы (смотрю + завершено)',
+  planned_movies: 'Буду смотреть — фильмы',
+  planned_series: 'Буду смотреть — сериалы',
+  stopped: 'Брошено',
+  favorites: 'В избранном',
+}
 
 function cardIdOf(item: StatsListItem): string {
   return `${item.id}_${item.media_type}`
@@ -75,16 +84,19 @@ function capitalizeFirst(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-function formatWatchTime(minutes: number): string {
+// Returns a separate `sub` line for the day count instead of folding it into
+// one long string — "3 811 ч (158,8 дн.)" as a single value wrapped the tile
+// onto three lines and dwarfed every other tile's height.
+function formatWatchTime(minutes: number): { main: string; sub?: string } {
   const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours.toLocaleString('ru')} ч`
+  if (hours < 24) return { main: `${hours.toLocaleString('ru')} ч` }
   const days = Math.round((hours / 24) * 10) / 10
-  return `${hours.toLocaleString('ru')} ч (${days.toLocaleString('ru')} дн.)`
+  return { main: `${hours.toLocaleString('ru')} ч`, sub: `≈ ${days.toLocaleString('ru')} дн.` }
 }
 
 async function fetchStatsList(kind: ExpandedKind, token: string, profileId: string): Promise<StatsListItem[]> {
-  const params = new URLSearchParams({ token, profile_id: profileId, per_page: '60' })
-  const res = await fetch(`/api/stats/personal/${kind}?${params}`)
+  const params = new URLSearchParams({ token, profile_id: profileId, kind, per_page: '60' })
+  const res = await fetch(`/api/stats/personal/list?${params}`)
   if (!res.ok) return []
   const data = await res.json()
   return Array.isArray(data.results) ? data.results : []
@@ -128,8 +140,7 @@ export default function PersonalStatsPage() {
   const [loading, setLoading] = useState(true)
 
   const [expanded, setExpanded] = useState<ExpandedKind | null>(null)
-  const [movieItems, setMovieItems] = useState<StatsListItem[] | null>(null)
-  const [seriesItems, setSeriesItems] = useState<StatsListItem[] | null>(null)
+  const [itemsCache, setItemsCache] = useState<Partial<Record<ExpandedKind, StatsListItem[]>>>({})
   const [expandedLoading, setExpandedLoading] = useState(false)
   const lastTileRef = useRef<HTMLButtonElement | null>(null)
 
@@ -147,19 +158,17 @@ export default function PersonalStatsPage() {
       .finally(() => setLoading(false))
     // Switching profile invalidates any already-fetched detail lists.
     setExpanded(null)
-    setMovieItems(null)
-    setSeriesItems(null)
+    setItemsCache({})
   }, [loaded, token, profileId])
 
   async function toggleExpanded(kind: ExpandedKind, btn: HTMLButtonElement) {
     if (expanded === kind) { setExpanded(null); return }
     lastTileRef.current = btn
     setExpanded(kind)
-    const cache = kind === 'movies' ? movieItems : seriesItems
-    if (cache) return
+    if (itemsCache[kind]) return
     setExpandedLoading(true)
     const items = await fetchStatsList(kind, token, profileId)
-    if (kind === 'movies') setMovieItems(items); else setSeriesItems(items)
+    setItemsCache(prev => ({ ...prev, [kind]: items }))
     setExpandedLoading(false)
   }
 
@@ -273,23 +282,35 @@ export default function PersonalStatsPage() {
     top_actors: [] as ActorCount[],
   }
 
-  const tiles: { label: string; value: number | string; kind?: ExpandedKind }[] = [
+  const tiles: { label: string; value: number | string | { main: string; sub?: string }; kind?: ExpandedKind }[] = [
     { label: 'Фильмов просмотрено', value: s.movies_watched, kind: 'movies' },
     { label: 'Сериалов завершено', value: s.series_completed, kind: 'series' },
     { label: 'Сериалов смотрю сейчас', value: s.series_watching, kind: 'series' },
-    { label: 'Буду смотреть — фильмы', value: s.planned_movies },
-    { label: 'Буду смотреть — сериалы', value: s.planned_series },
-    { label: 'Брошено', value: s.stopped },
-    { label: 'В избранном', value: s.favorites },
+    { label: 'Буду смотреть — фильмы', value: s.planned_movies, kind: 'planned_movies' },
+    { label: 'Буду смотреть — сериалы', value: s.planned_series, kind: 'planned_series' },
+    { label: 'Брошено', value: s.stopped, kind: 'stopped' },
+    { label: 'В избранном', value: s.favorites, kind: 'favorites' },
     { label: 'Эпизодов просмотрено', value: s.episodes_watched },
     { label: 'Время у экрана', value: formatWatchTime(s.watch_time_minutes) },
-    { label: 'Осталось смотреть', value: formatWatchTime(s.remaining_minutes) },
+    { label: 'Осталось смотреть (Смотрю)', value: formatWatchTime(s.remaining_minutes) },
     { label: 'Текущий стрик', value: `${s.current_streak} дн.` },
     { label: 'Самый длинный стрик', value: `${s.longest_streak} дн.` },
     { label: 'Любимый день недели', value: s.favorite_weekday >= 0 ? WEEKDAY_NAMES[s.favorite_weekday] : '—' },
   ]
 
-  const expandedItems = expanded === 'movies' ? movieItems : expanded === 'series' ? seriesItems : null
+  const expandedItems = expanded ? itemsCache[expanded] ?? null : null
+
+  function tileBody(t: (typeof tiles)[number]) {
+    const main = typeof t.value === 'object' ? t.value.main : typeof t.value === 'number' ? t.value.toLocaleString('ru') : t.value
+    const sub = typeof t.value === 'object' ? t.value.sub : undefined
+    return (
+      <>
+        <div className={styles.tileValue}>{main}</div>
+        {sub && <div className={styles.tileSub}>{sub}</div>}
+        <div className={styles.tileLabel}>{t.label}</div>
+      </>
+    )
+  }
 
   return (
     <Layout>
@@ -306,13 +327,11 @@ export default function PersonalStatsPage() {
               aria-expanded={expanded === t.kind}
               onClick={e => toggleExpanded(t.kind!, e.currentTarget)}
             >
-              <div className={styles.tileValue}>{typeof t.value === 'number' ? t.value.toLocaleString('ru') : t.value}</div>
-              <div className={styles.tileLabel}>{t.label}</div>
+              {tileBody(t)}
             </button>
           ) : (
             <div key={t.label} className={styles.tile}>
-              <div className={styles.tileValue}>{typeof t.value === 'number' ? t.value.toLocaleString('ru') : t.value}</div>
-              <div className={styles.tileLabel}>{t.label}</div>
+              {tileBody(t)}
             </div>
           ))}
         </div>
@@ -320,7 +339,7 @@ export default function PersonalStatsPage() {
         {expanded && (
           <div className={styles.block} data-row-id="stats-expanded">
             <div className={styles.expandedHeader}>
-              <h2 className={styles.blockTitle}>{expanded === 'movies' ? 'Просмотренные фильмы' : 'Сериалы (смотрю + завершено)'}</h2>
+              <h2 className={styles.blockTitle}>{EXPANDED_TITLES[expanded]}</h2>
               <button type="button" className={styles.closeBtn} onClick={() => { setExpanded(null); lastTileRef.current?.focus() }}>
                 Свернуть
               </button>

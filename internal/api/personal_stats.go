@@ -46,31 +46,69 @@ func statsPageParams(r *http.Request) (page, perPage int) {
 	return
 }
 
-// GET /api/stats/personal/movies?token=&profile_id=&page=&per_page=
-// "Фильмов просмотрено" detail list — each card annotated with its last
-// known percent and rewatch count (timecodes.view_count), same
-// merge-extra-fields-onto-toMediaItem pattern as handleUnwatched.
-func handleProfileStatsMovies(w http.ResponseWriter, r *http.Request) {
+// GET /api/stats/personal/list?token=&profile_id=&kind=&page=&per_page=
+// Backs every clickable tile on "Статистика" with one endpoint instead of
+// one route per tile — kind selects which card_id set + which extra
+// per-card fields (if any) get merged onto toMediaItem's output, same
+// merge-extra-fields pattern as handleUnwatched (content.go).
+//
+//	movies         — "Фильмов просмотрено": percent + view_count (rewatch count)
+//	series         — "Сериалов завершено"/"смотрю сейчас" combined: watched/total episodes
+//	planned_movies — "Буду смотреть — фильмы"
+//	planned_series — "Буду смотреть — сериалы"
+//	stopped        — "Брошено"
+//	favorites      — "В избранном"
+func handleProfileStatsList(w http.ResponseWriter, r *http.Request) {
 	d := deviceFromRequest(r)
 	if d == nil {
 		JSON(w, http.StatusOK, emptyPage(1))
 		return
 	}
 	profileID := r.URL.Query().Get("profile_id")
+	kind := r.URL.Query().Get("kind")
 	page, perPage := statsPageParams(r)
 
-	var movieIDs []string
-	for _, id := range store.ListCompletedCardIDs(r.Context(), d.ID, profileID, 0) {
-		if isMovieCard(id) {
-			movieIDs = append(movieIDs, id)
+	var cardIDs []string
+	switch kind {
+	case "movies":
+		for _, id := range store.ListCompletedCardIDs(r.Context(), d.ID, profileID, 0) {
+			if isMovieCard(id) {
+				cardIDs = append(cardIDs, id)
+			}
 		}
+	case "series":
+		cardIDs = store.ListWatchingCardIDs(r.Context(), d.ID, profileID, 0)
+		for _, id := range store.ListCompletedCardIDs(r.Context(), d.ID, profileID, 0) {
+			if !isMovieCard(id) {
+				cardIDs = append(cardIDs, id)
+			}
+		}
+	case "planned_movies":
+		for _, id := range store.ListCardIDsByStatus(r.Context(), d.ID, profileID, store.StatusPlanned) {
+			if isMovieCard(id) {
+				cardIDs = append(cardIDs, id)
+			}
+		}
+	case "planned_series":
+		for _, id := range store.ListCardIDsByStatus(r.Context(), d.ID, profileID, store.StatusPlanned) {
+			if !isMovieCard(id) {
+				cardIDs = append(cardIDs, id)
+			}
+		}
+	case "stopped":
+		cardIDs = store.ListCardIDsByStatus(r.Context(), d.ID, profileID, store.StatusStopped)
+	case "favorites":
+		cardIDs = store.ListFavoriteCardIDs(r.Context(), d.ID, profileID)
+	default:
+		Error(w, http.StatusBadRequest, "invalid kind")
+		return
 	}
-	if len(movieIDs) == 0 {
+	if len(cardIDs) == 0 {
 		JSON(w, http.StatusOK, emptyPage(page))
 		return
 	}
 
-	f := store.CategoryFilter{CardIDs: movieIDs, Page: page, PerPage: perPage}
+	f := store.CategoryFilter{CardIDs: cardIDs, Page: page, PerPage: perPage}
 	applyCatalogTrackers(&f)
 	rows, total := store.ListCategory(f)
 	totalPages := (total + perPage - 1) / perPage
@@ -78,60 +116,26 @@ func handleProfileStatsMovies(w http.ResponseWriter, r *http.Request) {
 		totalPages = 1
 	}
 
-	details := store.GetMovieWatchDetails(r.Context(), d.ID, profileID, movieIDs)
+	// Per-card detail merge — only "movies"/"series" have anything to add;
+	// planned/stopped/favorites render as plain poster+title.
+	var movieDetails map[string]store.MovieWatchDetail
+	var seriesProgress map[string]store.SeriesProgress
+	switch kind {
+	case "movies":
+		movieDetails = store.GetMovieWatchDetails(r.Context(), d.ID, profileID, cardIDs)
+	case "series":
+		seriesProgress = store.GetSeriesProgressBatch(r.Context(), d.ID, profileID, cardIDs)
+	}
+
 	results := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		item := toMediaItem(row)
-		if det, ok := details[cardIDOf(row)]; ok {
+		id := cardIDOf(row)
+		if det, ok := movieDetails[id]; ok {
 			item["percent"] = det.Percent
 			item["view_count"] = det.ViewCount
 		}
-		results = append(results, item)
-	}
-	JSON(w, http.StatusOK, map[string]any{
-		"page":          page,
-		"results":       results,
-		"total_pages":   totalPages,
-		"total_results": total,
-	})
-}
-
-// GET /api/stats/personal/series?token=&profile_id=&page=&per_page=
-// Combined "Смотрю" + "Завершено" TV list — each card annotated with
-// watched/total aired-episode counts.
-func handleProfileStatsSeries(w http.ResponseWriter, r *http.Request) {
-	d := deviceFromRequest(r)
-	if d == nil {
-		JSON(w, http.StatusOK, emptyPage(1))
-		return
-	}
-	profileID := r.URL.Query().Get("profile_id")
-	page, perPage := statsPageParams(r)
-
-	seriesIDs := store.ListWatchingCardIDs(r.Context(), d.ID, profileID, 0)
-	for _, id := range store.ListCompletedCardIDs(r.Context(), d.ID, profileID, 0) {
-		if !isMovieCard(id) {
-			seriesIDs = append(seriesIDs, id)
-		}
-	}
-	if len(seriesIDs) == 0 {
-		JSON(w, http.StatusOK, emptyPage(page))
-		return
-	}
-
-	f := store.CategoryFilter{CardIDs: seriesIDs, Page: page, PerPage: perPage}
-	applyCatalogTrackers(&f)
-	rows, total := store.ListCategory(f)
-	totalPages := (total + perPage - 1) / perPage
-	if totalPages < 1 {
-		totalPages = 1
-	}
-
-	progress := store.GetSeriesProgressBatch(r.Context(), d.ID, profileID, seriesIDs)
-	results := make([]map[string]any, 0, len(rows))
-	for _, row := range rows {
-		item := toMediaItem(row)
-		if p, ok := progress[cardIDOf(row)]; ok {
+		if p, ok := seriesProgress[id]; ok {
 			item["watched_episodes"] = p.Watched
 			item["total_episodes"] = p.Total
 		}
