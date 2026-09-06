@@ -42,6 +42,15 @@
   flex-direction: column;
   gap: 3px;
   padding-top: 16px; // aligns with .weeks below the month-label row
+  // Pinned to the left edge of .scroller — otherwise it scrolls away with
+  // the grid, and there's nothing left to tell which row is which once the
+  // view is scrolled to the current date (the default now — see the
+  // scrollLeft effect in the component).
+  position: sticky;
+  left: 0;
+  background: $color-bg-card;
+  padding-right: $spacing-xs;
+  z-index: 1;
 }
 
 .weekdayLabel {

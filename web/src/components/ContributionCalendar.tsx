@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import styles from './ContributionCalendar.module.scss'
 
 export interface DayActivity {
@@ -30,6 +30,7 @@ function mondayIndex(d: Date): number {
 // everything maxing out at the lightest bucket.
 export default function ContributionCalendar({ data, weeks = 53 }: Props) {
   const [hover, setHover] = useState<{ date: string; count: number; x: number; y: number } | null>(null)
+  const scrollerRef = useRef<HTMLDivElement>(null)
 
   const countByDate = useMemo(() => {
     const m = new Map<string, number>()
@@ -87,6 +88,14 @@ export default function ContributionCalendar({ data, weeks = 53 }: Props) {
     return { columns: cols, monthLabels: monthMarks, total }
   }, [countByDate, weeks])
 
+  // Weeks run oldest→newest left-to-right, so the current date is always the
+  // rightmost column — without this the grid opens scrolled to the far
+  // left (a year ago) and the user has to scroll right just to see today.
+  useEffect(() => {
+    const el = scrollerRef.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [columns])
+
   return (
     <div className={styles.wrap}>
       <div className={styles.header}>
@@ -99,7 +108,7 @@ export default function ContributionCalendar({ data, weeks = 53 }: Props) {
           <span>Больше</span>
         </div>
       </div>
-      <div className={styles.scroller}>
+      <div className={styles.scroller} ref={scrollerRef}>
         <div className={styles.grid}>
           <div className={styles.weekdayCol}>
             {WEEKDAY_LABELS.map((w, i) => (
