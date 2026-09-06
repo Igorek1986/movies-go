@@ -43,6 +43,13 @@ interface ProfileStats {
 
 const WEEKDAY_NAMES = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
 
+// Genre names come from TMDB with inconsistent casing ("комедия" vs "НФ и
+// Фэнтези") — capitalize only the first letter, don't touch the rest (a
+// blanket text-transform: capitalize would also uppercase "и"/"Фэнтези").
+function capitalizeFirst(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
 function formatHours(minutes: number): string {
   const hours = Math.round(minutes / 60)
   return `${hours.toLocaleString('ru')} ч`
@@ -117,10 +124,11 @@ export default function PersonalStatsPage() {
         {s.top_genres.length > 0 && (
           <div className={styles.block}>
             <h2 className={styles.blockTitle}>Любимые жанры</h2>
+            <p className={styles.blockSubtitle}>Фильмов и сериалов просмотрено в этом жанре</p>
             <div className={styles.genreList}>
               {s.top_genres.map(g => (
                 <div key={g.name} className={styles.genreRow}>
-                  <span className={styles.genreName}>{g.name}</span>
+                  <span className={styles.genreName}>{capitalizeFirst(g.name)}</span>
                   <div className={styles.genreBarTrack}>
                     <div className={styles.genreBarFill} style={{ width: `${(g.count / s.top_genres[0].count) * 100}%` }} />
                   </div>

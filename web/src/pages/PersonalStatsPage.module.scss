@@ -59,6 +59,12 @@
   color: $color-text;
 }
 
+.blockSubtitle {
+  margin: -#{$spacing-sm} 0 0;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
 .genreList {
   display: flex;
   flex-direction: column;
