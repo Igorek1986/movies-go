@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"movies-api/db/store"
 )
@@ -77,8 +78,18 @@ func handleProfileStatsList(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "series":
-		cardIDs = store.ListWatchingCardIDs(r.Context(), d.ID, profileID, 0)
-		for _, id := range store.ListCompletedCardIDs(r.Context(), d.ID, profileID, 0) {
+		// ListWatchingCardIDs/ListCompletedCardIDs are independent, each its
+		// own non-trivial query (LATERAL joins over episodes) — sequentially
+		// they were a big chunk of this endpoint's ~1.2s, same fix as
+		// handleAdminStats's own goroutine+WaitGroup pattern.
+		var watchingIDs, completedIDs []string
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); watchingIDs = store.ListWatchingCardIDs(r.Context(), d.ID, profileID, 0) }()
+		go func() { defer wg.Done(); completedIDs = store.ListCompletedCardIDs(r.Context(), d.ID, profileID, 0) }()
+		wg.Wait()
+		cardIDs = watchingIDs
+		for _, id := range completedIDs {
 			if !isMovieCard(id) {
 				cardIDs = append(cardIDs, id)
 			}
@@ -110,21 +121,31 @@ func handleProfileStatsList(w http.ResponseWriter, r *http.Request) {
 
 	f := store.CategoryFilter{CardIDs: cardIDs, Page: page, PerPage: perPage}
 	applyCatalogTrackers(&f)
-	rows, total := store.ListCategory(f)
+
+	// ListCategory (this page's rows) and the per-card detail batch both only
+	// need cardIDs, not each other's output — run them side by side instead
+	// of back-to-back.
+	var rows []store.MediaRow
+	var total int
+	var movieDetails map[string]store.MovieWatchDetail
+	var seriesProgress map[string]store.SeriesProgress
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); rows, total = store.ListCategory(f) }()
+	go func() {
+		defer wg.Done()
+		switch kind {
+		case "movies":
+			movieDetails = store.GetMovieWatchDetails(r.Context(), d.ID, profileID, cardIDs)
+		case "series":
+			seriesProgress = store.GetSeriesProgressBatch(r.Context(), d.ID, profileID, cardIDs)
+		}
+	}()
+	wg.Wait()
+
 	totalPages := (total + perPage - 1) / perPage
 	if totalPages < 1 {
 		totalPages = 1
-	}
-
-	// Per-card detail merge — only "movies"/"series" have anything to add;
-	// planned/stopped/favorites render as plain poster+title.
-	var movieDetails map[string]store.MovieWatchDetail
-	var seriesProgress map[string]store.SeriesProgress
-	switch kind {
-	case "movies":
-		movieDetails = store.GetMovieWatchDetails(r.Context(), d.ID, profileID, cardIDs)
-	case "series":
-		seriesProgress = store.GetSeriesProgressBatch(r.Context(), d.ID, profileID, cardIDs)
 	}
 
 	results := make([]map[string]any, 0, len(rows))

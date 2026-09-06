@@ -195,7 +195,7 @@ func GetSeriesProgressBatch(ctx context.Context, deviceID int64, profileID strin
 		WITH watched_hashes AS (
 			SELECT tc.item AS hash
 			FROM timecodes tc
-			WHERE tc.device_id = $1 AND tc.profile_id = $2
+			WHERE tc.device_id = $1 AND tc.profile_id = $2 AND tc.card_id = ANY($4)
 			  AND ((tc.data::jsonb->>'percent')::numeric >= $3
 			       OR (tc.data::jsonb->>'special')::boolean IS TRUE)
 		)
@@ -240,7 +240,7 @@ func GetRemainingWatchMinutes(ctx context.Context, deviceID int64, profileID str
 		WITH watched_hashes AS (
 			SELECT tc.item AS hash
 			FROM timecodes tc
-			WHERE tc.device_id = $1 AND tc.profile_id = $2
+			WHERE tc.device_id = $1 AND tc.profile_id = $2 AND tc.card_id = ANY($4)
 			  AND ((tc.data::jsonb->>'percent')::numeric >= $3
 			       OR (tc.data::jsonb->>'special')::boolean IS TRUE)
 		)
