@@ -58,8 +58,13 @@
 }
 
 .weekdayLabel {
-  height: 11px;
-  line-height: 11px;
+  // flex:1 (not a fixed height) — cells are square now (aspect-ratio, see
+  // .cell below) and grow taller along with their stretched width on a wide
+  // screen, so this row's height has to follow suit to stay aligned rather
+  // than assume the old fixed 11px.
+  flex: 1;
+  display: flex;
+  align-items: center;
   font-size: $font-size-xs;
   color: $color-text-muted;
 }
@@ -82,19 +87,40 @@
   column-gap: 3px;
   width: 100%;
   height: 14px;
+  // Contains each label's overflow: visible ink to this box specifically —
+  // a label can still spill into a neighboring (usually empty) column
+  // without being clipped, but that ink overflow stops being counted as
+  // *scrollable* overflow the moment it would otherwise cross .months's own
+  // edge, so it can no longer inflate .scroller's scrollWidth the way it did
+  // with no overflow set here at all (ink overflow bubbles up to the
+  // nearest ancestor that actually establishes a scroll/clip box).
+  overflow: hidden;
 }
 
 .monthLabel {
   font-size: $font-size-xs;
   color: $color-text-muted;
-  // Without this, a grid item's own text (e.g. "Сен") pushes its track
-  // wider than the minmax(11px, 1fr) formula calls for — 13 label tracks
-  // sized independently of .weeks's 53 cell tracks below made .months a few
-  // px wider overall, which is what was leaking out as .scroller's own
-  // phantom horizontal scrollbar even though every cell was fully visible.
-  min-width: 0;
-  overflow: hidden;
   white-space: nowrap;
+  // min-width: 0, not overflow: hidden — a 3-letter label ("Сен") is a few
+  // px wider than one stretched column, so clipping it down to "Се" traded
+  // the phantom scrollbar for unreadable labels. min-width: 0 alone already
+  // stops the text from *sizing* its track (that's what caused the extra
+  // scrollWidth in the first place); overflow: visible then lets it spill
+  // into the neighboring (empty, in practice — labels are ~4 columns apart)
+  // track instead of being cut off.
+  min-width: 0;
+  overflow: visible;
+}
+
+// The very last label has no neighboring column to spill rightward into —
+// letting it overflow past the grid's own right edge like every other
+// label would reintroduce a sliver of real scrollable width. Right-align
+// just this one so any overflow grows leftward (into the previous, already
+//-labeled-and-passed column) instead of past the grid's edge. Still a
+// normal grid item at the same gridColumnStart as before — only the text
+// alignment differs, so the 53-track width/alignment math is untouched.
+.monthLabelLast {
+  text-align: right;
 }
 
 .weeks {
@@ -114,7 +140,7 @@
 .cell,
 .cellEmpty {
   width: 100%;
-  height: 11px;
+  aspect-ratio: 1 / 1; // stay square as the column stretches wider than 11px
   border-radius: 2px;
 }
 

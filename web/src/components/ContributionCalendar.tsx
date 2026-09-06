@@ -123,9 +123,18 @@ export default function ContributionCalendar({ data, weeks = 53 }: Props) {
           </div>
           <div className={styles.weeksCol}>
             <div className={styles.months}>
-              {monthLabels.map((m, i) => (
-                <span key={i} className={styles.monthLabel} style={{ gridColumnStart: m.col + 1 }}>{m.label}</span>
-              ))}
+              {monthLabels.map((m, i) => {
+                const isLast = i === monthLabels.length - 1
+                return (
+                  <span
+                    key={i}
+                    className={`${styles.monthLabel}${isLast ? ' ' + styles.monthLabelLast : ''}`}
+                    style={{ gridColumnStart: m.col + 1 }}
+                  >
+                    {m.label}
+                  </span>
+                )
+              })}
             </div>
             <div className={styles.weeks}>
               {columns.map((week, wi) => (

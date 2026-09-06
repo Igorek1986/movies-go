@@ -149,6 +149,19 @@ func GetProfileStats(ctx context.Context, deviceID int64, profileID string) Prof
 	s.TopGenres = GetTopGenres(ctx, deviceID, profileID, 5)
 	s.TopActors = GetTopActors(ctx, deviceID, profileID, 5)
 	s.RemainingMinutes = GetRemainingWatchMinutes(ctx, deviceID, profileID)
+
+	// A profile with no watch activity yet gets nil slices here (no rows
+	// scanned) — encoded as JSON null, not []. The frontend does
+	// stats.top_genres.length etc. unconditionally, which throws on null.
+	if s.Calendar == nil {
+		s.Calendar = []DayActivity{}
+	}
+	if s.TopGenres == nil {
+		s.TopGenres = []GenreCount{}
+	}
+	if s.TopActors == nil {
+		s.TopActors = []ActorCount{}
+	}
 	return s
 }
 
