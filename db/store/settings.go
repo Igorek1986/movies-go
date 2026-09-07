@@ -176,6 +176,11 @@ var SettingDefaults = map[string]string{
 	"telegram_bot_name":    "",
 	"telegram_admin_ids":   "",
 	"telegram_use_polling": "0",
+	// "0" stops the bot (bot.Start skips) without touching telegram_bot_token —
+	// a separate flag so a temporary "Отключить" in the admin UI doesn't force
+	// re-typing the token to turn it back on. Default "1" preserves the old
+	// behavior (token present => bot runs) for installs that never touch this.
+	"telegram_bot_enabled": "1",
 	// Секрет вебхука Telegram (secret_token). Генерируется автоматически при
 	// регистрации вебхука; используется для проверки заголовка
 	// X-Telegram-Bot-Api-Secret-Token входящих апдейтов.

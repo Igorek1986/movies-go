@@ -77,11 +77,17 @@ func main() {
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
 
-	// Telegram бот и фоновые задачи
-	if mode == "all" {
-		if err := bot.Start(appCtx); err != nil {
-			log.Printf("Telegram bot error: %v", err)
-		} else if rawBaseURL, _ := store.GetSetting(appCtx, "base_url"); rawBaseURL != "" && bot.Enabled() {
+	// Telegram бот — доступен в обоих режимах (см. handleParserModeAdmin's
+	// "Telegram бот" section), но в parser-режиме нет ни /bot/webhook, ни
+	// /tg-app роутов (оба только в mode=="all"), так что там единственный
+	// рабочий вариант — polling; ForcePolling переопределяет сохранённую
+	// telegram_use_polling независимо от её значения в БД (мог остаться "0"
+	// от переключения из all в parser).
+	bot.SetForcePolling(mode != "all")
+	if err := bot.Start(appCtx); err != nil {
+		log.Printf("Telegram bot error: %v", err)
+	} else if mode == "all" {
+		if rawBaseURL, _ := store.GetSetting(appCtx, "base_url"); rawBaseURL != "" && bot.Enabled() {
 			baseURL := strings.TrimRight(rawBaseURL, "/")
 			usePolling, _ := store.GetSetting(appCtx, "telegram_use_polling")
 			if usePolling != "1" {
@@ -99,6 +105,11 @@ func main() {
 				log.Printf("Telegram menu button set: %s/tg-app", baseURL)
 			}
 		}
+	}
+
+	// Фоновые задачи (проверки премиума/неактивности/т.п.) — только all-режим,
+	// завязаны на систему пользователей, которой в parser-режиме нет.
+	if mode == "all" {
 		tasks.Start(appCtx)
 	}
 

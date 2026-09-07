@@ -2257,30 +2257,62 @@ func handleAPIAdminRestart(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAPIAdminBotStatus(w http.ResponseWriter, r *http.Request) {
+	token, _ := store.GetSetting(r.Context(), "telegram_bot_token")
+	// has_token lets the UI tell "never configured" apart from "configured
+	// but turned off via Отключить" — both read as enabled:false otherwise.
 	JSON(w, http.StatusOK, map[string]any{
-		"enabled":  bot.Enabled(),
-		"username": bot.Username(),
+		"enabled":   bot.Enabled(),
+		"username":  bot.Username(),
+		"has_token": token != "",
 	})
 }
 
 func handleAPIAdminBotRestart(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
+	// A restart from the admin UI's "Включить" always means "run now" —
+	// re-enables the bot if a prior "Отключить" (see handleAPIAdminBotDisable)
+	// had turned it off without clearing the token. Saving settings
+	// (handleAPIAdminSettingsSave) no longer calls this — editing fields
+	// shouldn't silently flip a disabled bot back on.
+	store.SetSetting(ctx, "telegram_bot_enabled", "1")
 	if err := bot.Restart(ctx); err != nil {
 		Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if rawBaseURL, _ := store.GetSetting(ctx, "base_url"); rawBaseURL != "" && bot.Enabled() {
-		baseURL := strings.TrimRight(rawBaseURL, "/")
-		usePolling, _ := store.GetSetting(ctx, "telegram_use_polling")
-		if usePolling != "1" {
-			secret := bot.EnsureWebhookSecret(ctx)
-			if err := bot.SetWebhook(baseURL+"/bot/webhook", secret); err != nil {
-				log.Printf("bot restart: webhook error: %v", err)
+	// Webhook/menu-button setup needs /bot/webhook and /tg-app, which only
+	// exist when mode=="all" — bot.SetForcePolling (see cmd/main.go) already
+	// makes Restart itself always use polling outside that mode, so skipping
+	// this block there just avoids a pointless setWebhook/setChatMenuButton
+	// call against routes that don't exist.
+	if runMode, _ := store.GetSetting(ctx, "app_mode"); runMode == "all" {
+		if rawBaseURL, _ := store.GetSetting(ctx, "base_url"); rawBaseURL != "" && bot.Enabled() {
+			baseURL := strings.TrimRight(rawBaseURL, "/")
+			usePolling, _ := store.GetSetting(ctx, "telegram_use_polling")
+			if usePolling != "1" {
+				secret := bot.EnsureWebhookSecret(ctx)
+				if err := bot.SetWebhook(baseURL+"/bot/webhook", secret); err != nil {
+					log.Printf("bot restart: webhook error: %v", err)
+				}
+			}
+			if err := bot.SetMenuButton(baseURL + "/tg-app"); err != nil {
+				log.Printf("bot restart: menu button error: %v", err)
 			}
 		}
-		if err := bot.SetMenuButton(baseURL + "/tg-app"); err != nil {
-			log.Printf("bot restart: menu button error: %v", err)
-		}
+	}
+	JSON(w, http.StatusOK, map[string]any{"ok": true, "enabled": bot.Enabled()})
+}
+
+// POST /api/admin/bot/disable — flips telegram_bot_enabled to "0" and
+// restarts (Start() then skips regardless of the token) — a temporary
+// on/off toggle that leaves telegram_bot_token untouched, so turning the
+// bot back on later ("Включить", see handleAPIAdminBotRestart) doesn't
+// require re-entering it.
+func handleAPIAdminBotDisable(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	store.SetSetting(ctx, "telegram_bot_enabled", "0")
+	if err := bot.Restart(ctx); err != nil {
+		Error(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 	JSON(w, http.StatusOK, map[string]any{"ok": true, "enabled": bot.Enabled()})
 }
@@ -2426,6 +2458,35 @@ input[type=number]{flex:none}
         <button type="submit" class="btn btn-primary">Сохранить и перезапустить</button>
       </div>
     </form>
+  </section>
+
+  <section>
+    <h2>Telegram бот</h2>
+    <div id="botStatusLine" class="hint">Загрузка…</div>
+    <p class="hint">В режиме parser нет пользователей и веб-роутов — бот работает только через polling
+      (без вебхука) и отвечает лишь на команды, не завязанные на аккаунт (например, «🚨 Не работает»).</p>
+    <div style="display:flex;flex-direction:column;gap:.5rem">
+      <label>Токен
+        <div class="row" style="margin-top:4px">
+          <input type="text" id="botTokenInput" placeholder="1234567890:AAF..." autocomplete="off">
+        </div>
+      </label>
+      <label>Username бота (без @)
+        <div class="row" style="margin-top:4px">
+          <input type="text" id="botNameInput" placeholder="mybot" autocomplete="off">
+        </div>
+      </label>
+      <label>ID администраторов
+        <div class="row" style="margin-top:4px">
+          <input type="text" id="botAdminIdsInput" placeholder="123456789,987654321" autocomplete="off">
+        </div>
+      </label>
+      <div class="row">
+        <button class="btn btn-primary" onclick="saveBotSettings()">Сохранить</button>
+        <button class="btn btn-ghost" id="botToggleBtn" onclick="toggleBot()" style="display:none">Отключить</button>
+        <span id="botStatus" style="font-size:.82rem;color:#4a90e2"></span>
+      </div>
+    </div>
   </section>
 
   <section>
@@ -2863,6 +2924,96 @@ function twToggleAge(age,checked){
 }
 
 twLoad();
+
+// ── Telegram bot ──────────────────────────────────────────────────────────────
+var botEnabled=false, botHasToken=false;
+function setBotStatusLine(enabled,username,hasToken){
+  botEnabled=enabled;botHasToken=hasToken;
+  var el=document.getElementById('botStatusLine');
+  if(enabled){el.textContent='Бот запущен — @'+username;el.style.color='#4a90e2';}
+  else if(hasToken){el.textContent='Бот отключён (токен сохранён)';el.style.color='#888';}
+  else{el.textContent='Бот не запущен';el.style.color='#888';}
+  // Кнопка-переключатель: скрыта, пока токен вообще не задан (нечего
+  // включать/выключать); иначе показывает действие для ТЕКУЩЕГО состояния,
+  // а не всегда «Отключить» — иначе она бессмысленно предлагала выключить
+  // уже выключенного бота.
+  var btn=document.getElementById('botToggleBtn');
+  if(!hasToken){btn.style.display='none';return;}
+  btn.style.display='';
+  btn.textContent=enabled?'Отключить':'Включить';
+}
+function loadBotStatus(){
+  fetch('/api/admin/bot/status').then(function(r){return r.json();})
+    .then(function(d){setBotStatusLine(d.enabled,d.username,d.has_token);})
+    .catch(function(){});
+}
+function loadBotSettings(){
+  fetch('/api/admin/settings').then(function(r){return r.json();}).then(function(d){
+    document.getElementById('botTokenInput').value=d.telegram_bot_token||'';
+    document.getElementById('botNameInput').value=d.telegram_bot_name||'';
+    document.getElementById('botAdminIdsInput').value=d.telegram_admin_ids||'';
+  }).catch(function(){});
+}
+function setBotStatus(msg,err){
+  var s=document.getElementById('botStatus');
+  s.style.color=err?'#e74c3c':'#4a90e2';
+  s.textContent=msg;
+}
+// Только сохранение — запуск/остановка отдельно, кнопкой-тумблером
+// (enableBot/disableBot ниже). Раньше это ещё и рестартило бота, из-за чего
+// правка admin ID/имени бота при выключенном боте незаметно включала его
+// обратно — сохранение полей не должно менять состояние вкл/выкл.
+function saveBotSettings(){
+  setBotStatus('Сохранение…');
+  var body={
+    telegram_bot_token:document.getElementById('botTokenInput').value.trim(),
+    telegram_bot_name:document.getElementById('botNameInput').value.trim(),
+    telegram_admin_ids:document.getElementById('botAdminIdsInput').value.trim(),
+    telegram_use_polling:'1'
+  };
+  fetch('/api/admin/settings/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){if(!r.ok)throw new Error();return fetch('/api/admin/bot/status');})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      setBotStatusLine(d.enabled,d.username,d.has_token);
+      setBotStatus('Настройки сохранены');
+    })
+    .catch(function(){setBotStatus('Ошибка',true);});
+}
+// Отключение — временное: сохранённый токен и остальные поля не трогаются
+// (см. handleAPIAdminBotDisable), обратное включение — тем же тумблером —
+// восстановит его без повторного ввода.
+function disableBot(){
+  if(!confirm('Отключить бота? Настройки останутся сохранены — можно будет включить обратно.'))return;
+  setBotStatus('Отключение…');
+  fetch('/api/admin/bot/disable',{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.error)throw new Error(d.error);
+      setBotStatusLine(false,'',!!document.getElementById('botTokenInput').value.trim());
+      setBotStatus('Бот отключён');
+    })
+    .catch(function(){setBotStatus('Ошибка',true);});
+}
+// Включить — /api/admin/bot/restart (сам выставляет telegram_bot_enabled=1
+// и рестартит с уже сохранёнными полями), без похода в /api/admin/settings —
+// сохранение и запуск теперь разделены (см. saveBotSettings выше).
+function enableBot(){
+  setBotStatus('Запуск…');
+  fetch('/api/admin/bot/restart',{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.error)throw new Error(d.error);
+      setBotStatusLine(d.enabled,d.username,true);
+      setBotStatus(d.enabled?'Бот запущен':'Ошибка запуска',!d.enabled);
+    })
+    .catch(function(){setBotStatus('Ошибка',true);});
+}
+function toggleBot(){
+  if(botEnabled)disableBot();else enableBot();
+}
+loadBotStatus();
+loadBotSettings();
 
 loadParsers();
 loadPats();

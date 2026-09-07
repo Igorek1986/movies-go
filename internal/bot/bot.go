@@ -19,13 +19,31 @@ var (
 	instance      *tgbotapi.BotAPI
 	adminIDs      []int64
 	pollingCancel context.CancelFunc
+	// forcePolling overrides the stored telegram_use_polling setting — set
+	// once at startup (see SetForcePolling) for run modes that have no
+	// webhook route to receive updates on (parser mode: /bot/webhook only
+	// exists when mode=="all"). Independent of whatever telegram_use_polling
+	// happens to hold in the DB (e.g. left over "0" from a prior mode=all
+	// webhook setup).
+	forcePolling bool
 )
 
-// Start initializes the Telegram bot. Does nothing if token is not configured.
+// SetForcePolling makes every Start/Restart use polling regardless of the
+// stored telegram_use_polling setting — call once at process startup for a
+// run mode with no webhook route (see cmd/main.go).
+func SetForcePolling(v bool) { forcePolling = v }
+
+// Start initializes the Telegram bot. Does nothing if the token is not
+// configured or telegram_bot_enabled is "0" (see the admin "Отключить"
+// button — a temporary on/off toggle that leaves the token in place).
 func Start(ctx context.Context) error {
 	token, _ := store.GetSetting(ctx, "telegram_bot_token")
 	if token == "" {
 		log.Println("bot: token not configured, skipping")
+		return nil
+	}
+	if enabled, _ := store.GetSetting(ctx, "telegram_bot_enabled"); enabled == "0" {
+		log.Println("bot: disabled (telegram_bot_enabled=0), skipping")
 		return nil
 	}
 
@@ -39,14 +57,15 @@ func Start(ctx context.Context) error {
 	adminIDsStr, _ := store.GetSetting(ctx, "telegram_admin_ids")
 	adminIDs = parseAdminIDs(adminIDsStr)
 
-	usePolling, _ := store.GetSetting(ctx, "telegram_use_polling")
+	usePollingSetting, _ := store.GetSetting(ctx, "telegram_use_polling")
+	usePolling := usePollingSetting == "1" || forcePolling
 	mode := "webhook"
-	if usePolling == "1" {
+	if usePolling {
 		mode = "polling"
 	}
 	log.Printf("bot: started @%s, mode=%s, admins=%v", bot.Self.UserName, mode, adminIDs)
 
-	if usePolling == "1" {
+	if usePolling {
 		if _, err := bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: false}); err != nil {
 			log.Printf("bot: deleteWebhook error: %v", err)
 		} else {

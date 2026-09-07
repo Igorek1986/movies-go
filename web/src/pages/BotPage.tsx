@@ -6,6 +6,7 @@ import styles from './BotPage.module.scss'
 interface BotStatus {
   enabled: boolean
   username: string
+  has_token: boolean
 }
 
 interface Settings {
@@ -29,7 +30,7 @@ const EMPTY_SETTINGS: Settings = {
 }
 
 export default function BotPage() {
-  const [status, setStatus] = useState<BotStatus>({ enabled: false, username: '' })
+  const [status, setStatus] = useState<BotStatus>({ enabled: false, username: '', has_token: false })
   const [settings, setSettings] = useState<Settings>(EMPTY_SETTINGS)
   const [applying, setApplying] = useState(false)
   const [actionStatus, setActionStatus] = useState('')
@@ -93,7 +94,11 @@ export default function BotPage() {
     autoScrollRef.current = atBottom
   }
 
-  async function applyAndRestart() {
+  // Только сохранение — запуск/остановка отдельно, кнопкой-тумблером ниже
+  // (enableBot/disableBot). Раньше это ещё и рестартило бота, из-за чего
+  // правка админ ID/имени бота при выключенном боте незаметно включала его
+  // обратно — сохранение полей не должно менять состояние вкл/выкл.
+  async function saveSettings() {
     setApplying(true)
     setActionStatus('')
     try {
@@ -103,13 +108,50 @@ export default function BotPage() {
         body: JSON.stringify(settings),
       })
       if (!sr.ok) throw new Error('Ошибка сохранения: HTTP ' + sr.status)
+      await loadStatus()
+      setActionStatus('Настройки сохранены')
+    } catch (e: unknown) {
+      setActionStatus('Ошибка: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setApplying(false)
+    }
+  }
 
+  // Временное отключение — telegram_bot_enabled=0, токен и остальные поля
+  // не трогаются (см. handleAPIAdminBotDisable), «Включить» ниже вернёт его
+  // обратно без повторного ввода. Отдельный эндпоинт, а не запись
+  // через /api/admin/settings: та молча игнорирует явно очищенное строковое
+  // поле (пустое значение в теле, см. handleAPIAdminSettingsSave) — так что
+  // раньше это в принципе не могло очистить токен, даже когда пыталось.
+  async function disableBot() {
+    if (!confirm('Отключить бота? Настройки останутся сохранены — можно будет включить обратно.')) return
+    setApplying(true)
+    setActionStatus('')
+    try {
+      const r = await fetch('/api/admin/bot/disable', { method: 'POST' })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
+      await loadStatus()
+      setActionStatus('Бот отключён')
+    } catch (e: unknown) {
+      setActionStatus('Ошибка: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  // Включить — /api/admin/bot/restart (сам выставляет telegram_bot_enabled=1
+  // и рестартит с уже сохранёнными полями), без похода в /api/admin/settings —
+  // сохранение и запуск теперь разделены (см. saveSettings выше).
+  async function enableBot() {
+    setApplying(true)
+    setActionStatus('')
+    try {
       const r = await fetch('/api/admin/bot/restart', { method: 'POST' })
       const data = await r.json()
       if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status)
-
       await loadStatus()
-      setActionStatus(data.enabled ? `Бот запущен (@${data.username || settings.telegram_bot_name})` : 'Токен не задан — бот не запущен')
+      setActionStatus(data.enabled ? `Бот запущен (@${data.username || settings.telegram_bot_name})` : 'Ошибка запуска')
     } catch (e: unknown) {
       setActionStatus('Ошибка: ' + (e instanceof Error ? e.message : String(e)))
     } finally {
@@ -140,7 +182,7 @@ export default function BotPage() {
           <span className={styles.statusText}>
             {status.enabled
               ? <>Бот запущен — <strong>@{status.username}</strong></>
-              : 'Бот не запущен'
+              : status.has_token ? 'Бот отключён (токен сохранён)' : 'Бот не запущен'
             }
           </span>
         </div>
@@ -189,11 +231,30 @@ export default function BotPage() {
           <div className={styles.actions}>
             <button
               className={`${styles.btn} ${styles.btnPrimary}`}
-              onClick={applyAndRestart}
+              onClick={saveSettings}
               disabled={applying}
             >
-              {applying ? 'Применение…' : 'Сохранить и запустить'}
+              {applying ? 'Сохранение…' : 'Сохранить'}
             </button>
+            {status.has_token && (
+              status.enabled ? (
+                <button
+                  className={styles.btn}
+                  onClick={disableBot}
+                  disabled={applying}
+                >
+                  Отключить
+                </button>
+              ) : (
+                <button
+                  className={styles.btn}
+                  onClick={enableBot}
+                  disabled={applying}
+                >
+                  Включить
+                </button>
+              )
+            )}
             {actionStatus && <span className={styles.actionStatus}>{actionStatus}</span>}
           </div>
         </div>
