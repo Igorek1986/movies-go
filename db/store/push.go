@@ -100,6 +100,7 @@ type NewEpisodeNotification struct {
 // UnwatchedTVShows, "zero progress... qualifies too").
 func FindNewEpisodeNotifications(ctx context.Context) []NewEpisodeNotification {
 	cutoff := AiredCutoffDate(ctx)
+	threshold := WatchedThreshold(ctx)
 	//nolint:gosec // cutoff comes from AiredCutoffDate (admin setting only), not user input
 	rows, err := postgres.Pool.Query(ctx, `
 		SELECT ps.id, ps.endpoint, ps.p256dh, ps.auth, ps.device_id, ps.profile_id,
@@ -122,7 +123,18 @@ func FindNewEpisodeNotifications(ctx context.Context) []NewEpisodeNotification {
 			      WHERE n.device_id = ps.device_id AND n.profile_id = ps.profile_id
 			        AND n.card_id = mc.card_id AND n.season = e.season AND n.episode = e.episode
 			  )
-		) ep`)
+			  -- Some shows' air_date gets corrected by a later resync well after the
+			  -- episode was actually available and already watched (e.g. a tracker
+			  -- release predates TMDB's listed air_date). Don't announce as "new"
+			  -- something the profile already watched under this same hash.
+			  AND NOT EXISTS (
+			      SELECT 1 FROM timecodes tc
+			      WHERE tc.device_id = ps.device_id AND tc.profile_id = ps.profile_id
+			        AND tc.card_id = mc.card_id AND tc.item = e.hash
+			        AND ((tc.data::jsonb->>'percent')::numeric >= $1
+			             OR (tc.data::jsonb->>'special')::boolean IS TRUE)
+			  )
+		) ep`, threshold)
 	if err != nil {
 		log.Printf("store: find new episode notifications: %v", err)
 		return nil
