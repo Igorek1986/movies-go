@@ -65,7 +65,8 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 		       u.totp_secret, u.totp_enabled, u.backup_codes,
 		       u.premium_until, u.blocked_at, u.block_reason, u.created_at,
 		       u.bottom_nav_keys, u.bottom_nav_position,
-		       u.card_layout, u.browse_layout, u.settings_layout, u.theme
+		       u.card_layout, u.browse_layout, u.settings_layout, u.theme,
+		       u.must_change_password
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.key = $1 AND s.expires_at > now()`,
@@ -76,6 +77,7 @@ func GetSessionUser(ctx context.Context, key string) *models.User {
 		&premiumUntil, &blockedAt, &blockReason, &u.CreatedAt,
 		&bottomNavKeys, &bottomNavPosition,
 		&cardLayout, &browseLayout, &settingsLayout, &theme,
+		&u.MustChangePassword,
 	)
 	if err != nil {
 		return nil

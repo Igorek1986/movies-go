@@ -437,6 +437,108 @@ function BannedPatterns() {
   )
 }
 
+function PasswordBlocklist() {
+  const [list, setList] = useState<string[]>([])
+  const [input, setInput] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/password-blocklist').then(r => r.json()).then(setList).catch(() => {})
+  }, [])
+
+  async function handleAdd() {
+    const val = input.trim()
+    if (!val) return
+    const r = await fetch('/api/admin/password-blocklist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patterns: val }),
+    })
+    if (r.ok) { setList(await r.json()); setInput('') }
+    inputRef.current?.focus()
+  }
+
+  async function handleDelete(pattern: string) {
+    if (!confirm(`Удалить «${pattern}»?`)) return
+    const r = await fetch('/api/admin/password-blocklist', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pattern }),
+    })
+    if (r.ok) setList(await r.json())
+  }
+
+  async function handleClearAll() {
+    if (!confirm('Очистить весь список запрещённых паролей?')) return
+    for (const p of list) {
+      await fetch('/api/admin/password-blocklist', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pattern: p }),
+      })
+    }
+    setList([])
+  }
+
+  return (
+    <details open>
+      <summary className={styles.groupSummary}>
+        <span className={styles.groupName}>Безопасность — запрещённые пароли</span>
+        <span className={styles.groupArrow}>▶</span>
+      </summary>
+      <div className={styles.groupBody} style={{ gridColumn: '1 / -1' }}>
+        <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem', margin: 0 }}>
+            Отклоняются при регистрации/смене/сбросе пароля независимо от того, что формально удовлетворяют требованиям длины и состава символов (например, «Password1»). Сравнение без учёта регистра.
+          </p>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              ref={inputRef}
+              type="text"
+              className={styles.rowInput}
+              placeholder="qwerty123, letmein1 — через запятую или с новой строки"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAdd())}
+              autoComplete="off"
+            />
+            <button type="button" className={styles.btnSave} style={{ whiteSpace: 'nowrap' }} onClick={handleAdd}>
+              Добавить
+            </button>
+          </div>
+          {list.length === 0 ? (
+            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Список пуст</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {list.map(p => (
+                  <span key={p} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    background: 'var(--color-danger, #c0392b)', color: '#fff',
+                    borderRadius: '4px', padding: '3px 8px', fontSize: '0.82rem',
+                  }}>
+                    {p}
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(p)}
+                      style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
+                    >×</button>
+                  </span>
+                ))}
+              </div>
+              <div>
+                <button type="button" className={styles.btnReset} onClick={handleClearAll}>
+                  Очистить список
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </details>
+  )
+}
+
 interface DefaultPluginItem {
   id: number
   url: string
@@ -716,6 +818,7 @@ const CHECKBOX_KEYS: Record<string, string> = {
   catalog_show_no_torrent:  '',
   images_cache_enabled:     '',
   images_cache_warm_original: '',
+  registration_disabled:    '',
 }
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -730,6 +833,8 @@ const DESCRIPTIONS: Record<string, string> = {
   images_cache_enabled: 'Постеры/фоны с TMDB сохраняются на диск при первом запросе и дальше отдаются локально, без похода на TMDB. Работает только для веб-интерфейса (плагин Lampa не проксирует через сервер).',
   images_cache_limit_mb: 'При превышении лимита старые файлы (по дате записи) вытесняются автоматически.',
   images_cache_warm_original: 'Дополнительно прогревать фон в размере original (полный, без ресайза TMDB) — сам по себе тяжелее w780/w1280. Срабатывает при парсинге новых карточек и при первом запросе постера/фона через /imgproxy (см. WarmSibling).',
+  registration_disabled: 'При включении скрывает ссылку и страницу регистрации — новые аккаунты создаёт только администратор (кнопка «Создать пользователя» в списке пользователей), с автосгенерированными логином и паролем. Пользователь обязан сменить пароль при первом входе.',
+  admin_created_user_delete_days: 'Если пользователь так и не вошёл и не сменил выданный пароль — аккаунт удаляется автоматически по ночам (вместе с остальными ежедневными проверками, время — «Час запуска ежедневной задачи»). 0 — не удалять.',
   poster_size: 'Действует для новых/обновляемых карточек. Уже существующие карточки сохранят прежнее качество до своего следующего TMDB-обновления — нужен разовый бэкафилл в БД, чтобы поднять качество сразу у всех.',
   backdrop_size: 'Действует для новых/обновляемых карточек, как и качество постеров.',
 }
@@ -760,6 +865,8 @@ const LABELS: Record<string, string> = {
   aired_cutoff_hour:        'Отсечка «вышедшей» серии — час в этот день (0 = с полуночи)',
   inactive_delete_days:     'Автоудаление неактивных аккаунтов (дней, 0 = выкл)',
   inactive_warn_days:       'Предупреждение об удалении аккаунта (дней до удаления)',
+  registration_disabled:    'Регистрация только по инвайту (админ создаёт вручную)',
+  admin_created_user_delete_days: 'Автоудаление невостребованных аккаунтов (дней, 0 = выкл)',
   timecode_grace_days:      'Грейс-период таймкодов (дней)',
   premium_warn_days:        'Предупреждение об истечении Premium (дней)',
   premium_extend_all_days:  'Продлить всем Premium (дней)',
@@ -856,6 +963,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'session_ttl_days', 'session_renew_days', 'device_token_ttl_days',
     'device_code_ttl_minutes', 'telegram_link_ttl_minutes',
     'reset_code_ttl_minutes', 'pending_2fa_ttl_sec',
+    'registration_disabled', 'admin_created_user_delete_days',
   ]},
   { name: 'Уведомления', keys: ['default_timezone'] },
   { name: 'Аналитика', keys: [
@@ -1140,6 +1248,7 @@ export default function AdminSettingsPage() {
             ))}
 
             <BannedPatterns />
+            <PasswordBlocklist />
             <DefaultDevicePlugins />
             <ChildKeywords />
             <ChildTextKeywords />

@@ -53,6 +53,7 @@ func runDailyTasks(ctx context.Context) {
 	log.Println("tasks: running daily tasks")
 	RunPremiumExpiryCheck(ctx)
 	RunInactiveUserCheck(ctx)
+	RunStalePendingPasswordUserCheck(ctx)
 	cleanGhostCards(ctx)
 	go RunFixZeroRuntime(ctx)
 	go RunRefreshCards(ctx)
@@ -222,6 +223,30 @@ func RunInactiveUserCheck(ctx context.Context) {
 			}
 			log.Printf("tasks: warned inactive user %s (delete in %d days)", u.Username, warnDays)
 		}
+	}
+}
+
+// ─── Stale pending-password user check ─────────────────────────────────────────
+
+// RunStalePendingPasswordUserCheck deletes admin-created accounts (generated
+// login+password, see handleAdminCreateUser / the registration_disabled
+// setting) that never logged in to set their own password within
+// admin_created_user_delete_days of creation — a handed-out password nobody
+// ever used shouldn't linger forever. No warning/grace period (unlike
+// RunInactiveUserCheck above): the account never had a real session to warn
+// through in the first place.
+func RunStalePendingPasswordUserCheck(ctx context.Context) {
+	deleteDays := store.GetSettingInt(ctx, "admin_created_user_delete_days")
+	if deleteDays <= 0 {
+		return
+	}
+	usernames, err := store.DeleteStalePendingPasswordUsers(ctx, deleteDays)
+	if err != nil {
+		log.Printf("tasks: stale pending-password user check: %v", err)
+		return
+	}
+	for _, u := range usernames {
+		log.Printf("tasks: deleted admin-created user %s (password never changed within %d days)", u, deleteDays)
 	}
 }
 

@@ -599,3 +599,9 @@ ALTER TABLE episodes ADD COLUMN IF NOT EXISTS still_path VARCHAR(200);
 -- still_path above (same TMDB endpoint returns both per episode) — same
 -- NULL/''/non-empty sentinel meaning.
 ALTER TABLE episodes ADD COLUMN IF NOT EXISTS overview TEXT;
+
+-- Migration: forced password change for admin-created accounts (see the
+-- registration_disabled app_setting) — an admin-generated login/password
+-- must be replaced by the user on first login. Cleared by any successful
+-- password change (see store.UpdatePassword).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;

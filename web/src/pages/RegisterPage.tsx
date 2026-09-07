@@ -1,19 +1,34 @@
-import { useState, FormEvent } from 'react'
+import { useState, FormEvent, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import styles from './AuthPage.module.scss'
 import PasswordInput from '@/components/PasswordInput'
+import { useAppConfig } from '@/hooks/useAppConfig'
+import { validatePasswordStrength } from '@/utils/passwordStrength'
 
 export default function RegisterPage() {
   const nav = useNavigate()
+  const { config, loading: configLoading } = useAppConfig()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [password2, setPassword2] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  useEffect(() => {
+    if (!configLoading && config?.registration_disabled) nav('/login', { replace: true })
+  }, [configLoading, config, nav])
+
+  if (configLoading || config?.registration_disabled) return null
+
+  const passwordError = validatePasswordStrength(password, config?.password_blocklist)
+
   async function submit(e: FormEvent) {
     e.preventDefault()
     setError('')
+    if (passwordError) {
+      setError(passwordError)
+      return
+    }
     if (password !== password2) {
       setError('Пароли не совпадают')
       return
@@ -66,11 +81,11 @@ export default function RegisterPage() {
             value={password}
             onChange={e => setPassword(e.target.value)}
             disabled={loading}
-            minLength={6}
+            minLength={8}
             required
           />
-          {password.length > 0 && password.length < 6 && (
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-danger, #e05252)' }}>минимум 6 символов</span>
+          {password.length > 0 && passwordError && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-danger, #e05252)' }}>{passwordError}</span>
           )}
         </div>
 

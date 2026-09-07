@@ -12,6 +12,7 @@ import (
 	"movies-api/db/models"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
+	"movies-api/internal/auth"
 	"movies-api/internal/bot"
 	"movies-api/internal/imagecache"
 	tasks "movies-api/internal/tasks"
@@ -97,7 +98,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	var actorCount, directorCount int
 	var popularCards int
 	var popularSourceURL string
-	popularSourceCount := -1                                    // -1 = unknown/unreachable
+	popularSourceCount := -1                                     // -1 = unknown/unreachable
 	imageCacheBytesVal, imageCacheFilesVal := imagecache.Stats() // in-memory counters, no disk scan
 
 	type newUser struct {
@@ -409,6 +410,39 @@ func handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// POST /api/admin/users — creates an account with a generated login and
+// password (used when self-registration is disabled — see the
+// registration_disabled setting). Returns the plaintext password once for
+// the admin to hand to the user; the account must change it on first login
+// (must_change_password).
+func handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
+	username, err := store.GenerateUniqueUsername(r.Context())
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "generate error")
+		return
+	}
+	password, err := store.GenerateRandomPassword(r.Context())
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "generate error")
+		return
+	}
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "hash error")
+		return
+	}
+	u, err := store.CreateUser(r.Context(), username, hash, "simple", true)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	JSON(w, http.StatusCreated, map[string]any{
+		"id":       u.ID,
+		"username": u.Username,
+		"password": password,
+	})
+}
+
 // ─── Web history (session auth) ───────────────────────────────────────────────
 
 // handleWebHistoryAll returns all history entries as a flat JSON array.
@@ -582,7 +616,7 @@ func handleWebSetStatus(w http.ResponseWriter, r *http.Request) {
 		DeviceID  int64  `json:"device_id"`
 		CardID    string `json:"card_id"`
 		ProfileID string `json:"profile_id"`
-		Status    string `json:"status"` // "" clears back to implied
+		Status    string `json:"status"`    // "" clears back to implied
 		ClientID  string `json:"client_id"` // веб-вкладка, см. useLiveSync.ts — исключить эхо себе же
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -2085,6 +2119,7 @@ var boolSettingKeys = map[string]bool{
 	"catalog_require_poster":     true,
 	"images_cache_enabled":       true,
 	"images_cache_warm_original": true,
+	"registration_disabled":      true,
 }
 
 // settingsGroupDefs mirrors FastAPI GROUPS.
@@ -2116,6 +2151,7 @@ var settingsGroupDefs = []struct {
 		"session_ttl_days", "session_renew_days", "device_token_ttl_days",
 		"device_code_ttl_minutes", "telegram_link_ttl_minutes",
 		"reset_code_ttl_minutes", "pending_2fa_ttl_sec",
+		"registration_disabled", "admin_created_user_delete_days",
 	}},
 	{"Уведомления", []string{
 		"default_timezone",
@@ -2140,6 +2176,9 @@ var settingsGroupDefs = []struct {
 		"rate_forgot_max", "rate_forgot_window_sec",
 		"rate_2fa_max", "rate_2fa_window_sec",
 		"sync_cooldown_sec",
+	}},
+	{"Безопасность", []string{
+		"cors_allowed_origins", "trusted_proxy_secret",
 	}},
 	{"MyShows", []string{
 		"myshows_api_url", "myshows_auth_url",
@@ -3133,6 +3172,75 @@ func handleAPIAdminBannedDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	saveBannedList(r.Context(), filtered)
+	if filtered == nil {
+		filtered = []string{}
+	}
+	JSON(w, http.StatusOK, filtered)
+}
+
+// ─── Password blocklist ───────────────────────────────────────────────────────
+
+func savePasswordBlocklist(ctx context.Context, list []string) {
+	store.SetSetting(ctx, "password_blocklist", strings.Join(list, "\n"))
+}
+
+// GET /api/admin/password-blocklist
+func handleAPIAdminPasswordBlocklistGet(w http.ResponseWriter, r *http.Request) {
+	list := store.PasswordBlocklist(r.Context())
+	if list == nil {
+		list = []string{}
+	}
+	JSON(w, http.StatusOK, list)
+}
+
+// POST /api/admin/password-blocklist  {"patterns": "qwerty123,letmein1"}
+func handleAPIAdminPasswordBlocklistAdd(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Patterns string `json:"patterns"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Patterns == "" {
+		Error(w, http.StatusBadRequest, "patterns required")
+		return
+	}
+	parts := strings.FieldsFunc(body.Patterns, func(c rune) bool {
+		return c == ',' || c == '\n'
+	})
+	existing := store.PasswordBlocklist(r.Context())
+	set := make(map[string]struct{}, len(existing))
+	for _, p := range existing {
+		set[strings.ToLower(p)] = struct{}{}
+	}
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, dup := set[strings.ToLower(p)]; !dup {
+			existing = append(existing, p)
+			set[strings.ToLower(p)] = struct{}{}
+		}
+	}
+	savePasswordBlocklist(r.Context(), existing)
+	JSON(w, http.StatusOK, existing)
+}
+
+// DELETE /api/admin/password-blocklist  {"pattern": "qwerty123"}
+func handleAPIAdminPasswordBlocklistDelete(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Pattern string `json:"pattern"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Pattern == "" {
+		Error(w, http.StatusBadRequest, "pattern required")
+		return
+	}
+	list := store.PasswordBlocklist(r.Context())
+	filtered := list[:0]
+	for _, p := range list {
+		if p != body.Pattern {
+			filtered = append(filtered, p)
+		}
+	}
+	savePasswordBlocklist(r.Context(), filtered)
 	if filtered == nil {
 		filtered = []string{}
 	}

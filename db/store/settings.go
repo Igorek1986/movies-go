@@ -4,6 +4,7 @@ import (
 	"context"
 	"movies-api/db/postgres"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -39,6 +40,20 @@ var SettingDefaults = map[string]string{
 	// Inactive user auto-deletion
 	"inactive_delete_days": "180",
 	"inactive_warn_days":   "7",
+	// Self-registration — "1" hides the registration link/page and rejects
+	// POST /api/register; admin still creates accounts manually (generated
+	// login+password, forced change on first login — see must_change_password).
+	"registration_disabled": "0",
+	// Admin-created accounts (generated login+password, must_change_password
+	// still true) that never logged in to set their own password get deleted
+	// this many days after creation — see RunStalePendingPasswordUserCheck,
+	// which runs nightly alongside the other daily checks (daily_task_hour).
+	// 0 disables auto-deletion.
+	"admin_created_user_delete_days": "3",
+	// Passwords rejected outright by ValidatePasswordStrength even though they
+	// satisfy length/char-class rules — comma/newline-separated, editable in
+	// admin settings (see PasswordBlocklist). Compared case-insensitively.
+	"password_blocklist": "12345678,123456789,1234567890,password,password1,password123,qwerty123,qwertyui,qwertyuiop,11111111,00000000,87654321,letmein1,iloveyou,admin1234,abc12345,abcd1234,zxcvbnm1,1qaz2wsx,qazwsx12,asdfghjk,12341234,1q2w3e4r,trustno1,welcome1,monkey123,football1,changeme1,passw0rd",
 	// Episodes refresh
 	"episodes_future_threshold": "5",
 	"episodes_refresh_batch":    "10",
@@ -100,16 +115,16 @@ var SettingDefaults = map[string]string{
 	// автоматически при таймкоде на непарсенный контент) — показывать ли их
 	// в Каталоге/Подборках наравне с обычными. "Моё"/История видят их всегда,
 	// независимо от этой настройки — она только про общий каталог.
-	"catalog_show_no_torrent": "1",
+	"catalog_show_no_torrent":    "1",
 	"images_cache_enabled":       "1", // дисковый кеш /imgproxy — сам включает раздачу картинок через сервер
 	"images_cache_limit_mb":      "3072",
-	"images_cache_warm_original": "1", // прогревать ли фон в размере original (тяжёлый — не урезан TMDB-ресайзом) при WarmSibling
-	"poster_size":            "w500",  // TMDB size сегмент для постеров при обогащении карточек
-	"backdrop_size":          "w1280", // TMDB size сегмент для фонов при обогащении карточек
-	"catalog_actor_count":    "2",
-	"catalog_actor_ru_count": "1",
-	"catalog_director_count": "3",
-	"tracker_new_days":       "90",
+	"images_cache_warm_original": "1",     // прогревать ли фон в размере original (тяжёлый — не урезан TMDB-ресайзом) при WarmSibling
+	"poster_size":                "w500",  // TMDB size сегмент для постеров при обогащении карточек
+	"backdrop_size":              "w1280", // TMDB size сегмент для фонов при обогащении карточек
+	"catalog_actor_count":        "2",
+	"catalog_actor_ru_count":     "1",
+	"catalog_director_count":     "3",
+	"tracker_new_days":           "90",
 	// Parser
 	"parser_order":           "rutor,kinozal,nnmclub",
 	"catalog_trackers":       "rutor,kinozal,nnmclub",
@@ -222,6 +237,23 @@ func GetSettingInt(ctx context.Context, key string) int {
 		}
 	}
 	return 0
+}
+
+// PasswordBlocklist returns the admin-editable list of passwords rejected
+// outright by auth.ValidatePasswordStrength (setting "password_blocklist",
+// comma/newline-separated) — falls back to SettingDefaults when unset.
+func PasswordBlocklist(ctx context.Context) []string {
+	raw, ok := GetSetting(ctx, "password_blocklist")
+	if !ok {
+		raw = SettingDefaults["password_blocklist"]
+	}
+	var out []string
+	for _, part := range strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == '\n' }) {
+		if w := strings.TrimSpace(part); w != "" {
+			out = append(out, w)
+		}
+	}
+	return out
 }
 
 // WatchedThreshold returns the admin-configured "considered watched" percent

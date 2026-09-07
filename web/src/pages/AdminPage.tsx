@@ -145,6 +145,9 @@ export default function AdminPage() {
   const [usersSortBy, setUsersSortBy]   = useState('created_at')
   const [usersSortDir, setUsersSortDir] = useState<'asc' | 'desc'>('desc')
   const [usersPerPage, setUsersPerPage] = useState(10)
+  const [confirmingCreateUser, setConfirmingCreateUser] = useState(false)
+  const [creatingUser, setCreatingUser] = useState(false)
+  const [newUserCreds, setNewUserCreds] = useState<{ username: string; password: string } | null>(null)
   const usersTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Seeded from the shared localStorage cache (also warmed by Layout on any
   // page an admin visits) — shows the last known values instantly, even
@@ -399,6 +402,27 @@ export default function AdminPage() {
     }
   }
 
+  async function createUser() {
+    setCreatingUser(true)
+    try {
+      const data = await api('/api/admin/users', 'POST') as { username: string; password: string }
+      setConfirmingCreateUser(false)
+      setNewUserCreds(data)
+      await Promise.all([refresh(), fetchUsers(usersPage, usersQuery, usersSortBy, usersSortDir, usersPerPage)])
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    } finally {
+      setCreatingUser(false)
+    }
+  }
+
+  function copyNewUserCreds() {
+    if (!newUserCreds) return
+    navigator.clipboard?.writeText(`Логин: ${newUserCreds.username}\nПароль: ${newUserCreds.password}`).catch(() => {})
+    setNewUserCreds(null)
+    toast('Логин и пароль скопированы')
+  }
+
   async function setRole(id: number, role: string) {
     await act(`Роль изменена`, () => api(`/api/admin/users/${id}/role`, 'PATCH', { role }))
   }
@@ -582,6 +606,64 @@ export default function AdminPage() {
               {t.text}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Создать пользователя: подтверждение ──────────────────────────────── */}
+      {confirmingCreateUser && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          onClick={() => !creatingUser && setConfirmingCreateUser(false)}
+        >
+          <div
+            style={{ background: '#181818', border: '1px solid #444', borderRadius: 10, padding: 24, width: 360, maxWidth: '90vw' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 style={{ margin: '0 0 12px', fontSize: '1.05rem' }}>Создать пользователя?</h2>
+            <p className={styles.empty} style={{ margin: '0 0 20px' }}>
+              Логин и пароль будут сгенерированы автоматически. Пользователь обязан сменить пароль при первом входе.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+              <button className={styles.actionBtn} onClick={() => setConfirmingCreateUser(false)} disabled={creatingUser}>Отмена</button>
+              <button className={styles.actionBtn} onClick={createUser} disabled={creatingUser}>
+                {creatingUser ? 'Создание…' : 'Создать'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Новый пользователь: реквизиты (показываются один раз) ────────────── */}
+      {newUserCreds && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          onClick={copyNewUserCreds}
+        >
+          <div
+            style={{ background: '#181818', border: '1px solid #444', borderRadius: 10, padding: 24, width: 360, maxWidth: '90vw' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 style={{ margin: '0 0 12px', fontSize: '1.05rem' }}>Пользователь создан</h2>
+            <p className={styles.empty} style={{ margin: '0 0 16px' }}>
+              Сохраните и передайте пользователю — пароль больше нигде не показывается. При первом входе он обязан сменить его на свой.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+              <div>
+                <div style={{ color: '#888', fontSize: '0.75rem', marginBottom: 2 }}>Логин</div>
+                <input readOnly value={newUserCreds.username} onFocus={e => e.target.select()}
+                  style={{ width: '100%', background: '#111', border: '1px solid #444', borderRadius: 6, color: '#fff', padding: '6px 10px', fontSize: '0.9rem' }} />
+              </div>
+              <div>
+                <div style={{ color: '#888', fontSize: '0.75rem', marginBottom: 2 }}>Пароль</div>
+                <input readOnly value={newUserCreds.password} onFocus={e => e.target.select()}
+                  style={{ width: '100%', background: '#111', border: '1px solid #444', borderRadius: 6, color: '#fff', padding: '6px 10px', fontSize: '0.9rem' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+              <button className={styles.actionBtn} onClick={() => setNewUserCreds(null)}>Закрыть</button>
+              <button className={styles.actionBtn} onClick={copyNewUserCreds}>Копировать и закрыть</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -961,6 +1043,9 @@ export default function AdminPage() {
               <option value={100}>100</option>
               <option value={0}>Все</option>
             </select>
+            <button className={styles.actionBtn} onClick={() => setConfirmingCreateUser(true)}>
+              + Создать пользователя
+            </button>
           </div>
 
           {loading && <p className={styles.empty}>Загрузка…</p>}

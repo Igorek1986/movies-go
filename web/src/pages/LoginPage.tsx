@@ -2,9 +2,11 @@ import { useState, FormEvent } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import styles from './AuthPage.module.scss'
 import PasswordInput from '@/components/PasswordInput'
+import { useAppConfig } from '@/hooks/useAppConfig'
 
 export default function LoginPage() {
   const nav = useNavigate()
+  const { config } = useAppConfig()
   const [searchParams] = useSearchParams()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -78,9 +80,11 @@ export default function LoginPage() {
           {loading ? 'Вход…' : 'Войти'}
         </button>
 
-        <p className={styles.hint}>
-          Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
-        </p>
+        {!config?.registration_disabled && (
+          <p className={styles.hint}>
+            Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
+          </p>
+        )}
         <p className={styles.hint}>
           <Link to="/forgot-password">Забыли пароль?</Link>
         </p>

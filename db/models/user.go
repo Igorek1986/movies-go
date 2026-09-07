@@ -3,24 +3,25 @@ package models
 import "time"
 
 type User struct {
-	ID                int64      `db:"id"`
-	Username          string     `db:"username"`
-	PasswordHash      string     `db:"password_hash"`
-	Role              string     `db:"role"` // simple / premium / super
-	IsAdmin           bool       `db:"is_admin"`
-	TotpSecret        *string    `db:"totp_secret"`
-	TotpEnabled       bool       `db:"totp_enabled"`
-	BackupCodes       *string    `db:"backup_codes"` // JSON list of SHA-256 hashes
-	PremiumUntil      *time.Time `db:"premium_until"`
-	BlockedAt         *time.Time `db:"blocked_at"`
-	BlockReason       *string    `db:"block_reason"`
-	CreatedAt         time.Time  `db:"created_at"`
-	BottomNavKeys     *string    `db:"bottom_nav_keys"`     // comma-separated, NULL = default set
-	BottomNavPosition *string    `db:"bottom_nav_position"` // "bottom" (default) or "right"
-	CardLayout        *string    `db:"card_layout"`         // "hero" (default) or "classic"
-	BrowseLayout      *string    `db:"browse_layout"`       // "hero" (default) or "classic"
-	SettingsLayout    *string    `db:"settings_layout"`     // "remote" (default) or "classic"
-	Theme             *string    `db:"theme"`               // "classic" (default) or "glass"
+	ID                 int64      `db:"id"`
+	Username           string     `db:"username"`
+	PasswordHash       string     `db:"password_hash"`
+	Role               string     `db:"role"` // simple / premium / super
+	IsAdmin            bool       `db:"is_admin"`
+	TotpSecret         *string    `db:"totp_secret"`
+	TotpEnabled        bool       `db:"totp_enabled"`
+	BackupCodes        *string    `db:"backup_codes"` // JSON list of SHA-256 hashes
+	PremiumUntil       *time.Time `db:"premium_until"`
+	BlockedAt          *time.Time `db:"blocked_at"`
+	BlockReason        *string    `db:"block_reason"`
+	CreatedAt          time.Time  `db:"created_at"`
+	BottomNavKeys      *string    `db:"bottom_nav_keys"`      // comma-separated, NULL = default set
+	BottomNavPosition  *string    `db:"bottom_nav_position"`  // "bottom" (default) or "right"
+	CardLayout         *string    `db:"card_layout"`          // "hero" (default) or "classic"
+	BrowseLayout       *string    `db:"browse_layout"`        // "hero" (default) or "classic"
+	SettingsLayout     *string    `db:"settings_layout"`      // "remote" (default) or "classic"
+	Theme              *string    `db:"theme"`                // "classic" (default) or "glass"
+	MustChangePassword bool       `db:"must_change_password"` // true for admin-created accounts until the user sets their own password
 }
 
 type Session struct {

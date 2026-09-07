@@ -22,6 +22,7 @@ function ScrollToTop() {
   return null
 }
 import { useAuth } from '@/hooks/useAuth'
+import { useAppConfig } from '@/hooks/useAppConfig'
 import { useLiveSync } from '@/hooks/useLiveSync'
 import { ActiveProfileProvider } from '@/contexts/ActiveProfileContext'
 import { setImgProxy } from '@/utils/poster'
@@ -51,6 +52,7 @@ const Verify2FAPage = lazy(() => import('@/pages/Verify2FAPage'))
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'))
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'))
 const RegisterSuccessPage = lazy(() => import('@/pages/RegisterSuccessPage'))
+const ForceChangePasswordPage = lazy(() => import('@/pages/ForceChangePasswordPage'))
 const ActorPage = lazy(() => import('@/pages/ActorPage'))
 const StaticPage = lazy(() => import('@/pages/StaticPage'))
 const TgMiniAppPage = lazy(() => import('@/pages/TgMiniAppPage'))
@@ -98,6 +100,10 @@ function PrivateShell() {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
+  // Admin-created account, password not changed yet — block every private
+  // page until it is (see ForceChangePasswordPage, outside this shell so it
+  // doesn't pull in ActiveProfileProvider's devices/profiles fetches).
+  if (user.must_change_password) return <Navigate to="/force-password-change" replace />
   return (
     <ActiveProfileProvider>
       <LiveSync />
@@ -154,15 +160,11 @@ function AppFooter() {
 }
 
 export default function App() {
+  const { config } = useAppConfig()
   useEffect(() => {
-    fetch('/api/config')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d?.image_proxy_url) setImgProxy(d.image_proxy_url)
-        if (d?.watched_threshold) setWatchedThreshold(d.watched_threshold)
-      })
-      .catch(() => {})
-  }, [])
+    if (config?.image_proxy_url) setImgProxy(config.image_proxy_url)
+    if (config?.watched_threshold) setWatchedThreshold(config.watched_threshold)
+  }, [config])
 
   return (
     <>
@@ -177,6 +179,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/register-success" element={<RegisterSuccessPage />} />
+      <Route path="/force-password-change" element={<ForceChangePasswordPage />} />
       <Route path="/verify-2fa" element={<Verify2FAPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />

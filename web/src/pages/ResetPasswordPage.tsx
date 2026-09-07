@@ -2,16 +2,20 @@ import { useState, FormEvent } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import styles from './AuthPage.module.scss'
 import PasswordInput from '@/components/PasswordInput'
+import { useAppConfig } from '@/hooks/useAppConfig'
+import { validatePasswordStrength } from '@/utils/passwordStrength'
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const token = searchParams.get('token') ?? ''
+  const { config } = useAppConfig()
 
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const passwordError = validatePasswordStrength(newPassword, config?.password_blocklist)
 
   if (!token) {
     return (
@@ -26,12 +30,12 @@ export default function ResetPasswordPage() {
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (newPassword !== confirmPassword) {
-      setError('Пароли не совпадают')
+    if (passwordError) {
+      setError(passwordError)
       return
     }
-    if (newPassword.length < 6) {
-      setError('Пароль должен быть не короче 6 символов')
+    if (newPassword !== confirmPassword) {
+      setError('Пароли не совпадают')
       return
     }
     setError('')
@@ -73,11 +77,11 @@ export default function ResetPasswordPage() {
             value={newPassword}
             onChange={e => setNewPassword(e.target.value)}
             autoFocus
-            minLength={6}
+            minLength={8}
             required
           />
-          {newPassword.length > 0 && newPassword.length < 6 && (
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-danger, #e05252)' }}>минимум 6 символов</span>
+          {newPassword.length > 0 && passwordError && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-danger, #e05252)' }}>{passwordError}</span>
           )}
         </div>
 

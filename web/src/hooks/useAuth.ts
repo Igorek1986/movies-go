@@ -6,6 +6,7 @@ interface User {
   role: string
   is_admin: boolean
   totp_enabled: boolean
+  must_change_password: boolean
   backup_codes_count: number
   bottom_nav_keys?: string[] | null
   bottom_nav_position?: string | null

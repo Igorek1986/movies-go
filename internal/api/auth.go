@@ -140,20 +140,21 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		theme = *u.Theme
 	}
 	JSON(w, http.StatusOK, map[string]any{
-		"id":                  u.ID,
-		"username":            u.Username,
-		"role":                u.Role,
-		"is_admin":            u.IsAdmin,
-		"totp_enabled":        u.TotpEnabled,
-		"backup_codes_count":  countBackupCodes(u.BackupCodes),
-		"premium_until":       u.PremiumUntil,
-		"blocked_at":          u.BlockedAt,
-		"bottom_nav_keys":     bottomNavKeys, // null/absent = use the frontend default set
-		"bottom_nav_position": bottomNavPosition,
-		"card_layout":         cardLayout,
-		"browse_layout":       browseLayout,
-		"settings_layout":     settingsLayout,
-		"theme":               theme,
+		"id":                   u.ID,
+		"username":             u.Username,
+		"role":                 u.Role,
+		"is_admin":             u.IsAdmin,
+		"totp_enabled":         u.TotpEnabled,
+		"must_change_password": u.MustChangePassword,
+		"backup_codes_count":   countBackupCodes(u.BackupCodes),
+		"premium_until":        u.PremiumUntil,
+		"blocked_at":           u.BlockedAt,
+		"bottom_nav_keys":      bottomNavKeys, // null/absent = use the frontend default set
+		"bottom_nav_position":  bottomNavPosition,
+		"card_layout":          cardLayout,
+		"browse_layout":        browseLayout,
+		"settings_layout":      settingsLayout,
+		"theme":                theme,
 	})
 }
 
@@ -279,10 +280,12 @@ func handleAppConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	botName, _ := store.GetSetting(r.Context(), "telegram_bot_name")
 	JSON(w, http.StatusOK, map[string]any{
-		"image_proxy_url":   imgProxy,
-		"bot_name":          botName,
-		"plugin_url":        pluginURL,
-		"watched_threshold": store.WatchedThreshold(r.Context()),
+		"image_proxy_url":       imgProxy,
+		"bot_name":              botName,
+		"plugin_url":            pluginURL,
+		"watched_threshold":     store.WatchedThreshold(r.Context()),
+		"registration_disabled": store.GetSettingInt(r.Context(), "registration_disabled") == 1,
+		"password_blocklist":    store.PasswordBlocklist(r.Context()),
 	})
 }
 
@@ -359,6 +362,10 @@ type registerRequest struct {
 }
 
 func handleRegister(w http.ResponseWriter, r *http.Request) {
+	if store.GetSettingInt(r.Context(), "registration_disabled") == 1 {
+		Error(w, http.StatusForbidden, "Регистрация новых пользователей отключена администратором")
+		return
+	}
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		Error(w, http.StatusBadRequest, "invalid json")
@@ -369,8 +376,8 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "Логин слишком короткий (минимум 3 символа)")
 		return
 	}
-	if len(req.Password) < 6 {
-		Error(w, http.StatusBadRequest, "Пароль слишком короткий (минимум 6 символов)")
+	if msg := auth.ValidatePasswordStrength(req.Password, store.PasswordBlocklist(r.Context())); msg != "" {
+		Error(w, http.StatusBadRequest, msg)
 		return
 	}
 
@@ -385,7 +392,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := store.CreateUser(r.Context(), req.Username, hash, "simple")
+	u, err := store.CreateUser(r.Context(), req.Username, hash, "simple", false)
 	if err != nil {
 		Error(w, http.StatusInternalServerError, "db error")
 		return
@@ -431,8 +438,8 @@ func handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusUnauthorized, "Неверный текущий пароль")
 		return
 	}
-	if len(req.NewPassword) < 6 {
-		Error(w, http.StatusBadRequest, "Новый пароль слишком короткий (минимум 6 символов)")
+	if msg := auth.ValidatePasswordStrength(req.NewPassword, store.PasswordBlocklist(r.Context())); msg != "" {
+		Error(w, http.StatusBadRequest, msg)
 		return
 	}
 	hash, err := auth.HashPassword(req.NewPassword)

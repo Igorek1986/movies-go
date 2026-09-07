@@ -134,8 +134,12 @@ func handleAPIResetPassword(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if req.Token == "" || len(req.NewPassword) < 6 {
-		Error(w, http.StatusBadRequest, "token and new_password (min 6 chars) required")
+	if req.Token == "" {
+		Error(w, http.StatusBadRequest, "token required")
+		return
+	}
+	if msg := auth.ValidatePasswordStrength(req.NewPassword, store.PasswordBlocklist(r.Context())); msg != "" {
+		Error(w, http.StatusBadRequest, msg)
 		return
 	}
 	userID, err := store.ConsumePasswordResetToken(r.Context(), req.Token)
