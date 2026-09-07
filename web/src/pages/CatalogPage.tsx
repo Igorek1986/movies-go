@@ -275,6 +275,11 @@ interface CategoryRowProps {
   category: Category
   token: string
   profileId: string
+  // useActiveProfile().loaded — true once the one-shot /api/devices(+profiles)
+  // fetch has settled, whether or not it found any devices at all. Gates the
+  // "unwatched" row below: distinguishes "still resolving, token might still
+  // turn up" from "resolved, and there really is no device" — see loadItems.
+  profilesLoaded: boolean
   // См. useHideWatchedFilter — та же per-профильная настройка, что и
   // numparser_hide_watched в np.js, шлётся в запрос теми же query-параметрами
   // (applyHideWatchedParams), которые уже понимает бэкенд (applyHideWatched).
@@ -319,7 +324,7 @@ interface CategoryRowProps {
   hideHeader?: boolean
 }
 
-function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded, onExpandCategory, onCardClick, onActivate, activeCardId, dragHandlers, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: CategoryRowProps) {
+function CategoryRow({ category, token, profileId, profilesLoaded, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded, onExpandCategory, onCardClick, onActivate, activeCardId, dragHandlers, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: CategoryRowProps) {
   const [items, setItems] = useState<MediaItem[] | null>(initialCache?.items ?? null)
   const [totalPages, setTotalPages] = useState(initialCache?.totalPages ?? 1)
   const [error, setError] = useState(false)
@@ -438,17 +443,23 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
   const loadItems = useCallback(async () => {
     if (loadedRef.current) return
     // "Непросмотренные" is per-profile — fetching it before the active
-    // profile resolves (token still '') has no way to compute anything and
-    // comes back with an empty result, which the onEmpty effect below reads
-    // as "this category is genuinely empty" and silently skips the hero
-    // carousel past it — landing on the wrong row on every fresh page load,
-    // even though the row has real items once a profile is known. Wait for
-    // a real token instead of guessing wrong; this row remounts anyway (its
-    // key includes token/profileId) once the profile resolves, so this
-    // just lets that remount make the one real fetch instead of wasting an
-    // empty one first. Every other category doesn't need a profile at all,
-    // so they're deliberately not gated here.
-    if (category.id === 'unwatched' && !token) return
+    // profile resolves has no way to compute anything and comes back with an
+    // empty result, which the onEmpty effect below reads as "this category is
+    // genuinely empty" and silently skips the hero carousel past it —
+    // landing on the wrong row on every fresh page load, even though the row
+    // has real items once a profile is known. Gate on profilesLoaded (the
+    // one-shot /api/devices fetch settling), not on `token` truthiness: an
+    // account with zero devices linked yet has profilesLoaded=true and
+    // token='' forever, and gating on token there would wait for a profile
+    // that will never arrive, leaving the row stuck on "Загрузка…"
+    // indefinitely (see backend deviceFromRequest — it already treats a
+    // missing/empty token as "no device" and returns an empty page, not an
+    // error, so fetching once profilesLoaded is safe either way). This row
+    // remounts anyway (its key includes token/profileId) once a real device
+    // does resolve, so this just lets that remount make the one real fetch.
+    // Every other category doesn't need a profile at all, so they're
+    // deliberately not gated here.
+    if (category.id === 'unwatched' && !profilesLoaded) return
     if (!hideWatchedLoaded) return
     if (category.id === 'unwatched' && !unwatchedSortLoaded) return
     loadedRef.current = true
@@ -468,7 +479,7 @@ function CategoryRow({ category, token, profileId, hideWatched, hidePercent, hid
     } catch {
       setError(true)
     }
-  }, [category.id, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded, onItemsLoaded])
+  }, [category.id, token, profileId, profilesLoaded, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded, onItemsLoaded])
 
   // Carousel mode: this category has nothing to show — tell the parent to
   // advance instead of leaving a blank screen (Classic layout doesn't pass
@@ -1004,7 +1015,7 @@ export default function CatalogPage() {
   useEffect(() => { _cache.searchTmdbResults = tmdbResults }, [tmdbResults])
   useEffect(() => { _cache.searchTmdbHasMore = tmdbHasMore }, [tmdbHasMore])
 
-  const { activeDevice, activeProfile } = useActiveProfile()
+  const { activeDevice, activeProfile, loaded: profilesLoaded } = useActiveProfile()
   const { user } = useAuth()
   const token = activeDevice?.token ?? ''
   const profileId = activeProfile?.profile_id ?? ''
@@ -1070,7 +1081,7 @@ export default function CatalogPage() {
     for (const idx of targets) {
       const cat = categories[idx]
       if (!cat) continue
-      if (cat.id === 'unwatched' && !token) continue
+      if (cat.id === 'unwatched' && !profilesLoaded) continue
       if (_cache.rows[cat.id] && !_cache.rows[cat.id].stale) continue
       if (_cache.prefetching.has(cat.id)) continue
       _cache.prefetching.add(cat.id)
@@ -1085,7 +1096,7 @@ export default function CatalogPage() {
         .catch(() => {})
         .finally(() => { _cache.prefetching.delete(cat.id) })
     }
-  }, [layout, categories, activeCategoryIndex, token, profileId, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded])
+  }, [layout, categories, activeCategoryIndex, token, profileId, profilesLoaded, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded])
   // Drum-carousel row switch — both the outgoing (prevIndex) and incoming
   // (activeCategoryIndex) rows render at once, sliding together the same
   // direction (see .carouselViewport/CAROUSEL_TRANSITION_MS), for as long as
@@ -1480,10 +1491,6 @@ export default function CatalogPage() {
     dragSrcRef.current = null
   }
 
-  function resetRowOrder() {
-    setMenuOrder([])
-  }
-
   function onDragOver(e: React.DragEvent, targetId: string) {
     e.preventDefault()
     const srcId = dragSrcRef.current
@@ -1743,16 +1750,6 @@ export default function CatalogPage() {
   return (
     <Layout>
       <div ref={carouselPageRef} className={`${styles.page}${carouselActive ? ' ' + styles.pageLocked : ''}`}>
-        {!expandedCat && menuOrder.length > 0 && layout === 'classic' && (
-          <div className={styles.toolbar}>
-            <div className={styles.toolbarTop}>
-              <button className={styles.resetOrderBtn} onClick={resetRowOrder} title="Вернуть порядок по умолчанию">
-                Сбросить порядок
-              </button>
-            </div>
-          </div>
-        )}
-
         {expandedCat && (
           <CategoryView
             category={expandedCat}
@@ -1839,6 +1836,7 @@ export default function CatalogPage() {
                     category={categories[transition.prevIndex]}
                     token={token}
                     profileId={profileId}
+                    profilesLoaded={profilesLoaded}
                     hideWatched={hideWatched}
                     hidePercent={hidePercent}
                     hideWatchedLoaded={hideWatchedLoaded}
@@ -1858,6 +1856,7 @@ export default function CatalogPage() {
                   category={categories[activeCategoryIndex]}
                   token={token}
                   profileId={profileId}
+                  profilesLoaded={profilesLoaded}
                   hideWatched={hideWatched}
                   hidePercent={hidePercent}
                   hideWatchedLoaded={hideWatchedLoaded}
@@ -1886,6 +1885,7 @@ export default function CatalogPage() {
                 category={cat}
                 token={token}
                 profileId={profileId}
+                profilesLoaded={profilesLoaded}
                 hideWatched={hideWatched}
                 hidePercent={hidePercent}
                 hideWatchedLoaded={hideWatchedLoaded}

@@ -56,40 +56,6 @@
 .carouselInFromTop     { @include carousel-in-from-top; }
 .carouselInFromBottom  { @include carousel-in-from-bottom; }
 
-// ── Toolbar ───────────────────────────────────────────────────────────────────
-
-.toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-xs;
-}
-
-.toolbarTop {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: $spacing-sm;
-  justify-content: space-between;
-}
-
-.resetOrderBtn {
-  margin-left: auto;
-  padding: 2px $spacing-md;
-  border: 1px solid $color-border;
-  border-radius: $radius-full;
-  background: transparent;
-  color: $color-text-muted;
-  font-size: $font-size-xs;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color $transition-fast, color $transition-fast;
-
-  &:hover {
-    border-color: $color-danger;
-    color: $color-danger;
-  }
-}
-
 .searchWrap {
   flex-shrink: 0;
   position: relative;
