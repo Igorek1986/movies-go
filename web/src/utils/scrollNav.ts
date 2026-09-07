@@ -106,6 +106,28 @@ export function focusTopNavActive() {
   el?.focus()
 }
 
+// Hero carousel category/status switching (CatalogPage's `categories`+
+// `activeCategoryIndex`, MediaLibraryPage's `ROW_ORDER`+`activeStatusIndex`)
+// — a row that turns out to have zero items (see CategoryRow/LibraryRow's
+// onEmpty) gets its id added to `emptyIds` by the caller; this walks past
+// any such id instead of landing on it, so ArrowUp/Down navigation and the
+// dimmed neighbor-title preview never point at a row you can't actually
+// switch into (it would just bounce back out via onEmpty). Returns -1 if
+// everything from `from` to the end/start in that direction is known-empty.
+// Accepts either a plain id array (MediaLibraryPage's ROW_ORDER) or objects
+// with an `id` field (CatalogPage's Category[]).
+export function nextVisibleIndex<T extends string | { id: string }>(
+  items: readonly T[], from: number, dir: 1 | -1, emptyIds: ReadonlySet<string>,
+): number {
+  const idOf = (item: T): string => typeof item === 'string' ? item : item.id
+  let i = from + dir
+  while (i >= 0 && i < items.length) {
+    if (!emptyIds.has(idOf(items[i]))) return i
+    i += dir
+  }
+  return -1
+}
+
 // Count columns in a CSS grid by comparing offsetTop of items — not
 // getBoundingClientRect().top, which includes CSS transforms. The focused
 // (or hovered) card lifts by translateY(-5px) (see .card:focus-visible/

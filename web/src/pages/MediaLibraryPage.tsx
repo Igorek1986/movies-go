@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react
 import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLDOWN_MS, CATEGORY_WHEEL_COOLDOWN_MS, focusTopNavActive, shouldThrottleKeyRepeat } from '@/utils/scrollNav'
+import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLDOWN_MS, CATEGORY_WHEEL_COOLDOWN_MS, focusTopNavActive, shouldThrottleKeyRepeat, nextVisibleIndex } from '@/utils/scrollNav'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { useAuth } from '@/hooks/useAuth'
 import { subscribeLiveSync } from '@/hooks/useLiveSync'
@@ -182,8 +182,13 @@ function Card({ item, onClick, onActivate, isHeroActive, compact }: {
 
 // ── Row: lazy-loaded on scroll into view, horizontal, "Все →" to expand ────────
 
-function LibraryRow({ status, label, token, profileId, unwatchedSort, unwatchedSortLoaded, onExpand, onCardClick, onActivate, activeCardId, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: {
+function LibraryRow({ status, label, token, profileId, profilesLoaded, unwatchedSort, unwatchedSortLoaded, onExpand, onCardClick, onActivate, activeCardId, initialCache, onItemsLoaded, onEmpty, autoFocusIdx, hideHeader }: {
   status: StatusKey; label: string; token: string; profileId: string
+  // useActiveProfile().loaded — see CatalogPage's CategoryRow for the full
+  // rationale: gates the first fetch on "device/profile resolution finished"
+  // rather than "token is truthy", so a device-less account (token stays ''
+  // forever) still resolves to an empty row instead of hanging on "Загрузка…".
+  profilesLoaded: boolean
   // Только для status === 'unwatched' — сортировка ленты (np_unwatched_sort_order).
   unwatchedSort: string; unwatchedSortLoaded: boolean
   onExpand: (status: StatusKey) => void; onCardClick: (item: LibraryItem) => void
@@ -273,7 +278,7 @@ function LibraryRow({ status, label, token, profileId, unwatchedSort, unwatchedS
   }, [hideHeader])
 
   const loadItems = useCallback(() => {
-    if (loadedRef.current || !token) return
+    if (loadedRef.current || !profilesLoaded) return
     // См. CatalogPage's identical gate — без него первый фетч уходит с
     // дефолтной сортировкой до того, как подгрузится сохранённая настройка,
     // и `loadItems` (зависимость эффекта ниже) при её приходе меняет identity,
@@ -290,7 +295,7 @@ function LibraryRow({ status, label, token, profileId, unwatchedSort, unwatchedS
         onItemsLoaded?.(status, { items: results, totalPages: tp })
       })
       .catch(() => setItems([]))
-  }, [status, token, profileId, unwatchedSort, unwatchedSortLoaded, onItemsLoaded])
+  }, [status, token, profileId, profilesLoaded, unwatchedSort, unwatchedSortLoaded, onItemsLoaded])
 
   // Profile (or device) switch — the row already fired its one-shot fetch under the
   // old identity, so without this the loadedRef latch would keep it stuck showing
@@ -650,46 +655,71 @@ export default function MediaLibraryPage() {
   // leading statuses on first load, before any real switch has happened.
   const lastDirRef = useRef<1 | -1>(1)
   // Statuses that reported themselves empty, so the skip below can jump the
-  // whole run of them at once instead of clamping onto one.
+  // whole run of them at once instead of clamping onto one. A ref (not
+  // state) so handleEmptyStatus's memoized closure always reads the latest
+  // set without needing it in its dependency array — see nextVisibleIndex's
+  // callers below. emptyTick's only job is forcing a re-render when this
+  // ref changes: when a run of empty statuses reaches the very end of
+  // ROW_ORDER with nowhere left to go, the index below is returned
+  // unchanged, and React skips re-rendering on an unchanged state value —
+  // without emptyTick, visibleStatusCount (which reads this ref) would
+  // silently go stale and the "everything's empty" placeholder would never
+  // actually appear.
   const emptyStatusesRef = useRef<Set<StatusKey>>(new Set())
+  const [, setEmptyTick] = useState(0)
 
   const handleEmptyStatus = useCallback(() => {
     if (transitionTimerRef.current) { window.clearTimeout(transitionTimerRef.current); transitionTimerRef.current = null }
     setTransition(null)
     setActiveStatusIndex(idx => {
-      emptyStatusesRef.current.add(ROW_ORDER[idx])
-      // Walk to the first status not already known to be empty. Clamping to
-      // the range end instead (the old Math.max/Math.min) landed right back
-      // on this same empty status, which renders null — so the carousel sat
-      // on a row with no cards in it at all and there was physically nothing
-      // for focus to be on. Most statuses here are empty for most people
-      // (unlike Catalog's categories), which is why only Моё showed this.
-      const scan = (from: number, step: number) => {
-        for (let i = from; i >= 0 && i < ROW_ORDER.length; i += step) {
-          if (!emptyStatusesRef.current.has(ROW_ORDER[i])) return i
-        }
-        return -1
+      const status = ROW_ORDER[idx]
+      if (!emptyStatusesRef.current.has(status)) {
+        emptyStatusesRef.current.add(status)
+        setEmptyTick(t => t + 1)
       }
+      // Walk to the first status not already known to be empty (see
+      // scrollNav's nextVisibleIndex). Clamping to the range end instead
+      // (the old Math.max/Math.min) landed right back on this same empty
+      // status, which renders null — so the carousel sat on a row with no
+      // cards in it at all and there was physically nothing for focus to be
+      // on. Most statuses here are empty for most people (unlike Catalog's
+      // categories), which is why only Моё showed this.
       const dir = lastDirRef.current
       // Nothing left the way we were headed (ran off the end of a trailing
       // run of empty statuses) — fall back to the opposite direction rather
       // than stranding the carousel on an empty row.
-      const ahead = scan(idx + dir, dir)
+      const ahead = nextVisibleIndex(ROW_ORDER, idx, dir, emptyStatusesRef.current)
       if (ahead !== -1) return ahead
-      const back = scan(idx - dir, -dir)
+      const back = nextVisibleIndex(ROW_ORDER, idx, dir === 1 ? -1 : 1, emptyStatusesRef.current)
       return back !== -1 ? back : idx
     })
   }, [])
 
+  // Stays false only through the very first cascade past a leading run of
+  // empty statuses (see handleEmptyStatus) — while it's false and something
+  // is still unconfirmed, the title below shows a neutral "Загрузка…"
+  // instead of flashing through each empty status's real label ("Избранное"
+  // → "Непросмотренные сериалы" → …) on every fresh mount for an account
+  // with little/no data yet. Once any status turns out non-empty it stays
+  // true for the rest of this mount — an ordinary single-step skip past one
+  // empty status during normal navigation is a much shorter, acceptable
+  // flash and doesn't need the same treatment.
+  const [resolved, setResolved] = useState(false)
+
   const handleItemsLoaded = useCallback((status: StatusKey, cache: RowCache) => {
     _rowCache[status] = cache
+    if (cache.items.length > 0) setResolved(true)
   }, [])
 
   const switchStatus = useCallback((dir: 1 | -1) => {
     lastDirRef.current = dir
     setActiveStatusIndex(idx => {
-      const next = idx + dir
-      if (next < 0 || next >= ROW_ORDER.length) return idx
+      // Skip any status already known to be empty — see CatalogPage's
+      // identical switchCategory for the full rationale (avoids a wasted
+      // animated transition into a row that would immediately bounce back
+      // out via handleEmptyStatus above).
+      const next = nextVisibleIndex(ROW_ORDER, idx, dir, emptyStatusesRef.current)
+      if (next === -1) return idx
       setTransition({ prevIndex: idx, dir })
       if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current)
       transitionTimerRef.current = window.setTimeout(() => {
@@ -945,9 +975,13 @@ export default function MediaLibraryPage() {
 
         if (layout === 'hero') {
           const dir = e.key === 'ArrowDown' ? 1 : -1
-          if (dir < 0 && activeStatusIndex === 0) {
-            // Same as CatalogPage: bridge up to the current page's own nav
-            // link, not the search icon — see focusTopNavActive's comment.
+          // Same as CatalogPage: bridge up to the current page's own nav
+          // link, not the search icon — see focusTopNavActive's comment.
+          // Checks "nothing reachable above" via nextVisibleIndex, not just
+          // activeStatusIndex === 0 — a leading run of empty statuses (very
+          // common in Моё) shifts the active index off 0 while nothing above
+          // it is actually reachable.
+          if (dir < 0 && nextVisibleIndex(ROW_ORDER, activeStatusIndex, -1, emptyStatusesRef.current) === -1) {
             focusTopNavActive()
             return
           }
@@ -983,6 +1017,16 @@ export default function MediaLibraryPage() {
   // search results, which stay normal scrollable views.
   const carouselActive = layout === 'hero' && !expanded && !showSearch
   const activeStatus = ROW_ORDER[activeStatusIndex]
+  // See CatalogPage's identical visibleCategoryCount for the full rationale
+  // — reading emptyStatusesRef (a ref, not state) here is safe because every
+  // mutation of it (handleEmptyStatus above) is immediately followed by the
+  // setActiveStatusIndex call that actually triggers this render, so the two
+  // never go stale relative to each other.
+  const visibleStatusCount = ROW_ORDER.filter(s => !emptyStatusesRef.current.has(s)).length
+  const prevVisibleStatusIdx = nextVisibleIndex(ROW_ORDER, activeStatusIndex, -1, emptyStatusesRef.current)
+  const nextVisibleStatusIdx = nextVisibleIndex(ROW_ORDER, activeStatusIndex, 1, emptyStatusesRef.current)
+  // See `resolved`'s declaration above.
+  const stillResolving = !resolved && visibleStatusCount > 0
 
   // See CatalogPage's identical effect for the full rationale — the page
   // itself is scroll-locked in hero mode, so repurpose a mouse wheel as
@@ -1049,16 +1093,30 @@ export default function MediaLibraryPage() {
               />
             )}
 
-            {carouselActive && activeStatus && (
+            {carouselActive && activeStatus && visibleStatusCount === 0 && (
+              <div className={styles.carouselRail}>
+                <div className={styles.emptyMsg}>
+                  Здесь появятся фильмы и сериалы, которые вы отметите статусом
+                  («Смотрю», «Избранное»…) или начнёте смотреть
+                </div>
+              </div>
+            )}
+
+            {carouselActive && activeStatus && visibleStatusCount > 0 && (
               <div className={styles.carouselRail}>
                 {/* Owned by the parent — see CatalogPage's CategoryRow for
                     why (avoids the title flickering on every auto-skip).
                     Dimmer neighbor labels above/below hint that ArrowUp/Down
-                    reaches more statuses. */}
+                    reaches more statuses — omitted entirely when there's only
+                    one visible status (nothing to switch to). */}
                 <div className={styles.categoryTitleStack}>
-                  <span className={styles.categoryTitleNeighbor}>{STATUS_LABELS[ROW_ORDER[activeStatusIndex - 1]] ?? ' '}</span>
-                  <h3 className={styles.rowTitle}>{STATUS_LABELS[activeStatus]}</h3>
-                  <span className={styles.categoryTitleNeighbor}>{STATUS_LABELS[ROW_ORDER[activeStatusIndex + 1]] ?? ' '}</span>
+                  {visibleStatusCount > 1 && !stillResolving && (
+                    <span className={styles.categoryTitleNeighbor}>{STATUS_LABELS[ROW_ORDER[prevVisibleStatusIdx]] ?? ' '}</span>
+                  )}
+                  <h3 className={styles.rowTitle}>{stillResolving ? 'Загрузка…' : STATUS_LABELS[activeStatus]}</h3>
+                  {visibleStatusCount > 1 && !stillResolving && (
+                    <span className={styles.categoryTitleNeighbor}>{STATUS_LABELS[ROW_ORDER[nextVisibleStatusIdx]] ?? ' '}</span>
+                  )}
                 </div>
                 <div className={styles.carouselViewport}>
                   {/* Outgoing row — same key it had before the switch, so it
@@ -1072,6 +1130,7 @@ export default function MediaLibraryPage() {
                         label={STATUS_LABELS[ROW_ORDER[transition.prevIndex]]}
                         token={token}
                         profileId={profileId}
+                        profilesLoaded={loaded}
                         unwatchedSort={unwatchedSort}
                         unwatchedSortLoaded={unwatchedSortLoaded}
                         onExpand={setExpanded}
@@ -1089,6 +1148,7 @@ export default function MediaLibraryPage() {
                       label={STATUS_LABELS[activeStatus]}
                       token={token}
                       profileId={profileId}
+                      profilesLoaded={loaded}
                       unwatchedSort={unwatchedSort}
                       unwatchedSortLoaded={unwatchedSortLoaded}
                       onExpand={setExpanded}
@@ -1115,6 +1175,7 @@ export default function MediaLibraryPage() {
                     label={STATUS_LABELS[status]}
                     token={token}
                     profileId={profileId}
+                    profilesLoaded={loaded}
                     unwatchedSort={unwatchedSort}
                     unwatchedSortLoaded={unwatchedSortLoaded}
                     onExpand={setExpanded}

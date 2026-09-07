@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react
 import { useNavigate, useLocation } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import { posterUrl } from '@/utils/poster'
-import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLDOWN_MS, CATEGORY_WHEEL_COOLDOWN_MS, NAV_H, focusTopNavActive, shouldThrottleKeyRepeat } from '@/utils/scrollNav'
+import { scrollV, scrollH, getGridCols, CAROUSEL_TRANSITION_MS, CARD_WHEEL_COOLDOWN_MS, CATEGORY_WHEEL_COOLDOWN_MS, NAV_H, focusTopNavActive, shouldThrottleKeyRepeat, nextVisibleIndex } from '@/utils/scrollNav'
 import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -1055,6 +1055,40 @@ export default function CatalogPage() {
   // always landed back on the first one.
   const [activeCategoryIndex, setActiveCategoryIndex] = useState(() => _cache.activeCategoryIndex)
   useEffect(() => { _cache.activeCategoryIndex = activeCategoryIndex }, [activeCategoryIndex])
+  // Categories discovered to have zero items (see handleItemsLoaded below) —
+  // "Непросмотренные" is the only one likely to ever land here (a fresh/
+  // device-less account has nothing to show), but this stays generic. Used
+  // by nextVisibleIndex (scrollNav) to skip these when switching category or
+  // computing the dimmed neighbor-title preview, instead of landing on one
+  // that would immediately bounce back out via onEmpty — see switchCategory,
+  // handleEmptyCategory and the neighbor-title JSX below. Reset per profile
+  // (below, alongside the row cache) since a different profile's data can
+  // make a previously-empty category non-empty again.
+  // Seeded from _cache.rows (module-level, survives remounts), not an empty
+  // Set — a category CategoryRow already resolved as empty last time this
+  // page was mounted uses its cache silently on remount (loadedRef starts
+  // true, skipping the fetch that would otherwise call handleItemsLoaded
+  // below), so without this, a fresh mount briefly "forgets" it's empty and
+  // the neighbor-title preview flashed it again until a live change touched
+  // it — e.g. right after a SPA back-navigation.
+  const [emptyIds, setEmptyIds] = useState<Set<string>>(() => {
+    const initial = new Set<string>()
+    for (const id in _cache.rows) {
+      const cache = _cache.rows[id]
+      if (cache && !cache.stale && cache.items.length === 0) initial.add(id)
+    }
+    return initial
+  })
+  const handleItemsLoaded = useCallback((id: string, rowCache: RowCache) => {
+    _cache.rows[id] = rowCache
+    const isEmpty = rowCache.items.length === 0
+    setEmptyIds(prev => {
+      if (prev.has(id) === isEmpty) return prev
+      const next = new Set(prev)
+      if (isEmpty) next.add(id); else next.delete(id)
+      return next
+    })
+  }, [])
   // Категории теперь могут живо сжаться (скрыли строку в Порядок и
   // видимость категорий, см. useMenuOrder) — без этого activeCategoryIndex
   // мог указывать за пределы нового массива, и Hero-карусель просто гасла.
@@ -1087,16 +1121,25 @@ export default function CatalogPage() {
       _cache.prefetching.add(cat.id)
       fetchCategoryPage<MediaItem>(cat.id, { token, profileId, hideWatched, hidePercent, unwatchedSort })
         .then(({ items, totalPages }) => {
-          // A real mount may have started (and finished) its own fetch for
-          // this category while this prefetch was in flight — don't clobber
-          // fresher data (or data a live WS update already corrected) with
-          // a stale response landing late.
-          if (!_cache.rows[cat.id]) _cache.rows[cat.id] = { items, totalPages }
+          // A real mount may have started (and finished) its own fresher
+          // fetch for this category while this prefetch was in flight —
+          // check .stale again (not just presence) so we still land the
+          // result when the only existing entry is the stale one we were
+          // specifically trying to refresh; only skip if something else
+          // already un-staled it in the meantime. Goes through
+          // handleItemsLoaded (not a direct _cache.rows write) so emptyIds
+          // learns about a prefetched-but-never-mounted category too — e.g.
+          // "Непросмотренные" one step behind the active row, invalidated
+          // stale by a status change on the card detail page, previously
+          // never got re-checked until the user navigated to it directly.
+          if (!_cache.rows[cat.id] || _cache.rows[cat.id].stale) {
+            handleItemsLoaded(cat.id, { items, totalPages })
+          }
         })
         .catch(() => {})
         .finally(() => { _cache.prefetching.delete(cat.id) })
     }
-  }, [layout, categories, activeCategoryIndex, token, profileId, profilesLoaded, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded])
+  }, [layout, categories, activeCategoryIndex, token, profileId, profilesLoaded, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded, handleItemsLoaded])
   // Drum-carousel row switch — both the outgoing (prevIndex) and incoming
   // (activeCategoryIndex) rows render at once, sliding together the same
   // direction (see .carouselViewport/CAROUSEL_TRANSITION_MS), for as long as
@@ -1111,11 +1154,26 @@ export default function CatalogPage() {
   const handleEmptyCategory = useCallback(() => {
     // This category has nothing to show — silently skip to the next one
     // instead of leaving a blank screen; no carousel animation for an
-    // automatic correction like this (only real navigation animates).
+    // automatic correction like this (only real navigation animates). Falls
+    // back to searching backward if everything ahead is also known-empty;
+    // if that comes up empty too, every category is empty and there's
+    // nowhere to go — the "all empty" placeholder below takes over instead.
     if (transitionTimerRef.current) { window.clearTimeout(transitionTimerRef.current); transitionTimerRef.current = null }
     setTransition(null)
-    setActiveCategoryIndex(idx => Math.min(idx + 1, categories.length - 1))
-  }, [categories.length])
+    // Belt-and-suspenders alongside handleItemsLoaded's own emptyIds update:
+    // onEmpty fires on every mount that resolves to zero items, including a
+    // cache-hit remount where CategoryRow's loadedRef short-circuits before
+    // ever calling onItemsLoaded — without this, that path left emptyIds
+    // not knowing about a category the row itself already knows is empty.
+    const emptyId = categories[activeCategoryIndex]?.id
+    if (emptyId) setEmptyIds(prev => prev.has(emptyId) ? prev : new Set(prev).add(emptyId))
+    setActiveCategoryIndex(idx => {
+      const fwd = nextVisibleIndex(categories, idx, 1, emptyIds)
+      if (fwd !== -1) return fwd
+      const back = nextVisibleIndex(categories, idx, -1, emptyIds)
+      return back !== -1 ? back : idx
+    })
+  }, [categories, emptyIds, activeCategoryIndex])
 
   // Search lives entirely in the floating bar now (see .floatingBar below) —
   // no permanently-visible input in the page toolbar. That toolbar sits in
@@ -1225,9 +1283,6 @@ export default function CatalogPage() {
     return () => { cancelled = true }
   }, [])
 
-  const handleItemsLoaded = useCallback((id: string, rowCache: RowCache) => {
-    _cache.rows[id] = rowCache
-  }, [])
   const dragSrcRef = useRef<string | null>(null)
   // Whether a card in the grid currently has keyboard focus — the hero
   // border (.cardHeroActive) only shows while true, so it disappears the
@@ -1281,9 +1336,26 @@ export default function CatalogPage() {
   // would just pick the bad cached result back up via initialCache instead
   // of refetching, which is what made it need a manual profile switch (a
   // guaranteed-non-null → different-non-null transition) to ever recover.
+  // emptyIds reset lives in this SAME synchronous check, not a useEffect
+  // keyed on [profileKey] — that was the actual bug here: an effect's
+  // dependency array only controls whether it re-runs on a later render of
+  // the SAME mount, but every effect still fires once after a component's
+  // very first render regardless of deps. A plain SPA navigation away from
+  // /catalog and back is a fresh mount, so a [profileKey]-effect reset
+  // emptyIds to empty EVERY time — even though profileKey (null for a
+  // device-less account, or the same device+profile otherwise) hadn't
+  // actually changed — wiping out exactly what the emptyIds useState
+  // initializer had just correctly seeded from _cache.rows one render
+  // earlier. Comparing against _cache.profileKey (module-level, survives
+  // remounts) instead of relying on effect-mount timing is what makes this
+  // only fire on a REAL transition, matching _cache.rows's own reset right
+  // above — see that comment for why a different profile needs this at all
+  // (a previously-empty category, almost always "Непросмотренные", can
+  // become non-empty for a different profile, or vice versa).
   if (_cache.profileKey !== profileKey) {
     _cache.rows = {}
     _cache.catView = null
+    setEmptyIds(new Set())
   }
   _cache.profileKey = profileKey
 
@@ -1516,8 +1588,11 @@ export default function CatalogPage() {
   // silent skip).
   const switchCategory = useCallback((dir: 1 | -1) => {
     setActiveCategoryIndex(idx => {
-      const next = idx + dir
-      if (next < 0 || next >= categories.length) return idx
+      // Skip any row already known to have zero items (see emptyIds) — it
+      // would just bounce back out via handleEmptyCategory the instant it
+      // mounted, one wasted animated transition later.
+      const next = nextVisibleIndex(categories, idx, dir, emptyIds)
+      if (next === -1) return idx
       setTransition({ prevIndex: idx, dir })
       if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current)
       transitionTimerRef.current = window.setTimeout(() => {
@@ -1526,7 +1601,7 @@ export default function CatalogPage() {
       }, CAROUSEL_TRANSITION_MS)
       return next
     })
-  }, [categories.length])
+  }, [categories, emptyIds])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -1611,9 +1686,13 @@ export default function CatalogPage() {
 
         if (layout === 'hero') {
           const dir = e.key === 'ArrowDown' ? 1 : -1
-          if (dir < 0 && activeCategoryIndex === 0) {
-            // Bridge up to the current page's own nav link (not the search
-            // icon) — matches focusTopNavActive's own reasoning.
+          // Bridge up to the current page's own nav link (not the search
+          // icon) — matches focusTopNavActive's own reasoning. Checks for
+          // "nothing reachable above" via nextVisibleIndex, not just
+          // activeCategoryIndex === 0 — a leading run of empty categories
+          // (e.g. "Непросмотренные" alone) shifts the active index off 0
+          // while nothing above it is actually reachable.
+          if (dir < 0 && nextVisibleIndex(categories, activeCategoryIndex, -1, emptyIds) === -1) {
             focusTopNavActive()
             return
           }
@@ -1657,6 +1736,15 @@ export default function CatalogPage() {
   // actually showing the carousel itself, not the expanded/"Все →" grid or
   // search results, which stay normal scrollable views.
   const carouselActive = layout === 'hero' && !expandedCategory && !showSearch
+  // See emptyIds/nextVisibleIndex above — visibleCategoryCount drives two
+  // presentational cases below: 0 (every fetched category came back empty —
+  // realistically only "Моё"-style pages, kept here for parity) shows an
+  // informative placeholder instead of the carousel; 1 (only "Непросмотренные"
+  // itself, say, has anything at all) drops the dimmed neighbor-title preview
+  // since there's nothing to switch to.
+  const visibleCategoryCount = categories.filter(c => !emptyIds.has(c.id)).length
+  const prevVisibleCategoryIdx = nextVisibleIndex(categories, activeCategoryIndex, -1, emptyIds)
+  const nextVisibleCategoryIdx = nextVisibleIndex(categories, activeCategoryIndex, 1, emptyIds)
 
   // Hero carousel: the page is scroll-locked (see carouselActive/.pageLocked
   // below), so a mouse wheel over it would otherwise do nothing — repurpose
@@ -1804,7 +1892,13 @@ export default function CatalogPage() {
           />
         )}
 
-        {carouselActive && categories[activeCategoryIndex] && (
+        {carouselActive && visibleCategoryCount === 0 && (
+          <div className={styles.carouselRail}>
+            <div className={styles.empty}>Пока нечего показать</div>
+          </div>
+        )}
+
+        {carouselActive && visibleCategoryCount > 0 && categories[activeCategoryIndex] && (
           <div className={styles.carouselRail}>
             {/* Owned by the parent, not CategoryRow itself — switching to a
                 category that turns out empty briefly showed its title before
@@ -1821,9 +1915,13 @@ export default function CatalogPage() {
                   hero area's height (and everything anchored to its bottom)
                   visibly jump on every category change. A non-breaking space
                   keeps the line's height reserved even when empty. */}
-              <span className={styles.categoryTitleNeighbor}>{categories[activeCategoryIndex - 1]?.name ?? ' '}</span>
+              {visibleCategoryCount > 1 && (
+                <span className={styles.categoryTitleNeighbor}>{categories[prevVisibleCategoryIdx]?.name ?? ' '}</span>
+              )}
               <h3 className={styles.rowTitle}>{categories[activeCategoryIndex].name}</h3>
-              <span className={styles.categoryTitleNeighbor}>{categories[activeCategoryIndex + 1]?.name ?? ' '}</span>
+              {visibleCategoryCount > 1 && (
+                <span className={styles.categoryTitleNeighbor}>{categories[nextVisibleCategoryIdx]?.name ?? ' '}</span>
+              )}
             </div>
             <div className={styles.carouselViewport}>
               {/* Outgoing row — same key it had before the switch, so React
