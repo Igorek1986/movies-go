@@ -39,6 +39,7 @@ type Entity struct {
 	Languages        []string          `json:"languages"`
 	LastAirDate      string            `json:"last_air_date"`
 	LastEpisodeToAir *LastEpisodeToAir `json:"last_episode_to_air"`
+	NextEpisodeToAir *LastEpisodeToAir `json:"next_episode_to_air"`
 	Name             string            `json:"name"`
 	Networks         []*Network        `json:"networks"`
 	NumberOfEpisodes int               `json:"number_of_episodes"`

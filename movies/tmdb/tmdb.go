@@ -173,6 +173,14 @@ func FetchRuntime(isMovie bool, tmdbID int64) int {
 		if len(ent.EpisodeRunTime) > 0 {
 			return ent.EpisodeRunTime[0]
 		}
+		// episode_run_time is deprecated by TMDB and left empty for many
+		// newer shows; last/next_episode_to_air.runtime is still populated.
+		if ent.LastEpisodeToAir != nil && ent.LastEpisodeToAir.RunTime > 0 {
+			return ent.LastEpisodeToAir.RunTime
+		}
+		if ent.NextEpisodeToAir != nil && ent.NextEpisodeToAir.RunTime > 0 {
+			return ent.NextEpisodeToAir.RunTime
+		}
 		return 0
 	}
 
