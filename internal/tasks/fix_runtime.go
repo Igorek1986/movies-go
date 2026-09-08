@@ -174,8 +174,9 @@ done:
 }
 
 // fixRuntimeTV fills episode_run_time for TV shows: TMDB first, then
-// TheTVDB/TVmaze (externalsources.FetchSeriesRuntime, whichever are enabled),
-// then MyShows (median episode runtime) as the last resort.
+// TheTVDB/TVmaze (externalsources.FetchSeriesRuntime), then MyShows (median
+// episode runtime) as the last resort — all individually enable/disable-able
+// from the admin panel (see db/store/external_sources.go).
 func fixRuntimeTV(ctx context.Context) {
 	rows, err := postgres.Pool.Query(ctx, `
 		SELECT card_id, tmdb_id, COALESCE(original_title,''), COALESCE(title,''), imdb_id,
@@ -218,7 +219,9 @@ func fixRuntimeTV(ctx context.Context) {
 					rt = externalsources.FetchSeriesRuntime(ctx, mc.Title, mc.OriginalTitle, year)
 				}
 				if rt == 0 {
-					rt = myshowsRuntimeFallback(ctx, mc)
+					if _, ok := store.GetExternalSource(ctx, "myshows"); ok {
+						rt = myshowsRuntimeFallback(ctx, mc)
+					}
 				}
 				if rt > 0 {
 					postgres.Pool.Exec(ctx, //nolint:errcheck

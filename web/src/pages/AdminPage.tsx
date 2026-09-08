@@ -145,6 +145,7 @@ const EXT_SOURCE_INFO: Record<string, { label: string; hint: string }> = {
   thetvdb: { label: 'TheTVDB', hint: 'Фильмы и сериалы, нужен API-ключ' },
   poiskkino: { label: 'poiskkino.dev', hint: 'Кинопоиск + TMDB + IMDb, нужен ключ, лимит 200 запросов/сутки' },
   kinopoisk_unofficial: { label: 'Kinopoisk Api Unofficial', hint: 'Только фильмы, нужен ключ, лимит 500 запросов/сутки' },
+  myshows: { label: 'MyShows', hint: 'Сериалы, неофициальный доступ, ключ не нужен — последний в цепочке фолбэков' },
 }
 
 export default function AdminPage() {
@@ -1009,26 +1010,28 @@ export default function AdminPage() {
                     <span className={styles.extSourceLabel}>{info.label}</span>
                   </label>
                   <span className={styles.extSourceHint}>{info.hint}</span>
-                  <div className={styles.apiKeyRow}>
-                    <input
-                      className={styles.apiKeyInput}
-                      type="text"
-                      placeholder="ключ не задан"
-                      value={draft ?? src.token}
-                      onChange={e => setExtDrafts(d => ({ ...d, [src.key]: e.target.value }))}
-                      autoComplete="off"
-                      data-bwignore
-                      data-lpignore="true"
-                      data-1p-ignore
-                    />
-                    <button
-                      className={styles.actionBtn}
-                      disabled={draft === undefined || draft === src.token || extSaving === src.key}
-                      onClick={() => saveExtToken(src.key)}
-                    >
-                      {extSaving === src.key ? 'Сохранение…' : 'Сохранить'}
-                    </button>
-                  </div>
+                  {src.key !== 'myshows' && (
+                    <div className={styles.apiKeyRow}>
+                      <input
+                        className={styles.apiKeyInput}
+                        type="text"
+                        placeholder="ключ не задан"
+                        value={draft ?? src.token}
+                        onChange={e => setExtDrafts(d => ({ ...d, [src.key]: e.target.value }))}
+                        autoComplete="off"
+                        data-bwignore
+                        data-lpignore="true"
+                        data-1p-ignore
+                      />
+                      <button
+                        className={styles.actionBtn}
+                        disabled={draft === undefined || draft === src.token || extSaving === src.key}
+                        onClick={() => saveExtToken(src.key)}
+                      >
+                        {extSaving === src.key ? 'Сохранение…' : 'Сохранить'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })}

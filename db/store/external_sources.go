@@ -7,8 +7,10 @@ import (
 )
 
 // ExternalSourceKeys — известные внешние источники runtime-фолбэков (см.
-// схему external_source_tokens и internal/tasks/fix_runtime.go).
-var ExternalSourceKeys = []string{"tvmaze", "thetvdb", "poiskkino", "kinopoisk_unofficial"}
+// схему external_source_tokens и internal/tasks/fix_runtime.go). "myshows"
+// не использует token (см. схему — сидится enabled=true по умолчанию),
+// только выключатель.
+var ExternalSourceKeys = []string{"tvmaze", "thetvdb", "poiskkino", "kinopoisk_unofficial", "myshows"}
 
 // ExternalSource — статус одного источника для админки. Token отдаётся в
 // открытом виде — этот эндпоинт только для requireAnyAdmin, чтобы можно
