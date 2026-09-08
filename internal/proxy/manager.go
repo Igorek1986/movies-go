@@ -28,6 +28,14 @@ const (
 	RouteParserKinozal = "parser_kinozal"
 	RouteParserNNMClub = "parser_nnmclub"
 	RouteTelegram      = "telegram"
+
+	// Внешние источники runtime-фолбэков (см. internal/externalsources) —
+	// отдельные роуты, потому что каждый может быть заблокирован независимо
+	// (например TVmaze недоступен из некоторых сетей, но TheTVDB — доступен).
+	RouteTVmaze              = "tvmaze"
+	RouteTheTVDB             = "thetvdb"
+	RoutePoiskkino           = "poiskkino"
+	RouteKinopoiskUnofficial = "kinopoisk_unofficial"
 )
 
 // Default is the package-level proxy manager singleton.

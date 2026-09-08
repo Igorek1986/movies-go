@@ -26,6 +26,10 @@ var proxyRouteOrder = []struct{ key, label string }{
 	{proxy.RouteParserKinozal, "Парсер Kinozal"},
 	{proxy.RouteParserNNMClub, "Парсер NNMClub"},
 	{proxy.RouteParserRutor, "Парсер Rutor"},
+	{proxy.RouteTVmaze, "TVmaze (runtime)"},
+	{proxy.RouteTheTVDB, "TheTVDB (runtime)"},
+	{proxy.RoutePoiskkino, "poiskkino.dev (runtime)"},
+	{proxy.RouteKinopoiskUnofficial, "Kinopoisk Api Unofficial (runtime)"},
 }
 
 // proxyRouteLabels is used for quick key → label lookup and save validation.

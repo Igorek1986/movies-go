@@ -4,9 +4,11 @@ import (
 	"context"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
+	"movies-api/internal/externalsources"
 	"movies-api/internal/myshows"
 	"movies-api/movies/tmdb"
 	"log"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,8 +58,11 @@ func StopFixZeroRuntime() {
 }
 
 // RunFixZeroRuntime fetches runtime from TMDB for all movies with runtime=0
-// and episode_run_time for TV shows with episode_run_time=0. For TV shows that
-// TMDB has no runtime for, it falls back to the median episode runtime from MyShows.
+// and episode_run_time for TV shows with episode_run_time=0. TMDB misses fall
+// back to the external sources configured in the admin panel (see
+// internal/externalsources — poiskkino.dev/Kinopoisk Api Unofficial for
+// movies, TheTVDB/TVmaze for TV, each individually enable/disable-able), then
+// finally to the median episode runtime from MyShows for TV.
 // parentCtx should be the app-level context so SIGTERM stops the task.
 // Safe to call concurrently — only one instance runs at a time.
 func RunFixZeroRuntime(parentCtx context.Context) {
@@ -99,11 +104,12 @@ func RunFixZeroRuntime(parentCtx context.Context) {
 type fixRow struct {
 	CardID string
 	TmdbID int64
+	ImdbID string
 }
 
 func fixRuntimeForType(ctx context.Context, mediaType, col string) {
 	rows, err := postgres.Pool.Query(ctx,
-		`SELECT card_id, tmdb_id FROM media_cards
+		`SELECT card_id, tmdb_id, COALESCE(imdb_id, '') FROM media_cards
 		 WHERE media_type = $1 AND ("`+col+`" IS NULL OR "`+col+`" = 0)
 		 ORDER BY vote_count DESC NULLS LAST`,
 		mediaType,
@@ -116,7 +122,7 @@ func fixRuntimeForType(ctx context.Context, mediaType, col string) {
 	var cards []fixRow
 	for rows.Next() {
 		var r fixRow
-		rows.Scan(&r.CardID, &r.TmdbID) //nolint:errcheck
+		rows.Scan(&r.CardID, &r.TmdbID, &r.ImdbID) //nolint:errcheck
 		cards = append(cards, r)
 	}
 	rows.Close()
@@ -138,6 +144,9 @@ func fixRuntimeForType(ctx context.Context, mediaType, col string) {
 			defer wg.Done()
 			for c := range work {
 				val := tmdb.FetchRuntime(isMovie, c.TmdbID)
+				if val == 0 && isMovie {
+					val = externalsources.FetchMovieRuntime(ctx, c.ImdbID)
+				}
 				if val > 0 {
 					postgres.Pool.Exec(ctx, //nolint:errcheck
 						`UPDATE media_cards SET "`+col+`" = $1, updated_at = now() WHERE card_id = $2`,
@@ -164,8 +173,9 @@ done:
 	log.Printf("tasks: fix_runtime %s done: fixed %d/%d", mediaType, fixRuntimeFixed.Load(), total)
 }
 
-// fixRuntimeTV fills episode_run_time for TV shows: TMDB first, then MyShows
-// (median episode runtime) as a fallback for shows TMDB has no runtime for.
+// fixRuntimeTV fills episode_run_time for TV shows: TMDB first, then
+// TheTVDB/TVmaze (externalsources.FetchSeriesRuntime, whichever are enabled),
+// then MyShows (median episode runtime) as the last resort.
 func fixRuntimeTV(ctx context.Context) {
 	rows, err := postgres.Pool.Query(ctx, `
 		SELECT card_id, tmdb_id, COALESCE(original_title,''), COALESCE(title,''), imdb_id,
@@ -203,6 +213,10 @@ func fixRuntimeTV(ctx context.Context) {
 			defer wg.Done()
 			for mc := range work {
 				rt := tmdb.FetchRuntime(false, mc.TmdbID)
+				if rt == 0 {
+					year, _ := strconv.Atoi(mc.Year)
+					rt = externalsources.FetchSeriesRuntime(ctx, mc.Title, mc.OriginalTitle, year)
+				}
 				if rt == 0 {
 					rt = myshowsRuntimeFallback(ctx, mc)
 				}
