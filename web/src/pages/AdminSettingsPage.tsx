@@ -937,6 +937,7 @@ const LABELS: Record<string, string> = {
 }
 
 const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
+  { name: 'Режим работы', keys: ['app_mode'], requiresRestart: true },
   { name: 'Лимиты Simple', keys: [
     'simple_device_limit', 'simple_profile_limit', 'simple_timecode_limit',
     'simple_favorite_limit', 'simple_import_daily',
@@ -1007,7 +1008,6 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'catalog_director_count',
     'tracker_new_days',
   ]},
-  { name: 'Режим работы', keys: ['app_mode'], requiresRestart: true },
 ]
 
 // ── Component ─────────────────────────────────────────────────────────────────
