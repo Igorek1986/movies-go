@@ -141,7 +141,7 @@ interface UsersPaged {
 // Токены хранятся отдельно от app_settings и не попадают в бэкап — см.
 // db/postgres/schema.sql (external_source_tokens) и scripts/backup.sh.
 const EXT_SOURCE_INFO: Record<string, { label: string; hint: string }> = {
-  tvmaze: { label: 'TVmaze', hint: 'Сериалы, бесплатно; ключ нужен только для Premium-тарифа' },
+  tvmaze: { label: 'TVmaze', hint: 'Сериалы, полностью бесплатно, ключ не нужен' },
   thetvdb: { label: 'TheTVDB', hint: 'Фильмы и сериалы, нужен API-ключ' },
   poiskkino: { label: 'poiskkino.dev', hint: 'Кинопоиск + TMDB + IMDb, нужен ключ, лимит 200 запросов/сутки' },
   kinopoisk_unofficial: { label: 'Kinopoisk Api Unofficial', hint: 'Только фильмы, нужен ключ, лимит 500 запросов/сутки' },
