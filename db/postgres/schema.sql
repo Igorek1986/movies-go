@@ -646,4 +646,15 @@ CREATE TABLE IF NOT EXISTS external_source_tokens (
     token      TEXT        NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Migration: MyShows as a toggle-able runtime source alongside the others
+-- above (see myshowsRuntimeFallback in internal/tasks/fix_runtime.go) —
+-- seeded enabled=true so adding the toggle doesn't silently turn off a
+-- fallback that was unconditional before. No token — MyShows access isn't
+-- keyed the way the others are. ON CONFLICT DO NOTHING so an admin's later
+-- disable isn't stomped by this seed on every restart.
+INSERT INTO external_source_tokens (source_key, enabled)
+VALUES ('myshows', true)
+ON CONFLICT (source_key) DO NOTHING;
+
 CREATE INDEX IF NOT EXISTS idx_web_extensions_user_id ON web_extensions (user_id);

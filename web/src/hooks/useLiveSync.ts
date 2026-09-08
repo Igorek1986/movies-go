@@ -113,6 +113,13 @@ export function useLiveSync(): void {
           return
         }
 
+        // Расширения (см. web/src/hooks/useExtensions.ts) — per-user, не
+        // per-профиль, поэтому тоже без фильтрации по sameProfile ниже.
+        if (msg.type === 'extensions_changed') {
+          listeners.forEach(l => l(msg))
+          return
+        }
+
         // profile_id в сообщении — профиль устройства-отправителя; сверяем с
         // активным на вебе, чтобы не дёргать кеш зря при изменениях в другом
         // профиле того же аккаунта (тот же принцип, что и в np_unwatched.js —

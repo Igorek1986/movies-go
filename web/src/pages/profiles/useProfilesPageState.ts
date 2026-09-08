@@ -160,26 +160,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
   const [syncDone, setSyncDone] = useState(false)
   const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([])
   const syncLogRef = useRef<HTMLDivElement>(null)
-  // LampaC import
-  const [importDeviceId, setImportDeviceId] = useState<number | '' | 'new'>('')
-  const [importNewDeviceName, setImportNewDeviceName] = useState('')
-  const [importProfileId, setImportProfileId] = useState('')
-  const [importNewProfileName, setImportNewProfileName] = useState('')
-  const [importDeviceProfiles, setImportDeviceProfiles] = useState<Profile[]>([])
-  const [importJson, setImportJson] = useState('')
-  const [importLoading, setImportLoading] = useState(false)
-  const [importMsg, setImportMsg] = useState('')
-  const [importError, setImportError] = useState('')
-  // Lampa import (file_view format)
-  const [fileDeviceId, setFileDeviceId] = useState<number | '' | 'new'>('')
-  const [fileNewDeviceName, setFileNewDeviceName] = useState('')
-  const [fileProfileId, setFileProfileId] = useState('')
-  const [fileNewProfileName, setFileNewProfileName] = useState('')
-  const [fileDeviceProfiles, setFileDeviceProfiles] = useState<Profile[]>([])
-  const [fileJson, setFileJson] = useState('')
-  const [fileLoading, setFileLoading] = useState(false)
-  const [fileMsg, setFileMsg] = useState('')
-  const [fileError, setFileError] = useState('')
 
   const fetchDevices = useCallback(async () => {
     const res = await fetch('/api/devices')
@@ -189,8 +169,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     setDevices(data)
     if (data.length === 0) {
       setSyncDeviceId(v => v === '' ? 'new' : v)
-      setImportDeviceId(v => v === '' ? 'new' : v)
-      setFileDeviceId(v => v === '' ? 'new' : v)
       return
     }
     const firstId = data[0].id
@@ -198,11 +176,7 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     const profileData = profileRes.ok ? await profileRes.json() : {}
     const firstProfiles: Profile[] = (profileData.profiles || []).filter((p: Profile) => p.profile_id !== '')
     setSyncDeviceId(id => (id === '' || id === 'new') ? firstId : id)
-    setImportDeviceId(id => (id === '' || id === 'new') ? firstId : id)
-    setFileDeviceId(id => (id === '' || id === 'new') ? firstId : id)
     setSyncDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
-    setImportDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
-    setFileDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
     refreshActiveProfile()
   }, [refreshActiveProfile])
 
@@ -242,17 +216,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
       setSyncProfileId(syncDeviceProfiles[0].profile_id)
   }, [syncDeviceProfiles]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (importDeviceProfiles.length > 0 && (importProfileId === '' || importProfileId === 'new'))
-      setImportProfileId(importDeviceProfiles[0].profile_id)
-  }, [importDeviceProfiles]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (fileDeviceProfiles.length > 0 && (fileProfileId === '' || fileProfileId === 'new'))
-      setFileProfileId(fileDeviceProfiles[0].profile_id)
-  }, [fileDeviceProfiles]) // eslint-disable-line react-hooks/exhaustive-deps
-
-
   async function fetchProfilesForDevice(deviceId: number): Promise<Profile[]> {
     const res = await fetch(`/api/devices/${deviceId}/profiles`)
     if (!res.ok) return []
@@ -265,13 +228,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     const p = await fetchProfilesForDevice(id)
     setSyncDeviceProfiles(p)
     setSyncProfileId(p.length > 0 ? p[0].profile_id : '')
-  }
-
-  async function handleImportDeviceChange(id: number) {
-    setImportDeviceId(id)
-    const p = await fetchProfilesForDevice(id)
-    setImportDeviceProfiles(p)
-    setImportProfileId(p.length > 0 ? p[0].profile_id : '')
   }
 
   async function ensureDevice(deviceId: number | '' | 'new', newName: string): Promise<{ id: number; token: string } | null> {
@@ -402,8 +358,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     if (!(await confirmFn(`Удалить устройство «${name}» и все его таймкоды?`))) return
     await fetch(`/api/devices/${id}`, { method: 'DELETE' })
     if (syncDeviceId === id) { setSyncDeviceId(''); setSyncDeviceProfiles([]); setSyncProfileId('') }
-    if (importDeviceId === id) { setImportDeviceId(''); setImportDeviceProfiles([]); setImportProfileId('') }
-    if (fileDeviceId === id) { setFileDeviceId(''); setFileDeviceProfiles([]); setFileProfileId('') }
     fetchDevices()
     if (openProfilesFor === id) setOpenProfilesFor(null)
   }
@@ -432,8 +386,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     setProfiles(updated)
     const filtered = updated.filter(p => p.profile_id !== '')
     if (syncDeviceId === openProfilesFor) setSyncDeviceProfiles(filtered)
-    if (importDeviceId === openProfilesFor) setImportDeviceProfiles(filtered)
-    if (fileDeviceId === openProfilesFor) setFileDeviceProfiles(filtered)
     refreshActiveProfile()
   }
 
@@ -678,13 +630,9 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
       : `/api/devices/${openProfilesFor}/profiles/${profileId}`
     await fetch(url, { method: 'DELETE' })
     if (syncProfileId === profileId) setSyncProfileId('')
-    if (importProfileId === profileId) setImportProfileId('')
-    if (fileProfileId === profileId) setFileProfileId('')
     if (openProfilesFor !== null) {
       fetchProfilesForDevice(openProfilesFor).then(refreshed => {
         if (syncDeviceId === openProfilesFor) setSyncDeviceProfiles(refreshed)
-        if (importDeviceId === openProfilesFor) setImportDeviceProfiles(refreshed)
-        if (fileDeviceId === openProfilesFor) setFileDeviceProfiles(refreshed)
       })
     }
     reloadProfiles()
@@ -899,94 +847,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     setSyncLoading(false)
   }
 
-  async function handleLampacImport(e: React.FormEvent) {
-    e.preventDefault()
-    setImportError('')
-    setImportMsg('')
-    if (!importDeviceId) return
-
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(importJson)
-    } catch {
-      setImportError('Неверный JSON')
-      return
-    }
-
-    setImportLoading(true)
-    const dev = await ensureDevice(importDeviceId, importNewDeviceName)
-    if (!dev) { setImportError('Ошибка создания устройства'); setImportLoading(false); return }
-    const profileId = await ensureProfile(dev.id, importProfileId, importNewProfileName)
-    const params = new URLSearchParams({ token: dev.token })
-    if (profileId) params.set('profile_id', profileId)
-
-    const res = await fetch(`/timecode/import/lampac?${params}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(parsed),
-    })
-    setImportLoading(false)
-    if (res.ok) {
-      const d = await res.json().catch(() => ({}))
-      setImportMsg(`Импортировано: ${d.imported ?? 0}`)
-      setImportJson('')
-      fetchDevices()
-      reloadProfiles()
-    } else {
-      const d = await res.json().catch(() => ({}))
-      setImportError(d.error || 'Ошибка импорта')
-    }
-  }
-
-  async function handleFileImport(e: React.FormEvent) {
-    e.preventDefault()
-    setFileError('')
-    setFileMsg('')
-    if (!fileDeviceId) return
-
-    let raw: Record<string, Record<string, unknown>>
-    try {
-      raw = JSON.parse(fileJson)
-    } catch {
-      setFileError('Неверный JSON')
-      return
-    }
-
-    // Convert Lampa file_view format: values may be numbers/objects — stringify them
-    const converted: Record<string, Record<string, string>> = {}
-    for (const [cardId, items] of Object.entries(raw)) {
-      if (typeof items !== 'object' || items === null) continue
-      converted[cardId] = {}
-      for (const [key, value] of Object.entries(items)) {
-        converted[cardId][key] = typeof value === 'string' ? value : JSON.stringify(value)
-      }
-    }
-
-    setFileLoading(true)
-    const dev = await ensureDevice(fileDeviceId, fileNewDeviceName)
-    if (!dev) { setFileError('Ошибка создания устройства'); setFileLoading(false); return }
-    const profileId = await ensureProfile(dev.id, fileProfileId, fileNewProfileName)
-    const params = new URLSearchParams({ token: dev.token })
-    if (profileId) params.set('profile_id', profileId)
-
-    const res = await fetch(`/timecode/import/lampac?${params}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(converted),
-    })
-    setFileLoading(false)
-    if (res.ok) {
-      const d = await res.json().catch(() => ({}))
-      setFileMsg(`Импортировано: ${d.imported ?? 0}`)
-      setFileJson('')
-      fetchDevices()
-      reloadProfiles()
-    } else {
-      const d = await res.json().catch(() => ({}))
-      setFileError(d.error || 'Ошибка импорта')
-    }
-  }
-
   function formatSyncEntry(entry: SyncLogEntry): string {
     if (entry.type === 'stage') {
       const label = entry.stage === 'movies' ? 'Фильмы' : 'Сериалы'
@@ -1051,18 +911,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     // Telegram
     tgStatus, tgCode, tgLoading, tgCodeCopied, setTgCodeCopied,
     handleGenerateTgCode, handleTgUnlink,
-
-    // LampaC import
-    importDeviceId, setImportDeviceId, importNewDeviceName, setImportNewDeviceName,
-    importProfileId, setImportProfileId, importNewProfileName, setImportNewProfileName,
-    importDeviceProfiles, setImportDeviceProfiles, handleImportDeviceChange,
-    importJson, setImportJson, importLoading, importMsg, importError, setImportError, handleLampacImport,
-
-    // Lampa (file_view) import
-    fileDeviceId, setFileDeviceId, fileNewDeviceName, setFileNewDeviceName,
-    fileProfileId, setFileProfileId, fileNewProfileName, setFileNewProfileName,
-    fileDeviceProfiles, setFileDeviceProfiles, fetchProfilesForDevice,
-    fileJson, setFileJson, fileLoading, fileMsg, fileError, setFileError, handleFileImport,
 
     // Notifications
     notifSettings, setNotifSettings, notifSaving, notifMsg, handleSaveNotif,

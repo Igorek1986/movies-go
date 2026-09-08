@@ -6,49 +6,23 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
 	"movies-api/db/store"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 )
 
-var pluginCheckClient = &http.Client{Timeout: 6 * time.Second}
-
 // checkPluginURL does a best-effort GET to catch typos/dead links at save
 // time — Lampa fetches the URL directly and just silently no-ops on a bad
 // one, which is confusing enough to be worth a round-trip here. Returns ""
-// on success, a user-facing reason otherwise.
+// on success, a user-facing reason otherwise. Thin wrapper around the shared
+// checkScriptURL (see scripturl.go) — device plugin URLs are always absolute
+// (no same-origin "/path" form), so no resolveScriptURL step is needed.
 func checkPluginURL(url string) string {
-	// Lampac-style template URLs (e.g. "http://{localhost}/my_plugins/actors.js")
-	// have their host substituted by Lampac itself at request time — there's
-	// nothing reachable from here to check, so skip the round-trip.
-	if strings.Contains(url, "{") {
-		return ""
-	}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return "некорректный URL"
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; movies-go-plugin-check/1.0)")
-	resp, err := pluginCheckClient.Do(req)
-	if err != nil {
-		return "не удалось загрузить URL: " + err.Error()
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Sprintf("сервер вернул статус %d", resp.StatusCode)
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-	head := strings.TrimSpace(strings.ToLower(string(body)))
-	if strings.HasPrefix(head, "<!doctype") || strings.HasPrefix(head, "<html") {
-		return "по ссылке HTML-страница, а не JS-файл"
-	}
-	return ""
+	_, _, reason := checkScriptURL(url)
+	return reason
 }
 
 // GET /api/devices/{id}/plugins

@@ -8,6 +8,9 @@ import { SettingsLayoutSettings } from '@/components/SettingsLayoutSettings'
 import { HideWatchedSettings } from '@/components/HideWatchedSettings'
 import { UnwatchedSortSettings } from '@/components/UnwatchedSortSettings'
 import { MenuOrderSettings } from '@/components/MenuOrderSettings'
+import { ExtensionsSection } from '@/components/extensions/ExtensionsSection'
+import { ExtensionHost } from '@/components/extensions/ExtensionHost'
+import { useExtensions } from '@/hooks/useExtensions'
 import { RemoteDialog } from '@/components/remote/RemoteDialog'
 import { RemoteSelect } from '@/components/remote/RemoteSelect'
 import { RemoteIconPicker } from '@/components/remote/RemoteIconPicker'
@@ -51,9 +54,13 @@ function focusForKeyboardNav(el: HTMLElement | null | undefined) {
 }
 
 type SectionId =
-  | 'devices' | 'link' | 'myshows' | 'telegram' | 'lampacImport' | 'fileImport'
+  | 'devices' | 'link' | 'myshows' | 'telegram' | 'extensions'
   | 'notifications' | 'interface'
   | 'account' | 'backup'
+  // One per enabled extension (see useExtensions() below) — each gets its
+  // own top-level menu row/screen, same as "Telegram" etc., instead of being
+  // nested inside the "Расширения" management screen.
+  | `ext:${number}`
 
 // The four layout/appearance settings, grouped under one "Интерфейс" menu
 // item with its own one-level submenu (same drill-down idea as devices, just
@@ -71,6 +78,13 @@ const INTERFACE_SUBMENU: { id: InterfaceSubId; title: string }[] = [
 
 export default function ProfilesRemoteView() {
   const { dialogEl, confirmDialog, promptDialog } = useRemoteDialog()
+  // Один вызов хука на страницу, прокидывается в ExtensionsSection пропом
+  // (см. UseExtensionsResult) — нужен список и здесь, на уровне страницы,
+  // чтобы построить пункты корневого меню динамически: каждое включённое
+  // расширение — свой пункт, как "Telegram", а не вложено внутрь экрана
+  // "Расширения" (см. ExtensionsSection renderHosts={false} ниже).
+  const extensionsState = useExtensions()
+  const { extensions } = extensionsState
   const {
     user, isPremium, roleLabel, maxDevices,
     genericAlert, clearGenericAlert,
@@ -101,14 +115,6 @@ export default function ProfilesRemoteView() {
     lastStage, lastStatus, errors, formatSyncEntry,
     tgStatus, tgCode, tgLoading, tgCodeCopied, setTgCodeCopied,
     handleGenerateTgCode, handleTgUnlink,
-    importDeviceId, setImportDeviceId, importNewDeviceName, setImportNewDeviceName,
-    importProfileId, setImportProfileId, importNewProfileName, setImportNewProfileName,
-    importDeviceProfiles, setImportDeviceProfiles, handleImportDeviceChange,
-    importJson, setImportJson, importLoading, importMsg, importError, setImportError, handleLampacImport,
-    fileDeviceId, setFileDeviceId, fileNewDeviceName, setFileNewDeviceName,
-    fileProfileId, setFileProfileId, fileNewProfileName, setFileNewProfileName,
-    fileDeviceProfiles, setFileDeviceProfiles, fetchProfilesForDevice,
-    fileJson, setFileJson, fileLoading, fileMsg, fileError, setFileError, handleFileImport,
     notifSettings, setNotifSettings, notifSaving, notifMsg, handleSaveNotif,
     disable2faPw, setDisable2faPw, disable2faCode, setDisable2faCode,
     disable2faLoading, disable2faMsg, handleDisable2FA,
@@ -456,8 +462,11 @@ export default function ProfilesRemoteView() {
     { id: 'link', title: 'Привязать устройство по коду' },
     { id: 'myshows', title: 'Синхронизация MyShows' },
     { id: 'telegram', title: 'Telegram' },
-    { id: 'lampacImport', title: 'Импорт таймкодов из LampaC' },
-    { id: 'fileImport', title: 'Импорт таймкодов из Lampa' },
+    { id: 'extensions', title: 'Расширения' },
+    // Каждое включённое расширение — свой пункт корневого меню (как
+    // "Telegram"), не вложен внутрь экрана "Расширения" — см. ответ на
+    // вопрос пользователя, почему раньше пункт появлялся только там.
+    ...extensions.filter(e => e.enabled).map(e => ({ id: `ext:${e.id}` as SectionId, title: e.name || e.url })),
     ...(tgStatus?.linked && notifSettings ? [{ id: 'notifications' as const, title: 'Уведомления' }] : []),
     { id: 'interface', title: 'Интерфейс' },
     { id: 'account', title: 'Настройки аккаунта' },
@@ -925,133 +934,25 @@ export default function ProfilesRemoteView() {
             </div>
           )}
 
-        {/* ── LampaC import ── */}
-          {activeSection === 'lampacImport' && (
+        {/* ── Расширения — управление списком (добавить/включить/удалить);
+            сами включённые расширения рендерятся не здесь, а своими пунктами
+            меню ниже (renderHosts={false} — не дублировать) ── */}
+          {activeSection === 'extensions' && (
             <div className={styles.sectionBody}>
-              <p className={classicStyles.hint}>Вставьте JSON-экспорт таймкодов из LampaC.</p>
-              {importError && <p className={classicStyles.errorText}>{importError}</p>}
-              {importMsg && <p className={classicStyles.successText}>{importMsg}</p>}
-              <form className={styles.fieldRow} onSubmit={handleLampacImport}>
-                <div className={styles.fieldGrid} data-row-id="lampac-device-profile">
-                  <RemoteSelect
-                    value={importDeviceId === '' ? '' : String(importDeviceId)}
-                    placeholder="Устройство"
-                    onChange={v => { if (v === 'new') { setImportDeviceId('new'); setImportDeviceProfiles([]); setImportProfileId('') } else handleImportDeviceChange(Number(v)) }}
-                    options={[
-                      ...devices.map(d => ({ value: String(d.id), label: d.name })),
-                      ...((maxDevices === null || devices.length < (maxDevices ?? 99)) ? [{ value: 'new', label: 'Новое устройство' }] : []),
-                    ]}
-                  />
-                  <RemoteSelect
-                    value={importProfileId}
-                    placeholder="Основной"
-                    disabled={importDeviceId === ''}
-                    onChange={setImportProfileId}
-                    options={[
-                      ...importDeviceProfiles.map(p => ({ value: p.profile_id, label: p.name })),
-                      ...(importDeviceId !== '' ? [{ value: 'new', label: 'Новый профиль' }] : []),
-                    ]}
-                  />
-                </div>
-                {importDeviceId === 'new' && (
-                  <div data-row-id="lampac-new-device">
-                    <input className={classicStyles.input} data-nav-item placeholder="Название устройства" value={importNewDeviceName} onChange={e => setImportNewDeviceName(e.target.value)} maxLength={100} required />
-                  </div>
-                )}
-                {importDeviceId !== '' && importProfileId === 'new' && (
-                  <div data-row-id="lampac-new-profile">
-                    <input className={classicStyles.input} data-nav-item placeholder="Название профиля" value={importNewProfileName} onChange={e => setImportNewProfileName(e.target.value)} maxLength={100} />
-                  </div>
-                )}
-                <div data-row-id="lampac-json">
-                  <textarea
-                    className={classicStyles.jsonTextarea}
-                    data-nav-item
-                    placeholder={'{"card_id":{"item":"data"}}'}
-                    value={importJson}
-                    onChange={e => { setImportJson(e.target.value); setImportError('') }}
-                    rows={5}
-                    required
-                  />
-                </div>
-                <div data-row-id="lampac-submit">
-                  <button type="submit" className={classicStyles.btnPrimary} data-nav-item disabled={importLoading || !importDeviceId}>
-                    {importLoading ? 'Импорт…' : 'Импортировать'}
-                  </button>
-                </div>
-              </form>
+              <ExtensionsSection state={extensionsState} bare renderHosts={false} />
             </div>
           )}
 
-        {/* ── Lampa import ── */}
-          {activeSection === 'fileImport' && (
-            <div className={styles.sectionBody}>
-              <p className={classicStyles.hint}>
-                В консоли браузера на странице Lampa выполните:{' '}
-                <code
-                  className={classicStyles.codeSnippet}
-                  onClick={() => navigator.clipboard.writeText("copy(localStorage.getItem('file_view'))").catch(() => {})}
-                >
-                  copy(localStorage.getItem('file_view'))
-                </code>
-                {' '}— затем вставьте JSON ниже.
-              </p>
-              {fileError && <p className={classicStyles.errorText}>{fileError}</p>}
-              {fileMsg && <p className={classicStyles.successText}>{fileMsg}</p>}
-              <form className={styles.fieldRow} onSubmit={handleFileImport}>
-                <div className={styles.fieldGrid} data-row-id="file-device-profile">
-                  <RemoteSelect
-                    value={fileDeviceId === '' ? '' : String(fileDeviceId)}
-                    placeholder="Устройство"
-                    onChange={v => {
-                      if (v === 'new') { setFileDeviceId('new'); setFileDeviceProfiles([]); setFileProfileId('') }
-                      else { const id = Number(v); setFileDeviceId(id); fetchProfilesForDevice(id).then(p => { setFileDeviceProfiles(p); setFileProfileId(p.length > 0 ? p[0].profile_id : '') }) }
-                    }}
-                    options={[
-                      ...devices.map(d => ({ value: String(d.id), label: d.name })),
-                      ...((maxDevices === null || devices.length < (maxDevices ?? 99)) ? [{ value: 'new', label: 'Новое устройство' }] : []),
-                    ]}
-                  />
-                  <RemoteSelect
-                    value={fileProfileId}
-                    placeholder="Основной"
-                    disabled={fileDeviceId === ''}
-                    onChange={setFileProfileId}
-                    options={[
-                      ...fileDeviceProfiles.map(p => ({ value: p.profile_id, label: p.name })),
-                      ...(fileDeviceId !== '' ? [{ value: 'new', label: 'Новый профиль' }] : []),
-                    ]}
-                  />
-                </div>
-                {fileDeviceId === 'new' && (
-                  <div data-row-id="file-new-device">
-                    <input className={classicStyles.input} data-nav-item placeholder="Название устройства" value={fileNewDeviceName} onChange={e => setFileNewDeviceName(e.target.value)} maxLength={100} required />
-                  </div>
-                )}
-                {fileDeviceId !== '' && fileProfileId === 'new' && (
-                  <div data-row-id="file-new-profile">
-                    <input className={classicStyles.input} data-nav-item placeholder="Название профиля" value={fileNewProfileName} onChange={e => setFileNewProfileName(e.target.value)} maxLength={100} />
-                  </div>
-                )}
-                <div data-row-id="file-json">
-                  <textarea
-                    className={classicStyles.jsonTextarea}
-                    data-nav-item
-                    placeholder={'{"571234":{"percent":95,"time":3600}}'}
-                    value={fileJson}
-                    onChange={e => { setFileJson(e.target.value); setFileError('') }}
-                    rows={5}
-                    required
-                  />
-                </div>
-                <div data-row-id="file-submit">
-                  <button type="submit" className={classicStyles.btnPrimary} data-nav-item disabled={fileLoading || !fileDeviceId}>
-                    {fileLoading ? 'Импорт…' : 'Импортировать'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
+        {/* ── Экран одного включённого расширения — свой пункт корневого меню ── */}
+          {activeSection?.startsWith('ext:') && (() => {
+            const ext = extensions.find(e => `ext:${e.id}` === activeSection)
+            if (!ext) return null
+            return (
+              <div className={styles.sectionBody}>
+                <ExtensionHost extension={ext} bare />
+              </div>
+            )
+          })()}
 
         {/* ── Notifications (only reachable once Telegram is linked — see menu) ── */}
         {activeSection === 'notifications' && tgStatus?.linked && notifSettings && (

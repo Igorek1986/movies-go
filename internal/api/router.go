@@ -112,6 +112,13 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireSession).Get("/devices/{id}/profiles/{profile_id}/plugins", handleWebListProfilePlugins)
 			r.With(requireSession).Put("/devices/{id}/profiles/{profile_id}/plugins", handleWebSetProfilePluginOverride)
 			r.With(requireSession).Delete("/devices/{id}/profiles/{profile_id}/plugins", handleWebClearProfilePluginOverride)
+
+			r.With(requireSession).Get("/extensions", handleWebListExtensions)
+			r.With(requireSession).Post("/extensions", handleWebAddExtension)
+			r.With(requireSession).Patch("/extensions/{id}", handleWebUpdateExtension)
+			r.With(requireSession).Delete("/extensions/{id}", handleWebDeleteExtension)
+			r.With(requireSession).Post("/extensions/{id}/check", handleWebCheckExtension)
+			r.With(requireSession).Post("/extensions/rpc", handleWebExtensionRPC)
 			r.With(requireSession).Get("/web/history", handleWebHistory)
 			r.With(requireSession).Get("/web/card-timecodes", handleWebCardTimecodes)
 			r.With(requireSession).Post("/web/set-timecode", handleWebSetTimecode)

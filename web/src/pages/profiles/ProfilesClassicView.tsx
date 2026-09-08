@@ -8,6 +8,8 @@ import { SettingsLayoutSettings } from '@/components/SettingsLayoutSettings'
 import { HideWatchedSettings } from '@/components/HideWatchedSettings'
 import { UnwatchedSortSettings } from '@/components/UnwatchedSortSettings'
 import { MenuOrderSettings } from '@/components/MenuOrderSettings'
+import { ExtensionsSection } from '@/components/extensions/ExtensionsSection'
+import { useExtensions } from '@/hooks/useExtensions'
 import { PROFILE_ICON_IDS, profileIconSrc } from '@/utils/profileIcon'
 import { useProfilesPageState } from './useProfilesPageState'
 import styles from './ProfilesClassicView.module.scss'
@@ -119,6 +121,7 @@ function BirthYearPicker({ current, onSave, onClose }: {
 }
 
 export default function ProfilesClassicView() {
+  const extensionsState = useExtensions()
   const {
     user, isPremium, roleLabel, maxDevices,
     genericAlert, clearGenericAlert,
@@ -149,14 +152,6 @@ export default function ProfilesClassicView() {
     lastStage, lastStatus, errors, formatSyncEntry,
     tgStatus, tgCode, tgLoading, tgCodeCopied, setTgCodeCopied,
     handleGenerateTgCode, handleTgUnlink,
-    importDeviceId, setImportDeviceId, importNewDeviceName, setImportNewDeviceName,
-    importProfileId, setImportProfileId, importNewProfileName, setImportNewProfileName,
-    importDeviceProfiles, setImportDeviceProfiles, handleImportDeviceChange,
-    importJson, setImportJson, importLoading, importMsg, importError, setImportError, handleLampacImport,
-    fileDeviceId, setFileDeviceId, fileNewDeviceName, setFileNewDeviceName,
-    fileProfileId, setFileProfileId, fileNewProfileName, setFileNewProfileName,
-    fileDeviceProfiles, setFileDeviceProfiles, fetchProfilesForDevice,
-    fileJson, setFileJson, fileLoading, fileMsg, fileError, setFileError, handleFileImport,
     notifSettings, setNotifSettings, notifSaving, notifMsg, handleSaveNotif,
     disable2faPw, setDisable2faPw, disable2faCode, setDisable2faCode,
     disable2faLoading, disable2faMsg, handleDisable2FA,
@@ -670,141 +665,10 @@ export default function ProfilesClassicView() {
             </div>
           </details>
 
-          {/* ── LampaC import ── */}
-          <details className={styles.details}>
-            <summary className={styles.summary}>Импорт таймкодов из LampaC</summary>
-            <div className={styles.detailsBody}>
-              <p className={styles.hint}>Вставьте JSON-экспорт таймкодов из LampaC.</p>
-              {importError && <p className={styles.errorText}>{importError}</p>}
-              {importMsg && <p className={styles.successText}>{importMsg}</p>}
-              <form className={styles.formCol} onSubmit={handleLampacImport}>
-                <div className={styles.formGrid}>
-                  <label className={styles.fieldLabel}>
-                    Устройство
-                    <select
-                      className={styles.select}
-                      value={importDeviceId}
-                      onChange={e => {
-                        const v = e.target.value
-                        if (v === 'new') { setImportDeviceId('new'); setImportDeviceProfiles([]); setImportProfileId('') }
-                        else handleImportDeviceChange(Number(v))
-                      }}
-                      required
-                    >
-                      {importDeviceId === '' && devices.length > 0 && <option value="">— выберите —</option>}
-                      {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                      {(maxDevices === null || devices.length < (maxDevices ?? 99)) && <option value="new">＋ Новое устройство</option>}
-                    </select>
-                  </label>
-                  <label className={styles.fieldLabel}>
-                    Профиль
-                    <select
-                      className={styles.select}
-                      value={importProfileId}
-                      onChange={e => setImportProfileId(e.target.value)}
-                      disabled={importDeviceId === ''}
-                    >
-                      {importDeviceId !== '' && importDeviceProfiles.length === 0 && <option value="">Основной</option>}
-                      {importDeviceProfiles.map(p => (
-                        <option key={p.profile_id} value={p.profile_id}>{p.name}</option>
-                      ))}
-                      {importDeviceId !== '' && <option value="new">＋ Новый профиль</option>}
-                    </select>
-                  </label>
-                </div>
-                {importDeviceId === 'new' && (
-                  <input className={styles.input} placeholder="Название устройства" value={importNewDeviceName} onChange={e => setImportNewDeviceName(e.target.value)} maxLength={100} required />
-                )}
-                {importDeviceId !== '' && importProfileId === 'new' && (
-                  <input className={styles.input} placeholder="Название профиля" value={importNewProfileName} onChange={e => setImportNewProfileName(e.target.value)} maxLength={100} />
-                )}
-                <textarea
-                  className={styles.jsonTextarea}
-                  placeholder={'{"card_id":{"item":"data"}}'}
-                  value={importJson}
-                  onChange={e => { setImportJson(e.target.value); setImportError('') }}
-                  rows={5}
-                  required
-                />
-                <button className={styles.btnPrimary} type="submit" disabled={importLoading || !importDeviceId}>
-                  {importLoading ? 'Импорт…' : 'Импортировать'}
-                </button>
-              </form>
-            </div>
-          </details>
-
-          {/* ── Lampa import ── */}
-          <details className={styles.details}>
-            <summary className={styles.summary}>Импорт таймкодов из Lampa</summary>
-            <div className={styles.detailsBody}>
-              <p className={styles.hint}>
-                В консоли браузера на странице Lampa выполните:{' '}
-                <code
-                  className={styles.codeSnippet}
-                  title="Нажмите, чтобы скопировать"
-                  onClick={() => navigator.clipboard.writeText("copy(localStorage.getItem('file_view'))").catch(() => {})}
-                >
-                  copy(localStorage.getItem('file_view'))
-                </code>
-                {' '}— затем вставьте JSON ниже.
-              </p>
-              {fileError && <p className={styles.errorText}>{fileError}</p>}
-              {fileMsg && <p className={styles.successText}>{fileMsg}</p>}
-              <form className={styles.formCol} onSubmit={handleFileImport}>
-                <div className={styles.formGrid}>
-                  <label className={styles.fieldLabel}>
-                    Устройство
-                    <select
-                      className={styles.select}
-                      value={fileDeviceId}
-                      onChange={e => {
-                        const v = e.target.value
-                        if (v === 'new') { setFileDeviceId('new'); setFileDeviceProfiles([]); setFileProfileId('') }
-                        else { const id = Number(v); setFileDeviceId(id); fetchProfilesForDevice(id).then(p => { setFileDeviceProfiles(p); setFileProfileId(p.length > 0 ? p[0].profile_id : '') }) }
-                      }}
-                      required
-                    >
-                      {fileDeviceId === '' && devices.length > 0 && <option value="">— выберите —</option>}
-                      {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                      {(maxDevices === null || devices.length < (maxDevices ?? 99)) && <option value="new">＋ Новое устройство</option>}
-                    </select>
-                  </label>
-                  <label className={styles.fieldLabel}>
-                    Профиль
-                    <select
-                      className={styles.select}
-                      value={fileProfileId}
-                      onChange={e => setFileProfileId(e.target.value)}
-                      disabled={fileDeviceId === ''}
-                    >
-                      {fileDeviceId !== '' && fileDeviceProfiles.length === 0 && <option value="">Основной</option>}
-                      {fileDeviceProfiles.map(p => (
-                        <option key={p.profile_id} value={p.profile_id}>{p.name}</option>
-                      ))}
-                      {fileDeviceId !== '' && <option value="new">＋ Новый профиль</option>}
-                    </select>
-                  </label>
-                </div>
-                {fileDeviceId === 'new' && (
-                  <input className={styles.input} placeholder="Название устройства" value={fileNewDeviceName} onChange={e => setFileNewDeviceName(e.target.value)} maxLength={100} required />
-                )}
-                {fileDeviceId !== '' && fileProfileId === 'new' && (
-                  <input className={styles.input} placeholder="Название профиля" value={fileNewProfileName} onChange={e => setFileNewProfileName(e.target.value)} maxLength={100} />
-                )}
-                <textarea
-                  className={styles.jsonTextarea}
-                  placeholder={'{"571234":{"percent":95,"time":3600}}'}
-                  value={fileJson}
-                  onChange={e => { setFileJson(e.target.value); setFileError('') }}
-                  rows={5}
-                  required
-                />
-                <button className={styles.btnPrimary} type="submit" disabled={fileLoading || !fileDeviceId}>
-                  {fileLoading ? 'Импорт…' : 'Импортировать'}
-                </button>
-              </form>
-            </div>
-          </details>
+          {/* ── Расширения — только то, что пользователь добавил сам по ссылке
+              (в т.ч. импорт таймкодов из Lampa/LampaC, см.
+              plugins/timecode_import_lampa.js/timecode_import_lampac.js) ── */}
+          <ExtensionsSection state={extensionsState} />
 
           {/* ── Notifications (visible only when TG linked) ── */}
           <details className={styles.details} style={{ visibility: tgStatus?.linked && notifSettings ? 'visible' : 'hidden' }}>
