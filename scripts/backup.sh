@@ -14,7 +14,11 @@ DB_USER="${DB_USER:-movies_api}"
 DB_NAME="${DB_NAME:-movies_api}"
 
 echo "Full dump of $DB_NAME → $OUT ..."
+# external_source_tokens (ключи сторонних runtime-API — TVmaze/TheTVDB/
+# poiskkino.dev/Kinopoisk Api Unofficial) намеренно исключены даже из
+# приватного бэкапа — см. комментарий у таблицы в db/postgres/schema.sql.
 docker exec "$DB_CONTAINER" pg_dump -U "$DB_USER" "$DB_NAME" --clean --if-exists \
+  --exclude-table=external_source_tokens \
   | gzip > "$OUT"
 
 echo "Done: $(du -h "$OUT" | cut -f1)"

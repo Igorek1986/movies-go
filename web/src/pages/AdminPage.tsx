@@ -137,6 +137,16 @@ interface UsersPaged {
   items: AdminUser[]
 }
 
+// Внешние источники runtime-фолбэков (see internal/tasks/fix_runtime.go).
+// Токены хранятся отдельно от app_settings и не попадают в бэкап — см.
+// db/postgres/schema.sql (external_source_tokens) и scripts/backup.sh.
+const EXT_SOURCE_INFO: Record<string, { label: string; hint: string }> = {
+  tvmaze: { label: 'TVmaze', hint: 'Сериалы, бесплатно; ключ нужен только для Premium-тарифа' },
+  thetvdb: { label: 'TheTVDB', hint: 'Фильмы и сериалы, нужен API-ключ' },
+  poiskkino: { label: 'poiskkino.dev', hint: 'Кинопоиск + TMDB + IMDb, нужен ключ, лимит 200 запросов/сутки' },
+  kinopoisk_unofficial: { label: 'Kinopoisk Api Unofficial', hint: 'Только фильмы, нужен ключ, лимит 500 запросов/сутки' },
+}
+
 export default function AdminPage() {
   const [usersPaged, setUsersPaged] = useState<UsersPaged | null>(null)
   const [usersPage, setUsersPage]   = useState(1)
@@ -176,6 +186,9 @@ export default function AdminPage() {
   const [restoring, setRestoring] = useState(false)
   const restoreInput = useRef<HTMLInputElement | null>(null)
   const [apiKey, setApiKey] = useState<string>('')
+  const [extSources, setExtSources] = useState<{ key: string; enabled: boolean; has_token: boolean }[]>([])
+  const [extDrafts, setExtDrafts] = useState<Record<string, string>>({})
+  const [extSaving, setExtSaving] = useState<string | null>(null)
   const [apiTab, setApiTab] = useState<RequestsTab>('today')
   const [catsTab, setCatsTab] = useState<RequestsTab>('today')
   const [myshowsTab, setMyshowsTab] = useState<RequestsTab>('today')
@@ -210,6 +223,36 @@ export default function AdminPage() {
       setStats(data)
     }
   }, [])
+
+  async function fetchExtSources() {
+    const res = await fetch('/api/admin/external-sources')
+    if (!res.ok) return
+    const data = await res.json()
+    setExtSources(data.sources ?? [])
+  }
+
+  async function toggleExtSource(key: string, enabled: boolean) {
+    try {
+      await api(`/api/admin/external-sources/${key}`, 'POST', { enabled })
+      await fetchExtSources()
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
+  async function saveExtToken(key: string) {
+    setExtSaving(key)
+    try {
+      await api(`/api/admin/external-sources/${key}`, 'POST', { token: extDrafts[key] ?? '' })
+      setExtDrafts(d => { const next = { ...d }; delete next[key]; return next })
+      toast('Токен сохранён')
+      await fetchExtSources()
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    } finally {
+      setExtSaving(null)
+    }
+  }
 
   async function fetchFixRtStatus() {
     const res = await fetch('/api/admin/fix-runtime/status')
@@ -332,7 +375,7 @@ export default function AdminPage() {
     if (!cachedStats || cachedStats.stale) refresh()
     Promise.all([
       fetchUsers(1, '', 'created_at', 'desc', 10),
-      fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchSysStats(), fetchApiKey(),
+      fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchSysStats(), fetchApiKey(), fetchExtSources(),
     ]).finally(() => setLoading(false))
     const sysInterval = setInterval(fetchSysStats, 5000)
     return () => clearInterval(sysInterval)
@@ -942,6 +985,54 @@ export default function AdminPage() {
             </div>
           )}
 
+        </div>
+
+        {/* ── External runtime sources ───────────────────────────────────────── */}
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>Внешние источники runtime</h2>
+          <p className={styles.empty}>
+            Фолбэки для «Обновить runtime», когда у TMDB нет данных. Ключи хранятся отдельно от остальных
+            настроек и не попадают в бэкап (см. <code>scripts/backup.sh</code>).
+          </p>
+          <div className={styles.extSourceList}>
+            {extSources.map(src => {
+              const info = EXT_SOURCE_INFO[src.key] ?? { label: src.key, hint: '' }
+              const draft = extDrafts[src.key]
+              return (
+                <div key={src.key} className={styles.extSourceRow}>
+                  <label className={styles.extSourceToggle}>
+                    <input
+                      type="checkbox"
+                      checked={src.enabled}
+                      onChange={e => toggleExtSource(src.key, e.target.checked)}
+                    />
+                    <span className={styles.extSourceLabel}>{info.label}</span>
+                  </label>
+                  <span className={styles.extSourceHint}>{info.hint}</span>
+                  <div className={styles.apiKeyRow}>
+                    <input
+                      className={styles.apiKeyInput}
+                      type="password"
+                      placeholder={src.has_token ? 'сохранён — введите, чтобы заменить' : 'ключ не задан'}
+                      value={draft ?? ''}
+                      onChange={e => setExtDrafts(d => ({ ...d, [src.key]: e.target.value }))}
+                      autoComplete="off"
+                      data-bwignore
+                      data-lpignore="true"
+                      data-1p-ignore
+                    />
+                    <button
+                      className={styles.actionBtn}
+                      disabled={draft === undefined || extSaving === src.key}
+                      onClick={() => saveExtToken(src.key)}
+                    >
+                      {extSaving === src.key ? 'Сохранение…' : 'Сохранить'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
 
         {/* ── Backup & restore ───────────────────────────────────────────────── */}

@@ -605,3 +605,45 @@ ALTER TABLE episodes ADD COLUMN IF NOT EXISTS overview TEXT;
 -- must be replaced by the user on first login. Cleared by any successful
 -- password change (see store.UpdatePassword).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;
+
+-- ─── Web extensions ─────────────────────────────────────────────────────
+-- Per-user (not per-device/profile, unlike device_plugins above) list of
+-- extension script URLs the user has added themselves for the web SPA's
+-- /profiles "Расширения" section — each runs sandboxed in an iframe (see
+-- web/src/components/extensions/). Empty by default for every user, no
+-- built-in seeding (unlike device_plugins/default_device_plugins) — this is
+-- opt-in only, the user adds entries by URL. Timecode import from
+-- Lampa/LampaC uses the same iframe mechanism but is a built-in feature, not
+-- listed here — see web/src/components/extensions/builtinExtensions.ts.
+-- status/status_code/status_checked_at reflect the last reachability check
+-- (see checkScriptURL in internal/api/scripturl.go), refreshed on add and on
+-- demand via POST /api/extensions/{id}/check.
+CREATE TABLE IF NOT EXISTS web_extensions (
+    id                BIGSERIAL    PRIMARY KEY,
+    user_id           BIGINT       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    url               TEXT         NOT NULL,
+    name              VARCHAR(200) NOT NULL DEFAULT '',
+    enabled           BOOLEAN      NOT NULL DEFAULT true,
+    status            VARCHAR(20)  NOT NULL DEFAULT 'unknown',
+    status_code       INT,
+    status_checked_at TIMESTAMPTZ,
+    sort_order        INT          NOT NULL DEFAULT 0,
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_web_extensions_user_url UNIQUE (user_id, url)
+);
+
+-- ─── Внешние источники runtime-метаданных ───────────────────────────────
+-- Токены доступа к сторонним неофициальным API (TVmaze Premium, TheTVDB,
+-- poiskkino.dev, Kinopoisk Api Unofficial), используемым как фолбэк для
+-- runtime/episode_run_time, когда TMDB не отдал данные (см.
+-- internal/tasks/fix_runtime.go). Намеренно отдельная таблица, а не
+-- app_settings — она исключена из scripts/backup.sh (--exclude-table), в
+-- отличие от kinozal_login/password и telegram_bot_token в app_settings:
+-- эти ключи не должны попадать даже в приватный full-backup.
+CREATE TABLE IF NOT EXISTS external_source_tokens (
+    source_key VARCHAR(50) PRIMARY KEY,
+    enabled    BOOLEAN     NOT NULL DEFAULT false,
+    token      TEXT        NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_web_extensions_user_id ON web_extensions (user_id);
