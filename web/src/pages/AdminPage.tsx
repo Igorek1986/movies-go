@@ -186,7 +186,7 @@ export default function AdminPage() {
   const [restoring, setRestoring] = useState(false)
   const restoreInput = useRef<HTMLInputElement | null>(null)
   const [apiKey, setApiKey] = useState<string>('')
-  const [extSources, setExtSources] = useState<{ key: string; enabled: boolean; has_token: boolean }[]>([])
+  const [extSources, setExtSources] = useState<{ key: string; enabled: boolean; token: string }[]>([])
   const [extDrafts, setExtDrafts] = useState<Record<string, string>>({})
   const [extSaving, setExtSaving] = useState<string | null>(null)
   const [apiTab, setApiTab] = useState<RequestsTab>('today')
@@ -1012,9 +1012,9 @@ export default function AdminPage() {
                   <div className={styles.apiKeyRow}>
                     <input
                       className={styles.apiKeyInput}
-                      type="password"
-                      placeholder={src.has_token ? 'сохранён — введите, чтобы заменить' : 'ключ не задан'}
-                      value={draft ?? ''}
+                      type="text"
+                      placeholder="ключ не задан"
+                      value={draft ?? src.token}
                       onChange={e => setExtDrafts(d => ({ ...d, [src.key]: e.target.value }))}
                       autoComplete="off"
                       data-bwignore
@@ -1023,7 +1023,7 @@ export default function AdminPage() {
                     />
                     <button
                       className={styles.actionBtn}
-                      disabled={draft === undefined || extSaving === src.key}
+                      disabled={draft === undefined || draft === src.token || extSaving === src.key}
                       onClick={() => saveExtToken(src.key)}
                     >
                       {extSaving === src.key ? 'Сохранение…' : 'Сохранить'}

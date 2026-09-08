@@ -10,13 +10,13 @@ import (
 // схему external_source_tokens и internal/tasks/fix_runtime.go).
 var ExternalSourceKeys = []string{"tvmaze", "thetvdb", "poiskkino", "kinopoisk_unofficial"}
 
-// ExternalSource — статус одного источника для админки. Token в JSON
-// намеренно не отдаётся — только has_token, чтобы не светить секрет в
-// ответе API лишний раз.
+// ExternalSource — статус одного источника для админки. Token отдаётся в
+// открытом виде — этот эндпоинт только для requireAnyAdmin, чтобы можно
+// было сверить сохранённый ключ глазами, не гадая по плейсхолдеру.
 type ExternalSource struct {
-	Key      string `json:"key"`
-	Enabled  bool   `json:"enabled"`
-	HasToken bool   `json:"has_token"`
+	Key     string `json:"key"`
+	Enabled bool   `json:"enabled"`
+	Token   string `json:"token"`
 }
 
 // ListExternalSources returns the status of every known external source,
@@ -31,7 +31,7 @@ func ListExternalSources(ctx context.Context) []ExternalSource {
 			var key, token string
 			var enabled bool
 			if rows.Scan(&key, &enabled, &token) == nil {
-				current[key] = ExternalSource{Key: key, Enabled: enabled, HasToken: token != ""}
+				current[key] = ExternalSource{Key: key, Enabled: enabled, Token: token}
 			}
 		}
 	}
