@@ -21,6 +21,12 @@
   margin: 0;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
 .backLink {
   font-size: $font-size-sm;
   color: $color-text-muted;
@@ -31,6 +37,21 @@
   white-space: nowrap;
   transition: color $transition-fast, border-color $transition-fast;
   &:hover { color: $color-primary; border-color: $color-primary; }
+}
+
+.deleteAllBtn {
+  background: $color-danger;
+  color: #fff;
+  border: none;
+  border-radius: $radius-sm;
+  padding: 5px 12px;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) { opacity: 0.85; }
+  &:disabled { opacity: 0.5; cursor: default; }
 }
 
 .desc {

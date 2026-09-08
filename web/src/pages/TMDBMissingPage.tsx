@@ -20,6 +20,7 @@ export default function TMDBMissingPage() {
   const [cards, setCards] = useState<MissingCard[]>([])
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState<Set<string>>(new Set())
+  const [deletingAll, setDeletingAll] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -44,12 +45,34 @@ export default function TMDBMissingPage() {
     }
   }
 
+  async function handleDeleteAll() {
+    if (!confirm(`Удалить все карточки (${cards.length})?`)) return
+    setDeletingAll(true)
+    try {
+      const r = await fetch('/api/admin/cards', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ card_ids: cards.map(c => c.card_id) }),
+      })
+      if (r.ok) setCards([])
+    } finally {
+      setDeletingAll(false)
+    }
+  }
+
   return (
     <Layout wide>
       <div className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Не найдено в TMDB</h1>
-          <Link to="/admin" className={styles.backLink}>Админ</Link>
+          <div className={styles.headerActions}>
+            {!loading && cards.length > 0 && (
+              <button className={styles.deleteAllBtn} onClick={handleDeleteAll} disabled={deletingAll}>
+                {deletingAll ? 'Удаление…' : `Удалить все (${cards.length})`}
+              </button>
+            )}
+            <Link to="/admin" className={styles.backLink}>Админ</Link>
+          </div>
         </div>
 
         <p className={styles.desc}>
