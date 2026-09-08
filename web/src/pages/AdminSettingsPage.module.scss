@@ -225,3 +225,55 @@ details[open] .groupArrow {
   &:hover { background: $color-primary-hover; }
   &:disabled { opacity: 0.6; cursor: default; }
 }
+
+// Floating bar that surfaces the Save/Reset actions without scrolling to the
+// form's own .footer — same buttons, just reachable from anywhere on a long
+// settings page. Hidden (translated off-screen + no pointer events) instead
+// of unmounted so it can slide in/out with a transition.
+.stickyBar {
+  position: fixed;
+  left: 50%;
+  bottom: $spacing-lg;
+  transform: translate(-50%, calc(100% + #{$spacing-xl}));
+  width: min(720px, calc(100% - #{$spacing-lg} * 2));
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-md;
+  border: 1px solid $color-border;
+  background: $color-bg-card;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  z-index: 210;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform $transition-fast, opacity $transition-fast;
+
+  @media (max-width: $bp-lg) {
+    bottom: calc(#{$bottom-nav-height} + #{$spacing-sm} + env(safe-area-inset-bottom));
+  }
+}
+
+.stickyBarVisible {
+  transform: translate(-50%, 0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.stickyBarText {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  flex: 1;
+}
+
+.stickyBarHint {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  padding: 2px 6px;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+
+  @media (max-width: $bp-lg) {
+    display: none;
+  }
+}

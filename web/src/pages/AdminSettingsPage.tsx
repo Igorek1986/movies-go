@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import styles from './AdminSettingsPage.module.scss'
@@ -1010,6 +1010,12 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   ]},
 ]
 
+const RESTART_KEYS = new Set(
+  GROUPS.filter(g => g.requiresRestart).flatMap(g => g.keys)
+)
+
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AdminSettingsPage() {
@@ -1021,6 +1027,20 @@ export default function AdminSettingsPage() {
   const [activeDesc, setActiveDesc] = useState<string | null>(null)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
+  const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const dirty = useMemo(
+    () => !loading && Object.keys(values).some(k => values[k] !== original[k]),
+    [values, original, loading]
+  )
+
+  const showSuccess = useCallback((msg: string, autoHideMs: number) => {
+    if (successTimer.current) clearTimeout(successTimer.current)
+    setSuccess(msg)
+    successTimer.current = setTimeout(() => setSuccess(''), autoHideMs)
+  }, [])
+
+  useEffect(() => () => { if (successTimer.current) clearTimeout(successTimer.current) }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1044,12 +1064,14 @@ export default function AdminSettingsPage() {
   }
 
   function handleReset() {
+    if (successTimer.current) clearTimeout(successTimer.current)
     setValues(original)
     setSuccess('')
     setError('')
   }
 
   async function handleRestart() {
+    if (successTimer.current) clearTimeout(successTimer.current)
     setRestarting(true)
     setSuccess('')
     setError('')
@@ -1079,8 +1101,7 @@ export default function AdminSettingsPage() {
     }
   }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault()
+  const save = useCallback(async () => {
     setSaving(true)
     setSuccess('')
     setError('')
@@ -1091,15 +1112,38 @@ export default function AdminSettingsPage() {
         body: JSON.stringify(values),
       })
       if (!r.ok) throw new Error('HTTP ' + r.status)
+      const restartNeeded = Object.keys(values).some(
+        k => values[k] !== original[k] && RESTART_KEYS.has(k)
+      )
       setOriginal(values)
-      setSuccess('Настройки сохранены')
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      if (restartNeeded) {
+        showSuccess('Настройки сохранены. Чтобы изменения вступили в силу, перезапустите сервис.', 8000)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      } else {
+        showSuccess('Настройки сохранены', 4000)
+      }
     } catch {
       setError('Ошибка сохранения')
     } finally {
       setSaving(false)
     }
+  }, [values, original, showSuccess])
+
+  function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    save()
   }
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const mod = IS_MAC ? e.metaKey : e.ctrlKey
+      if (!mod || e.key.toLowerCase() !== 's') return
+      e.preventDefault()
+      if (dirty && !saving) save()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [dirty, saving, save])
 
   return (
     <Layout wide>
@@ -1259,6 +1303,17 @@ export default function AdminSettingsPage() {
               </button>
               <button type="submit" className={styles.btnSave} disabled={saving}>
                 {saving ? 'Сохранение…' : 'Сохранить настройки'}
+              </button>
+            </div>
+
+            <div className={`${styles.stickyBar} ${dirty ? styles.stickyBarVisible : ''}`}>
+              <span className={styles.stickyBarText}>Есть несохранённые изменения</span>
+              <span className={styles.stickyBarHint}>{IS_MAC ? '⌘S' : 'Ctrl+S'}</span>
+              <button type="button" className={styles.btnReset} onClick={handleReset} disabled={saving}>
+                Сбросить
+              </button>
+              <button type="submit" className={styles.btnSave} disabled={saving}>
+                {saving ? 'Сохранение…' : 'Сохранить'}
               </button>
             </div>
           </>
