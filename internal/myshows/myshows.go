@@ -521,6 +521,81 @@ func FetchEpisodeRuntime(ctx context.Context, mc *store.MediaCardEpInfo) int {
 	return runtimes[n/2]
 }
 
+// ─── Movie runtime ─────────────────────────────────────────────────────────────
+
+// FetchMovieRuntime searches MyShows (movies.GetCatalog) by original title +
+// year and returns the runtime in minutes for a confident match, or 0.
+// Mirrors the matching logic in plugins/myshows.js
+// (getMovieIdByOriginalTitle/getBestMovieCandidate): exact normalized-title
+// match within ±1 year, disambiguated by exact release date when there are
+// several candidates. releaseDate is the card's release_date ("2020-01-15",
+// ISO — may be empty).
+func FetchMovieRuntime(ctx context.Context, originalTitle string, year int, releaseDate string) int {
+	if originalTitle == "" {
+		return 0
+	}
+	res, err := rpc(ctx, "movies.GetCatalog", map[string]any{
+		"search": map[string]any{"query": originalTitle, "year": year},
+	})
+	if err != nil {
+		return 0
+	}
+	var items []struct {
+		Movie struct {
+			TitleOriginal string `json:"titleOriginal"`
+			Year          int    `json:"year"`
+			ReleaseDate   string `json:"releaseDate"` // "dd.mm.yyyy"
+			Runtime       int    `json:"runtime"`
+		} `json:"movie"`
+	}
+	if err := json.Unmarshal(res, &items); err != nil {
+		return 0
+	}
+
+	target := normalizeTitle(originalTitle)
+	var candidates []int
+	for i, it := range items {
+		if it.Movie.TitleOriginal == "" || normalizeTitle(it.Movie.TitleOriginal) != target {
+			continue
+		}
+		if year > 0 && it.Movie.Year > 0 && absInt(it.Movie.Year-year) > 1 {
+			continue
+		}
+		candidates = append(candidates, i)
+	}
+	switch len(candidates) {
+	case 0:
+		return 0
+	case 1:
+		return items[candidates[0]].Movie.Runtime
+	}
+	for _, i := range candidates {
+		if releaseDatesMatch(items[i].Movie.ReleaseDate, releaseDate) {
+			return items[i].Movie.Runtime
+		}
+	}
+	return 0
+}
+
+func absInt(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// releaseDatesMatch compares MyShows' "dd.mm.yyyy" against our "yyyy-mm-dd".
+func releaseDatesMatch(myshowsDate, isoDate string) bool {
+	if myshowsDate == "" || isoDate == "" {
+		return false
+	}
+	parts := strings.Split(myshowsDate, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	return parts[2]+"-"+parts[1]+"-"+parts[0] == isoDate
+}
+
 // ─── Hash helpers ─────────────────────────────────────────────────────────────
 
 // EpisodeHash mirrors Lampa.Utils.hash(buildEpisodeHashString(s, e, origTitle)).

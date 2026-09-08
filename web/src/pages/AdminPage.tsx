@@ -145,8 +145,11 @@ const EXT_SOURCE_INFO: Record<string, { label: string; hint: string }> = {
   thetvdb: { label: 'TheTVDB', hint: 'Фильмы и сериалы, нужен API-ключ' },
   poiskkino: { label: 'poiskkino.dev', hint: 'Кинопоиск + TMDB + IMDb, нужен ключ, лимит 200 запросов/сутки' },
   kinopoisk_unofficial: { label: 'Kinopoisk Api Unofficial', hint: 'Только фильмы, нужен ключ, лимит 500 запросов/сутки' },
-  myshows: { label: 'MyShows', hint: 'Сериалы, неофициальный доступ, ключ не нужен — последний в цепочке фолбэков' },
+  myshows: { label: 'MyShows', hint: 'Фильмы и сериалы' },
 }
+
+// Источники без концепции ключа вообще — не показываем поле токена.
+const EXT_SOURCES_NO_TOKEN = new Set(['tvmaze', 'myshows'])
 
 export default function AdminPage() {
   const [usersPaged, setUsersPaged] = useState<UsersPaged | null>(null)
@@ -1010,7 +1013,7 @@ export default function AdminPage() {
                     <span className={styles.extSourceLabel}>{info.label}</span>
                   </label>
                   <span className={styles.extSourceHint}>{info.hint}</span>
-                  {src.key !== 'myshows' && (
+                  {!EXT_SOURCES_NO_TOKEN.has(src.key) && (
                     <div className={styles.apiKeyRow}>
                       <input
                         className={styles.apiKeyInput}

@@ -61,8 +61,9 @@ func StopFixZeroRuntime() {
 // and episode_run_time for TV shows with episode_run_time=0. TMDB misses fall
 // back to the external sources configured in the admin panel (see
 // internal/externalsources — poiskkino.dev/Kinopoisk Api Unofficial for
-// movies, TheTVDB/TVmaze for TV, each individually enable/disable-able), then
-// finally to the median episode runtime from MyShows for TV.
+// movies, TheTVDB/TVmaze for TV, each individually enable/disable-able),
+// then finally to MyShows (movies.GetCatalog for movies by title+year,
+// median episode runtime for TV) as the last resort for both.
 // parentCtx should be the app-level context so SIGTERM stops the task.
 // Safe to call concurrently — only one instance runs at a time.
 func RunFixZeroRuntime(parentCtx context.Context) {
@@ -102,14 +103,19 @@ func RunFixZeroRuntime(parentCtx context.Context) {
 }
 
 type fixRow struct {
-	CardID string
-	TmdbID int64
-	ImdbID string
+	CardID        string
+	TmdbID        int64
+	ImdbID        string
+	OriginalTitle string
+	ReleaseDate   string
+	Year          int
 }
 
 func fixRuntimeForType(ctx context.Context, mediaType, col string) {
 	rows, err := postgres.Pool.Query(ctx,
-		`SELECT card_id, tmdb_id, COALESCE(imdb_id, '') FROM media_cards
+		`SELECT card_id, tmdb_id, COALESCE(imdb_id, ''), COALESCE(original_title, ''),
+		        COALESCE(release_date::text, ''), COALESCE(year, 0)
+		 FROM media_cards
 		 WHERE media_type = $1 AND ("`+col+`" IS NULL OR "`+col+`" = 0)
 		 ORDER BY vote_count DESC NULLS LAST`,
 		mediaType,
@@ -122,7 +128,7 @@ func fixRuntimeForType(ctx context.Context, mediaType, col string) {
 	var cards []fixRow
 	for rows.Next() {
 		var r fixRow
-		rows.Scan(&r.CardID, &r.TmdbID, &r.ImdbID) //nolint:errcheck
+		rows.Scan(&r.CardID, &r.TmdbID, &r.ImdbID, &r.OriginalTitle, &r.ReleaseDate, &r.Year) //nolint:errcheck
 		cards = append(cards, r)
 	}
 	rows.Close()
@@ -146,6 +152,15 @@ func fixRuntimeForType(ctx context.Context, mediaType, col string) {
 				val := tmdb.FetchRuntime(isMovie, c.TmdbID)
 				if val == 0 && isMovie {
 					val = externalsources.FetchMovieRuntime(ctx, c.ImdbID)
+				}
+				if val == 0 && isMovie {
+					if _, ok := store.GetExternalSource(ctx, "myshows"); ok {
+						year := c.Year
+						if year == 0 {
+							year, _ = strconv.Atoi(c.ReleaseDate[:min(4, len(c.ReleaseDate))])
+						}
+						val = myshows.FetchMovieRuntime(ctx, c.OriginalTitle, year, c.ReleaseDate)
+					}
 				}
 				if val > 0 {
 					postgres.Pool.Exec(ctx, //nolint:errcheck
