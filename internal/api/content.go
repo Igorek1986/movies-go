@@ -285,15 +285,42 @@ func fetchPopularSourceDaily(ctx context.Context) json.RawMessage {
 	return out.Daily
 }
 
-func forwardPlayEvent(cardID, uid string, pct int) {
-	src := getPopularSourceURL(context.Background())
-	if src == "" {
-		return
+func forwardPlayEvent(cardID, uid string, pct int, durationSec float64) {
+	dst := map[string]bool{} // dedup — popular_source_url and sync_gateway_url may point at the same place
+	if src := getPopularSourceURL(context.Background()); src != "" {
+		dst[src] = true
 	}
+	if gw := syncPushTarget(context.Background()); gw != "" {
+		dst[gw] = true
+	}
+	for src := range dst {
+		postViewEvent(src, cardID, uid, pct, durationSec)
+	}
+}
+
+// syncPushTarget returns the instance-sync gateway URL to push play events to,
+// or "" if this instance isn't a sync client, push is disabled, or no gateway
+// is configured (see dev/instance-sync.md — "Push" is independent of "Pull").
+func syncPushTarget(ctx context.Context) string {
+	role, _ := store.GetSetting(ctx, "sync_role")
+	if role != "client" {
+		return ""
+	}
+	if v, _ := store.GetSetting(ctx, "sync_push_enabled"); v != "1" {
+		return ""
+	}
+	gw, _ := store.GetSetting(ctx, "sync_gateway_url")
+	return strings.TrimRight(gw, "/")
+}
+
+func postViewEvent(src, cardID, uid string, pct int, durationSec float64) {
 	url := fmt.Sprintf("%s/api/view?card_id=%s&uid=%s&percent=%d",
 		src,
 		cardID, uid, pct,
 	)
+	if durationSec > 0 {
+		url += fmt.Sprintf("&duration=%.0f", durationSec)
+	}
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, nil)
 	if err != nil {
 		return
@@ -950,10 +977,18 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	cardID := r.URL.Query().Get("card_id")
 	uid := r.URL.Query().Get("uid")
 	pct, _ := strconv.Atoi(r.URL.Query().Get("percent"))
+	durationSec, _ := strconv.ParseFloat(r.URL.Query().Get("duration"), 64)
 
 	if cardID != "" && uid != "" && pct >= 30 {
 		store.RecordPlayEvent(r.Context(), cardID, uid, pct)
-		go forwardPlayEvent(cardID, uid, pct)
+		go forwardPlayEvent(cardID, uid, pct, durationSec)
+	}
+	// Anonymous, no token needed — works in both modes, unlike the
+	// device-token-gated /timecode path (see internal/api/timecodes.go). Lets
+	// runtime self-correct from real playback even on a parser-mode public
+	// instance with no registered devices at all (see dev/instance-sync.md).
+	if m := cardIDRe.FindStringSubmatch(cardID); m != nil && durationSec > 60 {
+		go store.MaybeUpdateRuntimeFromPlayer(cardID, m[2], durationSec)
 	}
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

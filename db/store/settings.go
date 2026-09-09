@@ -162,6 +162,15 @@ var SettingDefaults = map[string]string{
 	"plugin_url":         "",
 	"donate_url":         "",
 	"popular_source_url": "",
+	// Instance sync (see dev/instance-sync.md) — "off"/"gateway"/"client".
+	// A client pushes its own play events (with player-reported duration) to
+	// sync_gateway_url and can pull runtime/episode_run_time from there as a
+	// fallback (see internal/instancesync, wired into fix_runtime.go). A
+	// gateway just accepts what clients push — no extra config of its own.
+	"sync_role":         "off",
+	"sync_gateway_url":  "",
+	"sync_push_enabled": "1",
+	"sync_pull_runtime": "1",
 	// Parser trackers — override for mirror domains when the primary is blocked
 	"rutor_host":   "",
 	"kinozal_host": "",

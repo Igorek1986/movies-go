@@ -5,6 +5,7 @@ import (
 	"movies-api/db/postgres"
 	"movies-api/db/store"
 	"movies-api/internal/externalsources"
+	"movies-api/internal/instancesync"
 	"movies-api/internal/myshows"
 	"movies-api/movies/tmdb"
 	"log"
@@ -150,6 +151,9 @@ func fixRuntimeForType(ctx context.Context, mediaType, col string) {
 			defer wg.Done()
 			for c := range work {
 				val := tmdb.FetchRuntime(isMovie, c.TmdbID)
+				if val == 0 {
+					val = instancesync.FetchRuntime(ctx, c.CardID, isMovie)
+				}
 				if val == 0 && isMovie {
 					val = externalsources.FetchMovieRuntime(ctx, c.ImdbID)
 				}
@@ -229,6 +233,9 @@ func fixRuntimeTV(ctx context.Context) {
 			defer wg.Done()
 			for mc := range work {
 				rt := tmdb.FetchRuntime(false, mc.TmdbID)
+				if rt == 0 {
+					rt = instancesync.FetchRuntime(ctx, mc.CardID, false)
+				}
 				if rt == 0 {
 					year, _ := strconv.Atoi(mc.Year)
 					rt = externalsources.FetchSeriesRuntime(ctx, mc.Title, mc.OriginalTitle, year)
