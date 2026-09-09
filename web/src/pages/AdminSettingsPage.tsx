@@ -804,7 +804,6 @@ function tzOffsetLabel(tz: string): string {
 
 const SELECT_KEYS: Record<string, string[]> = {
   app_mode: ['parser', 'all'],
-  sync_role: ['off', 'gateway', 'client'],
   // TMDB serves images only at these fixed widths (see /configuration) — no
   // arbitrary custom sizes.
   poster_size: ['w92', 'w154', 'w185', 'w342', 'w500', 'w780', 'original'],
@@ -820,8 +819,6 @@ const CHECKBOX_KEYS: Record<string, string> = {
   images_cache_enabled:     '',
   images_cache_warm_original: '',
   registration_disabled:    '',
-  sync_push_enabled:        '',
-  sync_pull_runtime:        '',
 }
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -840,10 +837,6 @@ const DESCRIPTIONS: Record<string, string> = {
   admin_created_user_delete_days: 'Если пользователь так и не вошёл и не сменил выданный пароль — аккаунт удаляется автоматически по ночам (вместе с остальными ежедневными проверками, время — «Час запуска ежедневной задачи»). 0 — не удалять.',
   poster_size: 'Действует для новых/обновляемых карточек. Уже существующие карточки сохранят прежнее качество до своего следующего TMDB-обновления — нужен разовый бэкафилл в БД, чтобы поднять качество сразу у всех.',
   backdrop_size: 'Действует для новых/обновляемых карточек, как и качество постеров.',
-  sync_role: 'Клиент отправляет свои данные на шлюз и может подтягивать оттуда то, чего нет локально. Шлюз просто принимает — своих настроек не требует. См. dev/instance-sync.md.',
-  sync_gateway_url: 'Только для роли «клиент» — базовый URL другого инстанса-шлюза (например https://example.com).',
-  sync_push_enabled: 'Пересылать свои play-события (просмотры, включая точную длительность из плеера) на шлюз — не требует токена, дёшево, помогает всей сети инстансов.',
-  sync_pull_runtime: 'Если у карточки нет runtime/episode_run_time локально — спросить у шлюза перед остальными внешними источниками (бесплатно и точное совпадение id).',
 }
 
 const LABELS: Record<string, string> = {
@@ -941,17 +934,10 @@ const LABELS: Record<string, string> = {
   rutor_host:   'Домен Rutor.info',
   kinozal_host: 'Домен Kinozal.tv',
   nnmclub_host: 'Домен NNMClub.to',
-  sync_role:         'Роль синхронизации',
-  sync_gateway_url:  'URL шлюза',
-  sync_push_enabled: 'Push: слать свои данные на шлюз',
-  sync_pull_runtime: 'Pull: подтягивать runtime с шлюза',
 }
 
 const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
   { name: 'Режим работы', keys: ['app_mode'], requiresRestart: true },
-  { name: 'Синхронизация между инстансами', keys: [
-    'sync_role', 'sync_gateway_url', 'sync_push_enabled', 'sync_pull_runtime',
-  ]},
   { name: 'Лимиты Simple', keys: [
     'simple_device_limit', 'simple_profile_limit', 'simple_timecode_limit',
     'simple_favorite_limit', 'simple_import_daily',

@@ -2120,8 +2120,6 @@ var boolSettingKeys = map[string]bool{
 	"images_cache_enabled":       true,
 	"images_cache_warm_original": true,
 	"registration_disabled":      true,
-	"sync_push_enabled":          true,
-	"sync_pull_runtime":          true,
 }
 
 // settingsGroupDefs mirrors FastAPI GROUPS.
@@ -2207,9 +2205,6 @@ var settingsGroupDefs = []struct {
 	}},
 	{"Режим работы (требует перезапуска)", []string{
 		"app_mode",
-	}},
-	{"Синхронизация между инстансами", []string{
-		"sync_role", "sync_gateway_url", "sync_push_enabled", "sync_pull_runtime",
 	}},
 }
 

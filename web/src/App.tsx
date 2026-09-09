@@ -58,6 +58,7 @@ const StaticPage = lazy(() => import('@/pages/StaticPage'))
 const TgMiniAppPage = lazy(() => import('@/pages/TgMiniAppPage'))
 const AdminSettingsPage = lazy(() => import('@/pages/AdminSettingsPage'))
 const ParsersPage = lazy(() => import('@/pages/ParsersPage'))
+const SyncPage = lazy(() => import('@/pages/SyncPage'))
 const ProxiesPage = lazy(() => import('@/pages/ProxiesPage'))
 const LogsPage = lazy(() => import('@/pages/LogsPage'))
 const BotPage = lazy(() => import('@/pages/BotPage'))
@@ -203,6 +204,7 @@ export default function App() {
         <Route path="/actor/:personId" element={<ActorPage />} />
         <Route path="/admin/settings" element={<AdminSettingsPage />} />
         <Route path="/admin/parsers" element={<ParsersPage />} />
+        <Route path="/admin/sync" element={<SyncPage />} />
         <Route path="/admin/proxies" element={<ProxiesPage />} />
         <Route path="/admin/logs" element={<LogsPage />} />
         <Route path="/admin/bot" element={<BotPage />} />

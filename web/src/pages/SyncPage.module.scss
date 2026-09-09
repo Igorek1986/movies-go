@@ -1,0 +1,229 @@
+@use '../styles/variables' as *;
+
+.page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.backLink {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  text-decoration: none;
+  padding: 4px $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  white-space: nowrap;
+  transition: color $transition-fast, border-color $transition-fast;
+  &:hover { color: $color-primary; border-color: $color-primary; }
+}
+
+.desc {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin: 0;
+}
+
+.empty {
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  padding: 32px 0;
+  text-align: center;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  padding: $spacing-lg;
+  border: 1px solid $color-border;
+  border-radius: $radius-md;
+  background: $color-bg-card;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.hint {
+  margin: 0;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+// ── Role ─────────────────────────────────────────────────────────────────────
+
+.roleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-md;
+}
+
+.roleOption {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  cursor: pointer;
+  font-size: $font-size-sm;
+}
+
+.fieldsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-md;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  flex: 1 1 260px;
+}
+
+.input {
+  height: 34px;
+  padding: 0 $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: $color-bg-input;
+  color: $color-text;
+  font-size: $font-size-sm;
+}
+
+.inputNarrow {
+  @extend .input;
+  max-width: 120px;
+}
+
+// ── Push/pull item list ────────────────────────────────────────────────────
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.itemRow {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  cursor: pointer;
+  padding-bottom: $spacing-md;
+  border-bottom: 1px solid $color-border;
+
+  &:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
+  input[type='checkbox'] {
+    margin-top: 3px;
+    flex: 0 0 auto;
+  }
+}
+
+.itemBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemLabel {
+  font-weight: 600;
+  color: $color-text;
+  font-size: $font-size-sm;
+}
+
+.itemDesc {
+  color: $color-text-muted;
+  font-size: $font-size-sm;
+  line-height: 1.4;
+}
+
+// ── Save ─────────────────────────────────────────────────────────────────────
+
+.saveRow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.saveBtn {
+  background: $color-primary;
+  color: #fff;
+  border: none;
+  border-radius: $radius-sm;
+  padding: 8px 20px;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { opacity: 0.85; }
+  &:disabled { opacity: 0.4; cursor: default; }
+}
+
+// ── Toasts ───────────────────────────────────────────────────────────────────
+
+.toasts {
+  position: fixed;
+  bottom: $spacing-xl;
+  right: $spacing-lg;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  pointer-events: none;
+}
+
+.toastOk, .toastErr {
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: toastIn 0.2s ease;
+}
+
+.toastOk {
+  background: rgba($color-success-rgb, 0.15);
+  border: 1px solid rgba($color-success-rgb, 0.4);
+  color: $color-success;
+}
+
+.toastErr {
+  background: rgba($color-danger-rgb, 0.15);
+  border: 1px solid rgba($color-danger-rgb, 0.4);
+  color: $color-danger;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

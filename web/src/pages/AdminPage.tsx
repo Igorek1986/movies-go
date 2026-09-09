@@ -735,6 +735,7 @@ export default function AdminPage() {
               {statsRefreshing ? 'Обновление…' : 'Обновить статистику'}
             </button>
             <Link to="/admin/parsers" className={styles.navBtn}>Парсеры</Link>
+            <Link to="/admin/sync" className={styles.navBtn}>Синхронизация</Link>
             <Link to="/admin/proxies" className={styles.navBtn}>Прокси</Link>
             <Link to="/admin/bot" className={styles.navBtn}>Бот</Link>
             <Link to="/admin/logs" className={styles.navBtn}>Логи</Link>

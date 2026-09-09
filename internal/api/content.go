@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"movies-api/db/models"
 	"movies-api/db/store"
+	"movies-api/internal/instancesync"
 	"movies-api/movies/tmdb"
 	"net"
 	"net/http"
@@ -21,7 +22,15 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// getPopularSourceURL prefers the instance-sync gateway (if this instance is
+// a client with the "Популярное" pull item on — see dev/instance-sync.md,
+// consolidates onto one URL instead of a separate standalone setting) and
+// falls back to the older standalone popular_source_url otherwise, so
+// existing setups keep working unchanged until they opt into sync.
 func getPopularSourceURL(ctx context.Context) string {
+	if gw := instancesync.PopularSourceURL(ctx); gw != "" {
+		return gw
+	}
 	v, _ := store.GetSetting(ctx, "popular_source_url")
 	return strings.TrimRight(v, "/")
 }

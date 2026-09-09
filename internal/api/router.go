@@ -243,6 +243,11 @@ func NewRouter(mode string) http.Handler {
 		r.Get("/", handleAPIAdminExternalSourcesGet)
 		r.Post("/{key}", handleAPIAdminExternalSourcesSet)
 	})
+	r.Route("/api/admin/sync", func(r chi.Router) {
+		r.Use(requireAnyAdmin(mode))
+		r.Get("/", handleAPIAdminSyncGet)
+		r.Post("/", handleAPIAdminSyncSave)
+	})
 
 	// ── TMDB missing cards (admin, both modes) ──────────────────────────────────
 	r.Route("/api/admin/tmdb-missing", func(r chi.Router) {

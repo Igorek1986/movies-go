@@ -112,6 +112,10 @@ func main() {
 	if mode == "all" {
 		tasks.Start(appCtx)
 	}
+	// Instance sync pull (dev/instance-sync.md) — оба режима: публичный
+	// parser-инстанс тоже может быть sync-клиентом/шлюзом. Сам цикл
+	// проверяет sync_role на каждый тик и не делает ничего, если не "client".
+	go tasks.StartInstanceSyncLoop(appCtx)
 
 	api.InitCategorySettings()
 	parser.OnComplete = api.InvalidateCategoryCache
