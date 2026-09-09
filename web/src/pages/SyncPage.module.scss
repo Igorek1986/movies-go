@@ -116,9 +116,15 @@
   gap: $spacing-sm;
 }
 
+// width (not flex-basis) so this sizes correctly both bare inside a
+// column-flex .field (spoke view) and as a row item in .tokenRow below
+// (hub view, alongside copy/generate buttons) — flex-basis inside a
+// column-flex parent applies to height, not width, and blew this up to
+// fill the whole card vertically when used bare.
 .tokenInput {
-  flex: 1 1 320px;
-  min-width: 0;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   height: 32px;
   padding: 0 $spacing-sm;
   border: 1px solid $color-border;
@@ -127,6 +133,12 @@
   color: $color-text;
   font-family: monospace;
   font-size: $font-size-sm;
+}
+
+.tokenRow .tokenInput {
+  flex: 1 1 240px;
+  width: auto;
+  min-width: 0;
 }
 
 .btnSm {
