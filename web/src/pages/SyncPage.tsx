@@ -175,8 +175,10 @@ export default function SyncPage() {
                       placeholder="токен не задан — push от спутников приниматься не будет"
                       onFocus={e => e.target.select()}
                     />
-                    {token && <button className={styles.btnSm} onClick={copyToken}>Копировать</button>}
-                    <button className={styles.btnSm} onClick={generateToken}>{token ? 'Перегенерировать' : 'Сгенерировать'}</button>
+                    <div className={styles.tokenButtons}>
+                      {token && <button className={styles.btnSm} onClick={copyToken}>Копировать</button>}
+                      <button className={styles.btnSm} onClick={generateToken}>{token ? 'Перегенерировать' : 'Сгенерировать'}</button>
+                    </div>
                   </div>
                 ) : (
                   <input

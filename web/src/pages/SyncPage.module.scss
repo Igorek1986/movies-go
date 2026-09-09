@@ -155,6 +155,16 @@
   min-width: 0;
 }
 
+// One flex item, not two — when the row doesn't have room for the input
+// plus both buttons, this wraps to its own line as a unit, keeping
+// "Копировать"/"Перегенерировать" together instead of one trailing the
+// input and the other dropping alone to a third line.
+.tokenButtons {
+  display: flex;
+  flex: 0 0 auto;
+  gap: $spacing-sm;
+}
+
 .btnSm {
   height: 28px;
   padding: 0 $spacing-sm;

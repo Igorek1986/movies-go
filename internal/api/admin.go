@@ -2634,8 +2634,10 @@ input[type=number]{flex:none}
     <label id="syncTokenLabel">Токен</label>
     <div class="row">
       <input type="text" id="syncToken" style="font-family:monospace">
-      <button class="btn btn-ghost" id="syncCopyBtn" onclick="syncCopyToken()" style="display:none">Копировать</button>
-      <button class="btn btn-ghost" id="syncGenBtn" onclick="syncGenToken()" style="display:none">Сгенерировать</button>
+      <div style="display:flex;gap:.5rem;flex:0 0 auto">
+        <button class="btn btn-ghost" id="syncCopyBtn" onclick="syncCopyToken()" style="display:none">Копировать</button>
+        <button class="btn btn-ghost" id="syncGenBtn" onclick="syncGenToken()" style="display:none">Сгенерировать</button>
+      </div>
     </div>
     <p id="syncHint" class="hint"></p>
     <div class="row">
