@@ -1537,10 +1537,10 @@ export default function CatalogPage() {
     // immediately, instead of a blank "Загрузка…" screen until its own
     // fetch resolves — see the preview read there. Prefer the already-
     // resolved local detail (see getCachedHeroDetail's comment) over the
-    // list item's own backdrop_path where available — for remote-sourced
-    // categories (np_popular via popular_source_url) that field can be a
-    // different TMDB backdrop than our own, which would otherwise flash
-    // from that preview to the real one the instant the card loads.
+    // list item's own backdrop_path where available — the detail fetch can
+    // still resolve to a different value in some cases, which would
+    // otherwise flash from that preview to the real one the instant the
+    // card loads.
     const cachedDetail = getCachedHeroDetail(cardId)
     navigate(`/card/${cardId}`, {
       state: { backUrl, preview: {

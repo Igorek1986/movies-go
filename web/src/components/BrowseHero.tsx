@@ -70,14 +70,10 @@ const _heroDetailCache = new Map<string, HeroDetail>()
 
 // Exposed so CatalogPage's handleCardClick can seed CardDetailPage's own
 // loading-preview from this already-resolved local detail instead of the
-// list item's own backdrop_path — for categories proxied from a configured
-// popular_source_url (np_popular and friends), that field is a genuinely
-// different TMDB backdrop pick than our local media_cards row (see
-// BrowseHero's rawBackdrop comment below), so using it as a preview just
-// swaps to the real one a moment later — the same flicker this cache
-// otherwise exists to avoid. Only helps once this card's detail has actually
-// been fetched (e.g. it was hero-focused before the click); harmless miss
-// otherwise, same as before this existed.
+// list item's own backdrop_path (see BrowseHero's rawBackdrop comment
+// below for why detail can differ from the list item). Only helps once
+// this card's detail has actually been fetched (e.g. it was hero-focused
+// before the click); harmless miss otherwise, same as before this existed.
 export function getCachedHeroDetail(cardId: string): HeroDetail | null {
   return _heroDetailCache.get(cardId) ?? null
 }
@@ -295,17 +291,10 @@ export function BrowseHero({ item, detail, onOpen }: {
   detail: HeroDetail | null
   onOpen: () => void
 }) {
-  // Prefer detail's backdrop_path once it's resolved — for locally-sourced
-  // categories it's the exact same value as item's own (media_cards is the
-  // only source either way), but categories proxied from a configured
-  // popular_source_url (see np_popular/getPopularSourceURL) carry that OTHER
-  // instance's own TMDB scrape, which can genuinely differ from ours for the
-  // same card (TMDB has multiple backdrop candidates; two independent
-  // scrapes can pick different ones) — CardDetailPage always shows our own
-  // local one, so keeping the remote item's version here forever would leave
-  // the hero permanently mismatched with the card the user then opens. Still
-  // shows item's own value immediately (detail is null at first) for instant
-  // display — this only takes over once detail has actually loaded.
+  // Prefer detail's backdrop_path once it's resolved — both come from the
+  // same local media_cards row, so this is normally a no-op swap, just
+  // authoritative once available. Still shows item's own value immediately
+  // (detail is null at first) for instant display.
   const rawBackdrop = detail?.backdrop_path || item?.backdrop_path
   const backdropSrc = item && rawBackdrop ? tmdbUrl(rawBackdrop, 'w1280') : null
   const bg = useCrossfadeBg(item, backdropSrc, detail !== null)

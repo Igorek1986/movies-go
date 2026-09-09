@@ -158,10 +158,9 @@ var SettingDefaults = map[string]string{
 	"myshows_api_url":  "https://myshows.me/v3/rpc/",
 	"myshows_auth_url": "https://myshows.me/api/session",
 	// Site
-	"base_url":           "",
-	"plugin_url":         "",
-	"donate_url":         "",
-	"popular_source_url": "",
+	"base_url":   "",
+	"plugin_url": "",
+	"donate_url": "",
 	// Instance sync (see dev/instance-sync.md, admin page /admin/sync) —
 	// one relationship, three settings, no separate on/off toggles:
 	// GET /api/sync/cards и /api/sync/events отданы всегда, как /np_popular

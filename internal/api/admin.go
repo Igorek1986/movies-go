@@ -97,8 +97,6 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	var tmdbRefreshedToday, tmdbNotFound int
 	var actorCount, directorCount int
 	var popularCards int
-	var popularSourceURL string
-	popularSourceCount := -1                                     // -1 = unknown/unreachable
 	imageCacheBytesVal, imageCacheFilesVal := imagecache.Stats() // in-memory counters, no disk scan
 
 	type newUser struct {
@@ -161,12 +159,11 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_not_found_at IS NOT NULL`).Scan(&tmdbNotFound) //nolint:errcheck
 	})
 	run(func() {
-		// actor/director/popular-source counts are cached (see catcache.go) —
-		// each is otherwise ~250-500ms (COUNT DISTINCT over ~1M rows, or a live
-		// HTTP round-trip) and none needs to be request-fresh: they only change
-		// when the catalog does, which is exactly when the cache gets refreshed.
-		actorCount, directorCount, popularSourceCount = cachedStatsCounts(ctx)
-		popularSourceURL = getPopularSourceURL(ctx)
+		// actor/director counts are cached (see catcache.go) — each is
+		// otherwise ~250-300ms (COUNT DISTINCT over ~1M rows) and neither
+		// needs to be request-fresh: they only change when the catalog does,
+		// which is exactly when the cache gets refreshed.
+		actorCount, directorCount = cachedStatsCounts(ctx)
 	})
 	run(func() {
 		popularDays := store.GetSettingInt(ctx, "popular_period_days")
@@ -244,8 +241,6 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"actor_count":          actorCount,
 		"director_count":       directorCount,
 		"popular_cards":        popularCards,
-		"popular_source_url":   popularSourceURL,
-		"popular_source_count": popularSourceCount,
 		"image_cache_bytes":    imageCacheBytesVal,
 		"image_cache_files":    imageCacheFilesVal,
 	})
@@ -2161,7 +2156,7 @@ var settingsGroupDefs = []struct {
 		"google_analytics_enabled", "google_analytics_id",
 	}},
 	{"Сайт", []string{
-		"base_url", "plugin_url", "donate_url", "popular_source_url",
+		"base_url", "plugin_url", "donate_url",
 	}},
 	{"Телеграм бот", []string{
 		"telegram_bot_token", "telegram_bot_name", "telegram_admin_ids", "telegram_use_polling",

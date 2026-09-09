@@ -289,7 +289,7 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := make([]cat, 0, len(pre)+len(genres)+len(post)+20)
-	if getPopularSourceURL(r.Context()) != "" || store.HasPopularData(r.Context(), 30) {
+	if store.HasPopularData(r.Context(), 30) {
 		result = append(result, cat{ID: "np_popular", Name: "Популярное"})
 	}
 	for _, id := range pre {

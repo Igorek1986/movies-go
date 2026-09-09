@@ -5,14 +5,12 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math/rand"
 	"movies-api/db/models"
 	"movies-api/db/store"
 	"movies-api/movies/tmdb"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,304 +19,17 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// getPopularSourceURL returns the configured live-proxy source for the
-// "Популярное" category (separate from, and independent of, instance sync —
-// see dev/instance-sync.md: this mirrors one specific instance's ranking
-// live/exactly, while instance sync's play-events pull accumulates real play
-// data from a peer into this instance's own table so its own ranking gets
-// more accurate over time; a personal instance can use either, both, or
-// neither).
-func getPopularSourceURL(ctx context.Context) string {
-	v, _ := store.GetSetting(ctx, "popular_source_url")
-	return strings.TrimRight(v, "/")
-}
-
-// proxyToPopularSource is like proxyToPopularSourcePath, but for the actual
-// card list (not /np_popular_daily's stats-only payload) it also swaps in
-// our own local poster_path/backdrop_path wherever we have a matching local
-// media_cards row — the remote instance runs its own independent TMDB
-// scrape, which can pick a different backdrop/poster for the same movie
-// than ours (TMDB offers several candidates per card). CardDetailPage always
-// shows our local value, so leaving the remote one in the list response just
-// means the hero/preview flashes from that image to the real one the moment
-// the card is focused/opened (see BrowseHero's rawBackdrop comment) — fixing
-// it here means every consumer of this list gets the consistent value from
-// the start, no client-side reconciliation needed.
-func proxyToPopularSource(w http.ResponseWriter, r *http.Request) {
-	target := getPopularSourceURL(r.Context()) + "/np_popular"
-	if r.URL.RawQuery != "" {
-		target += "?" + r.URL.RawQuery
-	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
-	if err != nil {
-		Error(w, http.StatusBadGateway, "popular source unavailable")
-		return
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		Error(w, http.StatusBadGateway, "popular source unavailable")
-		return
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	w.Header().Set("Content-Type", "application/json")
-	if err != nil || resp.StatusCode != http.StatusOK {
-		w.WriteHeader(resp.StatusCode)
-		w.Write(body) //nolint:errcheck
-		return
-	}
-
-	var payload map[string]json.RawMessage
-	if json.Unmarshal(body, &payload) != nil {
-		w.Write(body) //nolint:errcheck
-		return
-	}
-	var results []map[string]any
-	if json.Unmarshal(payload["results"], &results) == nil {
-		store.OverrideWithLocalCardData(r.Context(), results)
-		if b, err := json.Marshal(results); err == nil {
-			payload["results"] = b
-		}
-	}
-	if out, err := json.Marshal(payload); err == nil {
-		w.Write(out) //nolint:errcheck
-		return
-	}
-	w.Write(body) //nolint:errcheck
-}
-
-// npPopularWarmKey is the query string np.js sends for the default request
-// (page 1, default language) — the request every visitor's first "Популярное"
-// row on the home screen makes. It's the only combination worth pre-warming:
-// other combos (page 2+, hide_unrated, child_age) are too numerous to enumerate
-// and still pay their own cache-miss cost on first hit.
-const npPopularWarmKey = "/np_popular?page=1&language=ru"
-
-// WarmNPPopular proactively re-fetches the default np_popular request into
-// catCache. Unlike the rest of the category cache, np_popular's "recompute" is
-// a live HTTP round-trip to an external source (see proxyToPopularSource) —
-// often several hundred ms of pure network latency — so leaving it to the
-// normal lazy/stale-refresh path still means someone's first request after a
-// parser run pays that cost. Called after each parser run (InvalidateCategoryCache)
-// and once at startup.
-func WarmNPPopular() {
-	if getPopularSourceURL(context.Background()) == "" {
-		return
-	}
-	req := httptest.NewRequest(http.MethodGet, npPopularWarmKey, nil)
-	rec := httptest.NewRecorder()
-	proxyToPopularSource(rec, req)
-	if rec.Code == http.StatusOK && rec.Body.Len() > 0 {
-		setCached(req.URL.RequestURI(), cachedResp{ContentType: rec.Header().Get("Content-Type"), Body: rec.Body.Bytes()})
-	}
-}
-
-func proxyToPopularSourcePath(w http.ResponseWriter, r *http.Request, path string) {
-	target := getPopularSourceURL(r.Context()) + path
-	if r.URL.RawQuery != "" {
-		target += "?" + r.URL.RawQuery
-	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
-	if err != nil {
-		Error(w, http.StatusBadGateway, "popular source unavailable")
-		return
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		Error(w, http.StatusBadGateway, "popular source unavailable")
-		return
-	}
-	defer resp.Body.Close()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body) //nolint:errcheck
-}
-
-// handlePopularDaily serves per-day play dynamics for the popular section.
-// Mirrors np_popular: proxies to the configured source when set, else local.
+// handlePopularDaily serves per-day play dynamics for the popular section —
+// always computed locally from this instance's own media_play_events (see
+// dev/instance-sync.md for how that table gets enriched with peers' events
+// via instance sync's pull/push).
 func handlePopularDaily(w http.ResponseWriter, r *http.Request) {
-	if getPopularSourceURL(r.Context()) != "" {
-		proxyToPopularSourcePath(w, r, "/np_popular_daily")
-		return
-	}
 	ctx := r.Context()
 	days := store.GetSettingInt(ctx, "popular_period_days")
 	JSON(w, http.StatusOK, map[string]any{
 		"days":  days,
 		"daily": store.GetPopularDaily(ctx, days),
 	})
-}
-
-// popularSourceResp is the np_popular payload returned by another instance.
-type popularSourceResp struct {
-	Page         int               `json:"page"`
-	Results      []json.RawMessage `json:"results"`
-	TotalPages   int               `json:"total_pages"`
-	TotalResults int               `json:"total_results"`
-}
-
-// fetchPopularSource pulls one page of the configured external popular source.
-// When date (YYYY-MM-DD) is set, it is forwarded so the source restricts the
-// ranking to that day — older sources without date support simply ignore it.
-func fetchPopularSource(ctx context.Context, page, perPage int, date string) (*popularSourceResp, error) {
-	src := getPopularSourceURL(ctx)
-	if src == "" {
-		return nil, fmt.Errorf("popular source not configured")
-	}
-	url := fmt.Sprintf("%s/np_popular?page=%d&per_page=%d", src, page, perPage)
-	if date != "" {
-		url += "&date=" + date
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("popular source status %d", resp.StatusCode)
-	}
-	var out popularSourceResp
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-// popularSourcePerPage is the page size used against the external source for
-// both the admin popular-source list and its per-page follow-up fetches.
-const popularSourcePerPage = 100
-
-// handleAPIAdminPopularSource returns just the first page of the external
-// source's popular list (admin view) plus pagination metadata — the client
-// fetches the remaining pages itself via handleAPIAdminPopularSourcePage and
-// appends them progressively (lazy loading), so this responds in ~1 round-trip
-// instead of blocking on up to 50 sequential/concurrent page fetches.
-func handleAPIAdminPopularSource(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-
-	// Optional ?date=YYYY-MM-DD — restricts the ranking to a single day
-	// (daily-chart filter); malformed input is ignored.
-	date := r.URL.Query().Get("date")
-	if !validDate(date) {
-		date = ""
-	}
-
-	var first *popularSourceResp
-	var daily json.RawMessage
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		var err error
-		first, err = fetchPopularSource(ctx, 1, popularSourcePerPage, date)
-		if err != nil { // one retry — source can be briefly slow
-			first, _ = fetchPopularSource(ctx, 1, popularSourcePerPage, date)
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		daily = fetchPopularSourceDaily(ctx) // best-effort: older sources may not expose it
-	}()
-	wg.Wait()
-
-	if first == nil {
-		Error(w, http.StatusBadGateway, "popular source unavailable")
-		return
-	}
-	JSON(w, http.StatusOK, map[string]any{
-		"source_url":    getPopularSourceURL(r.Context()),
-		"results":       first.Results,
-		"total_results": first.TotalResults,
-		"total_pages":   min(first.TotalPages, 50),
-		"daily":         daily,
-	})
-}
-
-// handleAPIAdminPopularSourcePage returns a single page (2..50) of the
-// external source's popular list — the follow-up fetch for the lazy-loading
-// client described above.
-func handleAPIAdminPopularSourcePage(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 2 || page > 50 {
-		Error(w, http.StatusBadRequest, "page must be between 2 and 50")
-		return
-	}
-	date := r.URL.Query().Get("date")
-	if !validDate(date) {
-		date = ""
-	}
-
-	next, err := fetchPopularSource(ctx, page, popularSourcePerPage, date)
-	if err != nil {
-		Error(w, http.StatusBadGateway, "popular source unavailable")
-		return
-	}
-	JSON(w, http.StatusOK, map[string]any{"results": next.Results})
-}
-
-// fetchPopularSourceDaily pulls per-day dynamics from the source. Returns nil
-// on any error (endpoint missing on older sources) so the chart is optional.
-func fetchPopularSourceDaily(ctx context.Context) json.RawMessage {
-	src := getPopularSourceURL(ctx)
-	if src == "" {
-		return nil
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, src+"/np_popular_daily", nil)
-	if err != nil {
-		return nil
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil
-	}
-	var out struct {
-		Daily json.RawMessage `json:"daily"`
-	}
-	if json.NewDecoder(resp.Body).Decode(&out) != nil {
-		return nil
-	}
-	return out.Daily
-}
-
-// forwardPlayEvent mirrors this play event to the configured popular_source_url
-// live-proxy target, if any (a separate mechanism from instance sync — see
-// getPopularSourceURL). Instance sync's own play-event propagation runs
-// through internal/tasks/instance_sync.go instead (pull from a hub, or push
-// to one if this instance has no public address of its own).
-func forwardPlayEvent(cardID, uid string, pct int, durationSec float64) {
-	if src := getPopularSourceURL(context.Background()); src != "" {
-		postViewEvent(src, cardID, uid, pct, durationSec)
-	}
-}
-
-func postViewEvent(src, cardID, uid string, pct int, durationSec float64) {
-	url := fmt.Sprintf("%s/api/view?card_id=%s&uid=%s&percent=%d",
-		src,
-		cardID, uid, pct,
-	)
-	if durationSec > 0 {
-		url += fmt.Sprintf("&duration=%.0f", durationSec)
-	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, nil)
-	if err != nil {
-		return
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err == nil {
-		resp.Body.Close()
-	}
 }
 
 // proxySecretCache кэширует настройку trusted_proxy_secret на 60с: realIP
@@ -455,11 +166,7 @@ func handleCategory(w http.ResponseWriter, r *http.Request) {
 
 	// ── np_popular ────────────────────────────────────────────────────────────
 	if category == "np_popular" {
-		if getPopularSourceURL(r.Context()) != "" {
-			proxyToPopularSource(w, r)
-		} else {
-			handlePopular(w, r, page, perPage, searchQ)
-		}
+		handlePopular(w, r, page, perPage, searchQ)
 		return
 	}
 
@@ -971,7 +678,6 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 
 	if cardID != "" && uid != "" && pct >= 30 {
 		store.RecordPlayEvent(r.Context(), cardID, uid, pct)
-		go forwardPlayEvent(cardID, uid, pct, durationSec)
 	}
 	// Anonymous, no token needed — works in both modes, unlike the
 	// device-token-gated /timecode path (see internal/api/timecodes.go). Lets

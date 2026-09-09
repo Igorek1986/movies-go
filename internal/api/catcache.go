@@ -106,11 +106,6 @@ func InvalidateCategoryCache() {
 	// visit after a parser run doesn't pay the ~300ms+ aggregation cost itself
 	// (see WarmPopularPools).
 	go WarmPopularPools(context.Background())
-
-	// Eagerly rewarm the default np_popular request too (see WarmNPPopular) — it
-	// is a live round-trip to an external source, not a local query, so a cache
-	// miss on it costs whatever that source's network latency is.
-	go WarmNPPopular()
 }
 
 // ─── Watched-set cache (per device+profile) ──────────────────────────────────
@@ -858,19 +853,16 @@ func WarmPopularPools(ctx context.Context) {
 // actor_count/director_count (/api/admin/stats) are each a COUNT(DISTINCT ...)
 // over ~1M rows (media_card_cast/media_card_crew) — ~250-300ms apiece even with
 // an index on person_id, since a distinct count still has to walk every row.
-// popular_source_count is a live HTTP round-trip to the external source. None
-// of the three needs to be request-fresh: they only change when the catalog
-// changes (parser run / backfill) or the source is reconfigured. Cached and
-// warmed eagerly in the background right after InvalidateCategoryCache runs
-// (see refreshStatsCounts call there), so the admin never pays the recompute
-// cost on the next visit — same treatment as the popularPool cache above (see
-// WarmPopularPools).
+// Neither needs to be request-fresh: they only change when the catalog
+// changes (parser run / backfill). Cached and warmed eagerly in the
+// background right after InvalidateCategoryCache runs (see refreshStatsCounts
+// call there), so the admin never pays the recompute cost on the next visit —
+// same treatment as the popularPool cache above (see WarmPopularPools).
 
 type statsCounts struct {
-	actors        int
-	directors     int
-	popularSource int // -1 = unknown/unreachable
-	loaded        bool
+	actors    int
+	directors int
+	loaded    bool
 }
 
 var (
@@ -878,12 +870,12 @@ var (
 	statsCountsCache statsCounts
 )
 
-func cachedStatsCounts(ctx context.Context) (actors, directors, popularSource int) {
+func cachedStatsCounts(ctx context.Context) (actors, directors int) {
 	statsCountsMu.RLock()
 	if statsCountsCache.loaded {
 		c := statsCountsCache
 		statsCountsMu.RUnlock()
-		return c.actors, c.directors, c.popularSource
+		return c.actors, c.directors
 	}
 	statsCountsMu.RUnlock()
 
@@ -891,24 +883,15 @@ func cachedStatsCounts(ctx context.Context) (actors, directors, popularSource in
 
 	statsCountsMu.RLock()
 	defer statsCountsMu.RUnlock()
-	return statsCountsCache.actors, statsCountsCache.directors, statsCountsCache.popularSource
+	return statsCountsCache.actors, statsCountsCache.directors
 }
 
 func refreshStatsCounts(ctx context.Context) {
 	var actors, directors int
-	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_cast`).Scan(&actors)                                     //nolint:errcheck
+	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_cast`).Scan(&actors)                         //nolint:errcheck
 	postgres.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT person_id) FROM media_card_crew WHERE job='Director'`).Scan(&directors) //nolint:errcheck
 
-	popularSource := -1
-	if url := getPopularSourceURL(ctx); url != "" {
-		sctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-		if resp, err := fetchPopularSource(sctx, 1, 1, ""); err == nil {
-			popularSource = resp.TotalResults
-		}
-		cancel()
-	}
-
 	statsCountsMu.Lock()
-	statsCountsCache = statsCounts{actors: actors, directors: directors, popularSource: popularSource, loaded: true}
+	statsCountsCache = statsCounts{actors: actors, directors: directors, loaded: true}
 	statsCountsMu.Unlock()
 }

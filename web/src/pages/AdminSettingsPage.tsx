@@ -754,7 +754,6 @@ const PLACEHOLDERS: Record<string, string> = {
   base_url:           'https://yourdomain.com',
   plugin_url:         'https://yourdomain.com/np.js (пусто = base_url + /np.js)',
   donate_url:         'https://yourdomain.com/donate',
-  popular_source_url: 'https://yourdomain.com/popular',
   myshows_api_url: 'https://myshows.me/v3/rpc/',
   myshows_auth_url:'https://myshows.me/api/session',
   contact_email:   'admin@example.com',
@@ -822,7 +821,6 @@ const CHECKBOX_KEYS: Record<string, string> = {
 }
 
 const DESCRIPTIONS: Record<string, string> = {
-  popular_source_url: 'URL публичного парсера для категории «Популярное» и форвардинга play events. Если не задан — Популярное берётся из локальной БД.',
   catalog_show_no_torrent: 'Карточки без раздач появляются, когда пользователь находит фильм/сериал через поиск по TMDB (вне нашей базы) и ставит статус, либо когда сервер получает таймкод на непарсенный контент. В «Моё» и Истории они видны всегда — настройка влияет только на обычный Каталог/Подборки.',
   rutor_host:   'Домен трекера Rutor.info. Меняйте на зеркало, если основной домен заблокирован.',
   kinozal_host: 'Домен трекера Kinozal.tv. Меняйте на зеркало, если основной домен заблокирован.',
@@ -897,7 +895,6 @@ const LABELS: Record<string, string> = {
   base_url:                'Base URL сайта',
   plugin_url:              'Plugin URL (np.js)',
   donate_url:              'Donate URL',
-  popular_source_url:      'Popular Source URL',
   myshows_api_url:         'MyShows API URL',
   myshows_auth_url:        'MyShows Auth URL',
   tmdb_refresh_new_year_delta: 'Новые карточки — глубина (лет)',
@@ -971,7 +968,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'yandex_metrika_enabled', 'yandex_metrika_id',
     'google_analytics_enabled', 'google_analytics_id',
   ]},
-  { name: 'Сайт', keys: ['base_url', 'plugin_url', 'donate_url', 'popular_source_url'] },
+  { name: 'Сайт', keys: ['base_url', 'plugin_url', 'donate_url'] },
   { name: 'Юридические', keys: [
     'site_name', 'contact_email',
     'privacy_policy_content', 'consent_content',
