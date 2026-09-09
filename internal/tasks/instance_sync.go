@@ -21,7 +21,17 @@ var syncHTTPClient = &http.Client{Timeout: 20 * time.Second}
 // sync_interval_minutes. A no-op tick if sync_peer_url isn't set — a hub
 // (empty peer_url) has nothing to pull or push, it only serves (see
 // internal/api/sync_serve.go, always on, no toggle).
+//
+// Ticks once immediately on start, before the first wait — a freshly
+// configured spoke (or one restarting after the app was down) doesn't sit
+// idle for a full interval before its first real attempt. If the hub is
+// unreachable, this first tick just fails harmlessly (logged, nothing
+// applied) and the loop falls back to sync_interval_minutes' stored default
+// (15) for the retry, same as any other tick — no special-casing needed,
+// since a never-successful pull never overwrites that default (see
+// pullCards' interval-learning).
 func StartInstanceSyncLoop(ctx context.Context) {
+	runInstanceSyncTick(ctx)
 	for {
 		minutes := store.GetSettingInt(ctx, "sync_interval_minutes")
 		if minutes < 1 {
