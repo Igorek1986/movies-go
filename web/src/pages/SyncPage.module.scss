@@ -77,19 +77,33 @@
   color: $color-text-muted;
 }
 
+// Grid, not flex: with two fields side by side whose labels can wrap to a
+// different number of lines (URL's is long, Интервал's is short), flex gives
+// each field its own independent column height, so the two inputs land at
+// different y-offsets. Grid's default row-major auto-placement puts both
+// labels in row 1 and both inputs in row 2 (DOM order: label, label, input,
+// input), so the inputs always align on row 2's top regardless of how many
+// lines either label took.
 .fieldsRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $spacing-md;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: $spacing-md;
+  row-gap: 4px;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
 }
 
+// Standalone label+input block (Токен, or URL alone on the spoke view) —
+// deliberately no flex-grow/flex-basis: a value meant to size a row's
+// column width would instead size this block's HEIGHT when the block sits
+// bare inside .section's column-flex layout, stretching it to fill the
+// card (see the tokenInput comment below for the same trap).
 .field {
   display: flex;
   flex-direction: column;
   gap: 4px;
   font-size: $font-size-sm;
   color: $color-text-muted;
-  flex: 1 1 260px;
 }
 
 .input {

@@ -53,14 +53,16 @@ export default function SyncPage() {
   async function save() {
     setSaving(true)
     try {
+      // interval_minutes is spoke-managed automatically (learned from the
+      // hub on every pull, see pullCards) — only send it when this instance
+      // IS the hub (isHub), so a spoke's stale page state can't clobber a
+      // value the background sync loop has since moved on from.
+      const body: Record<string, unknown> = { peer_url: peerUrl, token }
+      if (isHub) body.interval_minutes = intervalMinutes
       const r = await fetch('/api/admin/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          peer_url: peerUrl,
-          token,
-          interval_minutes: intervalMinutes,
-        }),
+        body: JSON.stringify(body),
       })
       if (r.ok) {
         toast('Сохранено')
@@ -121,7 +123,30 @@ export default function SyncPage() {
             <div className={styles.section}>
               <h2 className={styles.sectionTitle}>{isHub ? 'Главный инстанс' : 'Спутник'}</h2>
 
-              <div className={styles.fieldsRow}>
+              {isHub ? (
+                // Grid, not two .field blocks: see fieldsRow's comment in the
+                // scss — DOM order (both labels, then both inputs) is what
+                // makes the two inputs land on the same row regardless of
+                // how many lines either label wraps to.
+                <div className={styles.fieldsRow}>
+                  <span>URL главного инстанса (пусто — этот инстанс и есть главный)</span>
+                  <span>Интервал (мин) — спутники подхватывают это значение сами</span>
+                  <input
+                    type="text"
+                    className={styles.input}
+                    placeholder="https://example.com"
+                    value={peerUrl}
+                    onChange={e => setPeerUrl(e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    className={styles.inputNarrow}
+                    value={intervalMinutes}
+                    onChange={e => setIntervalMinutes(Math.max(1, parseInt(e.target.value) || 15))}
+                  />
+                </div>
+              ) : (
                 <label className={styles.field}>
                   <span>URL главного инстанса (пусто — этот инстанс и есть главный)</span>
                   <input
@@ -132,19 +157,7 @@ export default function SyncPage() {
                     onChange={e => setPeerUrl(e.target.value)}
                   />
                 </label>
-                {!isHub && (
-                  <label className={styles.field}>
-                    <span>Интервал (мин)</span>
-                    <input
-                      type="number"
-                      min={1}
-                      className={styles.inputNarrow}
-                      value={intervalMinutes}
-                      onChange={e => setIntervalMinutes(Math.max(1, parseInt(e.target.value) || 15))}
-                    />
-                  </label>
-                )}
-              </div>
+              )}
 
               <div className={styles.field}>
                 <span>

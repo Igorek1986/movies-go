@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"net/http"
@@ -34,6 +35,19 @@ func parseSyncSinceLimit(r *http.Request) (since time.Time, limit int) {
 	return since, limit
 }
 
+// syncAdvertisedInterval returns this instance's own sync_interval_minutes —
+// meaningless to a hub's own tick loop (it never pulls/pushes with an empty
+// peer_url), so it exists purely to be advertised here: a spoke pulling from
+// this instance adopts it as its own interval (see pullCards), so the
+// interval only needs configuring in one place — the hub's admin page.
+func syncAdvertisedInterval(ctx context.Context) int {
+	interval := store.GetSettingInt(ctx, "sync_interval_minutes")
+	if interval < 1 {
+		interval = 15
+	}
+	return interval
+}
+
 // GET /api/sync/cards?since=<RFC3339>&limit=500
 func handleSyncCards(w http.ResponseWriter, r *http.Request) {
 	since, limit := parseSyncSinceLimit(r)
@@ -47,9 +61,10 @@ func handleSyncCards(w http.ResponseWriter, r *http.Request) {
 		nextSince = cards[len(cards)-1].UpdatedAt
 	}
 	JSON(w, http.StatusOK, map[string]any{
-		"cards":      cards,
-		"next_since": nextSince.UTC().Format(time.RFC3339Nano),
-		"has_more":   len(cards) == limit,
+		"cards":            cards,
+		"next_since":       nextSince.UTC().Format(time.RFC3339Nano),
+		"has_more":         len(cards) == limit,
+		"interval_minutes": syncAdvertisedInterval(r.Context()),
 	})
 }
 
@@ -66,9 +81,10 @@ func handleSyncEvents(w http.ResponseWriter, r *http.Request) {
 		nextSince = events[len(events)-1].UpdatedAt
 	}
 	JSON(w, http.StatusOK, map[string]any{
-		"events":     events,
-		"next_since": nextSince.UTC().Format(time.RFC3339Nano),
-		"has_more":   len(events) == limit,
+		"events":           events,
+		"next_since":       nextSince.UTC().Format(time.RFC3339Nano),
+		"has_more":         len(events) == limit,
+		"interval_minutes": syncAdvertisedInterval(r.Context()),
 	})
 }
 

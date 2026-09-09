@@ -2628,7 +2628,7 @@ input[type=number]{flex:none}
     <label>URL главного инстанса (пусто — этот инстанс и есть главный)
       <div class="row" style="margin-top:4px"><input type="text" id="syncPeerUrl" placeholder="https://example.com" oninput="syncRenderRole()"></div>
     </label>
-    <label id="syncIntervalWrap" style="display:none">Интервал (мин)
+    <label id="syncIntervalWrap" style="display:none">Интервал (мин) — спутники подхватывают это значение сами
       <div class="row" style="margin-top:4px"><input type="number" id="syncInterval" min="1" style="max-width:120px"></div>
     </label>
     <label id="syncTokenLabel">Токен</label>
@@ -3247,7 +3247,7 @@ function saveRouting(){
 function syncRenderRole(){
   var isHub=document.getElementById('syncPeerUrl').value.trim()==='';
   document.getElementById('syncTitle').textContent=isHub?'Синхронизация — главный инстанс':'Синхронизация — спутник';
-  document.getElementById('syncIntervalWrap').style.display=isHub?'none':'';
+  document.getElementById('syncIntervalWrap').style.display=isHub?'':'none';
   document.getElementById('syncTokenLabel').textContent=isHub
     ?'Токен — сгенерируйте и вставьте этот же токен во всех спутников'
     :'Токен — тот же, что сгенерирован на главном инстансе';
@@ -3273,11 +3273,15 @@ function setSyncStatus(msg,err){
   if(!err)setTimeout(function(){s.textContent=''},2000);
 }
 function saveSync(){
+  var isHub=document.getElementById('syncPeerUrl').value.trim()==='';
   var body={
     peer_url:document.getElementById('syncPeerUrl').value.trim(),
-    token:document.getElementById('syncToken').value.trim(),
-    interval_minutes:parseInt(document.getElementById('syncInterval').value,10)||15
+    token:document.getElementById('syncToken').value.trim()
   };
+  // interval_minutes is spoke-managed automatically (learned from the hub on
+  // every pull) — only send it as the hub, so a spoke's stale page state
+  // can't clobber a value the background sync loop has since moved on from.
+  if(isHub)body.interval_minutes=parseInt(document.getElementById('syncInterval').value,10)||15;
   fetch('/api/admin/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
     .then(function(r){if(!r.ok)throw new Error();setSyncStatus('Сохранено');loadSync();})
     .catch(function(){setSyncStatus('Ошибка сохранения',true);});

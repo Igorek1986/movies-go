@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -107,12 +108,22 @@ func pullCards(ctx context.Context, peer string) {
 	var applied, failed int
 	syncCursorPages(ctx, peer, "/api/sync/cards", "sync_cursor_cards", func(page json.RawMessage) (string, bool, error) {
 		var body struct {
-			Cards     []store.SyncCard `json:"cards"`
-			NextSince string           `json:"next_since"`
-			HasMore   bool             `json:"has_more"`
+			Cards           []store.SyncCard `json:"cards"`
+			NextSince       string           `json:"next_since"`
+			HasMore         bool             `json:"has_more"`
+			IntervalMinutes int              `json:"interval_minutes"`
 		}
 		if err := json.Unmarshal(page, &body); err != nil {
 			return "", false, err
+		}
+		// Adopt the hub's advertised interval as our own — the hub's copy of
+		// this setting is otherwise unused (its own tick loop never runs
+		// with an empty peer_url), so it's the one place this needs
+		// configuring; a spoke just follows along (see sync_serve.go).
+		if body.IntervalMinutes > 0 {
+			if cur := store.GetSettingInt(ctx, "sync_interval_minutes"); cur != body.IntervalMinutes {
+				store.SetSetting(ctx, "sync_interval_minutes", strconv.Itoa(body.IntervalMinutes))
+			}
 		}
 		for _, c := range body.Cards {
 			if err := store.UpsertSyncedCard(ctx, c); err != nil {
