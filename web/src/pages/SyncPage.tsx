@@ -3,19 +3,10 @@ import { Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import styles from './SyncPage.module.scss'
 
-interface SyncItem {
-  key: string
-  label: string
-  description: string
-  enabled: boolean
-}
-
 interface SyncData {
-  role: 'off' | 'gateway' | 'client'
-  gateway_url: string
+  peer_url: string
+  token: string
   interval_minutes: number
-  push: SyncItem[]
-  pull: SyncItem[]
 }
 
 interface Toast {
@@ -24,22 +15,16 @@ interface Toast {
   ok: boolean
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  off: 'Выключено',
-  gateway: 'Шлюз — принимает от клиентов',
-  client: 'Клиент — шлёт на шлюз и подтягивает с него',
-}
-
 export default function SyncPage() {
   const [data, setData] = useState<SyncData | null>(null)
-  const [role, setRole] = useState<SyncData['role']>('off')
-  const [gatewayUrl, setGatewayUrl] = useState('')
+  const [peerUrl, setPeerUrl] = useState('')
+  const [token, setToken] = useState('')
   const [intervalMinutes, setIntervalMinutes] = useState(15)
-  const [push, setPush] = useState<SyncItem[]>([])
-  const [pull, setPull] = useState<SyncItem[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
+
+  const isHub = peerUrl.trim() === ''
 
   function toast(text: string, ok = true) {
     const id = Date.now()
@@ -54,11 +39,9 @@ export default function SyncPage() {
       if (r.ok) {
         const d: SyncData = await r.json()
         setData(d)
-        setRole(d.role)
-        setGatewayUrl(d.gateway_url)
+        setPeerUrl(d.peer_url)
+        setToken(d.token)
         setIntervalMinutes(d.interval_minutes)
-        setPush(d.push)
-        setPull(d.pull)
       }
     } finally {
       setLoading(false)
@@ -70,16 +53,13 @@ export default function SyncPage() {
   async function save() {
     setSaving(true)
     try {
-      const items: Record<string, boolean> = {}
-      for (const it of [...push, ...pull]) items[it.key] = it.enabled
       const r = await fetch('/api/admin/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          role,
-          gateway_url: gatewayUrl,
+          peer_url: peerUrl,
+          token,
           interval_minutes: intervalMinutes,
-          items,
         }),
       })
       if (r.ok) {
@@ -94,15 +74,27 @@ export default function SyncPage() {
     }
   }
 
-  function toggleItem(list: SyncItem[], setList: (v: SyncItem[]) => void, key: string) {
-    setList(list.map(it => it.key === key ? { ...it, enabled: !it.enabled } : it))
+  async function generateToken() {
+    if (token && !confirm('Сгенерировать новый токен? Старый перестанет работать у всех спутников, которые его используют.')) return
+    const r = await fetch('/api/admin/sync/token', { method: 'POST' })
+    if (r.ok) {
+      const d = await r.json()
+      setToken(d.token)
+      setData(prev => prev ? { ...prev, token: d.token } : prev)
+      toast('Токен сгенерирован')
+    } else {
+      toast('Не удалось сгенерировать токен', false)
+    }
+  }
+
+  function copyToken() {
+    navigator.clipboard?.writeText(token).then(() => toast('Скопировано'), () => toast('Не удалось скопировать', false))
   }
 
   const dirty = data !== null && (
-    role !== data.role ||
-    gatewayUrl !== data.gateway_url ||
-    intervalMinutes !== data.interval_minutes ||
-    [...push, ...pull].some(it => it.enabled !== [...data.push, ...data.pull].find(d => d.key === it.key)?.enabled)
+    peerUrl !== data.peer_url ||
+    token !== data.token ||
+    intervalMinutes !== data.interval_minutes
   )
 
   return (
@@ -116,8 +108,10 @@ export default function SyncPage() {
         </div>
 
         <p className={styles.desc}>
-          Обмен данными с другим инстансом movies-go (роль «шлюз»/«клиент») — push своих просмотров и
-          pull того, чего нет локально. Подробности — <code>dev/instance-sync.md</code>.
+          Одно отношение — этот инстанс и один URL. Пустой URL — этот инстанс главный, к нему
+          обращаются остальные. Указан URL — этот инстанс спутник: сам забирает оттуда карточки и
+          play-события и сам же присылает туда свои (по токену). Читать данные (GET) можно всегда,
+          у кого угодно — это открытая, безопасная операция, как <code>/np_popular</code> сегодня.
         </p>
 
         {loading && <div className={styles.empty}>Загрузка…</div>}
@@ -125,30 +119,22 @@ export default function SyncPage() {
         {!loading && (
           <>
             <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>Роль</h2>
-              <div className={styles.roleRow}>
-                {(['off', 'gateway', 'client'] as const).map(r => (
-                  <label key={r} className={styles.roleOption}>
-                    <input type="radio" name="role" checked={role === r} onChange={() => setRole(r)} />
-                    <span>{ROLE_LABELS[r]}</span>
-                  </label>
-                ))}
-              </div>
+              <h2 className={styles.sectionTitle}>{isHub ? 'Главный инстанс' : 'Спутник'}</h2>
 
-              {role === 'client' && (
-                <div className={styles.fieldsRow}>
+              <div className={styles.fieldsRow}>
+                <label className={styles.field}>
+                  <span>URL главного инстанса (пусто — этот инстанс и есть главный)</span>
+                  <input
+                    type="text"
+                    className={styles.input}
+                    placeholder="https://example.com"
+                    value={peerUrl}
+                    onChange={e => setPeerUrl(e.target.value)}
+                  />
+                </label>
+                {!isHub && (
                   <label className={styles.field}>
-                    <span>URL шлюза</span>
-                    <input
-                      type="text"
-                      className={styles.input}
-                      placeholder="https://example.com"
-                      value={gatewayUrl}
-                      onChange={e => setGatewayUrl(e.target.value)}
-                    />
-                  </label>
-                  <label className={styles.field}>
-                    <span>Интервал pull (мин)</span>
+                    <span>Интервал (мин)</span>
                     <input
                       type="number"
                       min={1}
@@ -157,48 +143,51 @@ export default function SyncPage() {
                       onChange={e => setIntervalMinutes(Math.max(1, parseInt(e.target.value) || 15))}
                     />
                   </label>
-                </div>
+                )}
+              </div>
+
+              <div className={styles.field}>
+                <span>
+                  {isHub
+                    ? 'Токен — сгенерируйте и вставьте этот же токен во всех спутников'
+                    : 'Токен — тот же, что сгенерирован на главном инстансе'}
+                </span>
+                {isHub ? (
+                  <div className={styles.tokenRow}>
+                    <input
+                      className={styles.tokenInput}
+                      type="text"
+                      readOnly
+                      value={token}
+                      placeholder="токен не задан — push от спутников приниматься не будет"
+                      onFocus={e => e.target.select()}
+                    />
+                    {token && <button className={styles.btnSm} onClick={copyToken}>Копировать</button>}
+                    <button className={styles.btnSm} onClick={generateToken}>{token ? 'Перегенерировать' : 'Сгенерировать'}</button>
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    className={styles.tokenInput}
+                    placeholder="токен, сгенерированный на главном инстансе"
+                    value={token}
+                    onChange={e => setToken(e.target.value)}
+                  />
+                )}
+              </div>
+
+              {isHub && (
+                <p className={styles.hint}>
+                  Без токена GET по-прежнему открыт — карточки и события отдаются всем на чтение.
+                  Токен нужен только чтобы принимать push от спутников без своего домена.
+                </p>
               )}
-            </div>
-
-            <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>Push — что отправляем на шлюз</h2>
-              {role !== 'client' && <p className={styles.hint}>Действует только при роли «клиент».</p>}
-              <div className={styles.itemList}>
-                {push.map(it => (
-                  <label key={it.key} className={styles.itemRow}>
-                    <input
-                      type="checkbox"
-                      checked={it.enabled}
-                      onChange={() => toggleItem(push, setPush, it.key)}
-                    />
-                    <div className={styles.itemBody}>
-                      <span className={styles.itemLabel}>{it.label}</span>
-                      <span className={styles.itemDesc}>{it.description}</span>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>Pull — что подтягиваем с шлюза</h2>
-              {role !== 'client' && <p className={styles.hint}>Действует только при роли «клиент».</p>}
-              <div className={styles.itemList}>
-                {pull.map(it => (
-                  <label key={it.key} className={styles.itemRow}>
-                    <input
-                      type="checkbox"
-                      checked={it.enabled}
-                      onChange={() => toggleItem(pull, setPull, it.key)}
-                    />
-                    <div className={styles.itemBody}>
-                      <span className={styles.itemLabel}>{it.label}</span>
-                      <span className={styles.itemDesc}>{it.description}</span>
-                    </div>
-                  </label>
-                ))}
-              </div>
+              {!isHub && !token && (
+                <p className={styles.hint}>
+                  Без токена этот инстанс всё равно будет забирать карточки и события с главного —
+                  просто не сможет присылать туда свои (если он сам недостижим снаружи).
+                </p>
+              )}
             </div>
 
             <div className={styles.saveRow}>

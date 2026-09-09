@@ -71,7 +71,7 @@ func GetMediaCardEpInfo(ctx context.Context, cardID string) *MediaCardEpInfo {
 // SetMyshowsID persists the myshows_id for a media card.
 func SetMyshowsID(ctx context.Context, cardID string, myshowsID int) error {
 	_, err := postgres.Pool.Exec(ctx,
-		`UPDATE media_cards SET myshows_id = $1 WHERE card_id = $2`, myshowsID, cardID)
+		`UPDATE media_cards SET myshows_id = $1, updated_at = now() WHERE card_id = $2`, myshowsID, cardID)
 	return err
 }
 

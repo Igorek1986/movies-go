@@ -339,11 +339,14 @@ CREATE TABLE IF NOT EXISTS media_play_events (
     ident       VARCHAR(100) NOT NULL,
     date        DATE         NOT NULL DEFAULT CURRENT_DATE,
     max_percent SMALLINT     NOT NULL DEFAULT 0, -- deepest watch progress (%) that day
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(), -- cursor for GET /api/sync/events
     PRIMARY KEY (card_id, ident, date)
 );
 
 CREATE INDEX IF NOT EXISTS idx_play_events_date ON media_play_events (date);
 ALTER TABLE media_play_events ADD COLUMN IF NOT EXISTS max_percent SMALLINT NOT NULL DEFAULT 0;
+ALTER TABLE media_play_events ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE INDEX IF NOT EXISTS idx_play_events_updated_at ON media_play_events (updated_at);
 
 -- ─── Migrations: add columns to existing tables ───────────────────────────────
 -- These are safe to run on any existing DB (IF NOT EXISTS is idempotent).

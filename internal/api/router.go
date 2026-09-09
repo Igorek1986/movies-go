@@ -76,6 +76,10 @@ func NewRouter(mode string) http.Handler {
 		r.Get("/media-card/{card_id}/similar", handleMediaCardSimilar)
 		r.Get("/media-card/{card_id}/recommendations", handleMediaCardSimilar)
 		r.Post("/view", handleView)
+		r.Get("/sync/cards", handleSyncCards)
+		r.Post("/sync/cards", handleSyncCardsPush)
+		r.Get("/sync/events", handleSyncEvents)
+		r.Post("/sync/events", handleSyncEventsPush)
 
 		if mode == "all" {
 			r.With(optionalSession).Get("/episodes", handleEpisodes)
@@ -247,6 +251,7 @@ func NewRouter(mode string) http.Handler {
 		r.Use(requireAnyAdmin(mode))
 		r.Get("/", handleAPIAdminSyncGet)
 		r.Post("/", handleAPIAdminSyncSave)
+		r.Post("/token", handleAPIAdminSyncRotateToken)
 	})
 
 	// ── TMDB missing cards (admin, both modes) ──────────────────────────────────

@@ -2626,6 +2626,28 @@ input[type=number]{flex:none}
       <span id="rtStatus" style="font-size:.82rem;color:#4a90e2"></span>
     </div>
   </section>
+
+  <section>
+    <h2 id="syncTitle">Синхронизация</h2>
+    <p style="font-size:.82rem;color:#888;margin:0">Одно отношение — этот инстанс и один URL. Пустой URL — этот инстанс главный, к нему обращаются остальные. Указан URL — этот инстанс спутник: сам забирает оттуда карточки и play-события и сам же присылает туда свои (по токену). Читать данные (GET) можно всегда, у кого угодно — как /np_popular.</p>
+    <label>URL главного инстанса (пусто — этот инстанс и есть главный)
+      <div class="row" style="margin-top:4px"><input type="text" id="syncPeerUrl" placeholder="https://example.com" oninput="syncRenderRole()"></div>
+    </label>
+    <label id="syncIntervalWrap" style="display:none">Интервал (мин)
+      <div class="row" style="margin-top:4px"><input type="number" id="syncInterval" min="1" style="max-width:120px"></div>
+    </label>
+    <label id="syncTokenLabel">Токен</label>
+    <div class="row">
+      <input type="text" id="syncToken" style="font-family:monospace">
+      <button class="btn btn-ghost" id="syncCopyBtn" onclick="syncCopyToken()" style="display:none">Копировать</button>
+      <button class="btn btn-ghost" id="syncGenBtn" onclick="syncGenToken()" style="display:none">Сгенерировать</button>
+    </div>
+    <p id="syncHint" class="hint"></p>
+    <div class="row">
+      <button class="btn btn-primary" onclick="saveSync()">Сохранить</button>
+      <span id="syncStatus" style="font-size:.82rem;color:#4a90e2"></span>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -3226,6 +3248,60 @@ function saveRouting(){
     .then(function(r){if(!r.ok)throw new Error();setRtStatus('Сохранено');})
     .catch(function(){setRtStatus('Ошибка',true);});
 }
+
+function syncRenderRole(){
+  var isHub=document.getElementById('syncPeerUrl').value.trim()==='';
+  document.getElementById('syncTitle').textContent=isHub?'Синхронизация — главный инстанс':'Синхронизация — спутник';
+  document.getElementById('syncIntervalWrap').style.display=isHub?'none':'';
+  document.getElementById('syncTokenLabel').textContent=isHub
+    ?'Токен — сгенерируйте и вставьте этот же токен во всех спутников'
+    :'Токен — тот же, что сгенерирован на главном инстансе';
+  document.getElementById('syncToken').readOnly=isHub;
+  document.getElementById('syncCopyBtn').style.display=(isHub&&document.getElementById('syncToken').value)?'':'none';
+  document.getElementById('syncGenBtn').style.display=isHub?'':'none';
+  document.getElementById('syncHint').textContent=isHub
+    ?'Без токена GET по-прежнему открыт — карточки и события отдаются всем на чтение. Токен нужен только чтобы принимать push от спутников без своего домена.'
+    :'Без токена этот инстанс всё равно будет забирать карточки и события с главного — просто не сможет присылать туда свои.';
+}
+function loadSync(){
+  fetch('/api/admin/sync').then(function(r){return r.json();}).then(function(d){
+    document.getElementById('syncPeerUrl').value=d.peer_url||'';
+    document.getElementById('syncToken').value=d.token||'';
+    document.getElementById('syncInterval').value=d.interval_minutes||15;
+    syncRenderRole();
+  }).catch(function(){setSyncStatus('Ошибка загрузки',true);});
+}
+function setSyncStatus(msg,err){
+  var s=document.getElementById('syncStatus');
+  s.style.color=err?'#e74c3c':'#4a90e2';
+  s.textContent=msg;
+  if(!err)setTimeout(function(){s.textContent=''},2000);
+}
+function saveSync(){
+  var body={
+    peer_url:document.getElementById('syncPeerUrl').value.trim(),
+    token:document.getElementById('syncToken').value.trim(),
+    interval_minutes:parseInt(document.getElementById('syncInterval').value,10)||15
+  };
+  fetch('/api/admin/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){if(!r.ok)throw new Error();setSyncStatus('Сохранено');loadSync();})
+    .catch(function(){setSyncStatus('Ошибка сохранения',true);});
+}
+function syncGenToken(){
+  var cur=document.getElementById('syncToken').value;
+  if(cur&&!confirm('Сгенерировать новый токен? Старый перестанет работать у всех спутников.'))return;
+  fetch('/api/admin/sync/token',{method:'POST'}).then(function(r){return r.json();}).then(function(d){
+    document.getElementById('syncToken').value=d.token;
+    syncRenderRole();
+    setSyncStatus('Токен сгенерирован — не забудьте сохранить и разослать его спутникам');
+  }).catch(function(){setSyncStatus('Ошибка генерации',true);});
+}
+function syncCopyToken(){
+  var v=document.getElementById('syncToken').value;
+  if(!v)return;
+  navigator.clipboard.writeText(v).then(function(){setSyncStatus('Скопировано');},function(){setSyncStatus('Не удалось скопировать',true);});
+}
+loadSync();
 
 loadProxies();
 </script>

@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"movies-api/db/models"
 	"movies-api/db/store"
-	"movies-api/internal/instancesync"
 	"movies-api/movies/tmdb"
 	"net"
 	"net/http"
@@ -22,15 +21,14 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// getPopularSourceURL prefers the instance-sync gateway (if this instance is
-// a client with the "Популярное" pull item on — see dev/instance-sync.md,
-// consolidates onto one URL instead of a separate standalone setting) and
-// falls back to the older standalone popular_source_url otherwise, so
-// existing setups keep working unchanged until they opt into sync.
+// getPopularSourceURL returns the configured live-proxy source for the
+// "Популярное" category (separate from, and independent of, instance sync —
+// see dev/instance-sync.md: this mirrors one specific instance's ranking
+// live/exactly, while instance sync's play-events pull accumulates real play
+// data from a peer into this instance's own table so its own ranking gets
+// more accurate over time; a personal instance can use either, both, or
+// neither).
 func getPopularSourceURL(ctx context.Context) string {
-	if gw := instancesync.PopularSourceURL(ctx); gw != "" {
-		return gw
-	}
 	v, _ := store.GetSetting(ctx, "popular_source_url")
 	return strings.TrimRight(v, "/")
 }
@@ -294,32 +292,15 @@ func fetchPopularSourceDaily(ctx context.Context) json.RawMessage {
 	return out.Daily
 }
 
+// forwardPlayEvent mirrors this play event to the configured popular_source_url
+// live-proxy target, if any (a separate mechanism from instance sync — see
+// getPopularSourceURL). Instance sync's own play-event propagation runs
+// through internal/tasks/instance_sync.go instead (pull from a hub, or push
+// to one if this instance has no public address of its own).
 func forwardPlayEvent(cardID, uid string, pct int, durationSec float64) {
-	dst := map[string]bool{} // dedup — popular_source_url and sync_gateway_url may point at the same place
 	if src := getPopularSourceURL(context.Background()); src != "" {
-		dst[src] = true
-	}
-	if gw := syncPushTarget(context.Background()); gw != "" {
-		dst[gw] = true
-	}
-	for src := range dst {
 		postViewEvent(src, cardID, uid, pct, durationSec)
 	}
-}
-
-// syncPushTarget returns the instance-sync gateway URL to push play events to,
-// or "" if this instance isn't a sync client, push is disabled, or no gateway
-// is configured (see dev/instance-sync.md — "Push" is independent of "Pull").
-func syncPushTarget(ctx context.Context) string {
-	role, _ := store.GetSetting(ctx, "sync_role")
-	if role != "client" {
-		return ""
-	}
-	if v, _ := store.GetSetting(ctx, "sync_push_enabled"); v != "1" {
-		return ""
-	}
-	gw, _ := store.GetSetting(ctx, "sync_gateway_url")
-	return strings.TrimRight(gw, "/")
 }
 
 func postViewEvent(src, cardID, uid string, pct int, durationSec float64) {

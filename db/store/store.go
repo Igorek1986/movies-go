@@ -185,7 +185,7 @@ func UpdateQuality(cardID string, quality int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	postgres.Pool.Exec(ctx, //nolint:errcheck
-		`UPDATE media_cards SET best_video_quality = GREATEST(best_video_quality, $2)
+		`UPDATE media_cards SET best_video_quality = GREATEST(best_video_quality, $2), updated_at = now()
 		 WHERE card_id = $1 AND best_video_quality < $2`,
 		cardID, quality,
 	)

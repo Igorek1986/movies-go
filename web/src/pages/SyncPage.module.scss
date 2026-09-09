@@ -77,22 +77,6 @@
   color: $color-text-muted;
 }
 
-// ── Role ─────────────────────────────────────────────────────────────────────
-
-.roleRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $spacing-md;
-}
-
-.roleOption {
-  display: flex;
-  align-items: center;
-  gap: $spacing-xs;
-  cursor: pointer;
-  font-size: $font-size-sm;
-}
-
 .fieldsRow {
   display: flex;
   flex-wrap: wrap;
@@ -123,49 +107,41 @@
   max-width: 120px;
 }
 
-// ── Push/pull item list ────────────────────────────────────────────────────
+// ── Token row (serve/peer secret) ───────────────────────────────────────────
 
-.itemList {
+.tokenRow {
   display: flex;
-  flex-direction: column;
-  gap: $spacing-md;
-}
-
-.itemRow {
-  display: flex;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
   gap: $spacing-sm;
-  cursor: pointer;
-  padding-bottom: $spacing-md;
-  border-bottom: 1px solid $color-border;
-
-  &:last-child {
-    padding-bottom: 0;
-    border-bottom: none;
-  }
-
-  input[type='checkbox'] {
-    margin-top: 3px;
-    flex: 0 0 auto;
-  }
 }
 
-.itemBody {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.itemLabel {
-  font-weight: 600;
+.tokenInput {
+  flex: 1 1 320px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: $color-bg-input;
   color: $color-text;
+  font-family: monospace;
   font-size: $font-size-sm;
 }
 
-.itemDesc {
+.btnSm {
+  height: 28px;
+  padding: 0 $spacing-sm;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  background: transparent;
   color: $color-text-muted;
-  font-size: $font-size-sm;
-  line-height: 1.4;
+  font-size: $font-size-xs;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover { border-color: $color-primary; color: $color-primary; }
 }
 
 // ── Save ─────────────────────────────────────────────────────────────────────

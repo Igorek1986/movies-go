@@ -163,19 +163,19 @@ var SettingDefaults = map[string]string{
 	"donate_url":         "",
 	"popular_source_url": "",
 	// Instance sync (see dev/instance-sync.md, admin page /admin/sync) —
-	// "off"/"gateway"/"client". A client pushes its own play events (with
-	// player-reported duration) to sync_gateway_url and can pull fields it's
-	// missing locally from there (see internal/instancesync). A gateway just
-	// accepts what clients push — no extra config of its own. Pull items
-	// default off except runtime — opt in per item once a gateway is set.
-	"sync_role":             "off",
-	"sync_gateway_url":      "",
+	// one relationship, three settings, no separate on/off toggles:
+	// GET /api/sync/cards и /api/sync/events отданы всегда, как /np_popular
+	// (read-only, безопасно). sync_peer_url пуст → этот инстанс главный
+	// (сюда стучатся остальные); задан → этот инстанс спутник этого URL и
+	// автоматически и пуллит (GET, без токена), и пушит (POST, с токеном)
+	// туда — без отдельных переключателей "что именно". sync_token — один
+	// и тот же секрет с обеих сторон отношения: у главного — генерируется
+	// и требуется от входящих push; у спутника — та же строка, вставленная
+	// с главного, шлётся при push. Пуст = push никуда не идёт и не
+	// принимается — безопасный дефолт (никто не пушит просто так).
+	"sync_peer_url":         "",
+	"sync_token":            "",
 	"sync_interval_minutes": "15",
-	"sync_push_enabled":     "1",
-	"sync_pull_runtime":     "1",
-	"sync_pull_ids":         "0",
-	"sync_pull_quality":     "0",
-	"sync_pull_popular":     "0",
 	// Parser trackers — override for mirror domains when the primary is blocked
 	"rutor_host":   "",
 	"kinozal_host": "",

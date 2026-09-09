@@ -1,0 +1,47 @@
+name: movies-go-instance3
+
+services:
+  db3:
+    image: postgres:16-alpine
+    container_name: movies-api-db3
+    restart: unless-stopped
+    command: postgres -c jit=off
+    environment:
+      POSTGRES_USER: movies_api
+      POSTGRES_PASSWORD: movies_api
+      POSTGRES_DB: movies_api
+    volumes:
+      - pg_data3:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U movies_api -d movies_api"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app3:
+    build: .
+    container_name: movies-api-3
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - DATABASE_URL=postgres://movies_api:movies_api@db3:5432/movies_api?sslmode=disable
+      - PORT=8888
+    ports:
+      - "8890:8888"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./plugins:/app/plugins
+      - logs_data3:/app/logs
+      - cache_data3:/app/cache
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      db3:
+        condition: service_healthy
+
+volumes:
+  pg_data3:
+  logs_data3:
+  cache_data3:
