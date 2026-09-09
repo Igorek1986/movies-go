@@ -93,17 +93,29 @@ func scanSyncCard(rows pgx.Rows) (SyncCard, error) {
 	return c, err
 }
 
-// ListCardsSince returns up to limit media_cards rows with updated_at strictly
-// after since, ordered by updated_at ascending. Used both to serve GET
-// /api/sync/cards (always open, no gate — see internal/api/sync_serve.go)
+// ListCardsSince returns up to limit media_cards rows ordered by
+// (updated_at, card_id) strictly after (since, sinceTie). Used both to serve
+// GET /api/sync/cards (always open, no gate — see internal/api/sync_serve.go)
 // and, locally, to find rows this instance still needs to push to a peer
 // (internal/tasks/instance_sync.go).
-func ListCardsSince(ctx context.Context, since time.Time, limit int) ([]SyncCard, error) {
+//
+// card_id is a required tiebreaker, not cosmetic: a plain "updated_at >
+// since" cursor silently drops rows once more than one page's worth of rows
+// share the exact same updated_at — which happens for real, not just in
+// theory, whenever a migration backfills a new/changed column with
+// DEFAULT now() across every existing row in one statement (Postgres
+// evaluates now() once per statement, so thousands of rows land on the
+// identical timestamp). The next page's "> since" then excludes every row
+// still sitting on that boundary value, since none of them is strictly
+// greater — pagination looks like it "finished" while most of the table
+// was never actually returned. card_id (the primary key) breaks that tie.
+func ListCardsSince(ctx context.Context, since time.Time, sinceTie string, limit int) ([]SyncCard, error) {
 	rows, err := postgres.Pool.Query(ctx,
 		`SELECT `+syncCardColumns+`
-		 FROM media_cards WHERE updated_at > $1
-		 ORDER BY updated_at ASC LIMIT $2`,
-		since, limit,
+		 FROM media_cards
+		 WHERE updated_at > $1 OR (updated_at = $1 AND card_id > $2)
+		 ORDER BY updated_at ASC, card_id ASC LIMIT $3`,
+		since, sinceTie, limit,
 	)
 	if err != nil {
 		return nil, err
@@ -213,14 +225,19 @@ type SyncEvent struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// ListPlayEventsSince returns up to limit media_play_events rows with
-// updated_at strictly after since, ordered by updated_at ascending.
-func ListPlayEventsSince(ctx context.Context, since time.Time, limit int) ([]SyncEvent, error) {
+// ListPlayEventsSince returns up to limit media_play_events rows ordered by
+// (updated_at, card_id|ident|date) strictly after (since, sinceTie) — see
+// ListCardsSince's comment for why the tiebreak is load-bearing, not
+// cosmetic (media_play_events.updated_at is exactly the column that hit
+// this in practice: added by a migration with DEFAULT now(), so every
+// pre-existing row shares one timestamp).
+func ListPlayEventsSince(ctx context.Context, since time.Time, sinceTie string, limit int) ([]SyncEvent, error) {
 	rows, err := postgres.Pool.Query(ctx,
 		`SELECT card_id, ident, date::text, max_percent, updated_at
-		 FROM media_play_events WHERE updated_at > $1
-		 ORDER BY updated_at ASC LIMIT $2`,
-		since, limit,
+		 FROM media_play_events
+		 WHERE updated_at > $1 OR (updated_at = $1 AND (card_id || '|' || ident || '|' || date::text) > $2)
+		 ORDER BY updated_at ASC, (card_id || '|' || ident || '|' || date::text) ASC LIMIT $3`,
+		since, sinceTie, limit,
 	)
 	if err != nil {
 		return nil, err

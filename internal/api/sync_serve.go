@@ -24,15 +24,21 @@ import (
 const syncPageDefaultLimit = 500
 const syncPageMaxLimit = 2000
 
-func parseSyncSinceLimit(r *http.Request) (since time.Time, limit int) {
+// parseSyncSinceLimit reads the incremental-pull cursor: since (timestamp)
+// plus sinceTie, the tiebreaker needed when multiple rows share the exact
+// same updated_at (see ListCardsSince's comment) — without it, pagination
+// silently drops every row past the first page that lands on a shared
+// boundary timestamp.
+func parseSyncSinceLimit(r *http.Request) (since time.Time, sinceTie string, limit int) {
 	if s := r.URL.Query().Get("since"); s != "" {
 		since, _ = time.Parse(time.RFC3339, s)
 	}
+	sinceTie = r.URL.Query().Get("since_tie")
 	limit = syncPageDefaultLimit
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= syncPageMaxLimit {
 		limit = l
 	}
-	return since, limit
+	return since, sinceTie, limit
 }
 
 // syncAdvertisedInterval returns this instance's own sync_interval_minutes —
@@ -48,41 +54,45 @@ func syncAdvertisedInterval(ctx context.Context) int {
 	return interval
 }
 
-// GET /api/sync/cards?since=<RFC3339>&limit=500
+// GET /api/sync/cards?since=<RFC3339>&since_tie=<card_id>&limit=500
 func handleSyncCards(w http.ResponseWriter, r *http.Request) {
-	since, limit := parseSyncSinceLimit(r)
-	cards, err := store.ListCardsSince(r.Context(), since, limit)
+	since, sinceTie, limit := parseSyncSinceLimit(r)
+	cards, err := store.ListCardsSince(r.Context(), since, sinceTie, limit)
 	if err != nil {
 		Error(w, http.StatusInternalServerError, "query failed")
 		return
 	}
-	nextSince := since
+	nextSince, nextTie := since, sinceTie
 	if len(cards) > 0 {
-		nextSince = cards[len(cards)-1].UpdatedAt
+		last := cards[len(cards)-1]
+		nextSince, nextTie = last.UpdatedAt, last.CardID
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"cards":            cards,
 		"next_since":       nextSince.UTC().Format(time.RFC3339Nano),
+		"next_tie":         nextTie,
 		"has_more":         len(cards) == limit,
 		"interval_minutes": syncAdvertisedInterval(r.Context()),
 	})
 }
 
-// GET /api/sync/events?since=<RFC3339>&limit=500
+// GET /api/sync/events?since=<RFC3339>&since_tie=<card_id|ident|date>&limit=500
 func handleSyncEvents(w http.ResponseWriter, r *http.Request) {
-	since, limit := parseSyncSinceLimit(r)
-	events, err := store.ListPlayEventsSince(r.Context(), since, limit)
+	since, sinceTie, limit := parseSyncSinceLimit(r)
+	events, err := store.ListPlayEventsSince(r.Context(), since, sinceTie, limit)
 	if err != nil {
 		Error(w, http.StatusInternalServerError, "query failed")
 		return
 	}
-	nextSince := since
+	nextSince, nextTie := since, sinceTie
 	if len(events) > 0 {
-		nextSince = events[len(events)-1].UpdatedAt
+		last := events[len(events)-1]
+		nextSince, nextTie = last.UpdatedAt, last.CardID+"|"+last.Ident+"|"+last.Date
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"events":           events,
 		"next_since":       nextSince.UTC().Format(time.RFC3339Nano),
+		"next_tie":         nextTie,
 		"has_more":         len(events) == limit,
 		"interval_minutes": syncAdvertisedInterval(r.Context()),
 	})

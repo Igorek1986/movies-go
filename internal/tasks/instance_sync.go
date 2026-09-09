@@ -67,16 +67,23 @@ func runInstanceSyncTick(ctx context.Context) {
 }
 
 // syncCursorPages drives one dataset's incremental pull: repeatedly GETs
-// peer+path?since=cursor&limit=..., applying each page via apply, advancing
-// and persisting the cursor to settingKey only after a page's rows were all
-// successfully written locally. Persisting after (not before) the write is
-// what gives this natural resilience to a mid-page network/write failure —
-// the next tick just retries the same page (see JacRed's lastsync pattern,
-// dev/instance-sync.md).
-func syncCursorPages(ctx context.Context, peer, path, settingKey string, apply func(page json.RawMessage) (nextSince string, hasMore bool, err error)) {
+// peer+path?since=cursor&since_tie=tie&limit=..., applying each page via
+// apply, advancing and persisting the cursor (settingKey + settingKey+"_tie")
+// only after a page's rows were all successfully written locally.
+// Persisting after (not before) the write is what gives this natural
+// resilience to a mid-page network/write failure — the next tick just
+// retries the same page (see JacRed's lastsync pattern, dev/instance-sync.md).
+//
+// The tie half of the cursor is load-bearing, not an extra nicety — see
+// ListCardsSince's comment in db/store/sync.go for why a bare timestamp
+// cursor silently drops rows once more than a page's worth share the exact
+// same updated_at (a migration backfilling a new column with DEFAULT now()
+// does exactly this to every pre-existing row at once).
+func syncCursorPages(ctx context.Context, peer, path, settingKey string, apply func(page json.RawMessage) (nextSince, nextTie string, hasMore bool, err error)) {
 	since, _ := store.GetSetting(ctx, settingKey)
+	sinceTie, _ := store.GetSetting(ctx, settingKey+"_tie")
 	for {
-		u := peer + path + "?since=" + url.QueryEscape(since) + "&limit=500"
+		u := peer + path + "?since=" + url.QueryEscape(since) + "&since_tie=" + url.QueryEscape(sinceTie) + "&limit=500"
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 		if err != nil {
 			log.Printf("tasks: instance_sync %s: build request: %v", path, err)
@@ -93,16 +100,17 @@ func syncCursorPages(ctx context.Context, peer, path, settingKey string, apply f
 			return
 		}
 
-		nextSince, hasMore, err := apply(body)
+		nextSince, nextTie, hasMore, err := apply(body)
 		if err != nil {
 			log.Printf("tasks: instance_sync %s: apply page: %v", path, err)
 			return
 		}
-		if nextSince == "" || nextSince == since {
-			return // empty page — caught up
+		if nextSince == since && nextTie == sinceTie {
+			return // no progress — caught up
 		}
-		since = nextSince
+		since, sinceTie = nextSince, nextTie
 		store.SetSetting(ctx, settingKey, since)
+		store.SetSetting(ctx, settingKey+"_tie", sinceTie)
 		if !hasMore {
 			return
 		}
@@ -116,15 +124,16 @@ func readAndClose(resp *http.Response) (json.RawMessage, error) {
 
 func pullCards(ctx context.Context, peer string) {
 	var applied, failed int
-	syncCursorPages(ctx, peer, "/api/sync/cards", "sync_cursor_cards", func(page json.RawMessage) (string, bool, error) {
+	syncCursorPages(ctx, peer, "/api/sync/cards", "sync_cursor_cards", func(page json.RawMessage) (string, string, bool, error) {
 		var body struct {
 			Cards           []store.SyncCard `json:"cards"`
 			NextSince       string           `json:"next_since"`
+			NextTie         string           `json:"next_tie"`
 			HasMore         bool             `json:"has_more"`
 			IntervalMinutes int              `json:"interval_minutes"`
 		}
 		if err := json.Unmarshal(page, &body); err != nil {
-			return "", false, err
+			return "", "", false, err
 		}
 		// Adopt the hub's advertised interval as our own — the hub's copy of
 		// this setting is otherwise unused (its own tick loop never runs
@@ -143,23 +152,25 @@ func pullCards(ctx context.Context, peer string) {
 			}
 			applied++
 		}
-		return body.NextSince, body.HasMore, nil
+		return body.NextSince, body.NextTie, body.HasMore, nil
 	})
 	if applied > 0 || failed > 0 {
 		log.Printf("tasks: instance_sync pull cards from %s: applied %d, failed %d", peer, applied, failed)
 	}
 }
 
-// syncPushPages drives one dataset's push: repeatedly reads local rows newer
-// than the persisted cursor (via list), POSTs them under wrapKey to
-// peer+path with the given token, and advances+persists the cursor to
-// settingKey only after a batch is accepted — same after-not-before
-// resilience as syncCursorPages, mirrored for the outbound direction. T must
-// carry its own UpdatedAt (store.SyncCard / store.SyncEvent both do); updatedAt
-// extracts it since Go generics can't reach a common field across two
-// unrelated structs.
-func syncPushPages[T any](ctx context.Context, peer, token, path, wrapKey, settingKey string, list func(ctx context.Context, since time.Time, limit int) ([]T, error), updatedAt func(T) time.Time) {
+// syncPushPages drives one dataset's push: repeatedly reads local rows above
+// the persisted cursor (via list, the same tie-aware compound cursor as
+// syncCursorPages — see ListCardsSince's comment for why the tie half is
+// required, not optional), POSTs them under wrapKey to peer+path with the
+// given token, and advances+persists the cursor (settingKey + settingKey+
+// "_tie") only after a batch is accepted — same after-not-before resilience
+// as syncCursorPages, mirrored for the outbound direction. tieOf extracts
+// each item's own tiebreak value since Go generics can't reach a common
+// field/method across two unrelated structs.
+func syncPushPages[T any](ctx context.Context, peer, token, path, wrapKey, settingKey string, list func(ctx context.Context, since time.Time, sinceTie string, limit int) ([]T, error), updatedAt func(T) time.Time, tieOf func(T) string) {
 	since, _ := store.GetSetting(ctx, settingKey)
+	sinceTie, _ := store.GetSetting(ctx, settingKey+"_tie")
 	var sinceTime time.Time
 	if since != "" {
 		sinceTime, _ = time.Parse(time.RFC3339Nano, since)
@@ -167,7 +178,7 @@ func syncPushPages[T any](ctx context.Context, peer, token, path, wrapKey, setti
 
 	var applied, failed int
 	for {
-		items, err := list(ctx, sinceTime, 500)
+		items, err := list(ctx, sinceTime, sinceTie, 500)
 		if err != nil {
 			log.Printf("tasks: instance_sync push %s: query: %v", path, err)
 			break
@@ -203,9 +214,11 @@ func syncPushPages[T any](ctx context.Context, peer, token, path, wrapKey, setti
 		applied += result.Applied
 		failed += result.Failed
 
-		sinceTime = updatedAt(items[len(items)-1])
+		last := items[len(items)-1]
+		sinceTime, sinceTie = updatedAt(last), tieOf(last)
 		since = sinceTime.UTC().Format(time.RFC3339Nano)
 		store.SetSetting(ctx, settingKey, since)
+		store.SetSetting(ctx, settingKey+"_tie", sinceTie)
 
 		if len(items) < 500 {
 			break
@@ -222,7 +235,7 @@ func syncPushPages[T any](ctx context.Context, peer, token, path, wrapKey, setti
 // reaches a peer that would otherwise never learn it exists.
 func pushCards(ctx context.Context, peer, token string) {
 	syncPushPages(ctx, peer, token, "/api/sync/cards", "cards", "sync_push_cursor_cards",
-		store.ListCardsSince, func(c store.SyncCard) time.Time { return c.UpdatedAt })
+		store.ListCardsSince, func(c store.SyncCard) time.Time { return c.UpdatedAt }, func(c store.SyncCard) string { return c.CardID })
 }
 
 // pushEvents sends local play-events this instance hasn't pushed yet — the
@@ -230,19 +243,21 @@ func pushCards(ctx context.Context, peer, token string) {
 // own (see instance_sync.go doc comment and sync_serve.go).
 func pushEvents(ctx context.Context, peer, token string) {
 	syncPushPages(ctx, peer, token, "/api/sync/events", "events", "sync_push_cursor_events",
-		store.ListPlayEventsSince, func(e store.SyncEvent) time.Time { return e.UpdatedAt })
+		store.ListPlayEventsSince, func(e store.SyncEvent) time.Time { return e.UpdatedAt },
+		func(e store.SyncEvent) string { return e.CardID + "|" + e.Ident + "|" + e.Date })
 }
 
 func pullEvents(ctx context.Context, peer string) {
 	var applied, failed int
-	syncCursorPages(ctx, peer, "/api/sync/events", "sync_cursor_events", func(page json.RawMessage) (string, bool, error) {
+	syncCursorPages(ctx, peer, "/api/sync/events", "sync_cursor_events", func(page json.RawMessage) (string, string, bool, error) {
 		var body struct {
 			Events    []store.SyncEvent `json:"events"`
 			NextSince string            `json:"next_since"`
+			NextTie   string            `json:"next_tie"`
 			HasMore   bool              `json:"has_more"`
 		}
 		if err := json.Unmarshal(page, &body); err != nil {
-			return "", false, err
+			return "", "", false, err
 		}
 		for _, e := range body.Events {
 			if err := store.UpsertSyncedPlayEvent(ctx, e); err != nil {
@@ -252,7 +267,7 @@ func pullEvents(ctx context.Context, peer string) {
 			}
 			applied++
 		}
-		return body.NextSince, body.HasMore, nil
+		return body.NextSince, body.NextTie, body.HasMore, nil
 	})
 	if applied > 0 || failed > 0 {
 		log.Printf("tasks: instance_sync pull events from %s: applied %d, failed %d", peer, applied, failed)
