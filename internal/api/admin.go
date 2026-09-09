@@ -2562,6 +2562,12 @@ input[type=number]{flex:none}
   </section>
 
   <section>
+    <h2>Внешние источники runtime</h2>
+    <p style="font-size:.82rem;color:#888;margin:0">Фолбэки для «Обновить runtime», когда у TMDB нет данных. Ключи хранятся отдельно от остальных настроек и не попадают в бэкап (см. scripts/backup.sh).</p>
+    <div id="extSourceList" style="margin-top:.5rem"><span class="empty">Загрузка…</span></div>
+  </section>
+
+  <section>
     <h2>Популярное — коэффициенты</h2>
     <p style="font-size:.82rem;color:#888;margin:0">Множитель к числу зрителей при ранжировании (1.0 = без поправки). Сериал набирает зрителей быстрее фильма — коэффициент &lt;1 уравновешивает это.</p>
     <div style="display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem">
@@ -3303,6 +3309,61 @@ function syncCopyToken(){
   navigator.clipboard.writeText(v).then(function(){setSyncStatus('Скопировано');},function(){setSyncStatus('Не удалось скопировать',true);});
 }
 loadSync();
+
+var EXT_SOURCE_INFO={
+  tvmaze:{label:'TVmaze',hint:'Сериалы, полностью бесплатно, ключ не нужен',noToken:true},
+  thetvdb:{label:'TheTVDB',hint:'Фильмы и сериалы, нужен API-ключ'},
+  poiskkino:{label:'poiskkino.dev',hint:'Кинопоиск + TMDB + IMDb, нужен ключ, лимит 200 запросов/сутки'},
+  kinopoisk_unofficial:{label:'Kinopoisk Api Unofficial',hint:'Только фильмы, нужен ключ, лимит 500 запросов/сутки'},
+  myshows:{label:'MyShows',hint:'Фильмы и сериалы',noToken:true}
+};
+var extDrafts={};
+function escAttr(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function loadExtSources(){
+  fetch('/api/admin/external-sources').then(function(r){return r.json();}).then(function(d){
+    renderExtSources(d.sources||[]);
+  }).catch(function(){
+    document.getElementById('extSourceList').innerHTML='<span class="empty">Ошибка загрузки</span>';
+  });
+}
+function renderExtSources(sources){
+  var el=document.getElementById('extSourceList');
+  if(!sources.length){el.innerHTML='<span class="empty">Список пуст</span>';return;}
+  el.innerHTML=sources.map(function(src){
+    var info=EXT_SOURCE_INFO[src.key]||{label:src.key,hint:''};
+    var draft=extDrafts[src.key];
+    var val=draft!==undefined?draft:src.token;
+    var tokenHtml='';
+    if(!info.noToken){
+      tokenHtml='<div class="row" style="margin-top:.4rem">'+
+        '<input type="text" value="'+escAttr(val)+'" placeholder="ключ не задан" '+
+          'oninput="extDrafts[\''+src.key+'\']=this.value" autocomplete="off">'+
+        '<button class="btn btn-ghost" onclick="saveExtToken(\''+src.key+'\')">Сохранить</button>'+
+      '</div>';
+    }
+    return '<div style="padding:.6rem 0;border-bottom:1px solid #2a2a2a">'+
+      '<label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">'+
+        '<input type="checkbox" '+(src.enabled?'checked':'')+' onchange="toggleExtSource(\''+src.key+'\',this.checked)">'+
+        '<b>'+escAttr(info.label)+'</b>'+
+      '</label>'+
+      '<div class="hint" style="margin-top:2px">'+escAttr(info.hint)+'</div>'+
+      tokenHtml+
+    '</div>';
+  }).join('');
+}
+function toggleExtSource(key,enabled){
+  fetch('/api/admin/external-sources/'+key,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:enabled})})
+    .then(function(){loadExtSources();});
+}
+function saveExtToken(key){
+  var token=extDrafts[key];
+  if(token===undefined)return;
+  fetch('/api/admin/external-sources/'+key,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token})})
+    .then(function(){delete extDrafts[key];loadExtSources();});
+}
+loadExtSources();
 
 loadProxies();
 </script>
