@@ -32,3 +32,6 @@ cards-dump.sql.gz
 full-backup.sql.gz
 plugins/
 .claude/
+
+# Local multi-instance sync test rigs (see dev/instance-sync.md) — not for other deployments
+docker-compose.instance*.yml
