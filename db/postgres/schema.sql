@@ -205,14 +205,7 @@ CREATE TABLE IF NOT EXISTS media_cards (
     certification_us     VARCHAR(10),
     kinopoisk_id         BIGINT,
     myshows_id           INT,
-    myshows_show_id      INT,
-    myshows_status       VARCHAR(100),
-    myshows_total_episodes INT,
-    myshows_network      VARCHAR(200),
-    myshows_next_air_date VARCHAR(20),
-    myshows_updated_at   TIMESTAMPTZ,
     genres               JSONB,
-    production_countries JSONB,
     keywords             JSONB,
     number_of_seasons    INT,
     number_of_episodes   INT,
@@ -328,10 +321,6 @@ CREATE TABLE IF NOT EXISTS stats_api_users (
     ip       VARCHAR(50) NOT NULL,
     date     VARCHAR(10) NOT NULL,
     requests INT         NOT NULL DEFAULT 1,
-    country  VARCHAR(100),
-    city     VARCHAR(100),
-    region   VARCHAR(100),
-    flag_emoji VARCHAR(10),
     CONSTRAINT uq_api_ip_date UNIQUE (ip, date)
 );
 
@@ -359,13 +348,6 @@ ALTER TABLE media_play_events ADD COLUMN IF NOT EXISTS max_percent SMALLINT NOT 
 -- ─── Migrations: add columns to existing tables ───────────────────────────────
 -- These are safe to run on any existing DB (IF NOT EXISTS is idempotent).
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS certification_us       VARCHAR(10);
-ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_show_id        INT;
-ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_status         VARCHAR(100);
-ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_total_episodes INT;
-ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_network        VARCHAR(200);
-ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_next_air_date  VARCHAR(20);
-ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS myshows_updated_at     TIMESTAMPTZ;
-ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS production_countries   JSONB;
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS keywords               JSONB;
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS year                   INT;
 ALTER TABLE media_cards ADD COLUMN IF NOT EXISTS created_at             TIMESTAMPTZ NOT NULL DEFAULT now();
@@ -658,3 +640,45 @@ VALUES ('myshows', true)
 ON CONFLICT (source_key) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_web_extensions_user_id ON web_extensions (user_id);
+
+-- Migration: drop dead columns — audited 2026-09 by grepping every .go/.ts/
+-- .tsx/.js/.scss/.sql file in the repo for each column's *literal* name
+-- (snake_case as it appears in SQL query strings — PascalCase/camelCase
+-- guessing turned out to false-negative on short/generic names, e.g.
+-- myshows_status collided with the unrelated MyshowsStatusItem/
+-- handleMyshowsStatusGet identifiers from the watch-status cache feature);
+-- confirmed 0 literal references AND verified empty on both production DBs
+-- (70k+ media_cards rows, 100% NULL for every one below):
+--   media_cards.myshows_show_id/myshows_status/myshows_network/
+--     myshows_total_episodes/myshows_next_air_date/myshows_updated_at —
+--     added alongside myshows_id for a richer MyShows integration that was
+--     never built; only myshows_id is actually used (internal/myshows/*.go).
+--   media_cards.production_countries — parsed from TMDB into the Go struct
+--     (db/models/tmdb.go) but never persisted to this column.
+--   stats_api_users.country/city/region/flag_emoji — GeoIP-by-IP lookup that
+--     existed in the original Python/FastAPI backend (app/stats.py) and was
+--     never reimplemented after the Go rewrite; only ip/date/requests are
+--     used (db/store/stats.go).
+-- NOT dropped despite looking similarly unused — verify before ever touching:
+--   media_cards.next_ep_air_date — looked dead by the same heuristic, but IS
+--     read by two SELECTs (refresh_episodes.go, episodes.go) and gates a
+--     branch in myshows.go:299 — just never written, so that branch always
+--     takes the empty path. Dropping the column without also editing those
+--     three call sites breaks the SELECTs outright ("column does not
+--     exist"). Left in place; see MEMORY (project) for the full story.
+-- Kept deliberately (populated via DEFAULT now(), just never read — cheap to
+-- keep for future debugging/admin use, unlike the above which are fully
+-- inert): trusted_devices.last_used_at (table currently has zero rows on
+-- both prods, so "unused" isn't proven — may just be an unexercised
+-- feature), telegram_users.linked_at, push_notified_episodes.notified_at.
+ALTER TABLE media_cards     DROP COLUMN IF EXISTS myshows_show_id;
+ALTER TABLE media_cards     DROP COLUMN IF EXISTS myshows_status;
+ALTER TABLE media_cards     DROP COLUMN IF EXISTS myshows_network;
+ALTER TABLE media_cards     DROP COLUMN IF EXISTS myshows_total_episodes;
+ALTER TABLE media_cards     DROP COLUMN IF EXISTS myshows_next_air_date;
+ALTER TABLE media_cards     DROP COLUMN IF EXISTS myshows_updated_at;
+ALTER TABLE media_cards     DROP COLUMN IF EXISTS production_countries;
+ALTER TABLE stats_api_users DROP COLUMN IF EXISTS country;
+ALTER TABLE stats_api_users DROP COLUMN IF EXISTS city;
+ALTER TABLE stats_api_users DROP COLUMN IF EXISTS region;
+ALTER TABLE stats_api_users DROP COLUMN IF EXISTS flag_emoji;
