@@ -137,8 +137,21 @@ func ListCardsSince(ctx context.Context, since time.Time, sinceTie string, limit
 // best_video_quality/latest_torrent_date take the max (not a promise this
 // instance can hand out the file, just a "seen somewhere" witness — see
 // dev/instance-sync.md). tmdb_updated_at/tmdb_not_found_at are never touched
-// by sync. updated_at is refreshed to now() so this instance can re-serve the
-// row to its own peers (transitive propagation).
+// by sync.
+//
+// updated_at takes GREATEST(local, incoming) — NOT now(). Stamping it "now"
+// was tried first and caused an actual production incident: pulling a card
+// bumped its local updated_at to the moment of the pull, which immediately
+// made that same card look "freshly changed" to this instance's OWN push
+// cursor, so it got pushed straight back to the peer it just came from; the
+// peer's own pull-apply then bumped its copy the same way, which made it
+// look new to this instance's next pull — full-catalog retransmission every
+// single tick, forever, instead of a one-time sync. GREATEST breaks the
+// loop: re-applying a row with a timestamp that's <= what's already stored
+// leaves updated_at untouched, so it stops looking "new" to any cursor
+// (push or serve) the moment both sides agree on it — while a genuinely
+// newer incoming value (a real change) still advances it, so transitive
+// re-serving to a third peer keeps working exactly as before.
 //
 // runtime/episode_run_time are deliberately left out of this statement's SET
 // list (untouched on conflict) — a peer's reported runtime isn't just
@@ -160,7 +173,7 @@ func UpsertSyncedCard(ctx context.Context, c SyncCard) error {
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
 			NULLIF($9,'')::date, NULLIF($10,'')::date, NULLIF($11,'')::date,
 			$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,
-			$28,$29,$30,$31,$32,$33,NULLIF($34,'')::timestamptz,$35,now(),now())
+			$28,$29,$30,$31,$32,$33,NULLIF($34,'')::timestamptz,$35,$36,now())
 		ON CONFLICT (card_id) DO UPDATE SET
 			title              = COALESCE(NULLIF(media_cards.title, ''), EXCLUDED.title),
 			original_title     = COALESCE(NULLIF(media_cards.original_title, ''), EXCLUDED.original_title),
@@ -188,14 +201,14 @@ func UpsertSyncedCard(ctx context.Context, c SyncCard) error {
 			best_video_quality = GREATEST(media_cards.best_video_quality, EXCLUDED.best_video_quality),
 			latest_torrent_date = GREATEST(media_cards.latest_torrent_date, EXCLUDED.latest_torrent_date),
 			year               = COALESCE(NULLIF(media_cards.year,0), EXCLUDED.year),
-			updated_at         = now()`,
+			updated_at         = GREATEST(media_cards.updated_at, EXCLUDED.updated_at)`,
 		c.CardID, c.TmdbID, c.MediaType, c.Title, c.OriginalTitle, c.Overview,
 		c.PosterPath, c.BackdropPath, c.ReleaseDate, c.FirstAirDate, c.LastAirDate,
 		c.VoteAverage, c.VoteCount, c.OriginalLanguage, c.Adult, c.Runtime, c.EpisodeRunTime,
 		c.Status, c.ImdbID, c.CertificationRU, c.CertificationUS, c.AgeRating,
 		nilRaw(c.Genres), nilRaw(c.Keywords), c.NumberOfSeasons, c.NumberOfEpisodes, nilRaw(c.Seasons),
 		c.LastEpSeason, c.LastEpNumber, c.MyshowsID, c.KinopoiskID, c.Category,
-		c.BestVideoQuality, c.LatestTorrentDate, c.Year,
+		c.BestVideoQuality, c.LatestTorrentDate, c.Year, c.UpdatedAt,
 	)
 	if err != nil {
 		return err
@@ -259,14 +272,18 @@ func ListPlayEventsSince(ctx context.Context, since time.Time, sinceTie string, 
 // the card doesn't exist locally yet (FK violation) — it'll apply cleanly
 // once the card itself arrives via card sync or the local parser; a play
 // event for a card we don't carry isn't useful to rank anyway.
+//
+// updated_at takes GREATEST(local, incoming), not now() — same reasoning as
+// UpsertSyncedCard's doc comment: now() here caused the exact same
+// full-catalog echo loop between two peers that both push and pull.
 func UpsertSyncedPlayEvent(ctx context.Context, e SyncEvent) error {
 	_, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO media_play_events (card_id, ident, date, max_percent, updated_at)
-		VALUES ($1, $2, $3::date, $4, now())
+		VALUES ($1, $2, $3::date, $4, $5)
 		ON CONFLICT (card_id, ident, date) DO UPDATE SET
 			max_percent = GREATEST(media_play_events.max_percent, EXCLUDED.max_percent),
-			updated_at  = now()`,
-		e.CardID, e.Ident, e.Date, e.MaxPercent,
+			updated_at  = GREATEST(media_play_events.updated_at, EXCLUDED.updated_at)`,
+		e.CardID, e.Ident, e.Date, e.MaxPercent, e.UpdatedAt,
 	)
 	if isFKViolation(err) {
 		return nil
