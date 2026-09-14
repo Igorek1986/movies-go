@@ -15,6 +15,10 @@ const (
 	sessionTTL        = 30 * 24 * time.Hour
 )
 
+// SessionTTL is exported so callers can re-set the session cookie's Expires
+// with the same value used for the server-side sliding-window extension.
+const SessionTTL = sessionTTL
+
 func GenerateKey() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

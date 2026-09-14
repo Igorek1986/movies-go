@@ -10,6 +10,7 @@ import (
 	"movies-api/internal/proxy"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func countBackupCodes(codes *string) int {
@@ -39,6 +40,9 @@ func requireSession(next http.Handler) http.Handler {
 			Error(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
+		// GetSessionUser продлил expires_at в БД (sliding window) — переотправляем
+		// куку, иначе браузер сам удалит её через 30 дней от исходного логина.
+		auth.SetSessionCookie(w, key, time.Now().Add(auth.SessionTTL))
 		ctx := context.WithValue(r.Context(), ctxKeyUser{}, user)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -81,6 +85,7 @@ func optionalSession(next http.Handler) http.Handler {
 			if user := auth.GetSessionUser(r.Context(), key); user != nil {
 				// Персонализированный ответ — не кэшировать на прокси.
 				w.Header().Set("Cache-Control", "no-store")
+				auth.SetSessionCookie(w, key, time.Now().Add(auth.SessionTTL))
 				ctx := context.WithValue(r.Context(), ctxKeyUser{}, user)
 				r = r.WithContext(ctx)
 			}
