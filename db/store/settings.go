@@ -175,6 +175,13 @@ var SettingDefaults = map[string]string{
 	"sync_peer_url":         "",
 	"sync_token":            "",
 	"sync_interval_minutes": "15",
+	// instance_name — how this instance identifies itself to peers (advertised
+	// in GET /api/sync/* responses and POST push bodies) and how sync_activity_log
+	// labels "who" a pull/push was with. Empty by default — GetInstanceName
+	// (db/store/sync.go) generates and persists a friendly random one on first
+	// use rather than a static default here, so two fresh instances don't
+	// collide on the same name before anyone's renamed them.
+	"instance_name": "",
 	// Parser trackers — override for mirror domains when the primary is blocked
 	"rutor_host":   "",
 	"kinozal_host": "",

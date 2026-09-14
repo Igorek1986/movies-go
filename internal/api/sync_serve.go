@@ -73,6 +73,7 @@ func handleSyncCards(w http.ResponseWriter, r *http.Request) {
 		"next_tie":         nextTie,
 		"has_more":         len(cards) == limit,
 		"interval_minutes": syncAdvertisedInterval(r.Context()),
+		"instance_name":    store.GetInstanceName(r.Context()),
 	})
 }
 
@@ -95,6 +96,7 @@ func handleSyncEvents(w http.ResponseWriter, r *http.Request) {
 		"next_tie":         nextTie,
 		"has_more":         len(events) == limit,
 		"interval_minutes": syncAdvertisedInterval(r.Context()),
+		"instance_name":    store.GetInstanceName(r.Context()),
 	})
 }
 
@@ -117,6 +119,7 @@ func handleSyncEpisodeRuntimes(w http.ResponseWriter, r *http.Request) {
 		"next_tie":         nextTie,
 		"has_more":         len(items) == limit,
 		"interval_minutes": syncAdvertisedInterval(r.Context()),
+		"instance_name":    store.GetInstanceName(r.Context()),
 	})
 }
 
@@ -146,7 +149,8 @@ func handleSyncCardsPush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Cards []store.SyncCard `json:"cards"`
+		InstanceName string           `json:"instance_name"`
+		Cards        []store.SyncCard `json:"cards"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		Error(w, http.StatusBadRequest, "bad request")
@@ -164,6 +168,9 @@ func handleSyncCardsPush(w http.ResponseWriter, r *http.Request) {
 		}
 		applied++
 	}
+	if applied > 0 || failed > 0 {
+		store.LogSyncActivity(r.Context(), "push_in", "cards", body.InstanceName, "", applied, failed)
+	}
 	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed})
 }
 
@@ -175,6 +182,7 @@ func handleSyncEpisodeRuntimesPush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
+		InstanceName    string                     `json:"instance_name"`
 		EpisodeRuntimes []store.SyncEpisodeRuntime `json:"episode_runtimes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -193,6 +201,9 @@ func handleSyncEpisodeRuntimesPush(w http.ResponseWriter, r *http.Request) {
 		}
 		applied++
 	}
+	if applied > 0 || failed > 0 {
+		store.LogSyncActivity(r.Context(), "push_in", "episode_runtimes", body.InstanceName, "", applied, failed)
+	}
 	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed})
 }
 
@@ -204,7 +215,8 @@ func handleSyncEventsPush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Events []store.SyncEvent `json:"events"`
+		InstanceName string            `json:"instance_name"`
+		Events       []store.SyncEvent `json:"events"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		Error(w, http.StatusBadRequest, "bad request")
@@ -221,6 +233,9 @@ func handleSyncEventsPush(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		applied++
+	}
+	if applied > 0 || failed > 0 {
+		store.LogSyncActivity(r.Context(), "push_in", "events", body.InstanceName, "", applied, failed)
 	}
 	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed})
 }

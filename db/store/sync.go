@@ -3,6 +3,10 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"math/rand"
+	"os"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -350,6 +354,161 @@ func ListEpisodeRuntimesSince(ctx context.Context, since time.Time, sinceTie str
 func UpsertSyncedEpisodeRuntime(ctx context.Context, e SyncEpisodeRuntime) error {
 	MaybeUpdateEpisodeRuntimeFromPlayer(e.TmdbShowID, int(e.Season), int(e.Episode), float64(e.DurationSec))
 	return nil
+}
+
+// ─── Instance identity ──────────────────────────────────────────────────────
+
+var instanceNameAdjectives = []string{
+	"тихий", "быстрый", "северный", "южный", "старый", "новый", "дальний",
+	"ясный", "туманный", "золотой", "серебряный", "ночной",
+}
+var instanceNameNouns = []string{
+	"маяк", "вокзал", "причал", "мост", "порт", "форпост", "узел", "хаб",
+	"остров", "перекрёсток", "терминал", "аванпост",
+}
+
+// dockerContainerID matches a bare Docker-assigned hostname (12 lowercase
+// hex chars) — the default inside a container with no explicit `hostname:`
+// in docker-compose.yml (true for this project today). Not worth using as a
+// self-identifying name: meaningless to a human, AND unstable — it's a new
+// random value every container recreation, unlike a real hostname or this
+// function's own word-based fallback (both stay put across rebuilds once
+// persisted to instance_name).
+var dockerContainerID = regexp.MustCompile(`^[0-9a-f]{12}$`)
+
+// GetInstanceName returns this instance's self-identification — advertised
+// to peers (GET /api/sync/* responses, POST push bodies) and used to label
+// "who" in sync_activity_log. Generates and persists a name on first call if
+// unset (no static default in SettingDefaults, so two fresh instances don't
+// collide before anyone renames one — see /admin/sync): the machine's real
+// hostname when it looks like one, a random word-pair otherwise (Docker's
+// default container hostname, or any lookup failure) — either way with a
+// random numeric suffix, so two instances that happen to share a hostname
+// (or roll the same word pair) still end up distinguishable.
+func GetInstanceName(ctx context.Context) string {
+	if name, ok := GetSetting(ctx, "instance_name"); ok && name != "" {
+		return name
+	}
+	base, err := os.Hostname()
+	if err != nil || base == "" || dockerContainerID.MatchString(base) {
+		base = instanceNameAdjectives[rand.Intn(len(instanceNameAdjectives))] + "-" +
+			instanceNameNouns[rand.Intn(len(instanceNameNouns))]
+	}
+	name := base + "-" + strconv.Itoa(1000+rand.Intn(9000))
+	SetSetting(ctx, "instance_name", name)
+	return name
+}
+
+// ─── Sync activity log ──────────────────────────────────────────────────────
+// Records what actually changed from instance-to-instance sync, and with
+// which peer — see internal/api/admin.go's /admin/sync-activity. Logged only
+// when a page had something to report (applied>0 || failed>0), same
+// convention as the log.Printf calls in instance_sync.go this sits next to.
+// direction is "pull" (this instance pulled from a peer) or "push_in" (a
+// peer pushed into this instance) — both represent this instance's own data
+// actually changing; an outbound push doesn't change local data, so isn't
+// logged here (see instance_sync.go's pushCards/pushEvents/pushEpisodeRuntimes).
+
+type SyncActivityDaily struct {
+	Date  string `json:"date"`
+	Total int    `json:"total"`
+	Pull  int    `json:"pull"`
+	Push  int    `json:"push"`
+}
+
+func LogSyncActivity(ctx context.Context, direction, dataset, peerName, peerURL string, applied, failed int) {
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`INSERT INTO sync_activity_log (direction, dataset, peer_name, peer_url, applied, failed)
+		 VALUES ($1,$2,$3,$4,$5,$6)`,
+		direction, dataset, peerName, peerURL, applied, failed,
+	)
+}
+
+// GetSyncActivityDaily returns per-day activity counts for the given window,
+// ordered ascending by date. Every day is present (zero-filled) — same
+// pattern as GetPopularDaily/GetRuntimeCorrectionsDaily.
+func GetSyncActivityDaily(ctx context.Context, days int) []SyncActivityDaily {
+	if days < 1 {
+		days = 30
+	}
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT d::date::text,
+		        COALESCE(s.total, 0), COALESCE(s.pull, 0), COALESCE(s.push, 0)
+		 FROM generate_series(
+		        CURRENT_DATE - (($1::int - 1) * INTERVAL '1 day'),
+		        CURRENT_DATE, INTERVAL '1 day') d
+		 LEFT JOIN (
+		        SELECT synced_at::date AS date, COUNT(*) AS total,
+		               COUNT(*) FILTER (WHERE direction = 'pull') AS pull,
+		               COUNT(*) FILTER (WHERE direction = 'push_in') AS push
+		        FROM sync_activity_log
+		        WHERE synced_at >= CURRENT_DATE - (($1::int - 1) * INTERVAL '1 day')
+		        GROUP BY synced_at::date
+		 ) s ON s.date = d::date
+		 ORDER BY d`,
+		days,
+	)
+	if err != nil {
+		return []SyncActivityDaily{}
+	}
+	defer rows.Close()
+	out := []SyncActivityDaily{}
+	for rows.Next() {
+		var d SyncActivityDaily
+		if rows.Scan(&d.Date, &d.Total, &d.Pull, &d.Push) == nil {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+type SyncActivityRow struct {
+	Direction string `json:"direction"`
+	Dataset   string `json:"dataset"`
+	PeerName  string `json:"peer_name"`
+	PeerURL   string `json:"peer_url"`
+	Applied   int    `json:"applied"`
+	Failed    int    `json:"failed"`
+	SyncedAt  string `json:"synced_at"`
+}
+
+// GetSyncActivityList returns activity log entries, newest first. By default
+// covers the whole `days` window; if `date` (YYYY-MM-DD) is given, restricts
+// to that single day — used by the daily-chart filter.
+func GetSyncActivityList(ctx context.Context, days int, date string, limit int) []SyncActivityRow {
+	if limit < 1 {
+		limit = 500
+	}
+	where := "synced_at >= now() - ($1::int * INTERVAL '1 day')"
+	args := []any{days}
+	if date != "" {
+		where = "synced_at::date = $1::date"
+		args = []any{date}
+	}
+	limitIdx := len(args) + 1
+	args = append(args, limit)
+	rows, err := postgres.Pool.Query(ctx, fmt.Sprintf(
+		`SELECT direction, dataset, peer_name, peer_url, applied, failed, synced_at
+		 FROM sync_activity_log
+		 WHERE %s
+		 ORDER BY synced_at DESC
+		 LIMIT $%d`, where, limitIdx),
+		args...,
+	)
+	if err != nil {
+		return []SyncActivityRow{}
+	}
+	defer rows.Close()
+	out := []SyncActivityRow{}
+	for rows.Next() {
+		var r SyncActivityRow
+		var syncedAt time.Time
+		if rows.Scan(&r.Direction, &r.Dataset, &r.PeerName, &r.PeerURL, &r.Applied, &r.Failed, &syncedAt) == nil {
+			r.SyncedAt = syncedAt.Format(time.RFC3339)
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func isFKViolation(err error) bool {

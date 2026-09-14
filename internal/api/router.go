@@ -250,6 +250,10 @@ func NewRouter(mode string) http.Handler {
 		r.Post("/", handleAPIAdminSyncSave)
 		r.Post("/token", handleAPIAdminSyncRotateToken)
 	})
+	// Sync activity is at least as relevant on a parser-mode instance (a
+	// real hub/spoke in production, e.g. the public vps) as on an all-mode
+	// one — same requireAnyAdmin(mode) as the sync settings right above.
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/sync-activity", handleAPIAdminSyncActivity)
 
 	// ── Content maintenance (admin, both modes) — TMDB/imdb_id/episode
 	// backfills are exactly as relevant on a parser-mode instance (the one

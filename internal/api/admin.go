@@ -96,6 +96,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	var noRuntimeMovies, noRuntimeTV int
 	var tmdbRefreshedToday, tmdbNotFound int
 	var runtimeCorrectionsToday, runtimeCorrectionsTotal int
+	var syncActivityToday, syncActivityTotal int
 	var actorCount, directorCount int
 	var popularCards int
 	imageCacheBytesVal, imageCacheFilesVal := imagecache.Stats() // in-memory counters, no disk scan
@@ -164,6 +165,12 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	})
 	run(func() {
 		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM runtime_player_corrections WHERE corrected_at::date = CURRENT_DATE`).Scan(&runtimeCorrectionsToday) //nolint:errcheck
+	})
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM sync_activity_log`).Scan(&syncActivityTotal) //nolint:errcheck
+	})
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM sync_activity_log WHERE synced_at::date = CURRENT_DATE`).Scan(&syncActivityToday) //nolint:errcheck
 	})
 	run(func() {
 		// actor/director counts are cached (see catcache.go) — each is
@@ -247,6 +254,8 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"tmdb_not_found":            tmdbNotFound,
 		"runtime_corrections_today": runtimeCorrectionsToday,
 		"runtime_corrections_total": runtimeCorrectionsTotal,
+		"sync_activity_today":       syncActivityToday,
+		"sync_activity_total":       syncActivityTotal,
 		"actor_count":               actorCount,
 		"director_count":            directorCount,
 		"popular_cards":             popularCards,
@@ -288,6 +297,23 @@ func handleAPIAdminRuntimeCorrections(w http.ResponseWriter, r *http.Request) {
 		"days":  days,
 		"daily": store.GetRuntimeCorrectionsDaily(ctx, days),
 		"items": store.GetRuntimeCorrectionsList(ctx, days, date, 1000),
+	})
+}
+
+// handleAPIAdminSyncActivity returns instance-sync activity stats: per-day
+// counts and a list of pull/push_in entries (peer name, dataset, applied/
+// failed), within a fixed 90-day window.
+func handleAPIAdminSyncActivity(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	const days = 90
+	date := r.URL.Query().Get("date")
+	if !validDate(date) {
+		date = ""
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"days":  days,
+		"daily": store.GetSyncActivityDaily(ctx, days),
+		"items": store.GetSyncActivityList(ctx, days, date, 1000),
 	})
 }
 
@@ -2687,6 +2713,9 @@ input[type=number]{flex:none}
   <section>
     <h2 id="syncTitle">Синхронизация</h2>
     <p style="font-size:.82rem;color:#888;margin:0">Одно отношение — этот инстанс и один URL. Пустой URL — этот инстанс главный, к нему обращаются остальные. Указан URL — этот инстанс спутник: сам забирает оттуда карточки и play-события и сам же присылает туда свои (по токену). Читать данные (GET) можно всегда, у кого угодно — как /np_popular.</p>
+    <label>Название этого инстанса — видно пиру в логе синхронизации
+      <div class="row" style="margin-top:4px"><input type="text" id="syncInstanceName" placeholder="сгенерируется само при первом синке"></div>
+    </label>
     <label>URL главного инстанса (пусто — этот инстанс и есть главный)
       <div class="row" style="margin-top:4px"><input type="text" id="syncPeerUrl" placeholder="https://example.com" oninput="syncRenderRole()"></div>
     </label>
@@ -3393,6 +3422,7 @@ function syncRenderRole(){
 }
 function loadSync(){
   fetch('/api/admin/sync').then(function(r){return r.json();}).then(function(d){
+    document.getElementById('syncInstanceName').value=d.instance_name||'';
     document.getElementById('syncPeerUrl').value=d.peer_url||'';
     document.getElementById('syncToken').value=d.token||'';
     document.getElementById('syncInterval').value=d.interval_minutes||15;
@@ -3409,7 +3439,8 @@ function saveSync(){
   var isHub=document.getElementById('syncPeerUrl').value.trim()==='';
   var body={
     peer_url:document.getElementById('syncPeerUrl').value.trim(),
-    token:document.getElementById('syncToken').value.trim()
+    token:document.getElementById('syncToken').value.trim(),
+    instance_name:document.getElementById('syncInstanceName').value.trim()
   };
   // interval_minutes is spoke-managed automatically (learned from the hub on
   // every pull) — only send it as the hub, so a spoke's stale page state

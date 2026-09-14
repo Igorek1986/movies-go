@@ -126,6 +126,7 @@ func readAndClose(resp *http.Response) (json.RawMessage, error) {
 
 func pullCards(ctx context.Context, peer string) {
 	var applied, failed int
+	var peerName string
 	syncCursorPages(ctx, peer, "/api/sync/cards", "sync_cursor_cards", func(page json.RawMessage) (string, string, bool, error) {
 		var body struct {
 			Cards           []store.SyncCard `json:"cards"`
@@ -133,10 +134,12 @@ func pullCards(ctx context.Context, peer string) {
 			NextTie         string           `json:"next_tie"`
 			HasMore         bool             `json:"has_more"`
 			IntervalMinutes int              `json:"interval_minutes"`
+			InstanceName    string           `json:"instance_name"`
 		}
 		if err := json.Unmarshal(page, &body); err != nil {
 			return "", "", false, err
 		}
+		peerName = body.InstanceName
 		// Adopt the hub's advertised interval as our own — the hub's copy of
 		// this setting is otherwise unused (its own tick loop never runs
 		// with an empty peer_url), so it's the one place this needs
@@ -158,6 +161,7 @@ func pullCards(ctx context.Context, peer string) {
 	})
 	if applied > 0 || failed > 0 {
 		log.Printf("tasks: instance_sync pull cards from %s: applied %d, failed %d", peer, applied, failed)
+		store.LogSyncActivity(ctx, "pull", "cards", peerName, peer, applied, failed)
 	}
 }
 
@@ -189,7 +193,7 @@ func syncPushPages[T any](ctx context.Context, peer, token, path, wrapKey, setti
 			break
 		}
 
-		payload, err := json.Marshal(map[string]any{wrapKey: items})
+		payload, err := json.Marshal(map[string]any{wrapKey: items, "instance_name": store.GetInstanceName(ctx)})
 		if err != nil {
 			log.Printf("tasks: instance_sync push %s: marshal: %v", path, err)
 			break
@@ -271,16 +275,19 @@ func pushEpisodeRuntimes(ctx context.Context, peer, token string) {
 
 func pullEpisodeRuntimes(ctx context.Context, peer string) {
 	var applied, failed int
+	var peerName string
 	syncCursorPages(ctx, peer, "/api/sync/episode-runtimes", "sync_cursor_episode_runtimes", func(page json.RawMessage) (string, string, bool, error) {
 		var body struct {
 			EpisodeRuntimes []store.SyncEpisodeRuntime `json:"episode_runtimes"`
 			NextSince       string                     `json:"next_since"`
 			NextTie         string                     `json:"next_tie"`
 			HasMore         bool                       `json:"has_more"`
+			InstanceName    string                     `json:"instance_name"`
 		}
 		if err := json.Unmarshal(page, &body); err != nil {
 			return "", "", false, err
 		}
+		peerName = body.InstanceName
 		for _, e := range body.EpisodeRuntimes {
 			if err := store.UpsertSyncedEpisodeRuntime(ctx, e); err != nil {
 				failed++
@@ -293,21 +300,25 @@ func pullEpisodeRuntimes(ctx context.Context, peer string) {
 	})
 	if applied > 0 || failed > 0 {
 		log.Printf("tasks: instance_sync pull episode-runtimes from %s: applied %d, failed %d", peer, applied, failed)
+		store.LogSyncActivity(ctx, "pull", "episode_runtimes", peerName, peer, applied, failed)
 	}
 }
 
 func pullEvents(ctx context.Context, peer string) {
 	var applied, failed int
+	var peerName string
 	syncCursorPages(ctx, peer, "/api/sync/events", "sync_cursor_events", func(page json.RawMessage) (string, string, bool, error) {
 		var body struct {
-			Events    []store.SyncEvent `json:"events"`
-			NextSince string            `json:"next_since"`
-			NextTie   string            `json:"next_tie"`
-			HasMore   bool              `json:"has_more"`
+			Events       []store.SyncEvent `json:"events"`
+			NextSince    string            `json:"next_since"`
+			NextTie      string            `json:"next_tie"`
+			HasMore      bool              `json:"has_more"`
+			InstanceName string            `json:"instance_name"`
 		}
 		if err := json.Unmarshal(page, &body); err != nil {
 			return "", "", false, err
 		}
+		peerName = body.InstanceName
 		for _, e := range body.Events {
 			if err := store.UpsertSyncedPlayEvent(ctx, e); err != nil {
 				failed++
@@ -320,5 +331,6 @@ func pullEvents(ctx context.Context, peer string) {
 	})
 	if applied > 0 || failed > 0 {
 		log.Printf("tasks: instance_sync pull events from %s: applied %d, failed %d", peer, applied, failed)
+		store.LogSyncActivity(ctx, "pull", "events", peerName, peer, applied, failed)
 	}
 }

@@ -7,6 +7,7 @@ interface SyncData {
   peer_url: string
   token: string
   interval_minutes: number
+  instance_name: string
 }
 
 interface Toast {
@@ -20,6 +21,7 @@ export default function SyncPage() {
   const [peerUrl, setPeerUrl] = useState('')
   const [token, setToken] = useState('')
   const [intervalMinutes, setIntervalMinutes] = useState(15)
+  const [instanceName, setInstanceName] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -42,6 +44,7 @@ export default function SyncPage() {
         setPeerUrl(d.peer_url)
         setToken(d.token)
         setIntervalMinutes(d.interval_minutes)
+        setInstanceName(d.instance_name)
       }
     } finally {
       setLoading(false)
@@ -57,7 +60,7 @@ export default function SyncPage() {
       // hub on every pull, see pullCards) — only send it when this instance
       // IS the hub (isHub), so a spoke's stale page state can't clobber a
       // value the background sync loop has since moved on from.
-      const body: Record<string, unknown> = { peer_url: peerUrl, token }
+      const body: Record<string, unknown> = { peer_url: peerUrl, token, instance_name: instanceName }
       if (isHub) body.interval_minutes = intervalMinutes
       const r = await fetch('/api/admin/sync', {
         method: 'POST',
@@ -96,7 +99,8 @@ export default function SyncPage() {
   const dirty = data !== null && (
     peerUrl !== data.peer_url ||
     token !== data.token ||
-    intervalMinutes !== data.interval_minutes
+    intervalMinutes !== data.interval_minutes ||
+    instanceName !== data.instance_name
   )
 
   return (
@@ -120,6 +124,19 @@ export default function SyncPage() {
 
         {!loading && (
           <>
+            <div className={styles.section}>
+              <label className={styles.field}>
+                <span>Название этого инстанса — видно пиру в логе синхронизации</span>
+                <input
+                  type="text"
+                  className={styles.input}
+                  placeholder="сгенерируется само при первом синке"
+                  value={instanceName}
+                  onChange={e => setInstanceName(e.target.value)}
+                />
+              </label>
+            </div>
+
             <div className={styles.section}>
               <h2 className={styles.sectionTitle}>{isHub ? 'Главный инстанс' : 'Спутник'}</h2>
 

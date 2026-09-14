@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"movies-api/db/store"
 )
@@ -23,6 +24,7 @@ func handleAPIAdminSyncGet(w http.ResponseWriter, r *http.Request) {
 		"peer_url":         peerURL,
 		"token":            token,
 		"interval_minutes": interval,
+		"instance_name":    store.GetInstanceName(ctx),
 	})
 }
 
@@ -35,6 +37,7 @@ func handleAPIAdminSyncSave(w http.ResponseWriter, r *http.Request) {
 		PeerURL         *string `json:"peer_url"`
 		Token           *string `json:"token"`
 		IntervalMinutes *int    `json:"interval_minutes"`
+		InstanceName    *string `json:"instance_name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		Error(w, http.StatusBadRequest, "bad request")
@@ -50,6 +53,12 @@ func handleAPIAdminSyncSave(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.IntervalMinutes != nil && *body.IntervalMinutes > 0 {
 		store.SetSetting(ctx, "sync_interval_minutes", strconv.Itoa(*body.IntervalMinutes))
+	}
+	if body.InstanceName != nil {
+		name := strings.TrimSpace(*body.InstanceName)
+		if name != "" {
+			store.SetSetting(ctx, "instance_name", name)
+		}
 	}
 
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})

@@ -37,6 +37,8 @@ interface Stats {
   tmdb_not_found: number
   runtime_corrections_today: number
   runtime_corrections_total: number
+  sync_activity_today: number
+  sync_activity_total: number
   actor_count: number
   director_count: number
   popular_cards: number
@@ -950,6 +952,14 @@ export default function AdminPage() {
                 <Link to="/admin/runtime-corrections" className={styles.statLink}>
                   <p className={styles.statValue}>{stats.runtime_corrections_total.toLocaleString()}</p>
                   <p className={styles.statLabel}>Runtime из реального просмотра{stats.runtime_corrections_today > 0 ? ` (+${stats.runtime_corrections_today} сегодня)` : ''}</p>
+                </Link>
+              </div>
+            )}
+            {stats.sync_activity_total > 0 && (
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/sync-activity" className={styles.statLink}>
+                  <p className={styles.statValue}>{stats.sync_activity_total.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Синхронизация{stats.sync_activity_today > 0 ? ` (+${stats.sync_activity_today} сегодня)` : ''}</p>
                 </Link>
               </div>
             )}

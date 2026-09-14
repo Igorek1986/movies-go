@@ -295,6 +295,24 @@ CREATE TABLE IF NOT EXISTS runtime_player_corrections (
 CREATE INDEX IF NOT EXISTS idx_runtime_player_corrections_date ON runtime_player_corrections (corrected_at);
 CREATE INDEX IF NOT EXISTS idx_runtime_player_corrections_tmdb ON runtime_player_corrections (tmdb_id, media_type);
 
+-- What actually changed from instance-to-instance sync, and with which peer
+-- (see db/store/sync.go's LogSyncActivity, internal/api/admin.go's
+-- /admin/sync-activity). direction: 'pull' (pulled from a peer) or
+-- 'push_in' (a peer pushed into this instance) — both represent this
+-- instance's own data changing. dataset: 'cards'|'events'|'episode_runtimes'.
+CREATE TABLE IF NOT EXISTS sync_activity_log (
+    id           BIGSERIAL    PRIMARY KEY,
+    direction    VARCHAR(10)  NOT NULL,
+    dataset      VARCHAR(20)  NOT NULL,
+    peer_name    TEXT         NOT NULL DEFAULT '',
+    peer_url     TEXT         NOT NULL DEFAULT '',
+    applied      INT          NOT NULL DEFAULT 0,
+    failed       INT          NOT NULL DEFAULT 0,
+    synced_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sync_activity_log_date ON sync_activity_log (synced_at);
+
 -- ─── MyShows global mapping ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS myshows_items (
     id         BIGSERIAL   PRIMARY KEY,
