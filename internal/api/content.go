@@ -686,14 +686,20 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	// runtime self-correct from real playback even on a parser-mode public
 	// instance with no registered devices at all (see dev/instance-sync.md).
 	if m := cardIDRe.FindStringSubmatch(cardID); m != nil && durationSec > 60 {
-		go store.MaybeUpdateRuntimeFromPlayer(cardID, m[2], durationSec)
-		// season/episode (from the player's playlist item, torrent sources
-		// set this — see np.js) let a TV report correct just that one
-		// episode instead of the whole-show fallback above.
+		// season/episode (from the player's playlist item, resolved by hash —
+		// see np.js) let a TV report correct just that one episode's stored
+		// duration. Whole-card episode_run_time is a single "last write wins"
+		// value, not an average — falling through to it here too (as before)
+		// meant every real episode's own length (which legitimately varies
+		// episode to episode) kept overwriting it, flip-flopping the card's
+		// value between whatever length the last-watched episode happened to
+		// be. Only fall back to it when season/episode couldn't be resolved.
 		if m[2] == "tv" && season > 0 && episode > 0 {
 			if tmdbID, err := strconv.ParseInt(m[1], 10, 64); err == nil {
 				go store.MaybeUpdateEpisodeRuntimeFromPlayer(tmdbID, season, episode, durationSec)
 			}
+		} else {
+			go store.MaybeUpdateRuntimeFromPlayer(cardID, m[2], durationSec)
 		}
 	}
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
