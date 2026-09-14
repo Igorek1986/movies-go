@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import styles from './LogsPage.module.scss'
 import { useCountdown, useParserStatus, fmtCountdown, fmtDateTime } from '@/hooks/useParserStatus'
 
 interface LogLine {
+  id: number
   t: string
   text: string
   level: 'success' | 'skip' | 'error' | 'info'
@@ -51,24 +52,49 @@ export default function LogsPage() {
   const [tab, setTab] = useState<Tab>('all')
   const [selectedDay, setSelectedDay] = useState<string>(todayKey())
   const [autoScroll, setAutoScroll] = useState(true)
+  // Snapshot of activeLines taken the moment the user scrolls away from the
+  // bottom — while paused, rendering reads from this instead of the live
+  // (still-growing) arrays, so already-visible lines never change under a
+  // fixed scroll position.
+  const [frozen, setFrozen] = useState<LogLine[] | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const idCounter = useRef(0)
 
-  // SSE for live + today history
+  // SSE for live + today history. The server replays the full day's backlog
+  // as individual "data:" frames on connect (can be tens of thousands of
+  // lines) — dispatching a setState per message would both be slow and,
+  // worse, paint dozens of intermediate scroll positions as history streams
+  // in, which looks like the log is "running" even though we only ever want
+  // to show it already caught up. Buffer messages and flush them in small
+  // batches instead, so the initial backlog resolves in a couple of jumps.
   useEffect(() => {
+    const pending: LogLine[] = []
+    let flushTimer: number | null = null
+
+    function flush() {
+      flushTimer = null
+      if (pending.length === 0) return
+      const batch = pending.splice(0, pending.length)
+      setLiveLines(prev => {
+        const next = [...prev, ...batch]
+        return next.length > 30000 ? next.slice(-30000) : next
+      })
+    }
+
     const es = new EventSource('/api/admin/logs')
     es.onopen = () => setConnected(true)
     es.onerror = () => setConnected(false)
     es.onmessage = (e) => {
       try {
-        const line: LogLine = JSON.parse(e.data)
-        setLiveLines(prev => {
-          const next = [...prev, line]
-          return next.length > 30000 ? next.slice(-30000) : next
-        })
+        pending.push({ ...JSON.parse(e.data), id: idCounter.current++ })
+        if (flushTimer == null) flushTimer = window.setTimeout(flush, 100)
       } catch { /* ignore */ }
     }
-    return () => es.close()
+    return () => {
+      es.close()
+      if (flushTimer != null) window.clearTimeout(flushTimer)
+    }
   }, [])
 
   // Load past day from REST
@@ -80,23 +106,32 @@ export default function LogsPage() {
     setHistLoading(true)
     fetch(`/api/admin/logs/day?date=${selectedDay}`)
       .then(r => r.json())
-      .then((d: { lines: LogLine[] }) => setHistLines(d.lines ?? []))
+      .then((d: { lines: LogLine[] }) => setHistLines((d.lines ?? []).map(l => ({ ...l, id: idCounter.current++ }))))
       .catch(() => setHistLines([]))
       .finally(() => setHistLoading(false))
   }, [selectedDay])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Trust the autoScroll flag (set only by an actual scroll event, see
+    // handleScroll) rather than re-checking distance-to-bottom here: when a
+    // big batch lands in one update (e.g. today's whole backlog on mount),
+    // the pre-update scrollTop can be far from the new scrollHeight even
+    // though we were — and still want to stay — pinned to the end.
+    if (!autoScroll || frozen) return
     const el = containerRef.current
     if (!el) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-    if (atBottom) el.scrollTop = el.scrollHeight
-  }, [liveLines, histLines, tab, selectedDay])
+    el.scrollTop = el.scrollHeight
+  }, [liveLines, histLines, tab, selectedDay, autoScroll, frozen])
 
   function handleScroll() {
     const el = containerRef.current
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
     setAutoScroll(atBottom)
+    setFrozen(prevFrozen => {
+      if (!atBottom) return prevFrozen ?? activeLines // just left bottom — freeze what's shown now
+      return null // back at bottom — resume live tail
+    })
   }
 
   async function runNow() {
@@ -111,14 +146,20 @@ export default function LogsPage() {
   }
 
   function scrollToBottom() {
-    const el = containerRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    setFrozen(null)
     setAutoScroll(true)
+    // scroll after the unfrozen (live) content has rendered
+    requestAnimationFrame(() => {
+      const el = containerRef.current
+      if (el) el.scrollTop = el.scrollHeight
+    })
   }
 
   function switchDay(day: string) {
     setSelectedDay(day)
     setTab('all')
+    setFrozen(null)
+    setAutoScroll(true)
   }
 
   function switchTab(t: Tab) {
@@ -144,10 +185,14 @@ export default function LogsPage() {
     return [...days].sort().reverse()
   }, [liveLines])
 
-  const counts: Record<Tab, number> = { all: activeLines.length, success: 0, skip: 0, error: 0, info: 0 }
-  for (const l of activeLines) counts[l.level] = (counts[l.level] ?? 0) + 1
+  // While paused (frozen), render from the snapshot so already-visible lines
+  // never shift under the user's scroll position.
+  const displayLines = frozen ?? activeLines
 
-  const filtered = (tab === 'all' ? activeLines : activeLines.filter(l => l.level === tab))
+  const counts: Record<Tab, number> = { all: displayLines.length, success: 0, skip: 0, error: 0, info: 0 }
+  for (const l of displayLines) counts[l.level] = (counts[l.level] ?? 0) + 1
+
+  const filtered = (tab === 'all' ? displayLines : displayLines.filter(l => l.level === tab))
     .slice(-MAX_DISPLAY)
 
   return (
@@ -159,7 +204,7 @@ export default function LogsPage() {
           <div className={styles.headerActions}>
             {isToday && <span className={`${styles.connDot} ${connected ? styles.connOn : styles.connOff}`} />}
             {isToday && <span className={styles.connLabel}>{connected ? 'Live' : 'Отключено'}</span>}
-            <button className={styles.btn} onClick={() => { setLiveLines([]); setHistLines([]) }}>Очистить</button>
+            <button className={styles.btn} onClick={() => { setLiveLines([]); setHistLines([]); setFrozen(null); setAutoScroll(true) }}>Очистить</button>
             {!autoScroll && (
               <>
                 <span className={styles.pausedLabel}>⏸ пауза</span>
@@ -241,8 +286,8 @@ export default function LogsPage() {
               {activeLines.length === 0 ? 'Нет логов за этот день' : 'Нет записей в этой категории'}
             </span>
           )}
-          {!histLoading && filtered.map((line, i) => (
-            <div key={i} className={`${styles.line} ${styles['lvl_' + line.level]}`}>
+          {!histLoading && filtered.map(line => (
+            <div key={line.id} className={`${styles.line} ${styles['lvl_' + line.level]}`}>
               {line.text}
             </div>
           ))}
