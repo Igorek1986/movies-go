@@ -80,6 +80,7 @@ func rpcDevicesCreate(w http.ResponseWriter, r *http.Request, u *models.User, ra
 		Error(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	go broadcastDeviceCreated(u.ID)
 	JSON(w, http.StatusOK, map[string]any{"id": dev.ID, "name": dev.Name})
 }
 

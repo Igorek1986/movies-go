@@ -69,7 +69,12 @@ func (h *Hub) Unregister(c *Conn) {
 // priority when non-empty — this is what lets several screens share one
 // activation token (same exceptDeviceID) and still reach each other.
 // exceptDeviceID is only used as a fallback for connections/requests that
-// don't carry a client_id yet. Safe to call concurrently.
+// don't carry a client_id yet. 0 means "no device to exclude" (web-originated
+// requests always pass 0 here, since a browser tab has no device of its own —
+// see handleWebWS registering every web Conn with DeviceID 0) — treating 0 as
+// a matchable id would skip *every* web connection, not just the originating
+// tab, since they all share it. Real device ids are BIGSERIAL and start at 1,
+// so 0 never collides with an actual device. Safe to call concurrently.
 func (h *Hub) Broadcast(userID, exceptDeviceID int64, exceptClientID string, msg []byte) {
 	h.mu.Lock()
 	all := h.clients[userID]
@@ -79,7 +84,7 @@ func (h *Hub) Broadcast(userID, exceptDeviceID int64, exceptClientID string, msg
 		var skip bool
 		if exceptClientID != "" && c.ClientID != "" {
 			skip = c.ClientID == exceptClientID
-		} else {
+		} else if exceptDeviceID != 0 {
 			skip = c.DeviceID == exceptDeviceID
 		}
 		if skip {

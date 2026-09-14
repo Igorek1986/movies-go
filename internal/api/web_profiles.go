@@ -75,6 +75,11 @@ func handleWebCreateProfile(w http.ResponseWriter, r *http.Request) {
 	if isFirst {
 		store.MigrateDefaultTimecodes(r.Context(), deviceID, lp.ProfileID) //nolint:errcheck
 	}
+	// Та же причина, что и в handleWebUpdateProfile: без этого другие вкладки
+	// того же аккаунта (и Lampa-устройства) узнавали о новом профиле только
+	// когда что-то ещё само дёргало свежий REST — см. также rpcProfilesCreate,
+	// у которого этот бродкаст уже был для профилей, созданных расширением.
+	go broadcastProfileUpdated(u.ID, 0, "", lp.ProfileID, &lp.Name, nil)
 	JSON(w, http.StatusOK, map[string]any{
 		"ok": true, "profile_id": lp.ProfileID, "name": lp.Name,
 	})

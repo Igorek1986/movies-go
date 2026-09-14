@@ -16,7 +16,7 @@ import { RemoteSelect } from '@/components/remote/RemoteSelect'
 import { RemoteIconPicker } from '@/components/remote/RemoteIconPicker'
 import { useRemoteDialog } from '@/components/remote/useRemoteDialog'
 import { focusTopNavActive } from '@/utils/scrollNav'
-import { profileIconSrc } from '@/utils/profileIcon'
+import { ProfileAvatar } from '@/components/ProfileAvatar'
 import { useProfilesPageState } from './useProfilesPageState'
 import { getUnsavedChangesGuard } from '@/utils/unsavedChangesGuard'
 // Shared look with Classic — inputs/buttons/text styles that don't change
@@ -54,7 +54,7 @@ function focusForKeyboardNav(el: HTMLElement | null | undefined) {
 }
 
 type SectionId =
-  | 'devices' | 'link' | 'myshows' | 'telegram' | 'extensions'
+  | 'devices' | 'link' | 'telegram' | 'extensions'
   | 'notifications' | 'interface'
   | 'account' | 'backup'
   // One per enabled extension (see useExtensions() below) — each gets its
@@ -86,7 +86,7 @@ export default function ProfilesRemoteView() {
   const extensionsState = useExtensions()
   const { extensions } = extensionsState
   const {
-    user, isPremium, roleLabel, maxDevices,
+    user, roleLabel, maxDevices,
     genericAlert, clearGenericAlert,
     devices, visibleTokens, toggleToken, copied, copyToken,
     newDeviceName, setNewDeviceName, createLoading, handleCreate,
@@ -107,12 +107,6 @@ export default function ProfilesRemoteView() {
     linkCode, setLinkCode, linkDeviceId, setLinkDeviceId, linkNewName, setLinkNewName,
     linkLoading, linkError, linkSuccess, handleLink,
     linkedToken, setLinkedToken, tokenCopied, copyLinkedToken,
-    syncDeviceId, setSyncDeviceId, syncNewDeviceName, setSyncNewDeviceName,
-    syncProfileId, setSyncProfileId, syncNewProfileName, setSyncNewProfileName,
-    syncDeviceProfiles, setSyncDeviceProfiles, handleSyncDeviceChange,
-    syncLogin, setSyncLogin, syncPassword, setSyncPassword,
-    syncLoading, syncDone, syncLog, syncLogRef, handleMyShowsSync,
-    lastStage, lastStatus, errors, formatSyncEntry,
     tgStatus, tgCode, tgLoading, tgCodeCopied, setTgCodeCopied,
     handleGenerateTgCode, handleTgUnlink,
     notifSettings, setNotifSettings, notifSaving, notifMsg, handleSaveNotif,
@@ -460,7 +454,6 @@ export default function ProfilesRemoteView() {
       ),
     },
     { id: 'link', title: 'Привязать устройство по коду' },
-    { id: 'myshows', title: 'Синхронизация MyShows' },
     { id: 'telegram', title: 'Telegram' },
     { id: 'extensions', title: 'Расширения' },
     // Каждое включённое расширение — свой пункт корневого меню (как
@@ -594,7 +587,7 @@ export default function ProfilesRemoteView() {
                               title="Изменить иконку"
                               onClick={() => setIconPickerFor(iconPickerFor === p.profile_id ? null : p.profile_id)}
                             >
-                              <img src={profileIconSrc(p.icon || 'id1')} alt="" />
+                              <ProfileAvatar icon={p.icon} label={p.profile_id === '' ? 'Основной' : p.name} />
                             </button>
                             {iconPickerFor === p.profile_id && (
                               <RemoteIconPicker
@@ -830,69 +823,6 @@ export default function ProfilesRemoteView() {
                   </button>
                 </div>
               </form>
-            </div>
-          )}
-
-        {/* ── MyShows sync ── */}
-          {activeSection === 'myshows' && (
-            <div className={styles.sectionBody}>
-              {!isPremium ? (
-                <div className={classicStyles.premiumGate}>
-                  <p className={classicStyles.hint}>Синхронизация с MyShows доступна для подписчиков Premium.</p>
-                  <span className={classicStyles.premiumBadge}>Premium</span>
-                </div>
-              ) : (
-                <form className={styles.fieldRow} onSubmit={handleMyShowsSync}>
-                  <div className={styles.fieldGrid} data-row-id="myshows-device-profile">
-                    <RemoteSelect
-                      value={syncDeviceId === '' ? '' : String(syncDeviceId)}
-                      placeholder="Устройство"
-                      onChange={v => { if (v === 'new') { setSyncDeviceId('new'); setSyncDeviceProfiles([]); setSyncProfileId('') } else handleSyncDeviceChange(Number(v)) }}
-                      options={[
-                        ...devices.map(d => ({ value: String(d.id), label: d.name })),
-                        ...((maxDevices === null || devices.length < (maxDevices ?? 99)) ? [{ value: 'new', label: 'Новое устройство' }] : []),
-                      ]}
-                    />
-                    <RemoteSelect
-                      value={syncProfileId}
-                      placeholder="Основной"
-                      disabled={syncDeviceId === ''}
-                      onChange={setSyncProfileId}
-                      options={[
-                        ...syncDeviceProfiles.map(p => ({ value: p.profile_id, label: p.name })),
-                        ...(syncDeviceId !== '' ? [{ value: 'new', label: 'Новый профиль' }] : []),
-                      ]}
-                    />
-                  </div>
-                  {syncDeviceId === 'new' && (
-                    <div data-row-id="myshows-new-device">
-                      <input className={classicStyles.input} data-nav-item placeholder="Название устройства" value={syncNewDeviceName} onChange={e => setSyncNewDeviceName(e.target.value)} maxLength={100} required />
-                    </div>
-                  )}
-                  {syncDeviceId !== '' && syncProfileId === 'new' && (
-                    <div data-row-id="myshows-new-profile">
-                      <input className={classicStyles.input} data-nav-item placeholder="Название профиля" value={syncNewProfileName} onChange={e => setSyncNewProfileName(e.target.value)} maxLength={100} />
-                    </div>
-                  )}
-                  <div className={styles.fieldGrid} data-row-id="myshows-creds">
-                    <input className={classicStyles.input} data-nav-item placeholder="Логин MyShows" value={syncLogin} onChange={e => setSyncLogin(e.target.value)} autoComplete="username" required />
-                    <PasswordInput className={classicStyles.input} data-nav-item placeholder="Пароль MyShows" value={syncPassword} onChange={e => setSyncPassword(e.target.value)} autoComplete="current-password" required />
-                  </div>
-                  <div data-row-id="myshows-submit">
-                    <button type="submit" className={classicStyles.btnPrimary} data-nav-item disabled={syncLoading || !syncDeviceId}>
-                      {syncLoading ? 'Синхронизация…' : 'Синхронизировать'}
-                    </button>
-                  </div>
-                  {(syncLog.length > 0 || syncDone) && (
-                    <div className={classicStyles.syncLog} ref={syncLogRef}>
-                      {lastStage && <div className={classicStyles.syncLogLine}>{formatSyncEntry(lastStage)}</div>}
-                      {!lastStage && lastStatus && <div className={classicStyles.syncLogLine}>{formatSyncEntry(lastStatus)}</div>}
-                      {errors.map((entry, i) => <div key={i} className={classicStyles.syncLogError}>{formatSyncEntry(entry)}</div>)}
-                      {syncDone && errors.length === 0 && <div className={classicStyles.syncLogDone}>Синхронизация завершена</div>}
-                    </div>
-                  )}
-                </form>
-              )}
             </div>
           )}
 

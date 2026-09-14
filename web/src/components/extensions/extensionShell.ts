@@ -133,32 +133,53 @@ export function buildExtensionShell(scriptURL: string): string {
     showFatalError(reason && reason.message ? reason.message : String(reason));
   });
 
+  var progressHandlers = {};
+
   window.addEventListener('message', function (e) {
     var m = e.data;
     if (!m || typeof m !== 'object') return;
     if (m.type === 'ext:api:reply' && pending[m.reqId]) {
       var cb = pending[m.reqId];
       delete pending[m.reqId];
+      delete progressHandlers[m.reqId];
       cb(m.error, m.result);
+    }
+    if (m.type === 'ext:api:progress' && progressHandlers[m.reqId]) {
+      progressHandlers[m.reqId](m.chunk);
     }
   });
 
   // Таймаут — если ответ от родителя почему-либо не придёт (например, сама
   // страница ушла в фон/уснула), промис должен всё равно разрешиться, а не
   // повиснуть навсегда с кнопкой "Отправка…" без какой-либо обратной связи.
+  // Для стриминговых действий (onProgress передан) таймер перезапускается на
+  // каждый ext:api:progress — долгий импорт с редкими паузами между этапами
+  // не должен обрываться по таймауту, пока сервер действительно отвечает.
   var CALL_TIMEOUT_MS = 15000;
 
-  function call(action, params) {
+  function call(action, params, onProgress) {
     return new Promise(function (resolve, reject) {
       var id = ++reqId;
-      var timer = setTimeout(function () {
-        delete pending[id];
-        reject(new Error('Нет ответа от сервера, попробуйте ещё раз'));
-      }, CALL_TIMEOUT_MS);
+      var timer;
+      function armTimer() {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          delete pending[id];
+          delete progressHandlers[id];
+          reject(new Error('Нет ответа от сервера, попробуйте ещё раз'));
+        }, CALL_TIMEOUT_MS);
+      }
+      armTimer();
       pending[id] = function (err, result) {
         clearTimeout(timer);
         if (err) reject(new Error(err)); else resolve(result);
       };
+      if (onProgress) {
+        progressHandlers[id] = function (chunk) {
+          armTimer();
+          onProgress(chunk);
+        };
+      }
       parent.postMessage({ type: 'ext:api', reqId: id, action: action, params: params || {} }, '*');
     });
   }

@@ -11,6 +11,13 @@ const KNOWN_ACTIONS = new Set([
   'devices.list', 'devices.create', 'profiles.list', 'profiles.create', 'timecodes.importLampac',
 ])
 
+// Действия с потоковым прогрессом (Ext.call(action, params, onProgress) на
+// стороне расширения) — вместо одного JSON-ответа через /api/extensions/rpc
+// хост сам стримит существующий SSE-эндпоинт и пересылает каждый чанк
+// в iframe как ext:api:progress, завершая ext:api:reply в конце. Список
+// закрытый и жёстко прописан здесь — не проксирует произвольные эндпоинты.
+const STREAMING_ACTIONS = new Set(['myshows.sync'])
+
 const READY_TIMEOUT_MS = 5000
 
 // Рендерит одно включённое расширение в изолированном iframe (sandbox
@@ -59,6 +66,12 @@ export function ExtensionHost({ extension, bare }: Props) {
 
       if (m.type === 'ext:api') {
         const { reqId, action, params } = m
+
+        if (STREAMING_ACTIONS.has(action)) {
+          runStreamingAction(action, params, reqId)
+          return
+        }
+
         if (!KNOWN_ACTIONS.has(action)) {
           iframeRef.current.contentWindow?.postMessage({ type: 'ext:api:reply', reqId, error: 'unknown action' }, '*')
           return
@@ -79,6 +92,49 @@ export function ExtensionHost({ extension, bare }: Props) {
           .catch(err => {
             iframeRef.current?.contentWindow?.postMessage({ type: 'ext:api:reply', reqId, error: String(err.message || err) }, '*')
           })
+      }
+    }
+
+    // 'myshows.sync' — единственное сегодня стриминговое действие: те же
+    // form-поля и тот же SSE-эндпоинт (/myshows/sync), что раньше дёргала
+    // страница /profiles напрямую (см. историю useProfilesPageState.ts).
+    // Сессионная кука есть только у хост-страницы, не у sandboxed iframe —
+    // поэтому фетчим здесь, а не внутри расширения, и пересылаем каждую
+    // "data:"-строку как ext:api:progress.
+    async function runStreamingAction(action: string, params: Record<string, unknown>, reqId: number) {
+      const post = (msg: object) => iframeRef.current?.contentWindow?.postMessage(msg, '*')
+      try {
+        if (action !== 'myshows.sync') throw new Error('unknown action')
+        const form = new FormData()
+        form.append('device_id', String(params.deviceId ?? ''))
+        form.append('profile_id', String(params.profileId ?? ''))
+        form.append('login', String(params.login ?? ''))
+        form.append('password', String(params.password ?? ''))
+
+        const res = await fetch('/myshows/sync', { method: 'POST', body: form })
+        if (!res.ok || !res.body) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(body.error || body.detail?.message || 'Ошибка запроса')
+        }
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buf = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += decoder.decode(value, { stream: true })
+          const lines = buf.split('\n')
+          buf = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.startsWith('data:')) continue
+            const json = line.slice(5).trim()
+            if (!json) continue
+            try { post({ type: 'ext:api:progress', reqId, chunk: JSON.parse(json) }) } catch { /* skip malformed */ }
+          }
+        }
+        post({ type: 'ext:api:reply', reqId, result: { done: true } })
+      } catch (err) {
+        post({ type: 'ext:api:reply', reqId, error: String((err as Error).message || err) })
       }
     }
 

@@ -97,6 +97,19 @@ export function useLiveSync(): void {
 
         if (msg.type === 'profile_updated') {
           refreshRef.current()
+          // Тоже per-user, не per-профиль (переключатель профилей выше уже
+          // обновился) — но экран /profiles → «Мои устройства» держит свой
+          // отдельный список устройств/профилей (useProfilesPageState.ts) и
+          // ни на что не подписан, кроме прямого fetch после своих же
+          // действий. Без пересылки сюда новый профиль/устройство, созданные
+          // расширением (см. plugins/import_myshows.js) или с другой
+          // вкладки/устройства, появлялись там только после hard refresh.
+          listeners.forEach(l => l(msg))
+          return
+        }
+
+        if (msg.type === 'device_created') {
+          listeners.forEach(l => l(msg))
           return
         }
 

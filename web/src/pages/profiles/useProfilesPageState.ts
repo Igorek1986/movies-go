@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useActiveProfile, profileUrlParam } from '@/contexts/ActiveProfileContext'
+import { subscribeLiveSync } from '@/hooks/useLiveSync'
 
 interface TelegramStatus {
   linked: boolean
@@ -47,15 +48,6 @@ interface ProfilePluginItem {
   in_device_list: boolean
   device_enabled: boolean
   override: boolean | null
-}
-
-interface SyncLogEntry {
-  type: 'status' | 'error' | 'stage'
-  message?: string
-  stage?: string
-  current?: number
-  total?: number
-  name?: string
 }
 
 export interface ConfirmPromptDeps {
@@ -148,18 +140,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
   // Backup
   const [backupMsg, setBackupMsg] = useState('')
   const [backupError, setBackupError] = useState('')
-  // MyShows sync
-  const [syncDeviceId, setSyncDeviceId] = useState<number | '' | 'new'>('')
-  const [syncNewDeviceName, setSyncNewDeviceName] = useState('')
-  const [syncProfileId, setSyncProfileId] = useState('')
-  const [syncNewProfileName, setSyncNewProfileName] = useState('')
-  const [syncDeviceProfiles, setSyncDeviceProfiles] = useState<Profile[]>([])
-  const [syncLogin, setSyncLogin] = useState('')
-  const [syncPassword, setSyncPassword] = useState('')
-  const [syncLoading, setSyncLoading] = useState(false)
-  const [syncDone, setSyncDone] = useState(false)
-  const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([])
-  const syncLogRef = useRef<HTMLDivElement>(null)
 
   const fetchDevices = useCallback(async () => {
     const res = await fetch('/api/devices')
@@ -167,16 +147,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     const data: Device[] = await res.json()
     data.sort((a, b) => a.id - b.id)
     setDevices(data)
-    if (data.length === 0) {
-      setSyncDeviceId(v => v === '' ? 'new' : v)
-      return
-    }
-    const firstId = data[0].id
-    const profileRes = await fetch(`/api/devices/${firstId}/profiles`)
-    const profileData = profileRes.ok ? await profileRes.json() : {}
-    const firstProfiles: Profile[] = (profileData.profiles || []).filter((p: Profile) => p.profile_id !== '')
-    setSyncDeviceId(id => (id === '' || id === 'new') ? firstId : id)
-    setSyncDeviceProfiles(p => p.length === 0 ? firstProfiles : p)
     refreshActiveProfile()
   }, [refreshActiveProfile])
 
@@ -196,6 +166,25 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     fetchNotifSettings()
   }, [fetchDevices, fetchTgStatus, fetchNotifSettings])
 
+  // Живое обновление «Мои устройства» при создании/переименовании профиля
+  // или нового устройства, произошедшем не на этой странице — сейчас
+  // единственный такой источник: расширение /profiles → «Расширения» (см.
+  // devices.create/profiles.create в internal/api/web_extensions_rpc.go),
+  // которое не может напрямую дёрнуть fetchDevices/reloadProfiles этой
+  // страницы. Ref вместо прямых зависимостей эффекта — переподписываться на
+  // каждый рендер незачем, сообщение просто читает самые свежие значения.
+  const liveSyncRef = useRef({ openProfilesFor, fetchDevices, reloadProfiles })
+  liveSyncRef.current = { openProfilesFor, fetchDevices, reloadProfiles }
+
+  useEffect(() => {
+    return subscribeLiveSync(msg => {
+      if (msg.type !== 'profile_updated' && msg.type !== 'device_created') return
+      const { openProfilesFor, fetchDevices, reloadProfiles } = liveSyncRef.current
+      fetchDevices()
+      if (openProfilesFor !== null) reloadProfiles()
+    })
+  }, [])
+
   // Poll telegram status while linking code is active
   useEffect(() => {
     if (!tgCode) return
@@ -210,54 +199,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     }, 3000)
     return () => clearInterval(id)
   }, [tgCode])
-
-  useEffect(() => {
-    if (syncDeviceProfiles.length > 0 && (syncProfileId === '' || syncProfileId === 'new'))
-      setSyncProfileId(syncDeviceProfiles[0].profile_id)
-  }, [syncDeviceProfiles]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function fetchProfilesForDevice(deviceId: number): Promise<Profile[]> {
-    const res = await fetch(`/api/devices/${deviceId}/profiles`)
-    if (!res.ok) return []
-    const data = await res.json()
-    return (data.profiles || []).filter((p: Profile) => p.profile_id !== '')
-  }
-
-  async function handleSyncDeviceChange(id: number) {
-    setSyncDeviceId(id)
-    const p = await fetchProfilesForDevice(id)
-    setSyncDeviceProfiles(p)
-    setSyncProfileId(p.length > 0 ? p[0].profile_id : '')
-  }
-
-  async function ensureDevice(deviceId: number | '' | 'new', newName: string): Promise<{ id: number; token: string } | null> {
-    if (deviceId === 'new') {
-      const res = await fetch('/api/devices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim() || 'Устройство' }),
-      })
-      if (!res.ok) return null
-      const d = await res.json()
-      fetchDevices()
-      return { id: d.id, token: d.token }
-    }
-    if (!deviceId) return null
-    const device = devices.find(dev => dev.id === deviceId)
-    return device ? { id: device.id, token: device.token } : null
-  }
-
-  async function ensureProfile(deviceId: number, profileId: string, newName: string): Promise<string> {
-    if (profileId !== 'new') return profileId
-    const res = await fetch(`/api/devices/${deviceId}/profiles`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName.trim() || 'Профиль' }),
-    })
-    if (!res.ok) return ''
-    const d = await res.json()
-    return d.profile_id ?? ''
-  }
 
   function toggleToken(id: number) {
     setVisibleTokens(s => {
@@ -357,7 +298,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
   async function handleDeleteDevice(id: number, name: string) {
     if (!(await confirmFn(`Удалить устройство «${name}» и все его таймкоды?`))) return
     await fetch(`/api/devices/${id}`, { method: 'DELETE' })
-    if (syncDeviceId === id) { setSyncDeviceId(''); setSyncDeviceProfiles([]); setSyncProfileId('') }
     fetchDevices()
     if (openProfilesFor === id) setOpenProfilesFor(null)
   }
@@ -384,8 +324,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     const d = await r.json()
     const updated: Profile[] = d.profiles || []
     setProfiles(updated)
-    const filtered = updated.filter(p => p.profile_id !== '')
-    if (syncDeviceId === openProfilesFor) setSyncDeviceProfiles(filtered)
     refreshActiveProfile()
   }
 
@@ -629,12 +567,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
       ? `/api/devices/${openProfilesFor}/default-timecodes`
       : `/api/devices/${openProfilesFor}/profiles/${profileId}`
     await fetch(url, { method: 'DELETE' })
-    if (syncProfileId === profileId) setSyncProfileId('')
-    if (openProfilesFor !== null) {
-      fetchProfilesForDevice(openProfilesFor).then(refreshed => {
-        if (syncDeviceId === openProfilesFor) setSyncDeviceProfiles(refreshed)
-      })
-    }
     reloadProfiles()
     fetchDevices()
   }
@@ -786,89 +718,12 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     }
   }
 
-  async function handleMyShowsSync(e: React.FormEvent) {
-    e.preventDefault()
-    if (!syncDeviceId) return
-    setSyncLoading(true)
-    setSyncDone(false)
-    setSyncLog([])
-    const dev = await ensureDevice(syncDeviceId, syncNewDeviceName)
-    if (!dev) { setSyncLoading(false); return }
-    const profileId = await ensureProfile(dev.id, syncProfileId, syncNewProfileName)
-
-    const form = new FormData()
-    form.append('device_id', String(dev.id))
-    form.append('profile_id', profileId)
-    form.append('login', syncLogin)
-    form.append('password', syncPassword)
-
-    try {
-      const res = await fetch('/myshows/sync', { method: 'POST', body: form })
-      if (!res.ok || !res.body) {
-        const d = await res.json().catch(() => ({}))
-        setSyncLog([{ type: 'error', message: d.error || 'Ошибка запроса' }])
-        setSyncLoading(false)
-        return
-      }
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.startsWith('data:')) continue
-          const json = line.slice(5).trim()
-          if (!json) continue
-          try {
-            const entry: SyncLogEntry = JSON.parse(json)
-            setSyncLog(prev => [...prev, entry])
-            setTimeout(() => {
-              if (syncLogRef.current) {
-                syncLogRef.current.scrollTop = syncLogRef.current.scrollHeight
-              }
-            }, 0)
-          } catch { /* skip malformed */ }
-        }
-      }
-      setSyncDone(true)
-      fetchDevices()
-      reloadProfiles()
-      setTimeout(() => { setSyncDone(false); setSyncLog([]) }, 4000)
-    } catch (err) {
-      const msg = String(err).includes('Load failed') || String(err).includes('Failed to fetch')
-        ? 'Соединение прервано'
-        : String(err)
-      setSyncLog(prev => [...prev, { type: 'error', message: msg }])
-    }
-    setSyncLoading(false)
-  }
-
-  function formatSyncEntry(entry: SyncLogEntry): string {
-    if (entry.type === 'stage') {
-      const label = entry.stage === 'movies' ? 'Фильмы' : 'Сериалы'
-      const name = entry.name ? ` — ${entry.name}` : ''
-      return `${label}: ${entry.current}/${entry.total}${name}`
-    }
-    return entry.message ?? ''
-  }
-
-  const stageEntries = syncLog.filter(e => e.type === 'stage')
-  const lastStage = stageEntries[stageEntries.length - 1]
-  const statusEntries = syncLog.filter(e => e.type === 'status')
-  const lastStatus = statusEntries[statusEntries.length - 1]
-  const errors = syncLog.filter(e => e.type === 'error')
-
-  const isPremium = user?.role === 'premium' || user?.role === 'super'
   const roleLabel: Record<string, string> = { simple: 'Базовый', premium: 'Премиум', super: 'Супер' }
   const maxDevices = user?.role === 'super' ? null : user?.role === 'premium' ? 8 : 3
 
 
   return {
-    user, isPremium, roleLabel, maxDevices,
+    user, roleLabel, maxDevices,
     genericAlert, clearGenericAlert,
 
     // Devices
@@ -899,14 +754,6 @@ export function useProfilesPageState(deps: ConfirmPromptDeps = {}) {
     linkCode, setLinkCode, linkDeviceId, setLinkDeviceId, linkNewName, setLinkNewName,
     linkLoading, linkError, linkSuccess, handleLink,
     linkedToken, setLinkedToken, tokenCopied, copyLinkedToken,
-
-    // MyShows sync
-    syncDeviceId, setSyncDeviceId, syncNewDeviceName, setSyncNewDeviceName,
-    syncProfileId, setSyncProfileId, syncNewProfileName, setSyncNewProfileName,
-    syncDeviceProfiles, setSyncDeviceProfiles, handleSyncDeviceChange,
-    syncLogin, setSyncLogin, syncPassword, setSyncPassword,
-    syncLoading, syncDone, syncLog, syncLogRef, handleMyShowsSync,
-    lastStage, lastStatus, errors, formatSyncEntry,
 
     // Telegram
     tgStatus, tgCode, tgLoading, tgCodeCopied, setTgCodeCopied,

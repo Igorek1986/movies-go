@@ -11,6 +11,7 @@ import { MenuOrderSettings } from '@/components/MenuOrderSettings'
 import { ExtensionsSection } from '@/components/extensions/ExtensionsSection'
 import { useExtensions } from '@/hooks/useExtensions'
 import { PROFILE_ICON_IDS, profileIconSrc } from '@/utils/profileIcon'
+import { ProfileAvatar } from '@/components/ProfileAvatar'
 import { useProfilesPageState } from './useProfilesPageState'
 import styles from './ProfilesClassicView.module.scss'
 
@@ -123,7 +124,7 @@ function BirthYearPicker({ current, onSave, onClose }: {
 export default function ProfilesClassicView() {
   const extensionsState = useExtensions()
   const {
-    user, isPremium, roleLabel, maxDevices,
+    user, roleLabel, maxDevices,
     genericAlert, clearGenericAlert,
     devices, visibleTokens, toggleToken, copied, copyToken,
     newDeviceName, setNewDeviceName, createLoading, handleCreate,
@@ -144,12 +145,6 @@ export default function ProfilesClassicView() {
     linkCode, setLinkCode, linkDeviceId, setLinkDeviceId, linkNewName, setLinkNewName,
     linkLoading, linkError, linkSuccess, handleLink,
     linkedToken, setLinkedToken, tokenCopied, copyLinkedToken,
-    syncDeviceId, setSyncDeviceId, syncNewDeviceName, setSyncNewDeviceName,
-    syncProfileId, setSyncProfileId, syncNewProfileName, setSyncNewProfileName,
-    syncDeviceProfiles, setSyncDeviceProfiles, handleSyncDeviceChange,
-    syncLogin, setSyncLogin, syncPassword, setSyncPassword,
-    syncLoading, syncDone, syncLog, syncLogRef, handleMyShowsSync,
-    lastStage, lastStatus, errors, formatSyncEntry,
     tgStatus, tgCode, tgLoading, tgCodeCopied, setTgCodeCopied,
     handleGenerateTgCode, handleTgUnlink,
     notifSettings, setNotifSettings, notifSaving, notifMsg, handleSaveNotif,
@@ -237,9 +232,7 @@ export default function ProfilesClassicView() {
                                     title="Изменить иконку"
                                     onClick={() => setIconPickerFor(iconPickerFor === p.profile_id ? null : p.profile_id)}
                                   >
-                                    {p.icon
-                                      ? <img src={profileIconSrc(p.icon)} alt="" />
-                                      : <img src={profileIconSrc('id1')} alt="" />}
+                                    <ProfileAvatar icon={p.icon} label={p.profile_id === '' ? 'Основной' : p.name} />
                                   </button>
                                   {iconPickerFor === p.profile_id && (
                                     <IconPicker
@@ -520,99 +513,6 @@ export default function ProfilesClassicView() {
                   {linkLoading ? 'Привязка…' : 'Привязать'}
                 </button>
               </form>
-            </div>
-          </details>
-
-          {/* ── MyShows sync ── */}
-          <details className={styles.details}>
-            <summary className={styles.summary}>Синхронизация MyShows</summary>
-            <div className={styles.detailsBody}>
-              {!isPremium ? (
-                <div className={styles.premiumGate}>
-                  <p className={styles.hint}>Синхронизация с MyShows доступна для подписчиков Premium.</p>
-                  <span className={styles.premiumBadge}>Premium</span>
-                </div>
-              ) : (
-                <form className={styles.formCol} onSubmit={handleMyShowsSync}>
-                  <div className={styles.formGrid}>
-                    <label className={styles.fieldLabel}>
-                      Устройство
-                      <select
-                        className={styles.select}
-                        value={syncDeviceId}
-                        onChange={e => {
-                          const v = e.target.value
-                          if (v === 'new') { setSyncDeviceId('new'); setSyncDeviceProfiles([]); setSyncProfileId('') }
-                          else handleSyncDeviceChange(Number(v))
-                        }}
-                        required
-                      >
-                        {syncDeviceId === '' && devices.length > 0 && <option value="">— выберите —</option>}
-                        {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                        {(maxDevices === null || devices.length < (maxDevices ?? 99)) && <option value="new">＋ Новое устройство</option>}
-                      </select>
-                    </label>
-                    <label className={styles.fieldLabel}>
-                      Профиль
-                      <select
-                        className={styles.select}
-                        value={syncProfileId}
-                        onChange={e => setSyncProfileId(e.target.value)}
-                        disabled={syncDeviceId === ''}
-                      >
-                        {syncDeviceId !== '' && syncDeviceProfiles.length === 0 && <option value="">Основной</option>}
-                        {syncDeviceProfiles.map(p => (
-                          <option key={p.profile_id} value={p.profile_id}>{p.name}</option>
-                        ))}
-                        {syncDeviceId !== '' && <option value="new">＋ Новый профиль</option>}
-                      </select>
-                    </label>
-                  </div>
-                  {syncDeviceId === 'new' && (
-                    <input className={styles.input} placeholder="Название устройства" value={syncNewDeviceName} onChange={e => setSyncNewDeviceName(e.target.value)} maxLength={100} required />
-                  )}
-                  {syncDeviceId !== '' && syncProfileId === 'new' && (
-                    <input className={styles.input} placeholder="Название профиля" value={syncNewProfileName} onChange={e => setSyncNewProfileName(e.target.value)} maxLength={100} />
-                  )}
-                  <div className={styles.formRow}>
-                    <input
-                      className={styles.input}
-                      placeholder="Логин MyShows"
-                      value={syncLogin}
-                      onChange={e => setSyncLogin(e.target.value)}
-                      autoComplete="username"
-                      required
-                    />
-                    <PasswordInput
-                      className={styles.input}
-                      placeholder="Пароль MyShows"
-                      value={syncPassword}
-                      onChange={e => setSyncPassword(e.target.value)}
-                      autoComplete="current-password"
-                      required
-                    />
-                  </div>
-                  <button className={styles.btnPrimary} type="submit" disabled={syncLoading || !syncDeviceId}>
-                    {syncLoading ? 'Синхронизация…' : 'Синхронизировать'}
-                  </button>
-                  {(syncLog.length > 0 || syncDone) && (
-                    <div className={styles.syncLog} ref={syncLogRef}>
-                      {lastStage && (
-                        <div className={styles.syncLogLine}>{formatSyncEntry(lastStage)}</div>
-                      )}
-                      {!lastStage && lastStatus && (
-                        <div className={styles.syncLogLine}>{formatSyncEntry(lastStatus)}</div>
-                      )}
-                      {errors.map((entry, i) => (
-                        <div key={i} className={styles.syncLogError}>{formatSyncEntry(entry)}</div>
-                      ))}
-                      {syncDone && errors.length === 0 && (
-                        <div className={styles.syncLogDone}>Синхронизация завершена</div>
-                      )}
-                    </div>
-                  )}
-                </form>
-              )}
             </div>
           </details>
 

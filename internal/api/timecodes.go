@@ -439,6 +439,16 @@ func broadcastProfileUpdated(userID, deviceID int64, clientID, profileID string,
 	TimecodeHub.Broadcast(userID, deviceID, clientID, msg)
 }
 
+// broadcastDeviceCreated notifies other web tabs of the same account that a
+// new device appeared — needed for creation flows that don't happen on the
+// /profiles page itself (currently only the "devices.create" extension RPC,
+// see rpcDevicesCreate), so its own "Мои устройства" list has no other way
+// to learn about it short of a hard refresh.
+func broadcastDeviceCreated(userID int64) {
+	msg, _ := json.Marshal(map[string]any{"type": "device_created"})
+	TimecodeHub.Broadcast(userID, 0, "", msg)
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 func deviceUserRole(r *http.Request, d *deviceCtx) string {
