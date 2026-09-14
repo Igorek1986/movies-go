@@ -675,6 +675,8 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	uid := r.URL.Query().Get("uid")
 	pct, _ := strconv.Atoi(r.URL.Query().Get("percent"))
 	durationSec, _ := strconv.ParseFloat(r.URL.Query().Get("duration"), 64)
+	season, _ := strconv.Atoi(r.URL.Query().Get("season"))
+	episode, _ := strconv.Atoi(r.URL.Query().Get("episode"))
 
 	if cardID != "" && uid != "" && pct >= 30 {
 		store.RecordPlayEvent(r.Context(), cardID, uid, pct)
@@ -685,6 +687,14 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	// instance with no registered devices at all (see dev/instance-sync.md).
 	if m := cardIDRe.FindStringSubmatch(cardID); m != nil && durationSec > 60 {
 		go store.MaybeUpdateRuntimeFromPlayer(cardID, m[2], durationSec)
+		// season/episode (from the player's playlist item, torrent sources
+		// set this — see np.js) let a TV report correct just that one
+		// episode instead of the whole-show fallback above.
+		if m[2] == "tv" && season > 0 && episode > 0 {
+			if tmdbID, err := strconv.ParseInt(m[1], 10, 64); err == nil {
+				go store.MaybeUpdateEpisodeRuntimeFromPlayer(tmdbID, season, episode, durationSec)
+			}
+		}
 	}
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

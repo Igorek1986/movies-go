@@ -1290,8 +1290,9 @@ export default function CardDetailPage() {
   // once the aired-only count ("8 серий") arrives a moment later. Gating the
   // total's display on this avoids that flash — see tvProgressBlock.
   const [episodesLoaded, setEpisodesLoaded] = useState(false)
-  // True once the episode list has settled — either myshows-confirmed
-  // (d.source === 'myshows') or the retry budget below is exhausted. Distinct
+  // True once the episode list has settled — either confirmed from the
+  // episodes table (d.source === 'synced', see bgRefreshEpisodes — TVmaze or
+  // MyShows) or the retry budget below is exhausted. Distinct
   // from episodesLoaded (set on the very FIRST response, which can be a
   // provisional TMDB/last_ep fallback covering only season 1 while myshows
   // sync is still running) — HeroEpisodesCarousel's auto-select-season effect
@@ -1842,9 +1843,10 @@ export default function CardDetailPage() {
         const d = await r.json()
         if (d?.episodes?.length) setApiEpisodes(d.episodes)
         if (!cancelled) setEpisodesLoaded(true)
-        const needsMyshowsSync = d?.source !== 'myshows'
-        // The episode LIST is confirmed as soon as myshows source is
-        // reached — set this independently of the stills-retry loop below,
+        const needsMyshowsSync = d?.source !== 'synced'
+        // The episode LIST is confirmed as soon as the episodes table is
+        // reached (TVmaze or MyShows) — set this independently of the
+        // stills-retry loop below,
         // which only concerns still_path images and has no bearing on which
         // season is the right default. Tying episodesFinal to that too would
         // make the whole carousel wait out the full stills retry budget

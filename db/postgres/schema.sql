@@ -259,6 +259,21 @@ CREATE TABLE IF NOT EXISTS episodes (
 
 CREATE INDEX IF NOT EXISTS idx_episodes_tmdb_show_id ON episodes (tmdb_show_id);
 
+-- Per-episode runtime learned from real player playback (see
+-- MaybeUpdateEpisodeRuntimeFromPlayer) — separate from `episodes` on purpose:
+-- `episodes` rows only exist for MyShows-synced shows and their mere presence
+-- switches handleEpisodes to buildFromTable (see internal/api/episodes.go),
+-- so writing a lone player-derived row there for a non-MyShows show would
+-- hide every other episode of that show instead of just improving one row.
+CREATE TABLE IF NOT EXISTS episode_runtimes (
+    tmdb_show_id  INT          NOT NULL,
+    season        SMALLINT     NOT NULL,
+    episode       SMALLINT     NOT NULL,
+    duration_sec  INT          NOT NULL,
+    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    PRIMARY KEY (tmdb_show_id, season, episode)
+);
+
 -- ─── MyShows global mapping ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS myshows_items (
     id         BIGSERIAL   PRIMARY KEY,

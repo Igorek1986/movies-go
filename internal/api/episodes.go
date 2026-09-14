@@ -6,6 +6,7 @@ import (
 	"log"
 	"movies-api/db/postgres"
 	"movies-api/db/store"
+	"movies-api/internal/externalsources"
 	"movies-api/internal/myshows"
 	"movies-api/movies/tmdb"
 	"net/http"
@@ -159,20 +160,45 @@ func bgRefreshEpisodes(cardID string) {
 		return
 	}
 
-	// If no myshows_id yet — try to find it
+	// Find/set myshows_id unconditionally, independent of which source ends
+	// up populating the episode list below — other features (progress /
+	// "непросмотренные" tracking, see internal/api/myshows_cache.go) key off
+	// media_cards.myshows_id on their own, regardless of episodes-table data.
 	if mc.MyshowsID == nil {
-		sid := myshows.FindShow(ctx, mc, "")
-		if sid == 0 {
-			return
+		if sid := myshows.FindShow(ctx, mc, ""); sid != 0 {
+			if err := store.SetMyshowsID(ctx, cardID, sid); err != nil {
+				log.Printf("episodes: set myshows_id %s: %v", cardID, err)
+			} else {
+				mc.MyshowsID = &sid
+			}
 		}
-		if err := store.SetMyshowsID(ctx, cardID, sid); err != nil {
-			log.Printf("episodes: set myshows_id %s: %v", cardID, err)
-			return
-		}
-		mc.MyshowsID = &sid
 	}
 
-	if !myshows.ShouldSync(mc) {
+	// TVmaze as a first-time discovery source only — better specials/season
+	// attribution than MyShows (verified empirically, see
+	// dev/instance-sync.md), matches by imdb_id when we have one (see
+	// internal/externalsources/tvmaze_episodes.go). Gated on "no rows yet"
+	// rather than myshows.ShouldSync's ongoing-show re-sync logic below —
+	// TVmaze has no equivalent incremental-refresh signal of its own here,
+	// so this only ever runs once per show, same as the myshows_id lookup
+	// above. UpsertEpisodes' fill-if-empty merge means MyShows below can
+	// still layer in afterward without clobbering what TVmaze wrote.
+	if len(store.GetEpisodes(ctx, mc.TmdbID)) == 0 {
+		if rows := externalsources.FetchSeriesEpisodes(ctx, mc); len(rows) > 0 {
+			if err := store.UpsertEpisodes(ctx, mc.TmdbID, rows); err != nil {
+				log.Printf("episodes: tvmaze upsert %s: %v", cardID, err)
+			}
+		}
+	}
+
+	// MyShows: first-time discovery (if TVmaze above found nothing) AND the
+	// only source of ongoing incremental re-sync as new episodes air
+	// (ShouldSync checks next_ep_air_date vs episodes_synced_at) — this
+	// fire-and-forget call from every /api/episodes view is what actually
+	// keeps ongoing shows' episode lists current in production; there's no
+	// separate always-on scheduled task for it (RunRefreshOngoingEpisodes is
+	// admin/Telegram-button-triggered only, see internal/tasks/refresh_episodes.go).
+	if mc.MyshowsID == nil || !myshows.ShouldSync(mc) {
 		return
 	}
 
@@ -279,6 +305,7 @@ type episodeOut struct {
 func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[string]timecodeInfo, includeSpecials bool) map[string]any {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	threshold := float64(store.WatchedThreshold(ctx))
+	overrides := store.GetEpisodeRuntimes(ctx, mc.TmdbID)
 	var out []episodeOut
 
 	for _, ep := range eps {
@@ -289,12 +316,20 @@ func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.
 			continue
 		}
 		td := tc[ep.Hash]
-		durSec := ep.DurationSec
+		// Real playback signals (this device's own timecode, then the
+		// cross-viewer np.js correction) outrank catalog data — a catalog
+		// can have the wrong episode's runtime; an actual play of this file
+		// can't. See MaybeUpdateEpisodeRuntimeFromPlayer/episode_runtimes.
+		durSec := td.durSec
 		if durSec == nil {
-			durSec = td.durSec
-			if durSec == nil && mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
-				v := *mc.EpisodeRunTime * 60
+			if v, ok := overrides[[2]int{int(ep.Season), int(ep.Episode)}]; ok && v > 0 {
 				durSec = &v
+			} else {
+				durSec = ep.DurationSec
+				if durSec == nil && mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
+					v := *mc.EpisodeRunTime * 60
+					durSec = &v
+				}
 			}
 		}
 		var airStr *string
@@ -329,11 +364,17 @@ func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.
 	if out == nil {
 		out = []episodeOut{}
 	}
-	return map[string]any{"episodes": out, "original_title": mc.OriginalTitle, "source": "myshows"}
+	// "synced" — data comes from the episodes table itself (any source that
+	// wrote there: TVmaze or MyShows, see bgRefreshEpisodes), as opposed to
+	// the TMDB-seasons-JSON fallback below (buildFromTMDB, "source": "tmdb").
+	// The frontend (CardDetailPage) treats this value as "the list is
+	// settled, stop retrying" — keep it in sync with that check if renamed.
+	return map[string]any{"episodes": out, "original_title": mc.OriginalTitle, "source": "synced"}
 }
 
 func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string]timecodeInfo, includeSpecials bool) map[string]any {
 	threshold := float64(store.WatchedThreshold(ctx))
+	overrides := store.GetEpisodeRuntimes(ctx, mc.TmdbID)
 	var seasonsJSON []byte
 	var lastEpSeason, lastEpNumber *int
 
@@ -360,15 +401,17 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 		if lastEpSeason != nil && lastEpNumber != nil && *lastEpSeason > 0 && *lastEpNumber > 0 {
 			lastS := *lastEpSeason
 			lastE := *lastEpNumber
-			var durSec *int
-			if mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
-				v := *mc.EpisodeRunTime * 60
-				durSec = &v
-			}
 			var out []episodeOut
 			for ep := 1; ep <= lastE; ep++ {
 				h := myshows.EpisodeHash(lastS, ep, mc.OriginalTitle)
 				td := tc[h]
+				var durSec *int
+				if v, ok := overrides[[2]int{lastS, ep}]; ok && v > 0 {
+					durSec = &v
+				} else if mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
+					v := *mc.EpisodeRunTime * 60
+					durSec = &v
+				}
 				out = append(out, episodeOut{
 					Season:      int16(lastS),
 					Episode:     int16(ep),
@@ -397,11 +440,6 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 	}
 
 	todayStr := time.Now().UTC().Format("2006-01-02")
-	var durSec *int
-	if mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
-		v := *mc.EpisodeRunTime * 60
-		durSec = &v
-	}
 	lastS := 0
 	if lastEpSeason != nil {
 		lastS = *lastEpSeason
@@ -441,6 +479,13 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 		for ep := 1; ep <= airedTo; ep++ {
 			h := myshows.EpisodeHash(snum, ep, mc.OriginalTitle)
 			td := tc[h]
+			var durSec *int
+			if v, ok := overrides[[2]int{snum, ep}]; ok && v > 0 {
+				durSec = &v
+			} else if mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
+				v := *mc.EpisodeRunTime * 60
+				durSec = &v
+			}
 			out = append(out, episodeOut{
 				Season:      int16(snum),
 				Episode:     int16(ep),

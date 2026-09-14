@@ -1007,6 +1007,60 @@ func MaybeUpdateRuntimeFromPlayer(cardID, mediaType string, durationSec float64)
 	)
 }
 
+// MaybeUpdateEpisodeRuntimeFromPlayer records a specific episode's real
+// playback duration when it's unknown or differs by more than 5% from what's
+// already stored for that (show, season, episode) — same self-correction
+// rule as MaybeUpdateRuntimeFromPlayer, but scoped to one episode instead of
+// the whole show. See episode_runtimes in schema.sql for why this is a
+// separate table rather than a write into `episodes`.
+func MaybeUpdateEpisodeRuntimeFromPlayer(tmdbShowID int64, season, episode int, durationSec float64) {
+	if durationSec < 60 || tmdbShowID == 0 || season <= 0 || episode <= 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var storedSec int
+	err := postgres.Pool.QueryRow(ctx,
+		`SELECT duration_sec FROM episode_runtimes WHERE tmdb_show_id = $1 AND season = $2 AND episode = $3`,
+		tmdbShowID, season, episode,
+	).Scan(&storedSec)
+	if err == nil && storedSec > 0 {
+		if math.Abs(durationSec-float64(storedSec))/float64(storedSec) <= 0.05 {
+			return
+		}
+	}
+
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`INSERT INTO episode_runtimes (tmdb_show_id, season, episode, duration_sec, updated_at)
+		 VALUES ($1, $2, $3, $4, now())
+		 ON CONFLICT (tmdb_show_id, season, episode) DO UPDATE SET
+		     duration_sec = EXCLUDED.duration_sec, updated_at = now()`,
+		tmdbShowID, season, episode, int(math.Round(durationSec)),
+	)
+}
+
+// GetEpisodeRuntimes returns player-learned durations (seconds) for a show,
+// keyed by {season, episode} — see MaybeUpdateEpisodeRuntimeFromPlayer.
+func GetEpisodeRuntimes(ctx context.Context, tmdbShowID int64) map[[2]int]int {
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT season, episode, duration_sec FROM episode_runtimes WHERE tmdb_show_id = $1`, tmdbShowID,
+	)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	out := map[[2]int]int{}
+	for rows.Next() {
+		var s, e, d int
+		if rows.Scan(&s, &e, &d) == nil {
+			out[[2]int{s, e}] = d
+		}
+	}
+	return out
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 func ParsePercent(dataJSON string) float64 {
