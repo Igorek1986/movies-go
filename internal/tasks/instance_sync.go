@@ -31,7 +31,7 @@ var syncHTTPClient = &http.Client{Timeout: 20 * time.Second}
 // since a never-successful pull never overwrites that default (see
 // pullCards' interval-learning).
 func StartInstanceSyncLoop(ctx context.Context) {
-	runInstanceSyncTick(ctx)
+	runTickBounded(ctx)
 	for {
 		minutes := store.GetSettingInt(ctx, "sync_interval_minutes")
 		if minutes < 1 {
@@ -41,9 +41,25 @@ func StartInstanceSyncLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(time.Duration(minutes) * time.Minute):
-			runInstanceSyncTick(ctx)
+			runTickBounded(ctx)
 		}
 	}
+}
+
+// syncTickTimeout bounds one full tick (pull+push across all datasets).
+// Every DB/HTTP call inside runInstanceSyncTick otherwise inherits appCtx
+// as-is, which has no deadline of its own — a single call stuck waiting
+// (e.g. for a pgxpool connection under heavy concurrent load; observed once
+// during local testing, where the parser was hammering the same pool) would
+// block this goroutine forever before it ever reaches the next time.After,
+// silently stopping sync for good instead of just failing this one tick and
+// retrying on the next scheduled interval.
+const syncTickTimeout = 5 * time.Minute
+
+func runTickBounded(ctx context.Context) {
+	tickCtx, cancel := context.WithTimeout(ctx, syncTickTimeout)
+	defer cancel()
+	runInstanceSyncTick(tickCtx)
 }
 
 // runInstanceSyncTick does everything there is to do with a peer — no
