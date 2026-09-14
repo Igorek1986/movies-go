@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Layout from '@/components/Layout'
+import { useRemoteDialog } from '@/components/remote/useRemoteDialog'
 import styles from './SyncPage.module.scss'
 
 interface SyncData {
@@ -25,6 +26,7 @@ export default function SyncPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
+  const { dialogEl, confirmDialog } = useRemoteDialog()
 
   const isHub = peerUrl.trim() === ''
 
@@ -80,7 +82,7 @@ export default function SyncPage() {
   }
 
   async function generateToken() {
-    if (token && !confirm('Сгенерировать новый токен? Старый перестанет работать у всех спутников, которые его используют.')) return
+    if (token && !await confirmDialog('Сгенерировать новый токен? Старый перестанет работать у всех спутников, которые его используют.', { danger: true })) return
     const r = await fetch('/api/admin/sync/token', { method: 'POST' })
     if (r.ok) {
       const d = await r.json()
@@ -96,19 +98,51 @@ export default function SyncPage() {
     navigator.clipboard?.writeText(token).then(() => toast('Скопировано'), () => toast('Не удалось скопировать', false))
   }
 
-  function clearToken() {
-    if (!confirm('Удалить токен? Push от спутников (или к главному) перестанет приниматься/отправляться, пока не сохраните.')) return
-    setToken('')
+  // save() with an explicit partial body, bypassing the current (possibly
+  // dirty/unsaved) form state — same immediate-apply pattern as
+  // generateToken() above, for actions whose own confirm() dialog already IS
+  // the user's explicit go-ahead. A second "Сохранить" click after that would
+  // just be re-confirming the same thing.
+  async function saveNow(body: Record<string, unknown>, okMsg: string) {
+    setSaving(true)
+    try {
+      const r = await fetch('/api/admin/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (r.ok) {
+        toast(okMsg)
+        await load()
+      } else {
+        toast('Ошибка сохранения', false)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function clearToken() {
+    if (!await confirmDialog('Удалить токен? Push от спутников (или к главному) перестанет приниматься/отправляться.', { danger: true })) return
+    saveNow({ token: '' }, 'Токен удалён')
   }
 
   // Разрывает отношение с пиром целиком — обнуляет и URL, и токен (обычно
   // нужны вместе: например, чтобы спутник снова стал самостоятельным главным
-  // инстансом). Только локально, как и остальные поля — требует «Сохранить».
-  function resetRelationship() {
-    if ((peerUrl || token) && !confirm('Сбросить URL и токен? Этот инстанс станет главным без связи с пиром (после сохранения).')) return
-    setPeerUrl('')
-    setToken('')
-    setIntervalMinutes(15)
+  // инстансом).
+  async function disconnectFromPeer() {
+    if (!await confirmDialog('Отвязать от пира? URL и токен обнулятся, этот инстанс станет главным.', { danger: true })) return
+    saveNow({ peer_url: '', token: '', interval_minutes: 15 }, 'Отвязано, теперь главный')
+  }
+
+  // Discards unsaved edits in the form, back to what's actually saved on the
+  // server — nothing sent, nothing lost server-side, so no confirm needed.
+  function resetForm() {
+    if (!data) return
+    setPeerUrl(data.peer_url)
+    setToken(data.token)
+    setIntervalMinutes(data.interval_minutes)
+    setInstanceName(data.instance_name)
   }
 
   const dirty = data !== null && (
@@ -236,10 +270,16 @@ export default function SyncPage() {
                   просто не сможет присылать туда свои (если он сам недостижим снаружи).
                 </p>
               )}
+
+              {!isHub && (peerUrl || token) && (
+                <button className={styles.resetBtn} disabled={saving} onClick={disconnectFromPeer}>
+                  Отвязать от пира
+                </button>
+              )}
             </div>
 
             <div className={styles.saveRow}>
-              <button className={styles.resetBtn} disabled={saving} onClick={resetRelationship}>
+              <button className={styles.resetBtn} disabled={!dirty || saving} onClick={resetForm}>
                 Сбросить
               </button>
               <button className={styles.saveBtn} disabled={!dirty || saving} onClick={save}>
@@ -255,6 +295,8 @@ export default function SyncPage() {
           <div key={t.id} className={t.ok ? styles.toastOk : styles.toastErr}>{t.text}</div>
         ))}
       </div>
+
+      {dialogEl}
     </Layout>
   )
 }
