@@ -309,6 +309,26 @@ func ShouldSync(mc *store.MediaCardEpInfo) bool {
 
 // ─── SyncEpisodes ─────────────────────────────────────────────────────────────
 
+// nextSpecialEpisodeNumber handles a MyShows API quirk: multiple specials
+// within the same season all report episodeNumber=0. The episodes table's
+// primary key is (tmdb_show_id, season, episode) (see db/store/episodes.go),
+// so leaving every special in a season at 0 makes them collide on upsert —
+// only the last one processed in a batch survives, and UpsertEpisodes' own
+// stale-row cleanup then deletes the rest as "renumbered" duplicates (lost
+// data, not just a cosmetic renumbering — see the vps incident this fixes,
+// dev/instance-sync.md). Assigns each a unique negative number instead
+// (-1, -2, …), scoped to one sync call via seq (season → count so far).
+//
+// Both places that parse MyShows' episode list — SyncEpisodes below (the
+// background per-show sync) and getWatchedEpisodesForShow in user_sync.go
+// (the per-user "Импорт с MyShows" flow) — must call this the same way; it
+// used to be duplicated ad hoc in SyncEpisodes only, which is exactly how
+// user_sync.go's copy ended up missing it.
+func nextSpecialEpisodeNumber[T ~int | ~int16](seq map[T]T, season T) T {
+	seq[season]++
+	return -seq[season]
+}
+
 // SyncEpisodes fetches episode data from MyShows and upserts into the DB.
 func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 	if mc.MyshowsID == nil {
@@ -373,11 +393,8 @@ func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 			enum = int16(*ep.EpisodeNumber)
 		}
 
-		// Multiple specials in the same season share episodeNumber=0 in MyShows.
-		// Assign unique negative episode numbers (-1, -2, …) to avoid PK conflicts.
 		if ep.IsSpecial && enum == 0 {
-			specialSeq[snum]++
-			enum = -specialSeq[snum]
+			enum = nextSpecialEpisodeNumber(specialSeq, snum)
 		}
 
 		key := [2]int16{snum, enum}

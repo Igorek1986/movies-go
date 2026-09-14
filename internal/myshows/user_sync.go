@@ -352,6 +352,7 @@ func getWatchedEpisodesForShow(ctx context.Context, token string, showID int) ([
 
 	var eps []WatchedEpisode
 	var all []EpisodeInfo
+	specialSeq := map[int]int{} // season → next counter for ep-0 specials, see nextSpecialEpisodeNumber
 	for _, ep := range showData.Episodes {
 		if ep.SeasonNumber == nil || ep.ID == 0 {
 			continue
@@ -360,6 +361,10 @@ func getWatchedEpisodesForShow(ctx context.Context, token string, showID int) ([
 		enum := 0
 		if ep.EpisodeNumber != nil {
 			enum = *ep.EpisodeNumber
+		}
+
+		if ep.IsSpecial && enum == 0 {
+			enum = nextSpecialEpisodeNumber(specialSeq, snum)
 		}
 
 		airDate := ep.AirDateUTC
