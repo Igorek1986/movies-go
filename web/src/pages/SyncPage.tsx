@@ -96,6 +96,21 @@ export default function SyncPage() {
     navigator.clipboard?.writeText(token).then(() => toast('Скопировано'), () => toast('Не удалось скопировать', false))
   }
 
+  function clearToken() {
+    if (!confirm('Удалить токен? Push от спутников (или к главному) перестанет приниматься/отправляться, пока не сохраните.')) return
+    setToken('')
+  }
+
+  // Разрывает отношение с пиром целиком — обнуляет и URL, и токен (обычно
+  // нужны вместе: например, чтобы спутник снова стал самостоятельным главным
+  // инстансом). Только локально, как и остальные поля — требует «Сохранить».
+  function resetRelationship() {
+    if ((peerUrl || token) && !confirm('Сбросить URL и токен? Этот инстанс станет главным без связи с пиром (после сохранения).')) return
+    setPeerUrl('')
+    setToken('')
+    setIntervalMinutes(15)
+  }
+
   const dirty = data !== null && (
     peerUrl !== data.peer_url ||
     token !== data.token ||
@@ -195,6 +210,7 @@ export default function SyncPage() {
                     <div className={styles.tokenButtons}>
                       {token && <button className={styles.btnSm} onClick={copyToken}>Копировать</button>}
                       <button className={styles.btnSm} onClick={generateToken}>{token ? 'Перегенерировать' : 'Сгенерировать'}</button>
+                      {token && <button className={styles.btnSm} onClick={clearToken}>Очистить</button>}
                     </div>
                   </div>
                 ) : (
@@ -223,6 +239,9 @@ export default function SyncPage() {
             </div>
 
             <div className={styles.saveRow}>
+              <button className={styles.resetBtn} disabled={saving} onClick={resetRelationship}>
+                Сбросить
+              </button>
               <button className={styles.saveBtn} disabled={!dirty || saving} onClick={save}>
                 {saving ? 'Сохранение…' : 'Сохранить'}
               </button>

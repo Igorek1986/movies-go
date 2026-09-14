@@ -184,7 +184,23 @@
 
 .saveRow {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: $spacing-md;
+}
+
+.resetBtn {
+  background: transparent;
+  color: $color-text-muted;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  padding: 8px 20px;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover:not(:disabled) { border-color: $color-danger; color: $color-danger; }
+  &:disabled { opacity: 0.4; cursor: default; }
 }
 
 .saveBtn {
