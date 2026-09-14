@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useActiveProfile, profileUrlParam, type Profile } from '@/contexts/ActiveProfileContext'
-import { PROFILE_ICON_IDS, profileIconSrc, profileInitials } from '@/utils/profileIcon'
+import { PROFILE_ICON_IDS, profileIconSrc } from '@/utils/profileIcon'
+import { ProfileAvatar } from './ProfileAvatar'
 import { getGridCols } from '@/utils/scrollNav'
 import styles from './ProfileSwitcher.module.scss'
 
@@ -9,10 +10,7 @@ function profileLabel(p: Profile): string {
 }
 
 function Avatar({ profile, className }: { profile: Profile | null; className?: string }) {
-  if (profile?.icon) {
-    return <img className={className} src={profileIconSrc(profile.icon)} alt="" />
-  }
-  return <span className={className}>{profileInitials(profile ? profileLabel(profile) : '?')}</span>
+  return <ProfileAvatar icon={profile?.icon ?? ''} label={profile ? profileLabel(profile) : '?'} className={className} />
 }
 
 function QuickEdit({ profile, rowKey, onDone }: { profile: Profile; rowKey: string; onDone: () => void }) {

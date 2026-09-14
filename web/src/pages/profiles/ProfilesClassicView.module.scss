@@ -228,6 +228,7 @@
   transition: border-color $transition-fast, background $transition-fast;
 
   img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  span { font-size: $font-size-xs; font-weight: 700; color: $color-text; }
 
   &:hover {
     border-color: $color-primary;
@@ -603,58 +604,6 @@
     flex: 1;
     min-width: 150px;
   }
-}
-
-// ── MyShows sync log ──────────────────────────────────────────────────────────
-
-.syncLog {
-  max-height: 160px;
-  overflow-y: auto;
-  font-size: 12px;
-  font-family: 'Courier New', monospace;
-  background: $color-bg-input;
-  border: 1px solid $color-border;
-  border-radius: $radius-sm;
-  padding: $spacing-sm;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.syncLogLine {
-  color: $color-text-muted;
-  line-height: 1.4;
-}
-
-.syncLogError {
-  color: $color-danger;
-  line-height: 1.4;
-}
-
-.syncLogDone {
-  color: $color-success;
-  line-height: 1.4;
-  font-weight: 600;
-}
-
-// ── Premium gate ──────────────────────────────────────────────────────────────
-
-.premiumGate {
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-sm;
-  align-items: flex-start;
-}
-
-.premiumBadge {
-  display: inline-block;
-  padding: 3px $spacing-md;
-  border-radius: $radius-full;
-  font-size: $font-size-xs;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  background: linear-gradient(135deg, #f6c05c, #e0943a);
-  color: #1a1a1a;
 }
 
 // ── Token modal ───────────────────────────────────────────────────────────────
