@@ -21,6 +21,12 @@ interface Props {
   // works as a passive readout.
   selected?: string | null
   onSelect?: (date: string | null) => void
+  // Bar height and tooltip/readout wording default to the "plays/viewers/cards"
+  // view-tracking meaning (Популярное). Other callers (e.g. runtime-correction
+  // counts) pass their own formatters — the three numeric fields stay generic
+  // (total/breakdown-a/breakdown-b) so no new DailyPoint shape is needed.
+  formatTooltip?: (d: DailyPoint) => string
+  formatReadout?: (d: DailyPoint) => string
 }
 
 // Per-day play dynamics. Bars and their date labels share one flex column, so
@@ -33,7 +39,10 @@ interface Props {
 // tap) pins a day and drives the optional filter. Hover and selection are kept
 // in separate state and on separate events (mouse vs pointerType) so a single
 // touch can't fire both at once.
-export default function DailyChart({ daily, title, selected, onSelect }: Props) {
+const defaultTooltip = (d: DailyPoint) => `${fmtDay(d.date)}: ${d.plays} просмотров, ${d.viewers} зрителей, ${d.cards} карточек`
+const defaultReadout = (d: DailyPoint) => `${fmtDay(d.date)}: ${d.plays} просм. · ${d.viewers} зрит. · ${d.cards} карт.`
+
+export default function DailyChart({ daily, title, selected, onSelect, formatTooltip = defaultTooltip, formatReadout = defaultReadout }: Props) {
   const [hover, setHover] = useState<number | null>(null)
   const [internalSel, setInternalSel] = useState<string | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
@@ -79,9 +88,7 @@ export default function DailyChart({ daily, title, selected, onSelect }: Props) 
       <div className={styles.chartHead}>
         <p className={styles.chartTitle}>{title}</p>
         <span className={styles.readout}>
-          {active
-            ? `${fmtDay(active.date)}: ${active.plays} просм. · ${active.viewers} зрит. · ${active.cards} карт.`
-            : `${n} дн.`}
+          {active ? formatReadout(active) : `${n} дн.`}
         </span>
       </div>
       <div className={styles.chart} ref={chartRef}>
@@ -92,7 +99,7 @@ export default function DailyChart({ daily, title, selected, onSelect }: Props) 
             onPointerEnter={e => { if (e.pointerType === 'mouse') setHover(i) }}
             onPointerLeave={e => { if (e.pointerType === 'mouse') setHover(null) }}
             onClick={() => toggle(i)}
-            title={`${fmtDay(d.date)}: ${d.plays} просмотров, ${d.viewers} зрителей, ${d.cards} карточек`}
+            title={formatTooltip(d)}
           >
             <div className={styles.barWrap}>
               <div className={styles.barFill} style={{ height: `${(d.plays / maxPlays) * 100}%` }} />

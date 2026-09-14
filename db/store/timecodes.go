@@ -9,6 +9,7 @@ import (
 	"movies-api/db/models"
 	"movies-api/db/postgres"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -1005,6 +1006,30 @@ func MaybeUpdateRuntimeFromPlayer(cardID, mediaType string, durationSec float64)
 		`UPDATE media_cards SET `+col+` = $1, updated_at = now() WHERE card_id = $2`,
 		newMin, cardID,
 	)
+	logRuntimePlayerCorrection(ctx, cardID, nil, nil, storedMin*60, newMin*60)
+}
+
+// logRuntimePlayerCorrection records one applied correction for the admin
+// "runtime corrections" page (see runtime_player_corrections in schema.sql).
+// oldSec==0 means "previously unknown", stored as NULL rather than a fake 0s.
+func logRuntimePlayerCorrection(ctx context.Context, cardID string, season, episode *int, oldSec, newSec int) {
+	tmdbID, mediaType, ok := strings.Cut(cardID, "_")
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(tmdbID, 10, 64)
+	if err != nil {
+		return
+	}
+	var oldSecArg any
+	if oldSec > 0 {
+		oldSecArg = oldSec
+	}
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`INSERT INTO runtime_player_corrections (tmdb_id, media_type, season, episode, old_value_sec, new_value_sec)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		id, mediaType, season, episode, oldSecArg, newSec,
+	)
 }
 
 // MaybeUpdateEpisodeRuntimeFromPlayer records a specific episode's real
@@ -1031,13 +1056,15 @@ func MaybeUpdateEpisodeRuntimeFromPlayer(tmdbShowID int64, season, episode int, 
 		}
 	}
 
+	newSec := int(math.Round(durationSec))
 	postgres.Pool.Exec(ctx, //nolint:errcheck
 		`INSERT INTO episode_runtimes (tmdb_show_id, season, episode, duration_sec, updated_at)
 		 VALUES ($1, $2, $3, $4, now())
 		 ON CONFLICT (tmdb_show_id, season, episode) DO UPDATE SET
 		     duration_sec = EXCLUDED.duration_sec, updated_at = now()`,
-		tmdbShowID, season, episode, int(math.Round(durationSec)),
+		tmdbShowID, season, episode, newSec,
 	)
+	logRuntimePlayerCorrection(ctx, strconv.FormatInt(tmdbShowID, 10)+"_tv", &season, &episode, storedSec, newSec)
 }
 
 // GetEpisodeRuntimes returns player-learned durations (seconds) for a show,
@@ -1056,6 +1083,112 @@ func GetEpisodeRuntimes(ctx context.Context, tmdbShowID int64) map[[2]int]int {
 		var s, e, d int
 		if rows.Scan(&s, &e, &d) == nil {
 			out[[2]int{s, e}] = d
+		}
+	}
+	return out
+}
+
+// RuntimeCorrectionDaily is one day's applied-correction count, split by
+// whole-card fixes (movies + shows' coarse episode_run_time) vs a specific
+// episode's (episode_runtimes) — see runtime_player_corrections in schema.sql.
+type RuntimeCorrectionDaily struct {
+	Date    string `json:"date"`
+	Total   int    `json:"total"`
+	Card    int    `json:"card"`    // whole-card fix: movie runtime or a show's coarse episode_run_time
+	Episode int    `json:"episode"` // one specific episode (episode_runtimes)
+}
+
+// GetRuntimeCorrectionsDaily returns per-day correction counts for the given
+// window, ordered ascending by date. Every day in the window is present
+// (zero-filled) — same pattern as GetPopularDaily.
+func GetRuntimeCorrectionsDaily(ctx context.Context, days int) []RuntimeCorrectionDaily {
+	if days < 1 {
+		days = 30
+	}
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT d::date::text,
+		        COALESCE(s.total, 0), COALESCE(s.card, 0), COALESCE(s.episode, 0)
+		 FROM generate_series(
+		        CURRENT_DATE - (($1::int - 1) * INTERVAL '1 day'),
+		        CURRENT_DATE, INTERVAL '1 day') d
+		 LEFT JOIN (
+		        SELECT corrected_at::date AS date, COUNT(*) AS total,
+		               COUNT(*) FILTER (WHERE episode IS NULL) AS card,
+		               COUNT(*) FILTER (WHERE episode IS NOT NULL) AS episode
+		        FROM runtime_player_corrections
+		        WHERE corrected_at >= CURRENT_DATE - (($1::int - 1) * INTERVAL '1 day')
+		        GROUP BY corrected_at::date
+		 ) s ON s.date = d::date
+		 ORDER BY d`,
+		days,
+	)
+	if err != nil {
+		return []RuntimeCorrectionDaily{}
+	}
+	defer rows.Close()
+	out := []RuntimeCorrectionDaily{}
+	for rows.Next() {
+		var d RuntimeCorrectionDaily
+		if rows.Scan(&d.Date, &d.Total, &d.Card, &d.Episode) == nil {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// RuntimeCorrectionRow is one applied correction, joined with its card for display.
+type RuntimeCorrectionRow struct {
+	CardID      string `json:"card_id"`
+	TmdbID      int64  `json:"tmdb_id"`
+	MediaType   string `json:"media_type"`
+	Title       string `json:"title"`
+	PosterPath  string `json:"poster_path"`
+	Season      *int   `json:"season,omitempty"`
+	Episode     *int   `json:"episode,omitempty"`
+	OldValueSec *int   `json:"old_value_sec,omitempty"`
+	NewValueSec int    `json:"new_value_sec"`
+	CorrectedAt string `json:"corrected_at"`
+}
+
+// GetRuntimeCorrectionsList returns applied corrections, newest first. By
+// default it covers the whole `days` window; if `date` (YYYY-MM-DD) is given,
+// it restricts to that single day — used by the daily-chart filter.
+func GetRuntimeCorrectionsList(ctx context.Context, days int, date string, limit int) []RuntimeCorrectionRow {
+	if limit < 1 {
+		limit = 500
+	}
+	where := "c.corrected_at >= now() - ($1::int * INTERVAL '1 day')"
+	args := []any{days}
+	if date != "" {
+		where = "c.corrected_at::date = $1::date"
+		args = []any{date}
+	}
+	limitIdx := len(args) + 1
+	args = append(args, limit)
+	rows, err := postgres.Pool.Query(ctx, fmt.Sprintf(
+		`SELECT c.tmdb_id, c.media_type,
+		        COALESCE(m.card_id, c.tmdb_id::text || '_' || c.media_type),
+		        COALESCE(m.title, ''), COALESCE(m.poster_path, ''),
+		        c.season, c.episode, c.old_value_sec, c.new_value_sec, c.corrected_at
+		 FROM runtime_player_corrections c
+		 LEFT JOIN media_cards m ON m.tmdb_id = c.tmdb_id AND m.media_type = c.media_type
+		 WHERE %s
+		 ORDER BY c.corrected_at DESC
+		 LIMIT $%d`, where, limitIdx),
+		args...,
+	)
+	if err != nil {
+		return []RuntimeCorrectionRow{}
+	}
+	defer rows.Close()
+	out := []RuntimeCorrectionRow{}
+	for rows.Next() {
+		var r RuntimeCorrectionRow
+		var correctedAt time.Time
+		if rows.Scan(&r.TmdbID, &r.MediaType, &r.CardID, &r.Title, &r.PosterPath,
+			&r.Season, &r.Episode, &r.OldValueSec, &r.NewValueSec, &correctedAt) == nil {
+			r.CorrectedAt = correctedAt.Format(time.RFC3339)
+			out = append(out, r)
 		}
 	}
 	return out

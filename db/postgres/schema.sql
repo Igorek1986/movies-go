@@ -274,6 +274,27 @@ CREATE TABLE IF NOT EXISTS episode_runtimes (
     PRIMARY KEY (tmdb_show_id, season, episode)
 );
 
+-- Audit log of every runtime correction actually applied from real player
+-- playback (see MaybeUpdateRuntimeFromPlayer/MaybeUpdateEpisodeRuntimeFromPlayer,
+-- db/store/timecodes.go) — a row per write, not per check, so it's an honest
+-- "this really changed" trail. season/episode NULL = whole-card runtime
+-- (movie or the show's coarse episode_run_time); both set = one episode's
+-- entry in episode_runtimes. Admin-only visibility (see /admin/runtime-corrections),
+-- purely informational — nothing reads this back to drive behavior.
+CREATE TABLE IF NOT EXISTS runtime_player_corrections (
+    id            BIGSERIAL    PRIMARY KEY,
+    tmdb_id       BIGINT       NOT NULL,
+    media_type    VARCHAR(10)  NOT NULL,
+    season        SMALLINT,
+    episode       SMALLINT,
+    old_value_sec INT,
+    new_value_sec INT          NOT NULL,
+    corrected_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_runtime_player_corrections_date ON runtime_player_corrections (corrected_at);
+CREATE INDEX IF NOT EXISTS idx_runtime_player_corrections_tmdb ON runtime_player_corrections (tmdb_id, media_type);
+
 -- ─── MyShows global mapping ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS myshows_items (
     id         BIGSERIAL   PRIMARY KEY,

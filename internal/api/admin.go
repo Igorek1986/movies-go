@@ -95,6 +95,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	var users, usersToday, devices, devicesToday, cards, cardsToday, timecodes, timecodesToday int
 	var noRuntimeMovies, noRuntimeTV int
 	var tmdbRefreshedToday, tmdbNotFound int
+	var runtimeCorrectionsToday, runtimeCorrectionsTotal int
 	var actorCount, directorCount int
 	var popularCards int
 	imageCacheBytesVal, imageCacheFilesVal := imagecache.Stats() // in-memory counters, no disk scan
@@ -159,6 +160,12 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_not_found_at IS NOT NULL`).Scan(&tmdbNotFound) //nolint:errcheck
 	})
 	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM runtime_player_corrections`).Scan(&runtimeCorrectionsTotal) //nolint:errcheck
+	})
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM runtime_player_corrections WHERE corrected_at::date = CURRENT_DATE`).Scan(&runtimeCorrectionsToday) //nolint:errcheck
+	})
+	run(func() {
 		// actor/director counts are cached (see catcache.go) — each is
 		// otherwise ~250-300ms (COUNT DISTINCT over ~1M rows) and neither
 		// needs to be request-fresh: they only change when the catalog does,
@@ -217,32 +224,34 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	JSON(w, http.StatusOK, map[string]any{
-		"users":                users,
-		"users_today":          usersToday,
-		"devices":              devices,
-		"devices_today":        devicesToday,
-		"media_cards":          cards,
-		"media_cards_today":    cardsToday,
-		"no_runtime_movies":    noRuntimeMovies,
-		"no_runtime_tv":        noRuntimeTV,
-		"timecodes":            timecodes,
-		"timecodes_today":      timecodesToday,
-		"new_users_today":      newUsersToday,
-		"api_ips_today":        apiIPsToday,
-		"api_reqs_today":       apiReqsToday,
-		"api_today":            apiToday,
-		"api_total":            apiTotal,
-		"cats_today":           catsToday,
-		"cats_total":           catsTotal,
-		"myshows_today":        myshowsToday,
-		"myshows_total":        myshowsTotal,
-		"tmdb_refreshed_today": tmdbRefreshedToday,
-		"tmdb_not_found":       tmdbNotFound,
-		"actor_count":          actorCount,
-		"director_count":       directorCount,
-		"popular_cards":        popularCards,
-		"image_cache_bytes":    imageCacheBytesVal,
-		"image_cache_files":    imageCacheFilesVal,
+		"users":                     users,
+		"users_today":               usersToday,
+		"devices":                   devices,
+		"devices_today":             devicesToday,
+		"media_cards":               cards,
+		"media_cards_today":         cardsToday,
+		"no_runtime_movies":         noRuntimeMovies,
+		"no_runtime_tv":             noRuntimeTV,
+		"timecodes":                 timecodes,
+		"timecodes_today":           timecodesToday,
+		"new_users_today":           newUsersToday,
+		"api_ips_today":             apiIPsToday,
+		"api_reqs_today":            apiReqsToday,
+		"api_today":                 apiToday,
+		"api_total":                 apiTotal,
+		"cats_today":                catsToday,
+		"cats_total":                catsTotal,
+		"myshows_today":             myshowsToday,
+		"myshows_total":             myshowsTotal,
+		"tmdb_refreshed_today":      tmdbRefreshedToday,
+		"tmdb_not_found":            tmdbNotFound,
+		"runtime_corrections_today": runtimeCorrectionsToday,
+		"runtime_corrections_total": runtimeCorrectionsTotal,
+		"actor_count":               actorCount,
+		"director_count":            directorCount,
+		"popular_cards":             popularCards,
+		"image_cache_bytes":         imageCacheBytesVal,
+		"image_cache_files":         imageCacheFilesVal,
 	})
 }
 
@@ -261,6 +270,24 @@ func handleAPIAdminPopular(w http.ResponseWriter, r *http.Request) {
 		"days":  days,
 		"daily": store.GetPopularDaily(ctx, days),
 		"cards": store.GetPopularCards(ctx, days, 500, date),
+	})
+}
+
+// handleAPIAdminRuntimeCorrections returns runtime-correction stats: per-day
+// counts and a list of applied corrections, within a fixed 90-day window.
+func handleAPIAdminRuntimeCorrections(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	const days = 90
+	// Optional ?date=YYYY-MM-DD — restricts the list to a single day (the
+	// daily-chart filter). Anything malformed is treated as "no filter".
+	date := r.URL.Query().Get("date")
+	if !validDate(date) {
+		date = ""
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"days":  days,
+		"daily": store.GetRuntimeCorrectionsDaily(ctx, days),
+		"items": store.GetRuntimeCorrectionsList(ctx, days, date, 1000),
 	})
 }
 
