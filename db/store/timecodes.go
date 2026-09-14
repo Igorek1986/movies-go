@@ -1006,7 +1006,14 @@ func MaybeUpdateRuntimeFromPlayer(cardID, mediaType string, durationSec float64)
 		`UPDATE media_cards SET `+col+` = $1, updated_at = now() WHERE card_id = $2`,
 		newMin, cardID,
 	)
-	logRuntimePlayerCorrection(ctx, cardID, nil, nil, storedMin*60, newMin*60)
+	// Log the real player-reported duration (rounded only to the nearest
+	// second), not newMin*60 — media_cards.runtime/episode_run_time is
+	// minute-precision by design (matches TMDB/MyShows), but the audit log
+	// is meant to show what the player actually measured. Logging the
+	// storage-rounded value made every movie/whole-card correction display
+	// with a suspicious ":00" seconds, as if the real duration were always
+	// an exact multiple of a minute.
+	logRuntimePlayerCorrection(ctx, cardID, nil, nil, storedMin*60, int(math.Round(durationSec)))
 }
 
 // logRuntimePlayerCorrection records one applied correction for the admin
