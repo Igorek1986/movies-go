@@ -61,7 +61,10 @@ type fixImdbRow struct {
 // movies/tmdb/utils.go, wired in going forward for new/refreshed cards).
 // Populating this unblocks exact-ID lookups against other sources matched by
 // imdb_id (TVmaze, poiskkino, Kinopoisk Api Unofficial) instead of fuzzy
-// title search. Safe to call concurrently — only one instance runs at a time.
+// title search. Runs both on demand (admin action, both modes — see
+// router.go) and once a day via runDailyTasks, so a fresh/existing instance
+// catches up on its own without anyone remembering to click the button.
+// Safe to call concurrently — only one instance runs at a time.
 func RunFixMissingImdbID(parentCtx context.Context) {
 	if tmdb.TMDBAuthKey == "" {
 		log.Println("tasks: fix_imdb skipped — TMDB token not configured")

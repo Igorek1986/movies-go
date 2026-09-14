@@ -2607,6 +2607,17 @@ input[type=number]{flex:none}
   </section>
 
   <section>
+    <h2>Обслуживание контента</h2>
+    <p style="font-size:.82rem;color:#888;margin:0">Те же фоновые задачи, что в веб-админке — вручную или дождаться ночного прогона (runtime/TMDB — ежедневно, imdb_id и эпизоды — только вручную).</p>
+    <div class="row" style="flex-wrap:wrap;gap:.4rem;margin-top:.5rem">
+      <button class="btn btn-primary" id="btnFixRuntime" onclick="fixRuntimeRun()">Обновить runtime</button>
+      <button class="btn btn-primary" id="btnEpisodesRefresh" onclick="episodesRefreshRun()">Обновить эпизоды</button>
+      <button class="btn btn-primary" id="btnFixImdb" onclick="fixImdbRun()">Заполнить imdb_id</button>
+    </div>
+    <div id="maintStatus" style="font-size:.82rem;color:#4a90e2;min-height:1.2em;margin-top:.4rem"></div>
+  </section>
+
+  <section>
     <h2>Внешние источники</h2>
     <p style="font-size:.82rem;color:#888;margin:0">Фолбэки, когда у TMDB нет данных — runtime («Обновить runtime») и, для TVmaze, список эпизодов/спецвыпусков (см. «Обновить эпизоды»). Ключи хранятся отдельно от остальных настроек и не попадают в бэкап (см. scripts/backup.sh).</p>
     <div id="extSourceList" style="margin-top:.5rem"><span class="empty">Загрузка…</span></div>
@@ -2822,6 +2833,75 @@ function parsersResetOne(name){
     .then(function(){setParsersStatus(name+': дата сброшена');})
     .catch(function(){setParsersStatus('Ошибка',true);});
 }
+
+// ── Content maintenance (runtime / episodes / imdb_id) ─────────────────────────
+function setMaintStatus(msg,err){
+  var s=document.getElementById('maintStatus');
+  s.style.color=err?'#e74c3c':'#4a90e2';
+  s.textContent=msg;
+}
+
+function episodesRefreshRun(){
+  fetch('/api/admin/episodes-refresh',{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){setMaintStatus(d.message||'Запущено');})
+    .catch(function(){setMaintStatus('Ошибка',true);});
+}
+
+var fixRuntimeTimer=null;
+function fixRuntimePoll(){
+  fetch('/api/admin/fix-runtime/status').then(function(r){return r.json();}).then(function(d){
+    var btn=document.getElementById('btnFixRuntime');
+    if(d.running){
+      btn.textContent='Остановить runtime';
+      btn.onclick=fixRuntimeStop;
+      setMaintStatus((d.stage==='movie'?'Фильмы':'Сериалы')+': '+d.current+'/'+d.total+', исправлено '+d.fixed);
+      if(!fixRuntimeTimer)fixRuntimeTimer=setInterval(fixRuntimePoll,3000);
+    } else {
+      btn.textContent='Обновить runtime';
+      btn.onclick=fixRuntimeRun;
+      if(fixRuntimeTimer){clearInterval(fixRuntimeTimer);fixRuntimeTimer=null;}
+    }
+  }).catch(function(){});
+}
+function fixRuntimeRun(){
+  fetch('/api/admin/fix-runtime',{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){setMaintStatus(d.status==='already_running'?'Уже запущено':'Запущено');fixRuntimePoll();})
+    .catch(function(){setMaintStatus('Ошибка',true);});
+}
+function fixRuntimeStop(){
+  fetch('/api/admin/fix-runtime/stop',{method:'POST'}).then(function(){setMaintStatus('Останавливается…');fixRuntimePoll();});
+}
+
+var fixImdbTimer=null;
+function fixImdbPoll(){
+  fetch('/api/admin/fix-imdb/status').then(function(r){return r.json();}).then(function(d){
+    var btn=document.getElementById('btnFixImdb');
+    if(d.running){
+      btn.textContent='Остановить imdb_id';
+      btn.onclick=fixImdbStop;
+      setMaintStatus('imdb_id: '+d.current+'/'+d.total+', заполнено '+d.fixed);
+      if(!fixImdbTimer)fixImdbTimer=setInterval(fixImdbPoll,3000);
+    } else {
+      btn.textContent='Заполнить imdb_id';
+      btn.onclick=fixImdbRun;
+      if(fixImdbTimer){clearInterval(fixImdbTimer);fixImdbTimer=null;}
+    }
+  }).catch(function(){});
+}
+function fixImdbRun(){
+  fetch('/api/admin/fix-imdb',{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){setMaintStatus(d.status==='already_running'?'Уже запущено':'Запущено');fixImdbPoll();})
+    .catch(function(){setMaintStatus('Ошибка',true);});
+}
+function fixImdbStop(){
+  fetch('/api/admin/fix-imdb/stop',{method:'POST'}).then(function(){setMaintStatus('Останавливается…');fixImdbPoll();});
+}
+
+fixRuntimePoll();
+fixImdbPoll();
 
 // ── Parser hosts ──────────────────────────────────────────────────────────────
 function saveParserHosts(){

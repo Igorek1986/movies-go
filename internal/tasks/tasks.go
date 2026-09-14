@@ -57,6 +57,7 @@ func runDailyTasks(ctx context.Context) {
 	cleanGhostCards(ctx)
 	go RunFixZeroRuntime(ctx)
 	go RunRefreshCards(ctx)
+	go RunFixMissingImdbID(ctx)
 }
 
 // cleanGhostCards removes media cards that have no linked torrents.

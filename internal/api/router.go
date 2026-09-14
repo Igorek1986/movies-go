@@ -80,6 +80,8 @@ func NewRouter(mode string) http.Handler {
 		r.Post("/sync/cards", handleSyncCardsPush)
 		r.Get("/sync/events", handleSyncEvents)
 		r.Post("/sync/events", handleSyncEventsPush)
+		r.Get("/sync/episode-runtimes", handleSyncEpisodeRuntimes)
+		r.Post("/sync/episode-runtimes", handleSyncEpisodeRuntimesPush)
 
 		if mode == "all" {
 			r.With(optionalSession).Get("/episodes", handleEpisodes)
@@ -168,16 +170,9 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireAdmin).Post("/admin/users/{id}/cleanup-limits", handleAPIAdminCleanupLimits)
 			r.With(requireAdmin).Post("/admin/run-expiry-check", handleAPIAdminRunExpiryCheck)
 			r.With(requireAdmin).Post("/admin/extend-all-premium", handleAPIAdminExtendAllPremium)
-			r.With(requireAdmin).Post("/admin/episodes-refresh", handleAPIAdminEpisodesRefresh)
 			r.With(requireAdmin).Post("/admin/refresh-cards", handleAPIAdminRefreshCards)
 			r.With(requireAdmin).Post("/admin/refresh-cards/stop", handleAPIAdminRefreshCardsStop)
 			r.With(requireAdmin).Get("/admin/refresh-cards/status", handleAPIAdminRefreshCardsStatus)
-			r.With(requireAdmin).Post("/admin/fix-runtime", handleAPIAdminFixRuntime)
-			r.With(requireAdmin).Post("/admin/fix-runtime/stop", handleAPIAdminFixRuntimeStop)
-			r.With(requireAdmin).Get("/admin/fix-runtime/status", handleAPIAdminFixRuntimeStatus)
-			r.With(requireAdmin).Post("/admin/fix-imdb", handleAPIAdminFixImdb)
-			r.With(requireAdmin).Post("/admin/fix-imdb/stop", handleAPIAdminFixImdbStop)
-			r.With(requireAdmin).Get("/admin/fix-imdb/status", handleAPIAdminFixImdbStatus)
 			r.With(requireAdmin).Post("/admin/backfill-cast", handleAPIAdminBackfillCast)
 			r.With(requireAdmin).Post("/admin/backfill-cast/stop", handleAPIAdminBackfillCastStop)
 			r.With(requireAdmin).Get("/admin/backfill-cast/status", handleAPIAdminBackfillCastStatus)
@@ -255,6 +250,18 @@ func NewRouter(mode string) http.Handler {
 		r.Post("/", handleAPIAdminSyncSave)
 		r.Post("/token", handleAPIAdminSyncRotateToken)
 	})
+
+	// ── Content maintenance (admin, both modes) — TMDB/imdb_id/episode
+	// backfills are exactly as relevant on a parser-mode instance (the one
+	// actually doing the enrichment) as on an "all"-mode one; used to be
+	// mode=="all"-only for no real reason.
+	r.With(requireAnyAdmin(mode)).Post("/api/admin/episodes-refresh", handleAPIAdminEpisodesRefresh)
+	r.With(requireAnyAdmin(mode)).Post("/api/admin/fix-runtime", handleAPIAdminFixRuntime)
+	r.With(requireAnyAdmin(mode)).Post("/api/admin/fix-runtime/stop", handleAPIAdminFixRuntimeStop)
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/fix-runtime/status", handleAPIAdminFixRuntimeStatus)
+	r.With(requireAnyAdmin(mode)).Post("/api/admin/fix-imdb", handleAPIAdminFixImdb)
+	r.With(requireAnyAdmin(mode)).Post("/api/admin/fix-imdb/stop", handleAPIAdminFixImdbStop)
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/fix-imdb/status", handleAPIAdminFixImdbStatus)
 
 	// ── TMDB missing cards (admin, both modes) ──────────────────────────────────
 	r.Route("/api/admin/tmdb-missing", func(r chi.Router) {

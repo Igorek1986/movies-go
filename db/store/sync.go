@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"movies-api/db/postgres"
@@ -289,6 +290,66 @@ func UpsertSyncedPlayEvent(ctx context.Context, e SyncEvent) error {
 		return nil
 	}
 	return err
+}
+
+// SyncEpisodeRuntime is one episode_runtimes row for GET /api/sync/episode-runtimes —
+// see MaybeUpdateEpisodeRuntimeFromPlayer/episode_runtimes in schema.sql.
+type SyncEpisodeRuntime struct {
+	TmdbShowID  int64     `json:"tmdb_show_id"`
+	Season      int16     `json:"season"`
+	Episode     int16     `json:"episode"`
+	DurationSec int       `json:"duration_sec"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// EpisodeRuntimeTie is the sync tiebreak string for one row — same reasoning
+// as ListCardsSince's comment (a plain updated_at cursor drops rows once more
+// than a page's worth share one timestamp). Exported so sync_serve.go and
+// instance_sync.go don't each reconstruct it separately.
+func EpisodeRuntimeTie(e SyncEpisodeRuntime) string {
+	return strconv.FormatInt(e.TmdbShowID, 10) + "|" + strconv.Itoa(int(e.Season)) + "|" + strconv.Itoa(int(e.Episode))
+}
+
+// ListEpisodeRuntimesSince returns up to limit episode_runtimes rows ordered
+// by (updated_at, tie) strictly after (since, sinceTie) — see
+// ListCardsSince's comment for the tiebreak reasoning.
+func ListEpisodeRuntimesSince(ctx context.Context, since time.Time, sinceTie string, limit int) ([]SyncEpisodeRuntime, error) {
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT tmdb_show_id, season, episode, duration_sec, updated_at
+		 FROM episode_runtimes
+		 WHERE updated_at > $1 OR (updated_at = $1 AND (tmdb_show_id::text || '|' || season::text || '|' || episode::text) > $2)
+		 ORDER BY updated_at ASC, (tmdb_show_id::text || '|' || season::text || '|' || episode::text) ASC LIMIT $3`,
+		since, sinceTie, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SyncEpisodeRuntime
+	for rows.Next() {
+		var e SyncEpisodeRuntime
+		if err := rows.Scan(&e.TmdbShowID, &e.Season, &e.Episode, &e.DurationSec, &e.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// UpsertSyncedEpisodeRuntime applies one episode_runtimes row pulled from a
+// peer via the same self-correcting path as a local player report
+// (MaybeUpdateEpisodeRuntimeFromPlayer) — a peer's measured duration is as
+// real a signal about actual content length as this instance's own player
+// timeline, same reasoning as UpsertSyncedCard's runtime/episode_run_time
+// handling. This also means an applied peer correction shows up in
+// runtime_player_corrections (see internal/api/admin.go) exactly like a
+// local one — no separate sync-only bookkeeping needed, and no new echo-loop
+// risk: that function's own write already uses plain now() the same way a
+// genuine runtime correction does for media_cards (see UpsertSyncedCard's
+// doc comment) — self-limiting once both sides agree, not unconditional.
+func UpsertSyncedEpisodeRuntime(ctx context.Context, e SyncEpisodeRuntime) error {
+	MaybeUpdateEpisodeRuntimeFromPlayer(e.TmdbShowID, int(e.Season), int(e.Episode), float64(e.DurationSec))
+	return nil
 }
 
 func isFKViolation(err error) bool {

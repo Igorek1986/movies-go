@@ -60,9 +60,11 @@ func runInstanceSyncTick(ctx context.Context) {
 	}
 	pullCards(ctx, peer)
 	pullEvents(ctx, peer)
+	pullEpisodeRuntimes(ctx, peer)
 	if token, _ := store.GetSetting(ctx, "sync_token"); token != "" {
 		pushCards(ctx, peer, token)
 		pushEvents(ctx, peer, token)
+		pushEpisodeRuntimes(ctx, peer, token)
 	}
 }
 
@@ -209,8 +211,20 @@ func syncPushPages[T any](ctx context.Context, peer, token, path, wrapKey, setti
 			log.Printf("tasks: instance_sync push %s: status=%d err=%v", path, resp.StatusCode, err)
 			break
 		}
+		// Validate the response actually came from our own push handler
+		// (applied+failed must account for every item we sent) before
+		// trusting it enough to advance the cursor — a 200 with an
+		// unrelated/malformed body (e.g. this instance's own SPA fallback
+		// page, if the peer's route doesn't exist yet — version skew during
+		// a rolling deploy is a real scenario, not just a test artifact)
+		// would otherwise unmarshal into a zero-valued result and get
+		// treated as "batch accepted", permanently skipping these items.
 		var result struct{ Applied, Failed int }
-		json.Unmarshal(body, &result) //nolint:errcheck
+		if err := json.Unmarshal(body, &result); err != nil || result.Applied+result.Failed != len(items) {
+			log.Printf("tasks: instance_sync push %s: unexpected response (unmarshal err=%v, applied=%d failed=%d for %d items) — not advancing cursor",
+				path, err, result.Applied, result.Failed, len(items))
+			break
+		}
 		applied += result.Applied
 		failed += result.Failed
 
@@ -245,6 +259,41 @@ func pushEvents(ctx context.Context, peer, token string) {
 	syncPushPages(ctx, peer, token, "/api/sync/events", "events", "sync_push_cursor_events",
 		store.ListPlayEventsSince, func(e store.SyncEvent) time.Time { return e.UpdatedAt },
 		func(e store.SyncEvent) string { return e.CardID + "|" + e.Ident + "|" + e.Date })
+}
+
+// pushEpisodeRuntimes sends local per-episode runtime corrections this
+// instance hasn't pushed yet — same direction/purpose as pushCards, just for
+// episode_runtimes (see db/store/sync.go's UpsertSyncedEpisodeRuntime).
+func pushEpisodeRuntimes(ctx context.Context, peer, token string) {
+	syncPushPages(ctx, peer, token, "/api/sync/episode-runtimes", "episode_runtimes", "sync_push_cursor_episode_runtimes",
+		store.ListEpisodeRuntimesSince, func(e store.SyncEpisodeRuntime) time.Time { return e.UpdatedAt }, store.EpisodeRuntimeTie)
+}
+
+func pullEpisodeRuntimes(ctx context.Context, peer string) {
+	var applied, failed int
+	syncCursorPages(ctx, peer, "/api/sync/episode-runtimes", "sync_cursor_episode_runtimes", func(page json.RawMessage) (string, string, bool, error) {
+		var body struct {
+			EpisodeRuntimes []store.SyncEpisodeRuntime `json:"episode_runtimes"`
+			NextSince       string                     `json:"next_since"`
+			NextTie         string                     `json:"next_tie"`
+			HasMore         bool                       `json:"has_more"`
+		}
+		if err := json.Unmarshal(page, &body); err != nil {
+			return "", "", false, err
+		}
+		for _, e := range body.EpisodeRuntimes {
+			if err := store.UpsertSyncedEpisodeRuntime(ctx, e); err != nil {
+				failed++
+				log.Printf("tasks: instance_sync pull episode-runtimes: upsert show=%d s%de%d: %v", e.TmdbShowID, e.Season, e.Episode, err)
+				continue
+			}
+			applied++
+		}
+		return body.NextSince, body.NextTie, body.HasMore, nil
+	})
+	if applied > 0 || failed > 0 {
+		log.Printf("tasks: instance_sync pull episode-runtimes from %s: applied %d, failed %d", peer, applied, failed)
+	}
 }
 
 func pullEvents(ctx context.Context, peer string) {

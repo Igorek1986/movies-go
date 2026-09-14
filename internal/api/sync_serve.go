@@ -98,6 +98,28 @@ func handleSyncEvents(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GET /api/sync/episode-runtimes?since=<RFC3339>&since_tie=<tmdb_show_id|season|episode>&limit=500
+func handleSyncEpisodeRuntimes(w http.ResponseWriter, r *http.Request) {
+	since, sinceTie, limit := parseSyncSinceLimit(r)
+	items, err := store.ListEpisodeRuntimesSince(r.Context(), since, sinceTie, limit)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	nextSince, nextTie := since, sinceTie
+	if len(items) > 0 {
+		last := items[len(items)-1]
+		nextSince, nextTie = last.UpdatedAt, store.EpisodeRuntimeTie(last)
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"episode_runtimes": items,
+		"next_since":       nextSince.UTC().Format(time.RFC3339Nano),
+		"next_tie":         nextTie,
+		"has_more":         len(items) == limit,
+		"interval_minutes": syncAdvertisedInterval(r.Context()),
+	})
+}
+
 // syncPushTokenValid checks the X-Sync-Token header against sync_token. An
 // unset sync_token means this instance never accepts pushes — the safe
 // default (nobody can push in until you set/generate a token).
@@ -137,6 +159,35 @@ func handleSyncCardsPush(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := store.UpsertSyncedCard(r.Context(), c); err != nil {
+			failed++
+			continue
+		}
+		applied++
+	}
+	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed})
+}
+
+// POST /api/sync/episode-runtimes — push path (see file comment above).
+// Body: {"episode_runtimes": [<store.SyncEpisodeRuntime>, ...]}
+func handleSyncEpisodeRuntimesPush(w http.ResponseWriter, r *http.Request) {
+	if !syncPushTokenValid(r) {
+		Error(w, http.StatusForbidden, "invalid or missing sync token")
+		return
+	}
+	var body struct {
+		EpisodeRuntimes []store.SyncEpisodeRuntime `json:"episode_runtimes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	var applied, failed int
+	for _, e := range body.EpisodeRuntimes {
+		if e.TmdbShowID == 0 || e.Season <= 0 || e.Episode <= 0 {
+			failed++
+			continue
+		}
+		if err := store.UpsertSyncedEpisodeRuntime(r.Context(), e); err != nil {
 			failed++
 			continue
 		}
