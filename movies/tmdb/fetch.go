@@ -15,7 +15,7 @@ func FetchVideoDetails(isMovie bool, id int64) *models.Entity {
 	ids := strconv.FormatInt(id, 10)
 	endpoint := mediaType + "/" + ids
 
-	appendKey := "content_ratings,keywords,credits"
+	appendKey := "content_ratings,keywords,credits,external_ids"
 	if isMovie {
 		appendKey = "release_dates,keywords,credits"
 	}

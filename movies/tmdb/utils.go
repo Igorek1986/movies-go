@@ -68,6 +68,12 @@ func fixEntity(ent *models.Entity) {
 		ent.OriginalTitle = ent.OriginalName
 	}
 
+	// TV's base response has no top-level imdb_id (unlike movies) — comes
+	// from the external_ids append instead (see models.Entity.ExternalIds).
+	if ent.ImdbID == "" && ent.ExternalIds != nil {
+		ent.ImdbID = ent.ExternalIds.ImdbID
+	}
+
 	ent.ReleaseDate = FixDate(ent.ReleaseDate)
 	ent.FirstAirDate = FixDate(ent.FirstAirDate)
 	ent.LastAirDate = FixDate(ent.LastAirDate)

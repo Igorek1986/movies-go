@@ -135,11 +135,12 @@ interface UsersPaged {
   items: AdminUser[]
 }
 
-// Внешние источники runtime-фолбэков (see internal/tasks/fix_runtime.go).
+// Внешние источники — runtime-фолбэки (internal/tasks/fix_runtime.go) и,
+// для TVmaze, список эпизодов/спецвыпусков (internal/externalsources).
 // Токены хранятся отдельно от app_settings и не попадают в бэкап — см.
 // db/postgres/schema.sql (external_source_tokens) и scripts/backup.sh.
 const EXT_SOURCE_INFO: Record<string, { label: string; hint: string }> = {
-  tvmaze: { label: 'TVmaze', hint: 'Сериалы, полностью бесплатно, ключ не нужен' },
+  tvmaze: { label: 'TVmaze', hint: 'Сериалы: runtime + список эпизодов/спецвыпусков, полностью бесплатно, ключ не нужен' },
   thetvdb: { label: 'TheTVDB', hint: 'Фильмы и сериалы, нужен API-ключ' },
   poiskkino: { label: 'poiskkino.dev', hint: 'Кинопоиск + TMDB + IMDb, нужен ключ, лимит 200 запросов/сутки' },
   kinopoisk_unofficial: { label: 'Kinopoisk Api Unofficial', hint: 'Только фильмы, нужен ключ, лимит 500 запросов/сутки' },
@@ -183,6 +184,10 @@ export default function AdminPage() {
     running: false, current: 0, total: 0, updated: 0,
   })
   const backfillCastPoll = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [fixImdbStatus, setFixImdbStatus] = useState<{ running: boolean; current: number; total: number; fixed: number }>({
+    running: false, current: 0, total: 0, fixed: 0,
+  })
+  const fixImdbPoll = useRef<ReturnType<typeof setInterval> | null>(null)
   const meId = useRef<number | null>(null)
   const [backingUp, setBackingUp] = useState(false)
   const [restoring, setRestoring] = useState(false)
@@ -364,6 +369,50 @@ export default function AdminPage() {
     }
   }
 
+  async function fetchFixImdbStatus() {
+    const res = await fetch('/api/admin/fix-imdb/status')
+    if (!res.ok) return
+    const data = await res.json()
+    setFixImdbStatus(data)
+    return data
+  }
+
+  function startFixImdbPoll() {
+    if (fixImdbPoll.current) return
+    fixImdbPoll.current = setInterval(async () => {
+      const data = await fetchFixImdbStatus()
+      if (data && !data.running) {
+        clearInterval(fixImdbPoll.current!)
+        fixImdbPoll.current = null
+      }
+      refresh()
+    }, 3000)
+  }
+
+  async function runFixImdb() {
+    try {
+      const res = await api('/api/admin/fix-imdb', 'POST')
+      if (res.status === 'already_running') {
+        toast('Задача уже запущена')
+      } else {
+        toast('Заполнение imdb_id запущено в фоне')
+        await fetchFixImdbStatus()
+      }
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
+  async function stopFixImdb() {
+    try {
+      await api('/api/admin/fix-imdb/stop', 'POST')
+      toast('Задача остановлена')
+      await fetchFixImdbStatus()
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
   useEffect(() => {
     setLoading(true)
     // fetch meId once
@@ -377,7 +426,7 @@ export default function AdminPage() {
     if (!cachedStats || cachedStats.stale) refresh()
     Promise.all([
       fetchUsers(1, '', 'created_at', 'desc', 10),
-      fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchSysStats(), fetchApiKey(), fetchExtSources(),
+      fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchFixImdbStatus(), fetchSysStats(), fetchApiKey(), fetchExtSources(),
     ]).finally(() => setLoading(false))
     const sysInterval = setInterval(fetchSysStats, 5000)
     return () => clearInterval(sysInterval)
@@ -399,6 +448,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (backfillCastStatus.running) startBackfillCastPoll()
   }, [backfillCastStatus.running]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (fixImdbStatus.running) startFixImdbPoll()
+  }, [fixImdbStatus.running]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function runFixRuntime() {
     try {
@@ -942,6 +995,10 @@ export default function AdminPage() {
               ? <button className={`${styles.actionBtn} ${styles.danger}`} onClick={stopBackfillCast}>Остановить актёров</button>
               : <button className={styles.actionBtn} title="Заполнить актёров и режиссёров из TMDB для карточек без каста" onClick={runBackfillCast}>Заполнить актёров и режиссёров</button>
             }
+            {fixImdbStatus.running
+              ? <button className={`${styles.actionBtn} ${styles.danger}`} title="Остановить заполнение imdb_id" onClick={stopFixImdb}>Остановить imdb_id</button>
+              : <button className={styles.actionBtn} title="Заполнить imdb_id для сериалов из TMDB (/tv/{id}/external_ids) — нужен для точного сопоставления с TVmaze/TheTVDB/Kinopoisk по ID вместо поиска по названию" onClick={runFixImdb}>Заполнить imdb_id</button>
+            }
           </div>
           {fixRtStatus.running && fixRtStatus.total > 0 && (
             <div className={styles.fixRtProgress}>
@@ -979,14 +1036,27 @@ export default function AdminPage() {
               </div>
             </div>
           )}
+          {fixImdbStatus.running && fixImdbStatus.total > 0 && (
+            <div className={styles.fixRtProgress}>
+              <div className={styles.fixRtLabel}>
+                <span>imdb_id: {fixImdbStatus.current} / {fixImdbStatus.total}</span>
+                <span>Заполнено: {fixImdbStatus.fixed}</span>
+                <span>{Math.round(fixImdbStatus.current / fixImdbStatus.total * 100)}%</span>
+              </div>
+              <div className={styles.fixRtBar}>
+                <div className={styles.fixRtBarFill} style={{ width: `${Math.round(fixImdbStatus.current / fixImdbStatus.total * 100)}%` }} />
+              </div>
+            </div>
+          )}
 
         </div>
 
-        {/* ── External runtime sources ───────────────────────────────────────── */}
+        {/* ── External sources ─────────────────────────────────────────────── */}
         <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>Внешние источники runtime</h2>
+          <h2 className={styles.sectionTitle}>Внешние источники</h2>
           <p className={styles.empty}>
-            Фолбэки для «Обновить runtime», когда у TMDB нет данных. Ключи хранятся отдельно от остальных
+            Фолбэки, когда у TMDB нет данных — runtime («Обновить runtime») и, для TVmaze, список
+            эпизодов/спецвыпусков (см. «Обновить эпизоды»). Ключи хранятся отдельно от остальных
             настроек и не попадают в бэкап (см. <code>scripts/backup.sh</code>).
           </p>
           <div className={styles.extSourceList}>

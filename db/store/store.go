@@ -350,9 +350,10 @@ func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
 			certification_ru   = COALESCE($17, certification_ru),
 			certification_us   = COALESCE($18, certification_us),
 			keyword_ids        = COALESCE($19, keyword_ids),
+			imdb_id            = COALESCE($20, imdb_id),
 			tmdb_updated_at    = now(),
 			updated_at         = now()
-		WHERE card_id = $20`,
+		WHERE card_id = $21`,
 		e.Title, e.OriginalTitle, e.Overview, e.PosterPath, e.BackdropPath,
 		e.VoteAverage, e.VoteCount, e.Status,
 		genresJSON,
@@ -361,6 +362,7 @@ func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
 		runtimeArg,
 		nilStr(e.CertificationRU), nilStr(e.CertificationUS),
 		nilIntSlice(e.KeywordIDs),
+		nilStr(e.ImdbID),
 		cardID,
 	)
 	if err != nil {

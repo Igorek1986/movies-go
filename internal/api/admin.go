@@ -1960,6 +1960,24 @@ func handleAPIAdminFixRuntimeStatus(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, tasks.GetFixRuntimeStatus())
 }
 
+func handleAPIAdminFixImdb(w http.ResponseWriter, r *http.Request) {
+	if tasks.GetFixImdbStatus().Running {
+		JSON(w, http.StatusOK, map[string]any{"status": "already_running"})
+		return
+	}
+	go tasks.RunFixMissingImdbID(tasks.AppCtx())
+	JSON(w, http.StatusOK, map[string]any{"status": "started"})
+}
+
+func handleAPIAdminFixImdbStop(w http.ResponseWriter, r *http.Request) {
+	tasks.StopFixMissingImdbID()
+	JSON(w, http.StatusOK, map[string]any{"status": "stopped"})
+}
+
+func handleAPIAdminFixImdbStatus(w http.ResponseWriter, r *http.Request) {
+	JSON(w, http.StatusOK, tasks.GetFixImdbStatus())
+}
+
 type personListItem struct {
 	PersonID    int64   `json:"person_id"`
 	PersonName  string  `json:"person_name"`
@@ -2562,8 +2580,8 @@ input[type=number]{flex:none}
   </section>
 
   <section>
-    <h2>Внешние источники runtime</h2>
-    <p style="font-size:.82rem;color:#888;margin:0">Фолбэки для «Обновить runtime», когда у TMDB нет данных. Ключи хранятся отдельно от остальных настроек и не попадают в бэкап (см. scripts/backup.sh).</p>
+    <h2>Внешние источники</h2>
+    <p style="font-size:.82rem;color:#888;margin:0">Фолбэки, когда у TMDB нет данных — runtime («Обновить runtime») и, для TVmaze, список эпизодов/спецвыпусков (см. «Обновить эпизоды»). Ключи хранятся отдельно от остальных настроек и не попадают в бэкап (см. scripts/backup.sh).</p>
     <div id="extSourceList" style="margin-top:.5rem"><span class="empty">Загрузка…</span></div>
   </section>
 
@@ -3311,7 +3329,7 @@ function syncCopyToken(){
 loadSync();
 
 var EXT_SOURCE_INFO={
-  tvmaze:{label:'TVmaze',hint:'Сериалы, полностью бесплатно, ключ не нужен',noToken:true},
+  tvmaze:{label:'TVmaze',hint:'Сериалы: runtime + список эпизодов/спецвыпусков, полностью бесплатно, ключ не нужен',noToken:true},
   thetvdb:{label:'TheTVDB',hint:'Фильмы и сериалы, нужен API-ключ'},
   poiskkino:{label:'poiskkino.dev',hint:'Кинопоиск + TMDB + IMDb, нужен ключ, лимит 200 запросов/сутки'},
   kinopoisk_unofficial:{label:'Kinopoisk Api Unofficial',hint:'Только фильмы, нужен ключ, лимит 500 запросов/сутки'},

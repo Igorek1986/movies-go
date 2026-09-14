@@ -50,6 +50,11 @@ type Entity struct {
 	Type             string            `json:"type"`
 	Images           *Images           `json:"images,omitempty"`
 
+	// external_ids — requested via append_to_response for TV only (movies
+	// already carry imdb_id at the top level, see ImdbID above). Used to
+	// fill ImdbID in fixEntity() since TMDB's base /tv/{id} response omits it.
+	ExternalIds *ExternalIds `json:"external_ids,omitempty"`
+
 	//multi
 	Year         string `json:"year"`
 	Character    string `json:"character"`
@@ -195,6 +200,10 @@ type Network struct {
 	ID            int    `json:"id"`
 	LogoPath      string `json:"logo_path"`
 	OriginCountry string `json:"origin_country"`
+}
+
+type ExternalIds struct {
+	ImdbID string `json:"imdb_id"`
 }
 
 type Season struct {

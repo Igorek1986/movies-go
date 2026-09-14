@@ -181,6 +181,7 @@ func registerTgAppRoutes(r chi.Router) {
 				r.Post("/admin/extend-premium", handleTgAppExtendPremium)
 				r.Post("/admin/refresh-episodes", handleTgAppRefreshEpisodes)
 				r.Post("/admin/fix-runtime", handleTgAppFixRuntime)
+				r.Post("/admin/fix-imdb", handleTgAppFixImdb)
 				r.Post("/admin/reset-parser", handleTgAppResetParser)
 				r.Get("/messages", handleTgAppMessages)
 				r.Post("/messages/{tg_id}/reply", handleTgAppReply)
@@ -668,6 +669,15 @@ func handleTgAppFixRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go tasks.RunFixZeroRuntime(tasks.AppCtx())
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func handleTgAppFixImdb(w http.ResponseWriter, r *http.Request) {
+	if tasks.GetFixImdbStatus().Running {
+		JSON(w, http.StatusOK, map[string]any{"ok": false, "message": "already running"})
+		return
+	}
+	go tasks.RunFixMissingImdbID(tasks.AppCtx())
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

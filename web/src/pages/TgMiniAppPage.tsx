@@ -209,6 +209,7 @@ function UsersActionsBlock() {
           <button className={`${s.btn} ${s.btnSecondary}`} onClick={() => run('/admin/extend-premium', 'Продлить всем')}>Продлить всем</button>
           <button className={`${s.btn} ${s.btnSecondary}`} onClick={() => run('/admin/refresh-episodes', 'Обновить эпизоды')}>Обновить эпизоды</button>
           <button className={`${s.btn} ${s.btnSecondary}`} onClick={() => run('/admin/fix-runtime', 'Обновить runtime')}>Обновить runtime</button>
+          <button className={`${s.btn} ${s.btnSecondary}`} onClick={() => run('/admin/fix-imdb', 'Заполнить imdb_id')}>Заполнить imdb_id</button>
         </div>
         <div className={s.parserReset}>
           <span className={s.muted}>Сброс парсера:</span>

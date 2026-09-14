@@ -112,7 +112,9 @@ func GetVideoDetails(isMovie bool, id int64) *models.Entity {
 		params["append_to_response"] = "release_dates,keywords,credits"
 	} else {
 		endpoint = "tv/" + ids
-		params["append_to_response"] = "content_ratings,keywords,credits"
+		// external_ids — movies already get imdb_id at the top level of
+		// /movie/{id}; TV needs this appended (see models.Entity.ExternalIds).
+		params["append_to_response"] = "content_ratings,keywords,credits,external_ids"
 	}
 
 	var ent *models.Entity
@@ -126,6 +128,22 @@ func GetVideoDetails(isMovie bool, id int64) *models.Entity {
 	ent.Titles = titles
 
 	return ent
+}
+
+// FetchTVImdbID fetches just imdb_id for a TV show via TMDB's dedicated
+// /tv/{id}/external_ids endpoint — cheaper than a full GetVideoDetails/
+// FetchVideoDetails round trip (no credits/keywords/content_ratings) for
+// callers that only need this one field, e.g. internal/tasks/fix_imdb.go
+// backfilling existing TV cards. Returns "" on any error or if TMDB has none.
+func FetchTVImdbID(tmdbShowID int64) string {
+	var ext struct {
+		ImdbID string `json:"imdb_id"`
+	}
+	path := "tv/" + strconv.FormatInt(tmdbShowID, 10) + "/external_ids"
+	if err := readPageTmdb(path, nil, &ext); err != nil {
+		return ""
+	}
+	return ext.ImdbID
 }
 
 // GetSeasonEpisodeInfo fetches per-episode still_path/overview for one
