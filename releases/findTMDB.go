@@ -19,9 +19,12 @@ func filterByYear(isMovie bool, list []*models.Entity, torrYear int) []*models.E
 		return list
 	}
 	return utils.Filter(list, func(i int, e *models.Entity) bool {
-		if len(e.ReleaseDate) > 6 {
-			year, _ := strconv.Atoi(e.ReleaseDate[6:])
-			return utils.Abs(year-torrYear) > 1 // remove if year is far from torrent year
+		if len(e.ReleaseDate) >= 4 {
+			// e.ReleaseDate here is TMDB's raw search-result date, always
+			// ISO "YYYY-MM-DD" (unlike tvYearDist's post-FixDate input,
+			// which can also be "DD.MM.YYYY") — year is the first 4 chars.
+			year, err := strconv.Atoi(e.ReleaseDate[:4])
+			return err == nil && utils.Abs(year-torrYear) > 1 // remove if year is far from torrent year
 		}
 		return false // no release date — keep the candidate
 	})
