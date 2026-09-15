@@ -16,14 +16,15 @@ import (
 
 var syncHTTPClient = &http.Client{Timeout: 20 * time.Second}
 
-// OnSyncApplied is called whenever pullCards or pullTorrents actually wrote
-// new local data (applied > 0) — wired in cmd/main.go to
+// OnSyncApplied is called whenever pullCards, pullTorrents, or pullEvents
+// actually wrote new local data (applied > 0) — wired in cmd/main.go to
 // api.InvalidateCategoryCache, the same hook parser.OnComplete uses after a
 // parser run. Without it, a card/torrent that arrived via sync wouldn't show
-// up in the catalog until the next local parser run happened to invalidate
-// the cache for an unrelated reason. A function var, not a direct import,
-// because internal/api already imports internal/tasks (see admin.go), so
-// the reverse import would be circular — same pattern as parser.OnComplete.
+// up in the catalog (and a synced event wouldn't affect "Популярное") until
+// the next local parser run happened to invalidate the cache for an
+// unrelated reason. A function var, not a direct import, because internal/api
+// already imports internal/tasks (see admin.go), so the reverse import would
+// be circular — same pattern as parser.OnComplete.
 var OnSyncApplied func()
 
 // StartInstanceSyncLoop runs instance sync's client side (see
@@ -464,5 +465,14 @@ func pullEvents(ctx context.Context, peer string) {
 	if applied > 0 || failed > 0 {
 		log.Printf("tasks: instance_sync pull events from %s: applied %d, failed %d", peer, applied, failed)
 		store.LogSyncActivity(ctx, "pull", "events", peerName, peer, applied, failed)
+	}
+	// /np_popular goes through the same withCategoryCache wrapper as regular
+	// categories (see router.go) — a new event can change which cards rank
+	// there, and that cache has no time-based TTL of its own, only
+	// catGeneration bumps. Without this, a freshly-synced event wouldn't
+	// show up in "Популярное" until something unrelated (a parser run, a
+	// card/torrent sync) happened to invalidate the cache.
+	if applied > 0 && OnSyncApplied != nil {
+		OnSyncApplied()
 	}
 }
