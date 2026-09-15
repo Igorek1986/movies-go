@@ -6,7 +6,7 @@ import styles from './PopularPage.module.scss'
 
 interface ActivityRow {
   direction: 'pull' | 'push_in'
-  dataset: 'cards' | 'events' | 'episode_runtimes'
+  dataset: 'cards' | 'events'
   peer_name: string
   peer_url: string
   applied: number
@@ -32,7 +32,6 @@ type TypeFilter = 'all' | 'pull' | 'push_in'
 const DATASET_LABEL: Record<string, string> = {
   cards: 'карточки',
   events: 'play-события',
-  episode_runtimes: 'runtime серий',
 }
 
 function fmtDayFull(date: string): string {

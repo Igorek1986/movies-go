@@ -157,14 +157,6 @@ func ListCardsSince(ctx context.Context, since time.Time, sinceTie string, limit
 // (push or serve) the moment both sides agree on it — while a genuinely
 // newer incoming value (a real change) still advances it, so transitive
 // re-serving to a third peer keeps working exactly as before.
-//
-// runtime/episode_run_time are deliberately left out of this statement's SET
-// list (untouched on conflict) — a peer's reported runtime isn't just
-// "filled in once and locked", it goes through the same >5% deviation
-// self-correction as a real player's reported duration
-// (MaybeUpdateRuntimeFromPlayer, called below): a wildly different value
-// from a peer does overwrite, since it's as much a real signal about actual
-// content length as our own player's timeline reports are.
 func UpsertSyncedCard(ctx context.Context, c SyncCard) error {
 	_, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO media_cards
@@ -188,6 +180,8 @@ func UpsertSyncedCard(ctx context.Context, c SyncCard) error {
 			release_date       = COALESCE(media_cards.release_date, EXCLUDED.release_date),
 			first_air_date     = COALESCE(media_cards.first_air_date, EXCLUDED.first_air_date),
 			last_air_date      = COALESCE(media_cards.last_air_date, EXCLUDED.last_air_date),
+			runtime            = COALESCE(NULLIF(media_cards.runtime,0), EXCLUDED.runtime),
+			episode_run_time   = COALESCE(NULLIF(media_cards.episode_run_time,0), EXCLUDED.episode_run_time),
 			status             = COALESCE(NULLIF(media_cards.status, ''), EXCLUDED.status),
 			imdb_id            = COALESCE(NULLIF(media_cards.imdb_id, ''), EXCLUDED.imdb_id),
 			certification_ru   = COALESCE(NULLIF(media_cards.certification_ru, ''), EXCLUDED.certification_ru),
@@ -217,12 +211,6 @@ func UpsertSyncedCard(ctx context.Context, c SyncCard) error {
 	)
 	if err != nil {
 		return err
-	}
-	if c.Runtime > 0 {
-		MaybeUpdateRuntimeFromPlayer(c.CardID, "movie", float64(c.Runtime)*60)
-	}
-	if c.EpisodeRunTime > 0 {
-		MaybeUpdateRuntimeFromPlayer(c.CardID, "tv", float64(c.EpisodeRunTime)*60)
 	}
 	return nil
 }
@@ -296,66 +284,6 @@ func UpsertSyncedPlayEvent(ctx context.Context, e SyncEvent) error {
 	return err
 }
 
-// SyncEpisodeRuntime is one episode_runtimes row for GET /api/sync/episode-runtimes —
-// see MaybeUpdateEpisodeRuntimeFromPlayer/episode_runtimes in schema.sql.
-type SyncEpisodeRuntime struct {
-	TmdbShowID  int64     `json:"tmdb_show_id"`
-	Season      int16     `json:"season"`
-	Episode     int16     `json:"episode"`
-	DurationSec int       `json:"duration_sec"`
-	UpdatedAt   time.Time `json:"updated_at"`
-}
-
-// EpisodeRuntimeTie is the sync tiebreak string for one row — same reasoning
-// as ListCardsSince's comment (a plain updated_at cursor drops rows once more
-// than a page's worth share one timestamp). Exported so sync_serve.go and
-// instance_sync.go don't each reconstruct it separately.
-func EpisodeRuntimeTie(e SyncEpisodeRuntime) string {
-	return strconv.FormatInt(e.TmdbShowID, 10) + "|" + strconv.Itoa(int(e.Season)) + "|" + strconv.Itoa(int(e.Episode))
-}
-
-// ListEpisodeRuntimesSince returns up to limit episode_runtimes rows ordered
-// by (updated_at, tie) strictly after (since, sinceTie) — see
-// ListCardsSince's comment for the tiebreak reasoning.
-func ListEpisodeRuntimesSince(ctx context.Context, since time.Time, sinceTie string, limit int) ([]SyncEpisodeRuntime, error) {
-	rows, err := postgres.Pool.Query(ctx,
-		`SELECT tmdb_show_id, season, episode, duration_sec, updated_at
-		 FROM episode_runtimes
-		 WHERE updated_at > $1 OR (updated_at = $1 AND (tmdb_show_id::text || '|' || season::text || '|' || episode::text) > $2)
-		 ORDER BY updated_at ASC, (tmdb_show_id::text || '|' || season::text || '|' || episode::text) ASC LIMIT $3`,
-		since, sinceTie, limit,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []SyncEpisodeRuntime
-	for rows.Next() {
-		var e SyncEpisodeRuntime
-		if err := rows.Scan(&e.TmdbShowID, &e.Season, &e.Episode, &e.DurationSec, &e.UpdatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
-}
-
-// UpsertSyncedEpisodeRuntime applies one episode_runtimes row pulled from a
-// peer via the same self-correcting path as a local player report
-// (MaybeUpdateEpisodeRuntimeFromPlayer) — a peer's measured duration is as
-// real a signal about actual content length as this instance's own player
-// timeline, same reasoning as UpsertSyncedCard's runtime/episode_run_time
-// handling. This also means an applied peer correction shows up in
-// runtime_player_corrections (see internal/api/admin.go) exactly like a
-// local one — no separate sync-only bookkeeping needed, and no new echo-loop
-// risk: that function's own write already uses plain now() the same way a
-// genuine runtime correction does for media_cards (see UpsertSyncedCard's
-// doc comment) — self-limiting once both sides agree, not unconditional.
-func UpsertSyncedEpisodeRuntime(ctx context.Context, e SyncEpisodeRuntime) error {
-	MaybeUpdateEpisodeRuntimeFromPlayer(e.TmdbShowID, int(e.Season), int(e.Episode), float64(e.DurationSec))
-	return nil
-}
-
 // ─── Instance identity ──────────────────────────────────────────────────────
 
 var instanceNameAdjectives = []string{
@@ -407,7 +335,7 @@ func GetInstanceName(ctx context.Context) string {
 // direction is "pull" (this instance pulled from a peer) or "push_in" (a
 // peer pushed into this instance) — both represent this instance's own data
 // actually changing; an outbound push doesn't change local data, so isn't
-// logged here (see instance_sync.go's pushCards/pushEvents/pushEpisodeRuntimes).
+// logged here (see instance_sync.go's pushCards/pushEvents).
 
 type SyncActivityDaily struct {
 	Date  string `json:"date"`
@@ -426,7 +354,7 @@ func LogSyncActivity(ctx context.Context, direction, dataset, peerName, peerURL 
 
 // GetSyncActivityDaily returns per-day activity counts for the given window,
 // ordered ascending by date. Every day is present (zero-filled) — same
-// pattern as GetPopularDaily/GetRuntimeCorrectionsDaily.
+// pattern as GetPopularDaily.
 func GetSyncActivityDaily(ctx context.Context, days int) []SyncActivityDaily {
 	if days < 1 {
 		days = 30

@@ -66,7 +66,6 @@ const TMDBMissingPage = lazy(() => import('@/pages/TMDBMissingPage'))
 const NewCardsPage = lazy(() => import('@/pages/NewCardsPage'))
 const AllCardsPage = lazy(() => import('@/pages/AllCardsPage'))
 const PopularPage = lazy(() => import('@/pages/PopularPage'))
-const RuntimeCorrectionsPage = lazy(() => import('@/pages/RuntimeCorrectionsPage'))
 const SyncActivityPage = lazy(() => import('@/pages/SyncActivityPage'))
 const PersonsAdminPage = lazy(() => import('@/pages/PersonsAdminPage'))
 const UsersTodayPage = lazy(() => import('@/pages/UsersTodayPage'))
@@ -213,7 +212,6 @@ export default function App() {
         <Route path="/admin/cards-today" element={<NewCardsPage />} />
         <Route path="/admin/all-cards" element={<AllCardsPage />} />
         <Route path="/admin/popular" element={<PopularPage />} />
-        <Route path="/admin/runtime-corrections" element={<RuntimeCorrectionsPage />} />
         <Route path="/admin/sync-activity" element={<SyncActivityPage />} />
         <Route path="/admin/no-runtime-movies" element={<AllCardsPage noRuntime="movie" />} />
         <Route path="/admin/no-runtime-tv" element={<AllCardsPage noRuntime="tv" />} />

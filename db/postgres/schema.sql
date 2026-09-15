@@ -259,47 +259,11 @@ CREATE TABLE IF NOT EXISTS episodes (
 
 CREATE INDEX IF NOT EXISTS idx_episodes_tmdb_show_id ON episodes (tmdb_show_id);
 
--- Per-episode runtime learned from real player playback (see
--- MaybeUpdateEpisodeRuntimeFromPlayer) — separate from `episodes` on purpose:
--- `episodes` rows only exist for MyShows-synced shows and their mere presence
--- switches handleEpisodes to buildFromTable (see internal/api/episodes.go),
--- so writing a lone player-derived row there for a non-MyShows show would
--- hide every other episode of that show instead of just improving one row.
-CREATE TABLE IF NOT EXISTS episode_runtimes (
-    tmdb_show_id  INT          NOT NULL,
-    season        SMALLINT     NOT NULL,
-    episode       SMALLINT     NOT NULL,
-    duration_sec  INT          NOT NULL,
-    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    PRIMARY KEY (tmdb_show_id, season, episode)
-);
-
--- Audit log of every runtime correction actually applied from real player
--- playback (see MaybeUpdateRuntimeFromPlayer/MaybeUpdateEpisodeRuntimeFromPlayer,
--- db/store/timecodes.go) — a row per write, not per check, so it's an honest
--- "this really changed" trail. season/episode NULL = whole-card runtime
--- (movie or the show's coarse episode_run_time); both set = one episode's
--- entry in episode_runtimes. Admin-only visibility (see /admin/runtime-corrections),
--- purely informational — nothing reads this back to drive behavior.
-CREATE TABLE IF NOT EXISTS runtime_player_corrections (
-    id            BIGSERIAL    PRIMARY KEY,
-    tmdb_id       BIGINT       NOT NULL,
-    media_type    VARCHAR(10)  NOT NULL,
-    season        SMALLINT,
-    episode       SMALLINT,
-    old_value_sec INT,
-    new_value_sec INT          NOT NULL,
-    corrected_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_runtime_player_corrections_date ON runtime_player_corrections (corrected_at);
-CREATE INDEX IF NOT EXISTS idx_runtime_player_corrections_tmdb ON runtime_player_corrections (tmdb_id, media_type);
-
 -- What actually changed from instance-to-instance sync, and with which peer
 -- (see db/store/sync.go's LogSyncActivity, internal/api/admin.go's
 -- /admin/sync-activity). direction: 'pull' (pulled from a peer) or
 -- 'push_in' (a peer pushed into this instance) — both represent this
--- instance's own data changing. dataset: 'cards'|'events'|'episode_runtimes'.
+-- instance's own data changing. dataset: 'cards'|'events'.
 CREATE TABLE IF NOT EXISTS sync_activity_log (
     id           BIGSERIAL    PRIMARY KEY,
     direction    VARCHAR(10)  NOT NULL,

@@ -209,7 +209,7 @@ func bgRefreshEpisodes(cardID string) {
 
 // bgBackfillEpisodeInfo fetches missing TMDB episode still_path/overview for
 // every season that has at least one of either still NULL. Self-limiting:
-// once a season is fully backfilled (a real value or the '' sentinel for
+// once a season is fully backfilled (a real value or the ” sentinel for
 // both), this is a no-op on every later view — no separate "already synced"
 // timestamp needed. Fire-and-forget from handleEpisodes, never on the
 // response's critical path — readPageTmdb can block for up to ~50s on
@@ -305,7 +305,6 @@ type episodeOut struct {
 func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.EpisodeRow, tc map[string]timecodeInfo, includeSpecials bool) map[string]any {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	threshold := float64(store.WatchedThreshold(ctx))
-	overrides := store.GetEpisodeRuntimes(ctx, mc.TmdbID)
 	var out []episodeOut
 
 	for _, ep := range eps {
@@ -316,20 +315,15 @@ func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.
 			continue
 		}
 		td := tc[ep.Hash]
-		// Real playback signals (this device's own timecode, then the
-		// cross-viewer np.js correction) outrank catalog data — a catalog
-		// can have the wrong episode's runtime; an actual play of this file
-		// can't. See MaybeUpdateEpisodeRuntimeFromPlayer/episode_runtimes.
+		// This device's own timecode (its own reported duration for its own
+		// watched position) outranks catalog data — trustworthy since it's
+		// the same viewer's own signal, not a shared cross-viewer one.
 		durSec := td.durSec
 		if durSec == nil {
-			if v, ok := overrides[[2]int{int(ep.Season), int(ep.Episode)}]; ok && v > 0 {
+			durSec = ep.DurationSec
+			if durSec == nil && mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
+				v := *mc.EpisodeRunTime * 60
 				durSec = &v
-			} else {
-				durSec = ep.DurationSec
-				if durSec == nil && mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
-					v := *mc.EpisodeRunTime * 60
-					durSec = &v
-				}
 			}
 		}
 		var airStr *string
@@ -374,7 +368,6 @@ func buildFromTable(ctx context.Context, mc *store.MediaCardEpInfo, eps []store.
 
 func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string]timecodeInfo, includeSpecials bool) map[string]any {
 	threshold := float64(store.WatchedThreshold(ctx))
-	overrides := store.GetEpisodeRuntimes(ctx, mc.TmdbID)
 	var seasonsJSON []byte
 	var lastEpSeason, lastEpNumber *int
 
@@ -406,9 +399,7 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 				h := myshows.EpisodeHash(lastS, ep, mc.OriginalTitle)
 				td := tc[h]
 				var durSec *int
-				if v, ok := overrides[[2]int{lastS, ep}]; ok && v > 0 {
-					durSec = &v
-				} else if mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
+				if mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
 					v := *mc.EpisodeRunTime * 60
 					durSec = &v
 				}
@@ -480,9 +471,7 @@ func buildFromTMDB(ctx context.Context, mc *store.MediaCardEpInfo, tc map[string
 			h := myshows.EpisodeHash(snum, ep, mc.OriginalTitle)
 			td := tc[h]
 			var durSec *int
-			if v, ok := overrides[[2]int{snum, ep}]; ok && v > 0 {
-				durSec = &v
-			} else if mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
+			if mc.EpisodeRunTime != nil && *mc.EpisodeRunTime > 0 {
 				v := *mc.EpisodeRunTime * 60
 				durSec = &v
 			}

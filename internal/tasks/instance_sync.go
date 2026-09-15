@@ -76,11 +76,9 @@ func runInstanceSyncTick(ctx context.Context) {
 	}
 	pullCards(ctx, peer)
 	pullEvents(ctx, peer)
-	pullEpisodeRuntimes(ctx, peer)
 	if token, _ := store.GetSetting(ctx, "sync_token"); token != "" {
 		pushCards(ctx, peer, token)
 		pushEvents(ctx, peer, token)
-		pushEpisodeRuntimes(ctx, peer, token)
 	}
 }
 
@@ -279,45 +277,6 @@ func pushEvents(ctx context.Context, peer, token string) {
 	syncPushPages(ctx, peer, token, "/api/sync/events", "events", "sync_push_cursor_events",
 		store.ListPlayEventsSince, func(e store.SyncEvent) time.Time { return e.UpdatedAt },
 		func(e store.SyncEvent) string { return e.CardID + "|" + e.Ident + "|" + e.Date })
-}
-
-// pushEpisodeRuntimes sends local per-episode runtime corrections this
-// instance hasn't pushed yet — same direction/purpose as pushCards, just for
-// episode_runtimes (see db/store/sync.go's UpsertSyncedEpisodeRuntime).
-func pushEpisodeRuntimes(ctx context.Context, peer, token string) {
-	syncPushPages(ctx, peer, token, "/api/sync/episode-runtimes", "episode_runtimes", "sync_push_cursor_episode_runtimes",
-		store.ListEpisodeRuntimesSince, func(e store.SyncEpisodeRuntime) time.Time { return e.UpdatedAt }, store.EpisodeRuntimeTie)
-}
-
-func pullEpisodeRuntimes(ctx context.Context, peer string) {
-	var applied, failed int
-	var peerName string
-	syncCursorPages(ctx, peer, "/api/sync/episode-runtimes", "sync_cursor_episode_runtimes", func(page json.RawMessage) (string, string, bool, error) {
-		var body struct {
-			EpisodeRuntimes []store.SyncEpisodeRuntime `json:"episode_runtimes"`
-			NextSince       string                     `json:"next_since"`
-			NextTie         string                     `json:"next_tie"`
-			HasMore         bool                       `json:"has_more"`
-			InstanceName    string                     `json:"instance_name"`
-		}
-		if err := json.Unmarshal(page, &body); err != nil {
-			return "", "", false, err
-		}
-		peerName = body.InstanceName
-		for _, e := range body.EpisodeRuntimes {
-			if err := store.UpsertSyncedEpisodeRuntime(ctx, e); err != nil {
-				failed++
-				log.Printf("tasks: instance_sync pull episode-runtimes: upsert show=%d s%de%d: %v", e.TmdbShowID, e.Season, e.Episode, err)
-				continue
-			}
-			applied++
-		}
-		return body.NextSince, body.NextTie, body.HasMore, nil
-	})
-	if applied > 0 || failed > 0 {
-		log.Printf("tasks: instance_sync pull episode-runtimes from %s: applied %d, failed %d", peer, applied, failed)
-		store.LogSyncActivity(ctx, "pull", "episode_runtimes", peerName, peer, applied, failed)
-	}
 }
 
 func pullEvents(ctx context.Context, peer string) {

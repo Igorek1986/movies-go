@@ -46,10 +46,6 @@ func handleSaveTimecode(w http.ResponseWriter, r *http.Request) {
 	profileID := r.URL.Query().Get("profile_id")
 	profileName := r.URL.Query().Get("profile_name")
 
-	// Extract player-reported duration before storing.
-	var playerDur struct{ Duration float64 `json:"duration"` }
-	json.Unmarshal([]byte(body.Data), &playerDur) //nolint:errcheck
-
 	store.UpsertTimecodes(r.Context(), d.ID, profileID, []store.TimecodeRow{
 		{CardID: body.CardID, Item: body.Item, Data: body.Data},
 	})
@@ -57,11 +53,6 @@ func handleSaveTimecode(w http.ResponseWriter, r *http.Request) {
 	store.UpsertProfileName(r.Context(), d.ID, profileID, profileName)
 	// watched-set cache is invalidated inside store.UpsertTimecodes (and the other
 	// timecode mutations) via store.OnWatchedChanged — no explicit call needed here.
-
-	// Update runtime/episode_run_time from player-reported duration when reliable.
-	if m := cardIDRe.FindStringSubmatch(body.CardID); m != nil && playerDur.Duration > 60 {
-		go store.MaybeUpdateRuntimeFromPlayer(body.CardID, m[2], playerDur.Duration)
-	}
 
 	// Фоновое обновление метаданных карточки из TMDB, не чаще раза в сутки.
 	if m := cardIDRe.FindStringSubmatch(body.CardID); m != nil {

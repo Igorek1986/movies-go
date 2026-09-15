@@ -80,8 +80,6 @@ func NewRouter(mode string) http.Handler {
 		r.Post("/sync/cards", handleSyncCardsPush)
 		r.Get("/sync/events", handleSyncEvents)
 		r.Post("/sync/events", handleSyncEventsPush)
-		r.Get("/sync/episode-runtimes", handleSyncEpisodeRuntimes)
-		r.Post("/sync/episode-runtimes", handleSyncEpisodeRuntimesPush)
 
 		if mode == "all" {
 			r.With(optionalSession).Get("/episodes", handleEpisodes)
@@ -158,7 +156,6 @@ func NewRouter(mode string) http.Handler {
 			r.With(requireSession).Get("/actor/{person_id}", handleActorAPI)
 			r.With(requireAdmin).Get("/admin/stats", handleAdminStats)
 			r.With(requireAdmin).Get("/admin/popular", handleAPIAdminPopular)
-			r.With(requireAdmin).Get("/admin/runtime-corrections", handleAPIAdminRuntimeCorrections)
 			r.With(requireAdmin).Get("/admin/users", handleAdminListUsers)
 			r.With(requireAdmin).Post("/admin/users", handleAdminCreateUser)
 			r.With(requireAdmin).Patch("/admin/users/{id}/role", handleAdminSetRole)

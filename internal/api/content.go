@@ -5,11 +5,8 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"log"
-	"math"
 	"math/rand"
 	"movies-api/db/models"
-	"movies-api/db/postgres"
 	"movies-api/db/store"
 	"movies-api/movies/tmdb"
 	"net"
@@ -288,9 +285,9 @@ func applyCatalogTrackers(f *store.CategoryFilter) {
 func lampaAgeToChildAge(maxAge int) int {
 	switch {
 	case maxAge <= 6:
-		return 0  // only 0+
+		return 0 // only 0+
 	case maxAge <= 12:
-		return 6  // up to 6+
+		return 6 // up to 6+
 	case maxAge <= 16:
 		return 12 // up to 12+
 	default:
@@ -677,66 +674,9 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	cardID := r.URL.Query().Get("card_id")
 	uid := r.URL.Query().Get("uid")
 	pct, _ := strconv.Atoi(r.URL.Query().Get("percent"))
-	durationSec, _ := strconv.ParseFloat(r.URL.Query().Get("duration"), 64)
-	season, _ := strconv.Atoi(r.URL.Query().Get("season"))
-	episode, _ := strconv.Atoi(r.URL.Query().Get("episode"))
-	pluginVersion := r.URL.Query().Get("plugin_version")
-	torrentTitle := r.URL.Query().Get("torrent_title")
-	cardTitle := r.URL.Query().Get("card_title")
-	cardOriginalTitle := r.URL.Query().Get("card_original_title")
-	rawPath := r.URL.Query().Get("raw_path")
 
 	if cardID != "" && uid != "" && pct >= 30 {
 		store.RecordPlayEvent(r.Context(), cardID, uid, pct)
-	}
-	// TEMP diagnostic (2026-09-15): tracking down whether real-play runtime
-	// corrections are getting fed catalog-echoed durations (np.js reports
-	// whatever Lampa.Timeline carries, and Lampa's own torrent.js seeds that
-	// from params.movie.runtime*60 on a TorrServer resume — see torrent.js:
-	// `if (params.movie && params.movie.runtime) view.duration =
-	// params.movie.runtime * 60`, broadcast via Timeline.update() before any
-	// real playback tick). durationSec landing on an exact whole minute here
-	// is the smoking gun for that. Remove once confirmed/fixed.
-	if durationSec > 60 {
-		// card_title — название, как его понимает САМА Lampa (card.title/name,
-		// см. np.js getCurrentCard) — не зависит от источника и от того, какая
-		// система id у него внутри. Сверяем с нашим собственным сохранённым
-		// заголовком: расхождение — прямой сигнал, что card.id указывает не
-		// туда (чужой id случайно совпал с нашим tmdb_id, или наш собственный
-		// imdb_id/матчинг когда-то смэтчил не тот тайтл — оба варианта
-		// встречались). Только логируем, автоматически ничего не режем —
-		// локализация/транслитерация названия сама по себе не совпадение
-		// не доказывает подмену.
-		// original_title сверяем отдельно от локализованного title — оно не
-		// зависит от языка интерфейса Lampa, в отличие от title (который
-		// давал ложные "расхождения" на банальной разнице переводов).
-		var ourTitle, ourOriginalTitle string
-		postgres.Pool.QueryRow(r.Context(), //nolint:errcheck
-			`SELECT title, original_title FROM media_cards WHERE card_id = $1`, cardID,
-		).Scan(&ourTitle, &ourOriginalTitle)
-		log.Printf("view-debug: card=%s pct=%d duration=%.2f season=%d episode=%d exact_minute=%v plugin_version=%s torrent_title=%q card_title=%q our_title=%q card_original_title=%q our_original_title=%q raw_path=%q",
-			cardID, pct, durationSec, season, episode, math.Mod(durationSec, 60) == 0, pluginVersion, torrentTitle, cardTitle, ourTitle, cardOriginalTitle, ourOriginalTitle, rawPath)
-	}
-	// Anonymous, no token needed — works in both modes, unlike the
-	// device-token-gated /timecode path (see internal/api/timecodes.go). Lets
-	// runtime self-correct from real playback even on a parser-mode public
-	// instance with no registered devices at all (see dev/instance-sync.md).
-	if m := cardIDRe.FindStringSubmatch(cardID); m != nil && durationSec > 60 {
-		// season/episode (from the player's playlist item, resolved by hash —
-		// see np.js) let a TV report correct just that one episode's stored
-		// duration. Whole-card episode_run_time is a single "last write wins"
-		// value, not an average — falling through to it here too (as before)
-		// meant every real episode's own length (which legitimately varies
-		// episode to episode) kept overwriting it, flip-flopping the card's
-		// value between whatever length the last-watched episode happened to
-		// be. Only fall back to it when season/episode couldn't be resolved.
-		if m[2] == "tv" && season > 0 && episode > 0 {
-			if tmdbID, err := strconv.ParseInt(m[1], 10, 64); err == nil {
-				go store.MaybeUpdateEpisodeRuntimeFromPlayer(tmdbID, season, episode, durationSec)
-			}
-		} else {
-			go store.MaybeUpdateRuntimeFromPlayer(cardID, m[2], durationSec)
-		}
 	}
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

@@ -35,8 +35,6 @@ interface Stats {
   no_runtime_tv: number
   tmdb_refreshed_today: number
   tmdb_not_found: number
-  runtime_corrections_today: number
-  runtime_corrections_total: number
   sync_activity_today: number
   sync_activity_total: number
   actor_count: number
@@ -944,14 +942,6 @@ export default function AdminPage() {
                 <Link to="/admin/popular" className={styles.statLink}>
                   <p className={styles.statValue}>{stats.popular_cards.toLocaleString()}</p>
                   <p className={styles.statLabel}>Популярных карточек</p>
-                </Link>
-              </div>
-            )}
-            {stats.runtime_corrections_total > 0 && (
-              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
-                <Link to="/admin/runtime-corrections" className={styles.statLink}>
-                  <p className={styles.statValue}>{stats.runtime_corrections_total.toLocaleString()}</p>
-                  <p className={styles.statLabel}>Runtime из реального просмотра{stats.runtime_corrections_today > 0 ? ` (+${stats.runtime_corrections_today} сегодня)` : ''}</p>
                 </Link>
               </div>
             )}
