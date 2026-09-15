@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"movies-api/db/models"
+	"movies-api/db/postgres"
 	"movies-api/db/store"
 	"movies-api/movies/tmdb"
 	"net"
@@ -681,6 +682,7 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	episode, _ := strconv.Atoi(r.URL.Query().Get("episode"))
 	pluginVersion := r.URL.Query().Get("plugin_version")
 	torrentTitle := r.URL.Query().Get("torrent_title")
+	cardTitle := r.URL.Query().Get("card_title")
 
 	if cardID != "" && uid != "" && pct >= 30 {
 		store.RecordPlayEvent(r.Context(), cardID, uid, pct)
@@ -694,8 +696,21 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	// real playback tick). durationSec landing on an exact whole minute here
 	// is the smoking gun for that. Remove once confirmed/fixed.
 	if durationSec > 60 {
-		log.Printf("view-debug: card=%s pct=%d duration=%.2f season=%d episode=%d exact_minute=%v plugin_version=%s torrent_title=%q",
-			cardID, pct, durationSec, season, episode, math.Mod(durationSec, 60) == 0, pluginVersion, torrentTitle)
+		// card_title — название, как его понимает САМА Lampa (card.title/name,
+		// см. np.js getCurrentCard) — не зависит от источника и от того, какая
+		// система id у него внутри. Сверяем с нашим собственным сохранённым
+		// заголовком: расхождение — прямой сигнал, что card.id указывает не
+		// туда (чужой id случайно совпал с нашим tmdb_id, или наш собственный
+		// imdb_id/матчинг когда-то смэтчил не тот тайтл — оба варианта
+		// встречались). Только логируем, автоматически ничего не режем —
+		// локализация/транслитерация названия сама по себе не совпадение
+		// не доказывает подмену.
+		var ourTitle string
+		postgres.Pool.QueryRow(r.Context(), //nolint:errcheck
+			`SELECT title FROM media_cards WHERE card_id = $1`, cardID,
+		).Scan(&ourTitle)
+		log.Printf("view-debug: card=%s pct=%d duration=%.2f season=%d episode=%d exact_minute=%v plugin_version=%s torrent_title=%q card_title=%q our_title=%q",
+			cardID, pct, durationSec, season, episode, math.Mod(durationSec, 60) == 0, pluginVersion, torrentTitle, cardTitle, ourTitle)
 	}
 	// Anonymous, no token needed — works in both modes, unlike the
 	// device-token-gated /timecode path (see internal/api/timecodes.go). Lets
