@@ -1052,6 +1052,21 @@ func MaybeUpdateEpisodeRuntimeFromPlayer(tmdbShowID int64, season, episode int, 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// Unlike MaybeUpdateRuntimeFromPlayer's whole-card path (which implicitly
+	// rejects unknown cards via its own media_cards SELECT), this one wrote
+	// straight into episode_runtimes with no existence check at all — any
+	// card.id a client reports gets accepted, including ones that aren't a
+	// real TMDB id at all (np.js listens to player events globally, not just
+	// for content from our own catalog/source — see garbage tv ids like
+	// 144681/255579/241549 that don't even exist on TMDB).
+	var exists bool
+	cardID := strconv.FormatInt(tmdbShowID, 10) + "_tv"
+	if err := postgres.Pool.QueryRow(ctx,
+		`SELECT true FROM media_cards WHERE card_id = $1`, cardID,
+	).Scan(&exists); err != nil {
+		return
+	}
+
 	var storedSec int
 	err := postgres.Pool.QueryRow(ctx,
 		`SELECT duration_sec FROM episode_runtimes WHERE tmdb_show_id = $1 AND season = $2 AND episode = $3`,
