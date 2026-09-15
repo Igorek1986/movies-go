@@ -5,6 +5,8 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"log"
+	"math"
 	"math/rand"
 	"movies-api/db/models"
 	"movies-api/db/store"
@@ -680,6 +682,18 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 
 	if cardID != "" && uid != "" && pct >= 30 {
 		store.RecordPlayEvent(r.Context(), cardID, uid, pct)
+	}
+	// TEMP diagnostic (2026-09-15): tracking down whether real-play runtime
+	// corrections are getting fed catalog-echoed durations (np.js reports
+	// whatever Lampa.Timeline carries, and Lampa's own torrent.js seeds that
+	// from params.movie.runtime*60 on a TorrServer resume — see torrent.js:
+	// `if (params.movie && params.movie.runtime) view.duration =
+	// params.movie.runtime * 60`, broadcast via Timeline.update() before any
+	// real playback tick). durationSec landing on an exact whole minute here
+	// is the smoking gun for that. Remove once confirmed/fixed.
+	if durationSec > 60 {
+		log.Printf("view-debug: card=%s pct=%d duration=%.2f season=%d episode=%d exact_minute=%v",
+			cardID, pct, durationSec, season, episode, math.Mod(durationSec, 60) == 0)
 	}
 	// Anonymous, no token needed — works in both modes, unlike the
 	// device-token-gated /timecode path (see internal/api/timecodes.go). Lets
