@@ -95,7 +95,7 @@ func (n *NNMClubParser) parseCategory(catID string, catInfo nnmCatInfo, fullScan
 	label := "nnmclub/" + catID
 	// NNMClub paginates with start= offset (multiples of 50), not page index.
 	// Pseudo-hash "nnm_"+topicID avoids per-torrent topic page fetches.
-	runPageLoop(n.httpClient(), label, 20, 50,
+	runPageLoop(clientFetch(n.httpClient()), label, 20, 50,
 		func(page int) string {
 			return fmt.Sprintf(getNNMClubHost()+"/forum/viewforum.php?f=%s&start=%d", catID, page*50)
 		},

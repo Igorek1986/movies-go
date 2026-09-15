@@ -2590,7 +2590,7 @@ input[type=number]{flex:none}
       </label>
       <label>Хост Kinozal
         <div class="row" style="margin-top:4px">
-          <input type="text" id="kinozalHostInput" placeholder="https://kinozal.tv">
+          <input type="text" id="kinozalHostInput" placeholder="https://kinozal.me">
         </div>
       </label>
       <label>Хост NNMClub

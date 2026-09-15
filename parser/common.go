@@ -3,7 +3,6 @@ package parser
 import (
 	"context"
 	"log"
-	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -186,7 +185,7 @@ func retryOpts() (attempts int, baseWait, maxWait time.Duration, ratio float64) 
 //
 // Stops when: rawCount == 0, rawCount < pageSize, hitCutoff, or fetch fails.
 func runPageLoop(
-	client *http.Client,
+	fetch fetchFunc,
 	tracker string,
 	concurrency, pageSize int,
 	buildURL func(page int) string,
@@ -201,7 +200,7 @@ func runPageLoop(
 			return
 		}
 		url := buildURL(page)
-		body, err := fetchBytesRetry(client, url, attempts, baseWait, maxWait, ratio)
+		body, err := fetchBytesRetry(fetch, url, attempts, baseWait, maxWait, ratio)
 		if err != nil {
 			log.Printf("%s: get %s: %v", tracker, url, err)
 			return

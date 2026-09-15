@@ -19,9 +19,16 @@ func clientForRoute(route string) *http.Client {
 	return proxy.Default.ClientFor(context.Background(), route)
 }
 
-// fetchBytesRetry fetches url using the proxy client, falling back to direct on
-// network error. Retries up to maxAttempts with geometric backoff.
-func fetchBytesRetry(proxyClient *http.Client, url string, maxAttempts int, baseWait, maxWait time.Duration, ratio float64) ([]byte, error) {
+// fetchFunc fetches a single URL, returning its raw body.
+type fetchFunc func(url string) ([]byte, error)
+
+// clientFetch adapts a plain *http.Client to fetchFunc.
+func clientFetch(c *http.Client) fetchFunc {
+	return func(url string) ([]byte, error) { return httpGetBytes(c, url) }
+}
+
+// fetchBytesRetry calls fetch, retrying up to maxAttempts with geometric backoff.
+func fetchBytesRetry(fetch fetchFunc, url string, maxAttempts int, baseWait, maxWait time.Duration, ratio float64) ([]byte, error) {
 	wait := baseWait
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
@@ -36,7 +43,7 @@ func fetchBytesRetry(proxyClient *http.Client, url string, maxAttempts int, base
 			}
 			wait = time.Duration(float64(wait) * ratio)
 		}
-		body, err := httpGetBytes(proxyClient, url)
+		body, err := fetch(url)
 		if err == nil {
 			return body, nil
 		}

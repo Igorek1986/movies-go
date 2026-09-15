@@ -758,7 +758,7 @@ const PLACEHOLDERS: Record<string, string> = {
   myshows_auth_url:'https://myshows.me/api/session',
   contact_email:   'admin@example.com',
   rutor_host:   'http://rutor.info (пусто = по умолчанию)',
-  kinozal_host: 'https://kinozal.tv (пусто = по умолчанию)',
+  kinozal_host: 'https://kinozal.me (пусто = по умолчанию)',
   nnmclub_host: 'https://nnmclub.to (пусто = по умолчанию)',
 }
 
@@ -823,7 +823,7 @@ const CHECKBOX_KEYS: Record<string, string> = {
 const DESCRIPTIONS: Record<string, string> = {
   catalog_show_no_torrent: 'Карточки без раздач появляются, когда пользователь находит фильм/сериал через поиск по TMDB (вне нашей базы) и ставит статус, либо когда сервер получает таймкод на непарсенный контент. В «Моё» и Истории они видны всегда — настройка влияет только на обычный Каталог/Подборки.',
   rutor_host:   'Домен трекера Rutor.info. Меняйте на зеркало, если основной домен заблокирован.',
-  kinozal_host: 'Домен трекера Kinozal.tv. Меняйте на зеркало, если основной домен заблокирован.',
+  kinozal_host: 'Домен трекера Kinozal. Меняйте на зеркало, если основной домен заблокирован.',
   nnmclub_host: 'Домен трекера NNMClub.to. Меняйте на зеркало, если основной домен заблокирован.',
   popular_weight_movie: 'Множитель к числу зрителей при ранжировании «Популярного» (1.0 = без поправки).',
   popular_weight_tv: 'Множитель к числу зрителей при ранжировании «Популярного». Сериал набирает зрителей быстрее фильма (много серий/дней) — коэффициент < 1 уравновешивает это.',
@@ -929,7 +929,7 @@ const LABELS: Record<string, string> = {
   cors_allowed_origins:     'CORS: доверенные origin с cookie (через запятую; base_url уже включён)',
   trusted_proxy_secret:     'Секрет доверенного прокси (X-Proxy-Token от nginx; пусто = не доверять XFF)',
   rutor_host:   'Домен Rutor.info',
-  kinozal_host: 'Домен Kinozal.tv',
+  kinozal_host: 'Домен Kinozal',
   nnmclub_host: 'Домен NNMClub.to',
 }
 

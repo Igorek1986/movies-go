@@ -35,3 +35,7 @@ plugins/
 
 # Local multi-instance sync test rigs (see dev/instance-sync.md) — not for other deployments
 docker-compose.instance*.yml
+
+# Per-host opt-in: symlink/copy docker-compose.cfbypass.yml here to fold it into
+# plain `docker compose up`. Must stay local — never shared to another host via git.
+docker-compose.override.yml

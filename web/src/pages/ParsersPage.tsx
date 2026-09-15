@@ -40,20 +40,20 @@ interface Toast {
 }
 
 const TRACKER_LABELS: Record<string, string> = {
-  kinozal: 'Kinozal.tv',
+  kinozal: 'Kinozal',
   nnmclub: 'NNMClub.to',
   rutor: 'Rutor.info',
 }
 
 const TRACKER_DOMAINS: Record<string, string> = {
-  kinozal: 'kinozal.tv',
+  kinozal: 'kinozal.me',
   nnmclub: 'nnmclub.to',
   rutor: 'rutor.info',
 }
 
 const DEFAULT_TRACKER_HOSTS: Record<string, string> = {
   rutor: 'http://rutor.info',
-  kinozal: 'https://kinozal.tv',
+  kinozal: 'https://kinozal.me',
   nnmclub: 'https://nnmclub.to',
 }
 

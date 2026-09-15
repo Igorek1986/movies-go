@@ -18,6 +18,7 @@ import (
 	"golang.org/x/text/encoding/charmap"
 	"movies-api/db/models"
 	"movies-api/db/store"
+	"movies-api/internal/cfbypass"
 	"movies-api/releases"
 )
 
@@ -25,7 +26,7 @@ func getKinozalHost() string {
 	if v, ok := store.GetSetting(context.Background(), "kinozal_host"); ok && v != "" {
 		return v
 	}
-	return "https://kinozal.tv"
+	return "https://kinozal.me"
 }
 
 type KinozalParser struct {
@@ -80,6 +81,10 @@ func (k *KinozalParser) Parse() {
 
 	fullScan, cutoff := scanCutoff("kinozal")
 
+	if cfbypass.Enabled() {
+		log.Printf("kinozal: Cloudflare bypass enabled (FlareSolverr/cffetch)")
+	}
+
 	if err := k.login(); err != nil {
 		log.Printf("kinozal: no auth: %v", err)
 		// continue anyway — listing doesn't require auth; only .torrent download does
@@ -128,12 +133,21 @@ func (k *KinozalParser) login() error {
 
 func (k *KinozalParser) parseCategory(catID string, catInfo kzCatInfo, fullScan bool, cutoff time.Time, processed *atomic.Int64) {
 	label := "kinozal/" + catID
-	runPageLoop(k.httpClient(), label, 20, 50,
+	// cfbypass returns pages already decoded to UTF-8 (FlareSolverr's browser
+	// and cffetch both decode per the page's own charset before handing the
+	// body back) — decodeWin1251 must be skipped, or it re-mangles that text.
+	fetch := clientFetch(k.httpClient())
+	decode := decodeWin1251
+	if cfbypass.Enabled() {
+		fetch = cfbypass.Get
+		decode = func(b []byte) string { return string(b) }
+	}
+	runPageLoop(fetch, label, 20, 50,
 		func(page int) string {
 			return fmt.Sprintf(getKinozalHost()+"/browse.php?c=%s&page=%d", catID, page)
 		},
 		func(body []byte) ([]enrichJob, bool, int) {
-			items := k.parseListing(decodeWin1251(body), catID)
+			items := k.parseListing(decode(body), catID)
 			var jobs []enrichJob
 			for _, item := range items {
 				if !fullScan && !item.date.IsZero() && item.date.Before(cutoff) {

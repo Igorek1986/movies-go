@@ -485,7 +485,7 @@ interface ParsersResp {
 }
 
 const TRACKER_LABELS: Record<string, string> = {
-  kinozal: 'Kinozal.tv',
+  kinozal: 'Kinozal',
   nnmclub: 'NNMClub.to',
   rutor: 'Rutor.info',
 }

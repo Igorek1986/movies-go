@@ -169,7 +169,7 @@ func (self *RutorParser) readCategories() map[string]int {
 
 	utils.PFor(categories, func(_ int, cat string) {
 		link := getHost() + "/browse/0/" + cat + "/0/0"
-		bodyBytes, err := fetchBytesRetry(self.httpClient(), link, attempts, baseWait, maxWait, ratio)
+		bodyBytes, err := fetchBytesRetry(clientFetch(self.httpClient()), link, attempts, baseWait, maxWait, ratio)
 		if err != nil {
 			return
 		}
@@ -190,7 +190,7 @@ func (self *RutorParser) readCategories() map[string]int {
 
 func (self *RutorParser) parsePage(pl parseLink) []*models.TorrentDetails {
 	attempts, baseWait, maxWait, ratio := retryOpts()
-	bodyBytes, err := fetchBytesRetry(self.httpClient(), pl.Link, attempts, baseWait, maxWait, ratio)
+	bodyBytes, err := fetchBytesRetry(clientFetch(self.httpClient()), pl.Link, attempts, baseWait, maxWait, ratio)
 	if err != nil {
 		log.Println("Error get page:", err, pl.Link)
 		return nil

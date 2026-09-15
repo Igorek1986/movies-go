@@ -28,6 +28,11 @@ services:
       - PORT=${PORT:-8888}
     ports:
       - "${PORT:-8888}:${PORT:-8888}"
+    extra_hosts:
+      # Lets the app reach docker-compose.cfbypass.yml's FlareSolverr/cffetch
+      # (bound to 127.0.0.1 on the host) when FLARESOLVERR_URL/CFFETCH_URL
+      # point at host.docker.internal. No-op if that stack isn't running.
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./plugins:/app/plugins
       - logs_data:/app/logs
