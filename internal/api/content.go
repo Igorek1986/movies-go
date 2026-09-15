@@ -683,6 +683,8 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	pluginVersion := r.URL.Query().Get("plugin_version")
 	torrentTitle := r.URL.Query().Get("torrent_title")
 	cardTitle := r.URL.Query().Get("card_title")
+	cardOriginalTitle := r.URL.Query().Get("card_original_title")
+	rawPath := r.URL.Query().Get("raw_path")
 
 	if cardID != "" && uid != "" && pct >= 30 {
 		store.RecordPlayEvent(r.Context(), cardID, uid, pct)
@@ -705,12 +707,15 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 		// встречались). Только логируем, автоматически ничего не режем —
 		// локализация/транслитерация названия сама по себе не совпадение
 		// не доказывает подмену.
-		var ourTitle string
+		// original_title сверяем отдельно от локализованного title — оно не
+		// зависит от языка интерфейса Lampa, в отличие от title (который
+		// давал ложные "расхождения" на банальной разнице переводов).
+		var ourTitle, ourOriginalTitle string
 		postgres.Pool.QueryRow(r.Context(), //nolint:errcheck
-			`SELECT title FROM media_cards WHERE card_id = $1`, cardID,
-		).Scan(&ourTitle)
-		log.Printf("view-debug: card=%s pct=%d duration=%.2f season=%d episode=%d exact_minute=%v plugin_version=%s torrent_title=%q card_title=%q our_title=%q",
-			cardID, pct, durationSec, season, episode, math.Mod(durationSec, 60) == 0, pluginVersion, torrentTitle, cardTitle, ourTitle)
+			`SELECT title, original_title FROM media_cards WHERE card_id = $1`, cardID,
+		).Scan(&ourTitle, &ourOriginalTitle)
+		log.Printf("view-debug: card=%s pct=%d duration=%.2f season=%d episode=%d exact_minute=%v plugin_version=%s torrent_title=%q card_title=%q our_title=%q card_original_title=%q our_original_title=%q raw_path=%q",
+			cardID, pct, durationSec, season, episode, math.Mod(durationSec, 60) == 0, pluginVersion, torrentTitle, cardTitle, ourTitle, cardOriginalTitle, ourOriginalTitle, rawPath)
 	}
 	// Anonymous, no token needed — works in both modes, unlike the
 	// device-token-gated /timecode path (see internal/api/timecodes.go). Lets
