@@ -679,6 +679,7 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	durationSec, _ := strconv.ParseFloat(r.URL.Query().Get("duration"), 64)
 	season, _ := strconv.Atoi(r.URL.Query().Get("season"))
 	episode, _ := strconv.Atoi(r.URL.Query().Get("episode"))
+	pluginVersion := r.URL.Query().Get("plugin_version")
 
 	if cardID != "" && uid != "" && pct >= 30 {
 		store.RecordPlayEvent(r.Context(), cardID, uid, pct)
@@ -692,8 +693,8 @@ func handleView(w http.ResponseWriter, r *http.Request) {
 	// real playback tick). durationSec landing on an exact whole minute here
 	// is the smoking gun for that. Remove once confirmed/fixed.
 	if durationSec > 60 {
-		log.Printf("view-debug: card=%s pct=%d duration=%.2f season=%d episode=%d exact_minute=%v",
-			cardID, pct, durationSec, season, episode, math.Mod(durationSec, 60) == 0)
+		log.Printf("view-debug: card=%s pct=%d duration=%.2f season=%d episode=%d exact_minute=%v plugin_version=%s",
+			cardID, pct, durationSec, season, episode, math.Mod(durationSec, 60) == 0, pluginVersion)
 	}
 	// Anonymous, no token needed — works in both modes, unlike the
 	// device-token-gated /timecode path (see internal/api/timecodes.go). Lets
