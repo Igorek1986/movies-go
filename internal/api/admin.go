@@ -2774,6 +2774,7 @@ function renderParsers(){
   document.getElementById('btnStopAll').style.display=running?'':'none';
   el.innerHTML=d.parsers.map(function(p){
     var last=p.last_parsed_at?new Date(p.last_parsed_at).toLocaleString('ru'):'никогда';
+    var cards=(d.tracker_cards&&d.tracker_cards[p.name]!=null)?d.tracker_cards[p.name].toLocaleString('ru'):'—';
     var isCurrent=running&&d.current_tracker===p.name;
     var rowStyle='padding:.35rem 0;border-bottom:1px solid #222;display:flex;flex-direction:column;gap:.3rem';
     return '<div style="'+rowStyle+'">'
@@ -2783,7 +2784,7 @@ function renderParsers(){
       +'<b>'+p.name+'</b>'
       +(isCurrent?'<span style="font-size:.72rem;color:#f0ad4e">▶ работает</span>':'')
       +'</label>'
-      +'<span style="font-size:.75rem;color:#666;flex:1">последний: '+last+'</span>'
+      +'<span style="font-size:.75rem;color:#666;flex:1">последний: '+last+' · карточек: '+cards+'</span>'
       +'<button class="btn btn-ghost" style="padding:2px 8px;font-size:.78rem" onclick="parsersRunOne(\''+p.name+'\')">▶</button>'
       +'<button class="btn btn-ghost" style="padding:2px 8px;font-size:.78rem" onclick="parsersResetOne(\''+p.name+'\')">Сброс даты</button>'
       +'</div>'
