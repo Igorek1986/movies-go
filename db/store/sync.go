@@ -337,23 +337,34 @@ func ListTorrentsSince(ctx context.Context, since time.Time, sinceTie string, li
 // UpsertSyncedTorrent applies one torrent pulled from a peer. A torrent hash
 // is immutable once known — there's nothing to merge, only fields to fill in
 // if this instance's own copy (if any) has them NULL — and first_seen_at is
-// deliberately left out of the UPDATE SET entirely: whichever instance (this
-// one's own parser or the peer) learned of it first keeps that timestamp, so
-// re-applying an already-known hash can never make it look "new" again to
-// either side's own push cursor (the same echo-loop risk UpsertSyncedCard's
-// GREATEST comment describes, just avoided here by never changing the value
+// left out of the UPDATE SET entirely, so an already-known hash keeps
+// whichever timestamp it already has and never looks "new" again to this
+// instance's own push cursor (the same echo-loop risk UpsertSyncedCard's
+// GREATEST comment describes, avoided here by never touching the value
 // post-insert instead of by taking a max).
+//
+// On a genuine INSERT (hash never seen before), first_seen_at is left to its
+// column DEFAULT (now()) rather than carrying over t.FirstSeenAt — the
+// peer's own discovery time. Using the peer's timestamp here silently broke
+// relaying through a hub: a torrent found by a slow-to-catch-up spoke keeps
+// its old first_seen_at all the way through the hub, so any OTHER spoke
+// whose own pull cursor has already advanced past that timestamp (routine,
+// once the historical backlog settles) can never see it via ListTorrentsSince's
+// cursor — the hub genuinely has the row, it's just permanently "in the
+// past" from that spoke's point of view. Stamping our own now() on arrival
+// makes a freshly-relayed row look new to OUR OWN outbound feed, which is
+// exactly what the hub-relay ("Одиссея") scenario needs.
 func UpsertSyncedTorrent(ctx context.Context, t SyncTorrent) error {
 	_, err := postgres.Pool.Exec(ctx, `
-		INSERT INTO torrents (hash, card_id, tracker, tmdb_id, media_type, created_at, first_seen_at)
-		VALUES ($1, $2, NULLIF($3,''), NULLIF($4,0), NULLIF($5,''), NULLIF($6,'')::timestamptz, $7)
+		INSERT INTO torrents (hash, card_id, tracker, tmdb_id, media_type, created_at)
+		VALUES ($1, $2, NULLIF($3,''), NULLIF($4,0), NULLIF($5,''), NULLIF($6,'')::timestamptz)
 		ON CONFLICT (hash) DO UPDATE SET
 			card_id    = COALESCE(torrents.card_id, EXCLUDED.card_id),
 			tracker    = COALESCE(torrents.tracker, EXCLUDED.tracker),
 			tmdb_id    = COALESCE(torrents.tmdb_id, EXCLUDED.tmdb_id),
 			media_type = COALESCE(torrents.media_type, EXCLUDED.media_type),
 			created_at = COALESCE(torrents.created_at, EXCLUDED.created_at)`,
-		t.Hash, t.CardID, t.Tracker, t.TmdbID, t.MediaType, t.CreatedAt, t.FirstSeenAt,
+		t.Hash, t.CardID, t.Tracker, t.TmdbID, t.MediaType, t.CreatedAt,
 	)
 	return err
 }
