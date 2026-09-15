@@ -46,20 +46,36 @@ func StartInstanceSyncLoop(ctx context.Context) {
 	}
 }
 
-// syncTickTimeout bounds one full tick (pull+push across all datasets).
-// Every DB/HTTP call inside runInstanceSyncTick otherwise inherits appCtx
-// as-is, which has no deadline of its own — a single call stuck waiting
-// (e.g. for a pgxpool connection under heavy concurrent load; observed once
-// during local testing, where the parser was hammering the same pool) would
-// block this goroutine forever before it ever reaches the next time.After,
-// silently stopping sync for good instead of just failing this one tick and
-// retrying on the next scheduled interval.
-const syncTickTimeout = 5 * time.Minute
+// syncTickTimeout bounds one full tick (pull+push across all datasets) as an
+// overall safety net — see syncCallTimeout for the per-dataset budget that
+// actually matters day to day. Sized comfortably above 6×syncCallTimeout (9
+// minutes) so it only ever bites as defense in depth (e.g. a per-call
+// timeout failing to propagate somewhere), never as the normal brake.
+const syncTickTimeout = 10 * time.Minute
+
+// syncCallTimeout bounds each individual pull/push call within a tick. Once
+// torrents started syncing (2026-09), its one-time historical backlog
+// (hundreds of thousands of rows, all sharing the tick's old single deadline)
+// ran pullTorrents right up against that shared deadline on every tick,
+// which starved pullEvents completely — its GET never even got a chance to
+// fire before the shared context was already past its deadline, so
+// media_play_events (and "Популярное") saw zero updates for as long as the
+// backlog lasted. Giving each call its own slice means a big backlog in one
+// dataset can no longer block progress on the others within the same tick.
+const syncCallTimeout = 90 * time.Second
 
 func runTickBounded(ctx context.Context) {
 	tickCtx, cancel := context.WithTimeout(ctx, syncTickTimeout)
 	defer cancel()
 	runInstanceSyncTick(tickCtx)
+}
+
+// withCallBudget runs fn with its own syncCallTimeout deadline, still capped
+// by ctx's own (outer, whole-tick) deadline if that's tighter.
+func withCallBudget(ctx context.Context, fn func(context.Context)) {
+	callCtx, cancel := context.WithTimeout(ctx, syncCallTimeout)
+	defer cancel()
+	fn(callCtx)
 }
 
 // runInstanceSyncTick does everything there is to do with a peer — no
@@ -68,20 +84,22 @@ func runTickBounded(ctx context.Context) {
 // since they reference card_id via FK) always runs once a peer is set; push
 // (same order) additionally requires sync_token — the credential this
 // instance presents when pushing, which must match the peer's own
-// sync_token (see internal/api/sync_serve.go).
+// sync_token (see internal/api/sync_serve.go). Each call gets its own
+// syncCallTimeout slice (see its doc comment) instead of sharing one budget
+// for the whole tick.
 func runInstanceSyncTick(ctx context.Context) {
 	peer, _ := store.GetSetting(ctx, "sync_peer_url")
 	peer = strings.TrimRight(peer, "/")
 	if peer == "" {
 		return
 	}
-	pullCards(ctx, peer)
-	pullTorrents(ctx, peer)
-	pullEvents(ctx, peer)
+	withCallBudget(ctx, func(c context.Context) { pullCards(c, peer) })
+	withCallBudget(ctx, func(c context.Context) { pullTorrents(c, peer) })
+	withCallBudget(ctx, func(c context.Context) { pullEvents(c, peer) })
 	if token, _ := store.GetSetting(ctx, "sync_token"); token != "" {
-		pushCards(ctx, peer, token)
-		pushTorrents(ctx, peer, token)
-		pushEvents(ctx, peer, token)
+		withCallBudget(ctx, func(c context.Context) { pushCards(c, peer, token) })
+		withCallBudget(ctx, func(c context.Context) { pushTorrents(c, peer, token) })
+		withCallBudget(ctx, func(c context.Context) { pushEvents(c, peer, token) })
 	}
 }
 
