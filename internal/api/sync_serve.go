@@ -100,6 +100,29 @@ func handleSyncEvents(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GET /api/sync/torrents?since=<RFC3339>&since_tie=<hash>&limit=500
+func handleSyncTorrents(w http.ResponseWriter, r *http.Request) {
+	since, sinceTie, limit := parseSyncSinceLimit(r)
+	torrents, err := store.ListTorrentsSince(r.Context(), since, sinceTie, limit)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	nextSince, nextTie := since, sinceTie
+	if len(torrents) > 0 {
+		last := torrents[len(torrents)-1]
+		nextSince, nextTie = last.FirstSeenAt, last.Hash
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"torrents":         torrents,
+		"next_since":       nextSince.UTC().Format(time.RFC3339Nano),
+		"next_tie":         nextTie,
+		"has_more":         len(torrents) == limit,
+		"interval_minutes": syncAdvertisedInterval(r.Context()),
+		"instance_name":    store.GetInstanceName(r.Context()),
+	})
+}
+
 // syncPushTokenValid checks the X-Sync-Token header against sync_token. An
 // unset sync_token means this instance never accepts pushes — the safe
 // default (nobody can push in until you set/generate a token).
@@ -147,6 +170,40 @@ func handleSyncCardsPush(w http.ResponseWriter, r *http.Request) {
 	}
 	if applied > 0 || failed > 0 {
 		store.LogSyncActivity(r.Context(), "push_in", "cards", body.InstanceName, "", applied, failed)
+	}
+	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed})
+}
+
+// POST /api/sync/torrents — push path (see file comment above). Body:
+// {"torrents": [<store.SyncTorrent>, ...]} — same shape GET /api/sync/torrents
+// returns.
+func handleSyncTorrentsPush(w http.ResponseWriter, r *http.Request) {
+	if !syncPushTokenValid(r) {
+		Error(w, http.StatusForbidden, "invalid or missing sync token")
+		return
+	}
+	var body struct {
+		InstanceName string              `json:"instance_name"`
+		Torrents     []store.SyncTorrent `json:"torrents"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	var applied, failed int
+	for _, t := range body.Torrents {
+		if t.Hash == "" || t.CardID == "" {
+			failed++
+			continue
+		}
+		if err := store.UpsertSyncedTorrent(r.Context(), t); err != nil {
+			failed++
+			continue
+		}
+		applied++
+	}
+	if applied > 0 || failed > 0 {
+		store.LogSyncActivity(r.Context(), "push_in", "torrents", body.InstanceName, "", applied, failed)
 	}
 	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed})
 }

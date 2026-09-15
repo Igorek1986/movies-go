@@ -380,6 +380,15 @@ ALTER TABLE torrents     ADD COLUMN IF NOT EXISTS created_at            TIMESTAM
 -- Tracker filter: avoids full seq scan on torrents table (tracker added above)
 CREATE INDEX IF NOT EXISTS idx_torrents_tracker_card ON torrents (tracker, card_id);
 CREATE INDEX IF NOT EXISTS idx_torrents_created_at   ON torrents (created_at DESC NULLS LAST) WHERE created_at IS NOT NULL;
+-- first_seen_at is this row's LOCAL insert time — distinct from created_at
+-- (the tracker's own upload date, which can be years old and is useless as
+-- an incremental-sync cursor: a torrent this instance only just discovered
+-- via instance sync's cards pull can carry an ancient created_at, which
+-- would make it look "already past" any reasonable cursor and get skipped
+-- forever). Set once, DEFAULT now() covers both new local inserts and this
+-- migration's one-time backfill; never touched again (see UpsertSyncedTorrent).
+ALTER TABLE torrents     ADD COLUMN IF NOT EXISTS first_seen_at         TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE INDEX IF NOT EXISTS idx_torrents_first_seen_at ON torrents (first_seen_at);
 
 -- Migration: per-user mobile bottom-nav bar configuration (which buttons,
 -- what order) — comma-separated keys into BOTTOM_NAV_OPTIONS on the

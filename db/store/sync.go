@@ -284,6 +284,80 @@ func UpsertSyncedPlayEvent(ctx context.Context, e SyncEvent) error {
 	return err
 }
 
+// SyncTorrent is one torrents row for GET /api/sync/torrents — the
+// hash→card_id dedup index, not a playable source (see torrents' own doc
+// comment: magnet links aren't stored, only the hash). Syncing it is what
+// makes a card that arrived via card sync actually show up in the catalog:
+// categoryWhere requires EXISTS torrents for that card_id, so a
+// metadata-only card with zero local torrent rows stays hidden until this
+// instance's own parser happens to find a matching release — which may
+// never happen if the release only exists on a tracker (e.g. Kinozal) this
+// instance doesn't scrape. Rows with no card_id yet are excluded: nothing
+// useful to hand a peer before local resolution has run.
+type SyncTorrent struct {
+	Hash        string    `json:"hash"`
+	CardID      string    `json:"card_id"`
+	Tracker     string    `json:"tracker"`
+	TmdbID      int64     `json:"tmdb_id"`
+	MediaType   string    `json:"media_type"`
+	CreatedAt   string    `json:"created_at,omitempty"` // tracker's own upload date — informational only, never the sync cursor
+	FirstSeenAt time.Time `json:"first_seen_at"`
+}
+
+// ListTorrentsSince returns up to limit torrents rows ordered by
+// (first_seen_at, hash) strictly after (since, sinceTie) — first_seen_at,
+// not created_at, is the cursor: see its schema.sql comment for why the
+// tracker's own upload date can't be used here (an old release discovered
+// late would sit permanently behind any reasonable cursor).
+func ListTorrentsSince(ctx context.Context, since time.Time, sinceTie string, limit int) ([]SyncTorrent, error) {
+	rows, err := postgres.Pool.Query(ctx,
+		`SELECT hash, card_id, COALESCE(tracker, ''), COALESCE(tmdb_id, 0), COALESCE(media_type, ''),
+		        COALESCE(created_at::text, ''), first_seen_at
+		 FROM torrents
+		 WHERE card_id IS NOT NULL
+		   AND (first_seen_at > $1 OR (first_seen_at = $1 AND hash > $2))
+		 ORDER BY first_seen_at ASC, hash ASC LIMIT $3`,
+		since, sinceTie, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SyncTorrent
+	for rows.Next() {
+		var t SyncTorrent
+		if err := rows.Scan(&t.Hash, &t.CardID, &t.Tracker, &t.TmdbID, &t.MediaType, &t.CreatedAt, &t.FirstSeenAt); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// UpsertSyncedTorrent applies one torrent pulled from a peer. A torrent hash
+// is immutable once known — there's nothing to merge, only fields to fill in
+// if this instance's own copy (if any) has them NULL — and first_seen_at is
+// deliberately left out of the UPDATE SET entirely: whichever instance (this
+// one's own parser or the peer) learned of it first keeps that timestamp, so
+// re-applying an already-known hash can never make it look "new" again to
+// either side's own push cursor (the same echo-loop risk UpsertSyncedCard's
+// GREATEST comment describes, just avoided here by never changing the value
+// post-insert instead of by taking a max).
+func UpsertSyncedTorrent(ctx context.Context, t SyncTorrent) error {
+	_, err := postgres.Pool.Exec(ctx, `
+		INSERT INTO torrents (hash, card_id, tracker, tmdb_id, media_type, created_at, first_seen_at)
+		VALUES ($1, $2, NULLIF($3,''), NULLIF($4,0), NULLIF($5,''), NULLIF($6,'')::timestamptz, $7)
+		ON CONFLICT (hash) DO UPDATE SET
+			card_id    = COALESCE(torrents.card_id, EXCLUDED.card_id),
+			tracker    = COALESCE(torrents.tracker, EXCLUDED.tracker),
+			tmdb_id    = COALESCE(torrents.tmdb_id, EXCLUDED.tmdb_id),
+			media_type = COALESCE(torrents.media_type, EXCLUDED.media_type),
+			created_at = COALESCE(torrents.created_at, EXCLUDED.created_at)`,
+		t.Hash, t.CardID, t.Tracker, t.TmdbID, t.MediaType, t.CreatedAt, t.FirstSeenAt,
+	)
+	return err
+}
+
 // ─── Instance identity ──────────────────────────────────────────────────────
 
 var instanceNameAdjectives = []string{

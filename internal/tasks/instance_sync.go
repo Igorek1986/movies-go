@@ -63,8 +63,9 @@ func runTickBounded(ctx context.Context) {
 }
 
 // runInstanceSyncTick does everything there is to do with a peer — no
-// separate per-dataset toggles: pull (cards then events, cards first since
-// events reference card_id via FK) always runs once a peer is set; push
+// separate per-dataset toggles: pull (cards, then torrents, then events —
+// cards first so torrents/events have something to attach to; events last
+// since they reference card_id via FK) always runs once a peer is set; push
 // (same order) additionally requires sync_token — the credential this
 // instance presents when pushing, which must match the peer's own
 // sync_token (see internal/api/sync_serve.go).
@@ -75,9 +76,11 @@ func runInstanceSyncTick(ctx context.Context) {
 		return
 	}
 	pullCards(ctx, peer)
+	pullTorrents(ctx, peer)
 	pullEvents(ctx, peer)
 	if token, _ := store.GetSetting(ctx, "sync_token"); token != "" {
 		pushCards(ctx, peer, token)
+		pushTorrents(ctx, peer, token)
 		pushEvents(ctx, peer, token)
 	}
 }
@@ -221,6 +224,44 @@ func pullCards(ctx context.Context, peer string) {
 	}
 }
 
+// pullTorrents pulls the peer's hash→card_id dedup index — what actually
+// makes a card that arrived via pullCards show up in the catalog rather than
+// sit hidden as metadata-only (categoryWhere requires EXISTS torrents; see
+// SyncTorrent's doc comment in db/store/sync.go).
+func pullTorrents(ctx context.Context, peer string) {
+	var applied, failed int
+	var peerName string
+	syncCursorPages(ctx, peer, "/api/sync/torrents", "sync_cursor_torrents", func(page json.RawMessage, since, sinceTie string) (string, string, bool, error) {
+		var body struct {
+			Torrents     []store.SyncTorrent `json:"torrents"`
+			NextSince    string              `json:"next_since"`
+			NextTie      string              `json:"next_tie"`
+			HasMore      bool                `json:"has_more"`
+			InstanceName string              `json:"instance_name"`
+		}
+		if err := json.Unmarshal(page, &body); err != nil {
+			return "", "", false, err
+		}
+		peerName = body.InstanceName
+		nextSince, nextTie, hasMore, a, f := applyPulledPage(body.Torrents, since, sinceTie, body.NextSince, body.NextTie, body.HasMore,
+			func(t store.SyncTorrent) time.Time { return t.FirstSeenAt }, func(t store.SyncTorrent) string { return t.Hash },
+			func(t store.SyncTorrent) error {
+				if err := store.UpsertSyncedTorrent(ctx, t); err != nil {
+					log.Printf("tasks: instance_sync pull torrents: upsert %s: %v", t.Hash, err)
+					return err
+				}
+				return nil
+			})
+		applied += a
+		failed += f
+		return nextSince, nextTie, hasMore, nil
+	})
+	if applied > 0 || failed > 0 {
+		log.Printf("tasks: instance_sync pull torrents from %s: applied %d, failed %d", peer, applied, failed)
+		store.LogSyncActivity(ctx, "pull", "torrents", peerName, peer, applied, failed)
+	}
+}
+
 // syncPushPages drives one dataset's push: repeatedly reads local rows above
 // the persisted cursor (via list, the same tie-aware compound cursor as
 // syncCursorPages — see ListCardsSince's comment for why the tie half is
@@ -310,6 +351,15 @@ func syncPushPages[T any](ctx context.Context, peer, token, path, wrapKey, setti
 func pushCards(ctx context.Context, peer, token string) {
 	syncPushPages(ctx, peer, token, "/api/sync/cards", "cards", "sync_push_cursor_cards",
 		store.ListCardsSince, func(c store.SyncCard) time.Time { return c.UpdatedAt }, func(c store.SyncCard) string { return c.CardID })
+}
+
+// pushTorrents sends local dedup-index rows this instance hasn't pushed yet
+// — the "Одиссея" scenario one level down: a card can arrive via pullCards
+// fine, but if a peer's own parser is the one that actually holds the
+// torrent for it, this is what lets that peer's catalog un-hide it too.
+func pushTorrents(ctx context.Context, peer, token string) {
+	syncPushPages(ctx, peer, token, "/api/sync/torrents", "torrents", "sync_push_cursor_torrents",
+		store.ListTorrentsSince, func(t store.SyncTorrent) time.Time { return t.FirstSeenAt }, func(t store.SyncTorrent) string { return t.Hash })
 }
 
 // pushEvents sends local play-events this instance hasn't pushed yet — the

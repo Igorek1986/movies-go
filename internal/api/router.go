@@ -78,6 +78,8 @@ func NewRouter(mode string) http.Handler {
 		r.Post("/view", handleView)
 		r.Get("/sync/cards", handleSyncCards)
 		r.Post("/sync/cards", handleSyncCardsPush)
+		r.Get("/sync/torrents", handleSyncTorrents)
+		r.Post("/sync/torrents", handleSyncTorrentsPush)
 		r.Get("/sync/events", handleSyncEvents)
 		r.Post("/sync/events", handleSyncEventsPush)
 
