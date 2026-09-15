@@ -1,3 +1,10 @@
+# Cloudflare bypass for kinozal (warp/flaresolverr/cffetch) — off by default,
+# gated behind the `cfbypass` profile inside docker-compose.cfbypass.yml.
+# One switch in .env turns the whole thing on: COMPOSE_PROFILES=cfbypass
+# (see comments in that file for why it's a single variable).
+include:
+  - docker-compose.cfbypass.yml
+
 services:
   db:
     image: postgres:16-alpine
@@ -26,13 +33,12 @@ services:
     environment:
       - DATABASE_URL=postgres://${DB_USER:-movies_api}:${DB_PASSWORD:-movies_api}@db:5432/${DB_NAME:-movies_api}?sslmode=disable
       - PORT=${PORT:-8888}
+      # Empty unless COMPOSE_PROFILES=cfbypass is set (see docker-compose.cfbypass.yml) —
+      # ${VAR:+word} yields word only when VAR is set and non-empty.
+      - FLARESOLVERR_URL=${COMPOSE_PROFILES:+http://flaresolverr:8191/v1}
+      - CFFETCH_URL=${COMPOSE_PROFILES:+http://cffetch:8192/fetch}
     ports:
       - "${PORT:-8888}:${PORT:-8888}"
-    extra_hosts:
-      # Lets the app reach docker-compose.cfbypass.yml's FlareSolverr/cffetch
-      # (bound to 127.0.0.1 on the host) when FLARESOLVERR_URL/CFFETCH_URL
-      # point at host.docker.internal. No-op if that stack isn't running.
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./plugins:/app/plugins
       - logs_data:/app/logs

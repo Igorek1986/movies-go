@@ -1,30 +1,25 @@
 # Cloudflare bypass for trackers behind a JS challenge (currently kinozal.me,
-# see dev/kinozal.md). Optional, separate stack — NOT part of the main
-# docker-compose.yml, deployed only on hosts with room for a headless
-# Chromium (~1GB+). `docker compose up -d --build` alone never starts this.
+# see dev/kinozal.md). Included by the main docker-compose.yml (`include:`),
+# so it's part of the same project/command/network — but every service here
+# is gated behind the `cfbypass` Compose profile, so `docker compose up -d
+# --build` alone never starts them.
 #
-# Two ways to run it on a host that wants it:
+# One switch, in .env:
 #
-#   A) Explicit, on demand:
-#        docker compose -f docker-compose.cfbypass.yml up -d
+#   COMPOSE_PROFILES=cfbypass
 #
-#   B) Folded into the regular `docker compose up` (same pattern as this
-#      box's antizapret stack): copy or symlink this file to
-#      docker-compose.override.yml (gitignored — stays local to this host,
-#      `git pull` on another host never creates it) —
-#        ln -s docker-compose.cfbypass.yml docker-compose.override.yml
-#      Compose auto-merges docker-compose.override.yml, so a plain
-#      `docker compose up -d --build` then also brings up warp/flaresolverr/cffetch.
+# That both activates this profile (Compose reads COMPOSE_PROFILES from the
+# environment same as --profile) AND — via docker-compose.yml's
+# `${COMPOSE_PROFILES:+...}` on the `app` service — turns on
+# FLARESOLVERR_URL/CFFETCH_URL. Remove/comment that one line to turn the
+# whole thing back off; `docker compose up -d --build` stays the same
+# command either way. No .env URLs to manage, no separate `-f` flag, no
+# docker-compose.override.yml.
 #
-# Either way, point the app at it (main docker-compose.yml's `app` service
-# already has extra_hosts: host.docker.internal:host-gateway) via .env:
-#
-#   FLARESOLVERR_URL=http://host.docker.internal:8191/v1
-#   CFFETCH_URL=http://host.docker.internal:8192/fetch
-#
-# Ports are bound to 127.0.0.1 only — never publish 8191/8192 externally.
-
-name: movies-go-cfbypass
+# Ports are also bound to 127.0.0.1 for manual debugging (curl) — never
+# publish 8191/8192 externally. Heavy: headless Chromium, ~1GB+ RAM — only
+# turn this profile on where there's room (see dev/kinozal.md for why vps
+# stays off and deb is the intended host).
 
 services:
   # Cloudflare WARP SOCKS egress — a cleaner exit IP for the FlareSolverr
@@ -34,6 +29,7 @@ services:
   warp:
     image: caomingjun/warp
     container_name: cfbypass-warp
+    profiles: ["cfbypass"]
     restart: unless-stopped
     device_cgroup_rules:
       - "c 10:200 rwm"
@@ -54,9 +50,11 @@ services:
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: cfbypass-flaresolverr
+    profiles: ["cfbypass"]
     restart: unless-stopped
     depends_on:
-      - warp
+      warp:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8191:8191"
     environment:
@@ -81,9 +79,11 @@ services:
   cffetch:
     image: ghcr.io/jacred-fdb/cffetch:latest
     container_name: cfbypass-cffetch
+    profiles: ["cfbypass"]
     restart: unless-stopped
     depends_on:
-      - warp
+      warp:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8192:8192"
     environment:
