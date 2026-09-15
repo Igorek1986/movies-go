@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -123,6 +124,28 @@ func handleSyncTorrents(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// applyPushBatch applies each item in order via apply, returning applied/failed
+// counts plus the 0-based index of the first item that failed (-1 if none).
+// The pushing side reports this back so its own cursor can stop right there
+// instead of at the batch's last item regardless of failures — see
+// internal/tasks/instance_sync.go's syncPushPages doc comment.
+func applyPushBatch[T any](items []T, apply func(T) error) (applied, failed, firstFailed int) {
+	firstFailed = -1
+	for i, item := range items {
+		if err := apply(item); err != nil {
+			failed++
+			if firstFailed == -1 {
+				firstFailed = i
+			}
+			continue
+		}
+		applied++
+	}
+	return applied, failed, firstFailed
+}
+
+var errPushMissingKey = errors.New("missing required key field")
+
 // syncPushTokenValid checks the X-Sync-Token header against sync_token. An
 // unset sync_token means this instance never accepts pushes — the safe
 // default (nobody can push in until you set/generate a token).
@@ -156,22 +179,16 @@ func handleSyncCardsPush(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	var applied, failed int
-	for _, c := range body.Cards {
+	applied, failed, firstFailed := applyPushBatch(body.Cards, func(c store.SyncCard) error {
 		if c.CardID == "" {
-			failed++
-			continue
+			return errPushMissingKey
 		}
-		if err := store.UpsertSyncedCard(r.Context(), c); err != nil {
-			failed++
-			continue
-		}
-		applied++
-	}
+		return store.UpsertSyncedCard(r.Context(), c)
+	})
 	if applied > 0 || failed > 0 {
 		store.LogSyncActivity(r.Context(), "push_in", "cards", body.InstanceName, "", applied, failed)
 	}
-	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed})
+	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed, "first_failed_index": firstFailed})
 }
 
 // POST /api/sync/torrents — push path (see file comment above). Body:
@@ -190,22 +207,16 @@ func handleSyncTorrentsPush(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	var applied, failed int
-	for _, t := range body.Torrents {
+	applied, failed, firstFailed := applyPushBatch(body.Torrents, func(t store.SyncTorrent) error {
 		if t.Hash == "" || t.CardID == "" {
-			failed++
-			continue
+			return errPushMissingKey
 		}
-		if err := store.UpsertSyncedTorrent(r.Context(), t); err != nil {
-			failed++
-			continue
-		}
-		applied++
-	}
+		return store.UpsertSyncedTorrent(r.Context(), t)
+	})
 	if applied > 0 || failed > 0 {
 		store.LogSyncActivity(r.Context(), "push_in", "torrents", body.InstanceName, "", applied, failed)
 	}
-	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed})
+	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed, "first_failed_index": firstFailed})
 }
 
 // POST /api/sync/events — push path (see file comment above). Body:
@@ -223,20 +234,14 @@ func handleSyncEventsPush(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	var applied, failed int
-	for _, e := range body.Events {
+	applied, failed, firstFailed := applyPushBatch(body.Events, func(e store.SyncEvent) error {
 		if e.CardID == "" || e.Ident == "" || e.Date == "" {
-			failed++
-			continue
+			return errPushMissingKey
 		}
-		if err := store.UpsertSyncedPlayEvent(r.Context(), e); err != nil {
-			failed++
-			continue
-		}
-		applied++
-	}
+		return store.UpsertSyncedPlayEvent(r.Context(), e)
+	})
 	if applied > 0 || failed > 0 {
 		store.LogSyncActivity(r.Context(), "push_in", "events", body.InstanceName, "", applied, failed)
 	}
-	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed})
+	JSON(w, http.StatusOK, map[string]int{"applied": applied, "failed": failed, "first_failed_index": firstFailed})
 }

@@ -338,7 +338,11 @@ func syncPushPages[T any](ctx context.Context, peer, token, path, wrapKey, setti
 		// a rolling deploy is a real scenario, not just a test artifact)
 		// would otherwise unmarshal into a zero-valued result and get
 		// treated as "batch accepted", permanently skipping these items.
-		var result struct{ Applied, Failed int }
+		var result struct {
+			Applied          int  `json:"applied"`
+			Failed           int  `json:"failed"`
+			FirstFailedIndex *int `json:"first_failed_index"`
+		}
 		if err := json.Unmarshal(body, &result); err != nil || result.Applied+result.Failed != len(items) {
 			log.Printf("tasks: instance_sync push %s: unexpected response (unmarshal err=%v, applied=%d failed=%d for %d items) — not advancing cursor",
 				path, err, result.Applied, result.Failed, len(items))
@@ -347,13 +351,36 @@ func syncPushPages[T any](ctx context.Context, peer, token, path, wrapKey, setti
 		applied += result.Applied
 		failed += result.Failed
 
+		// firstFailed pins the cursor to the last item the peer actually
+		// applied, not to the batch's end regardless of failures — the same
+		// class of bug applyPulledPage fixes for pull, mirrored here for
+		// push (see applyPushBatch's doc comment). Without this, an item
+		// that fails to apply on the peer (bad data, a transient DB error —
+		// this is exactly how 30 torrents got permanently stuck on one prod
+		// pair in 2026-09) gets silently skipped forever: the cursor moves
+		// past it and a forward-only cursor never revisits. A nil
+		// FirstFailedIndex (peer running pre-fix code, mid rolling deploy)
+		// falls back to the old page-end behavior rather than blocking push
+		// entirely.
+		firstFailed := -1
+		if result.FirstFailedIndex != nil {
+			firstFailed = *result.FirstFailedIndex
+		}
+		if firstFailed == 0 {
+			// Nothing in this batch actually landed — retry the identical
+			// batch next tick instead of looping on it within this one.
+			break
+		}
 		last := items[len(items)-1]
+		if firstFailed > 0 {
+			last = items[firstFailed-1]
+		}
 		sinceTime, sinceTie = updatedAt(last), tieOf(last)
 		since = sinceTime.UTC().Format(time.RFC3339Nano)
 		store.SetSetting(ctx, settingKey, since)
 		store.SetSetting(ctx, settingKey+"_tie", sinceTie)
 
-		if len(items) < 500 {
+		if firstFailed > 0 || len(items) < 500 {
 			break
 		}
 	}
