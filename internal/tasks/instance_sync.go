@@ -95,7 +95,7 @@ func runInstanceSyncTick(ctx context.Context) {
 // cursor silently drops rows once more than a page's worth share the exact
 // same updated_at (a migration backfilling a new column with DEFAULT now()
 // does exactly this to every pre-existing row at once).
-func syncCursorPages(ctx context.Context, peer, path, settingKey string, apply func(page json.RawMessage) (nextSince, nextTie string, hasMore bool, err error)) {
+func syncCursorPages(ctx context.Context, peer, path, settingKey string, apply func(page json.RawMessage, since, sinceTie string) (nextSince, nextTie string, hasMore bool, err error)) {
 	since, _ := store.GetSetting(ctx, settingKey)
 	sinceTie, _ := store.GetSetting(ctx, settingKey+"_tie")
 	for {
@@ -116,7 +116,7 @@ func syncCursorPages(ctx context.Context, peer, path, settingKey string, apply f
 			return
 		}
 
-		nextSince, nextTie, hasMore, err := apply(body)
+		nextSince, nextTie, hasMore, err := apply(body, since, sinceTie)
 		if err != nil {
 			log.Printf("tasks: instance_sync %s: apply page: %v", path, err)
 			return
@@ -138,10 +138,49 @@ func readAndClose(resp *http.Response) (json.RawMessage, error) {
 	return io.ReadAll(resp.Body)
 }
 
+// applyPulledPage upserts items in page order and decides where the cursor
+// actually lands — the page's own end (pageSince/pageTie/pageHasMore) only if
+// every item applied cleanly. On a failure the cursor stops right before the
+// first failing item (or, if that's the page's very first item, holds at the
+// same (since, sinceTie) the page was fetched with, so syncCursorPages' "no
+// progress" check leaves it untouched) instead of jumping to the page's end
+// regardless of failures, which is what silently dropped 9 cards for good in
+// production (2026-09) — a peer-outage 502 mid-page is what surfaced it, but
+// the same jump-to-page-end would just as happily skip a card that fails to
+// upsert for its own reason (bad data, a transient DB error) while its
+// neighbors in the same page succeed. hasMore is forced false on any
+// failure: paging on into further, unrelated new data would spend the rest
+// of this tick's fixed page budget (see syncTickTimeout) on a dataset that
+// can't fully advance anyway, at the other dataset/push calls' expense.
+// Retried every tick until the item succeeds, same as a whole-page failure.
+func applyPulledPage[T any](items []T, since, sinceTie, pageSince, pageTie string, pageHasMore bool,
+	updatedAt func(T) time.Time, tieOf func(T) string, upsert func(T) error) (nextSince, nextTie string, hasMore bool, applied, failed int) {
+	firstFailure := -1
+	for i, item := range items {
+		if err := upsert(item); err != nil {
+			failed++
+			if firstFailure == -1 {
+				firstFailure = i
+			}
+			continue
+		}
+		applied++
+	}
+	switch {
+	case firstFailure == -1:
+		return pageSince, pageTie, pageHasMore, applied, failed
+	case firstFailure == 0:
+		return since, sinceTie, false, applied, failed
+	default:
+		last := items[firstFailure-1]
+		return updatedAt(last).UTC().Format(time.RFC3339Nano), tieOf(last), false, applied, failed
+	}
+}
+
 func pullCards(ctx context.Context, peer string) {
 	var applied, failed int
 	var peerName string
-	syncCursorPages(ctx, peer, "/api/sync/cards", "sync_cursor_cards", func(page json.RawMessage) (string, string, bool, error) {
+	syncCursorPages(ctx, peer, "/api/sync/cards", "sync_cursor_cards", func(page json.RawMessage, since, sinceTie string) (string, string, bool, error) {
 		var body struct {
 			Cards           []store.SyncCard `json:"cards"`
 			NextSince       string           `json:"next_since"`
@@ -163,15 +202,18 @@ func pullCards(ctx context.Context, peer string) {
 				store.SetSetting(ctx, "sync_interval_minutes", strconv.Itoa(body.IntervalMinutes))
 			}
 		}
-		for _, c := range body.Cards {
-			if err := store.UpsertSyncedCard(ctx, c); err != nil {
-				failed++
-				log.Printf("tasks: instance_sync pull cards: upsert %s: %v", c.CardID, err)
-				continue
-			}
-			applied++
-		}
-		return body.NextSince, body.NextTie, body.HasMore, nil
+		nextSince, nextTie, hasMore, a, f := applyPulledPage(body.Cards, since, sinceTie, body.NextSince, body.NextTie, body.HasMore,
+			func(c store.SyncCard) time.Time { return c.UpdatedAt }, func(c store.SyncCard) string { return c.CardID },
+			func(c store.SyncCard) error {
+				if err := store.UpsertSyncedCard(ctx, c); err != nil {
+					log.Printf("tasks: instance_sync pull cards: upsert %s: %v", c.CardID, err)
+					return err
+				}
+				return nil
+			})
+		applied += a
+		failed += f
+		return nextSince, nextTie, hasMore, nil
 	})
 	if applied > 0 || failed > 0 {
 		log.Printf("tasks: instance_sync pull cards from %s: applied %d, failed %d", peer, applied, failed)
@@ -282,7 +324,7 @@ func pushEvents(ctx context.Context, peer, token string) {
 func pullEvents(ctx context.Context, peer string) {
 	var applied, failed int
 	var peerName string
-	syncCursorPages(ctx, peer, "/api/sync/events", "sync_cursor_events", func(page json.RawMessage) (string, string, bool, error) {
+	syncCursorPages(ctx, peer, "/api/sync/events", "sync_cursor_events", func(page json.RawMessage, since, sinceTie string) (string, string, bool, error) {
 		var body struct {
 			Events       []store.SyncEvent `json:"events"`
 			NextSince    string            `json:"next_since"`
@@ -294,15 +336,19 @@ func pullEvents(ctx context.Context, peer string) {
 			return "", "", false, err
 		}
 		peerName = body.InstanceName
-		for _, e := range body.Events {
-			if err := store.UpsertSyncedPlayEvent(ctx, e); err != nil {
-				failed++
-				log.Printf("tasks: instance_sync pull events: upsert %s/%s/%s: %v", e.CardID, e.Ident, e.Date, err)
-				continue
-			}
-			applied++
-		}
-		return body.NextSince, body.NextTie, body.HasMore, nil
+		nextSince, nextTie, hasMore, a, f := applyPulledPage(body.Events, since, sinceTie, body.NextSince, body.NextTie, body.HasMore,
+			func(e store.SyncEvent) time.Time { return e.UpdatedAt },
+			func(e store.SyncEvent) string { return e.CardID + "|" + e.Ident + "|" + e.Date },
+			func(e store.SyncEvent) error {
+				if err := store.UpsertSyncedPlayEvent(ctx, e); err != nil {
+					log.Printf("tasks: instance_sync pull events: upsert %s/%s/%s: %v", e.CardID, e.Ident, e.Date, err)
+					return err
+				}
+				return nil
+			})
+		applied += a
+		failed += f
+		return nextSince, nextTie, hasMore, nil
 	})
 	if applied > 0 || failed > 0 {
 		log.Printf("tasks: instance_sync pull events from %s: applied %d, failed %d", peer, applied, failed)
