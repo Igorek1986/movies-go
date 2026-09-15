@@ -112,14 +112,17 @@ func main() {
 	if mode == "all" {
 		tasks.Start(appCtx)
 	}
+	api.InitCategorySettings()
+	parser.OnComplete = api.InvalidateCategoryCache
+	tasks.OnSyncApplied = api.InvalidateCategoryCache
+	myshows.OnEpisodesUpdated = api.InvalidateWatchedForCard
+
 	// Instance sync pull (dev/instance-sync.md) — оба режима: публичный
 	// parser-инстанс тоже может быть sync-клиентом/шлюзом. Сам цикл
 	// проверяет sync_role на каждый тик и не делает ничего, если не "client".
+	// Started after OnSyncApplied is wired above — it ticks immediately on
+	// start, so starting it any earlier would race the assignment.
 	go tasks.StartInstanceSyncLoop(appCtx)
-
-	api.InitCategorySettings()
-	parser.OnComplete = api.InvalidateCategoryCache
-	myshows.OnEpisodesUpdated = api.InvalidateWatchedForCard
 
 	// Cache snapshot: survive restarts without every profile/category paying a cold
 	// miss again. Loaded before serving traffic; saved periodically and once more on

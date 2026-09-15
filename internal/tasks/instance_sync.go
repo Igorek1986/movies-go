@@ -16,6 +16,16 @@ import (
 
 var syncHTTPClient = &http.Client{Timeout: 20 * time.Second}
 
+// OnSyncApplied is called whenever pullCards or pullTorrents actually wrote
+// new local data (applied > 0) — wired in cmd/main.go to
+// api.InvalidateCategoryCache, the same hook parser.OnComplete uses after a
+// parser run. Without it, a card/torrent that arrived via sync wouldn't show
+// up in the catalog until the next local parser run happened to invalidate
+// the cache for an unrelated reason. A function var, not a direct import,
+// because internal/api already imports internal/tasks (see admin.go), so
+// the reverse import would be circular — same pattern as parser.OnComplete.
+var OnSyncApplied func()
+
 // StartInstanceSyncLoop runs instance sync's client side (see
 // dev/instance-sync.md) on a timer, using the admin-configured
 // sync_interval_minutes. A no-op tick if sync_peer_url isn't set — a hub
@@ -240,6 +250,9 @@ func pullCards(ctx context.Context, peer string) {
 		log.Printf("tasks: instance_sync pull cards from %s: applied %d, failed %d", peer, applied, failed)
 		store.LogSyncActivity(ctx, "pull", "cards", peerName, peer, applied, failed)
 	}
+	if applied > 0 && OnSyncApplied != nil {
+		OnSyncApplied()
+	}
 }
 
 // pullTorrents pulls the peer's hash→card_id dedup index — what actually
@@ -277,6 +290,9 @@ func pullTorrents(ctx context.Context, peer string) {
 	if applied > 0 || failed > 0 {
 		log.Printf("tasks: instance_sync pull torrents from %s: applied %d, failed %d", peer, applied, failed)
 		store.LogSyncActivity(ctx, "pull", "torrents", peerName, peer, applied, failed)
+	}
+	if applied > 0 && OnSyncApplied != nil {
+		OnSyncApplied()
 	}
 }
 
