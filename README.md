@@ -212,18 +212,30 @@ docker compose up -d --build app
 > Токен Telegram-бота, доступ к kinozal, параметры трекеров, лимиты и тексты указываются **в настройках админки** (раздел «Настройки»), а не в `.env`.
 
 **Обход Cloudflare для kinozal** (опционально, не требуется большинству инсталляций): kinozal.me
-теперь закрыт JS-челленджем Cloudflare. Один переключатель в `.env`:
+теперь закрыт JS-челленджем Cloudflare. Поднимает стек warp + FlareSolverr + cffetch
+(`docker-compose.cfbypass.yml`, headless-браузер, ~500МБ-1ГБ RAM) и прописывает приложению
+`FLARESOLVERR_URL`/`CFFETCH_URL` автоматически, по DNS-имени сервиса. Без него — парсер kinozal
+просто ничего не находит, как раньше, без ошибок.
 
-```
-COMPOSE_PROFILES=cfbypass
+*Включить* — одна строка в `.env`, команда запуска не меняется:
+```bash
+echo 'COMPOSE_PROFILES=cfbypass' >> .env
+docker compose up -d --build
 ```
 
-Поднимает вместе с обычным `docker compose up -d --build` (без отдельной команды) стек warp +
-FlareSolverr + cffetch (`docker-compose.cfbypass.yml`, headless-браузер, ~500МБ-1ГБ RAM) и
-прописывает приложению `FLARESOLVERR_URL`/`CFFETCH_URL` автоматически. Без этой строки — парсер
-kinozal просто ничего не находит, как раньше, без ошибок. Чтобы выключить и снести уже поднятые
-контейнеры — убрать строку и один раз выполнить `docker compose --profile cfbypass down` (обычный
-`down` их не видит вне активного профиля). См. комментарии в `docker-compose.cfbypass.yml`.
+*Выключить* (и снести уже поднятые контейнеры) — обычный `up`/`down` их не видит вне активного
+профиля, нужен явный `--profile`:
+```bash
+sed -i '/^COMPOSE_PROFILES=cfbypass/d' .env
+docker compose --profile cfbypass down
+```
+
+*Обычный перезапуск, пока bypass выключен* — ничего особенного, `.env` уже без `COMPOSE_PROFILES`:
+```bash
+docker compose up -d --build
+```
+
+См. комментарии в `docker-compose.cfbypass.yml`.
 
 ### Синхронизация с другими инстансами
 
