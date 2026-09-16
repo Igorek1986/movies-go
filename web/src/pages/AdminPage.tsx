@@ -190,6 +190,10 @@ export default function AdminPage() {
     running: false, current: 0, total: 0, fixed: 0,
   })
   const fixImdbPoll = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [backfillDatesStatus, setBackfillDatesStatus] = useState<{ running: boolean; trackers: Record<string, { running: boolean; pages: number; fixed: number }> }>({
+    running: false, trackers: {},
+  })
+  const backfillDatesPoll = useRef<ReturnType<typeof setInterval> | null>(null)
   const meId = useRef<number | null>(null)
   const [backingUp, setBackingUp] = useState(false)
   const [restoring, setRestoring] = useState(false)
@@ -415,6 +419,53 @@ export default function AdminPage() {
     }
   }
 
+  // Разовое обслуживание — заполняет torrents.created_at (дата раздачи на
+  // трекере) там, где NULL, по kinozal/nnmclub/rutor разом. Не разносится
+  // синком между инстансами (курсор — first_seen_at, это его не трогает) —
+  // запускать на каждом инстансе отдельно. См. dev/kinozal.md.
+  async function fetchBackfillDatesStatus() {
+    const res = await fetch('/api/admin/backfill-dates/status')
+    if (!res.ok) return
+    const data = await res.json()
+    setBackfillDatesStatus(data)
+    return data
+  }
+
+  function startBackfillDatesPoll() {
+    if (backfillDatesPoll.current) return
+    backfillDatesPoll.current = setInterval(async () => {
+      const data = await fetchBackfillDatesStatus()
+      if (data && !data.running) {
+        clearInterval(backfillDatesPoll.current!)
+        backfillDatesPoll.current = null
+      }
+    }, 3000)
+  }
+
+  async function runBackfillDates() {
+    try {
+      const res = await api('/api/admin/backfill-dates', 'POST')
+      if (res.status === 'already_running') {
+        toast('Задача уже запущена')
+      } else {
+        toast('Бэкфилл дат запущен в фоне')
+        await fetchBackfillDatesStatus()
+      }
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
+  async function stopBackfillDates() {
+    try {
+      await api('/api/admin/backfill-dates/stop', 'POST')
+      toast('Задача остановлена')
+      await fetchBackfillDatesStatus()
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : String(e), false)
+    }
+  }
+
   useEffect(() => {
     setLoading(true)
     // fetch meId once
@@ -428,7 +479,7 @@ export default function AdminPage() {
     if (!cachedStats || cachedStats.stale) refresh()
     Promise.all([
       fetchUsers(1, '', 'created_at', 'desc', 10),
-      fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchFixImdbStatus(), fetchSysStats(), fetchApiKey(), fetchExtSources(),
+      fetchFixRtStatus(), fetchRefreshCardsStatus(), fetchBackfillCastStatus(), fetchFixImdbStatus(), fetchBackfillDatesStatus(), fetchSysStats(), fetchApiKey(), fetchExtSources(),
     ]).finally(() => setLoading(false))
     const sysInterval = setInterval(fetchSysStats, 5000)
     return () => clearInterval(sysInterval)
@@ -454,6 +505,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (fixImdbStatus.running) startFixImdbPoll()
   }, [fixImdbStatus.running]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (backfillDatesStatus.running) startBackfillDatesPoll()
+  }, [backfillDatesStatus.running]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function runFixRuntime() {
     try {
@@ -1009,6 +1064,10 @@ export default function AdminPage() {
               ? <button className={`${styles.actionBtn} ${styles.danger}`} title="Остановить заполнение imdb_id" onClick={stopFixImdb}>Остановить imdb_id</button>
               : <button className={styles.actionBtn} title="Заполнить imdb_id для сериалов из TMDB (/tv/{id}/external_ids) — нужен для точного сопоставления с TVmaze/TheTVDB/Kinopoisk по ID вместо поиска по названию" onClick={runFixImdb}>Заполнить imdb_id</button>
             }
+            {backfillDatesStatus.running
+              ? <button className={`${styles.actionBtn} ${styles.danger}`} title="Остановить бэкфилл дат публикации" onClick={stopBackfillDates}>Остановить даты раздач</button>
+              : <button className={styles.actionBtn} title="Разово докрутить дату публикации раздачи (kinozal/nnmclub/rutor) там, где она не сохранилась — обходит полную историю трекеров, не трогает card_id и TMDB-поиск заново не запускает. Запускать на каждом инстансе отдельно — синком не разносится." onClick={runBackfillDates}>Заполнить даты раздач</button>
+            }
           </div>
           {fixRtStatus.running && fixRtStatus.total > 0 && (
             <div className={styles.fixRtProgress}>
@@ -1056,6 +1115,19 @@ export default function AdminPage() {
               <div className={styles.fixRtBar}>
                 <div className={styles.fixRtBarFill} style={{ width: `${Math.round(fixImdbStatus.current / fixImdbStatus.total * 100)}%` }} />
               </div>
+            </div>
+          )}
+          {Object.keys(backfillDatesStatus.trackers).length > 0 && (backfillDatesStatus.running || Object.values(backfillDatesStatus.trackers).some(t => t.pages > 0)) && (
+            <div className={styles.fixRtProgress}>
+              <div className={styles.fixRtLabel}>
+                <span>Даты раздач (без процента — обход неограничен по страницам):</span>
+              </div>
+              {Object.entries(backfillDatesStatus.trackers).map(([tracker, t]) => (
+                <div key={tracker} className={styles.fixRtLabel}>
+                  <span>{tracker}{t.running ? ' (идёт)' : ''}: {t.pages} стр.</span>
+                  <span>Заполнено: {t.fixed}</span>
+                </div>
+              ))}
             </div>
           )}
 

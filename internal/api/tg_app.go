@@ -182,6 +182,7 @@ func registerTgAppRoutes(r chi.Router) {
 				r.Post("/admin/refresh-episodes", handleTgAppRefreshEpisodes)
 				r.Post("/admin/fix-runtime", handleTgAppFixRuntime)
 				r.Post("/admin/fix-imdb", handleTgAppFixImdb)
+				r.Post("/admin/backfill-dates", handleTgAppBackfillDates)
 				r.Post("/admin/reset-parser", handleTgAppResetParser)
 				r.Get("/messages", handleTgAppMessages)
 				r.Post("/messages/{tg_id}/reply", handleTgAppReply)
@@ -678,6 +679,15 @@ func handleTgAppFixImdb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go tasks.RunFixMissingImdbID(tasks.AppCtx())
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func handleTgAppBackfillDates(w http.ResponseWriter, r *http.Request) {
+	if parser.GetDateBackfillStatus().Running {
+		JSON(w, http.StatusOK, map[string]any{"ok": false, "message": "already running"})
+		return
+	}
+	go parser.RunDateBackfillAll()
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
