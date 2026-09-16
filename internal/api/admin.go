@@ -95,6 +95,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var users, usersToday, devices, devicesToday, cards, cardsToday, timecodes, timecodesToday int
 	var noRuntimeMovies, noRuntimeTV int
+	var noDateTorrents int
 	var tmdbRefreshedToday, tmdbNotFound int
 	var syncActivityToday, syncActivityTotal int
 	var actorCount, directorCount int
@@ -144,6 +145,11 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	})
 	run(func() {
 		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE media_type='tv' AND (episode_run_time IS NULL OR episode_run_time=0)`).Scan(&noRuntimeTV) //nolint:errcheck
+	})
+	run(func() {
+		// Раздачи, привязанные к карточке, без даты публикации на трекере
+		// (created_at) — см. parser.RunDateBackfillAll / "Заполнить даты раздач".
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM torrents WHERE card_id IS NOT NULL AND card_id <> '' AND created_at IS NULL`).Scan(&noDateTorrents) //nolint:errcheck
 	})
 	run(func() {
 		// Границы суток по локальному времени сервера, а не CURRENT_DATE
@@ -233,6 +239,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"media_cards_today":    cardsToday,
 		"no_runtime_movies":    noRuntimeMovies,
 		"no_runtime_tv":        noRuntimeTV,
+		"no_date_torrents":     noDateTorrents,
 		"timecodes":            timecodes,
 		"timecodes_today":      timecodesToday,
 		"new_users_today":      newUsersToday,

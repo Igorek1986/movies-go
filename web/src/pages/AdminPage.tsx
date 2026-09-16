@@ -33,6 +33,7 @@ interface Stats {
   timecodes_today: number
   no_runtime_movies: number
   no_runtime_tv: number
+  no_date_torrents: number
   tmdb_refreshed_today: number
   tmdb_not_found: number
   sync_activity_today: number
@@ -973,6 +974,12 @@ export default function AdminPage() {
                   <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.no_runtime_tv.toLocaleString()}</p>
                   <p className={styles.statLabel}>Сериалов без runtime</p>
                 </Link>
+              </div>
+            )}
+            {stats.no_date_torrents > 0 && (
+              <div className={styles.statCard} title="Раздачи, привязанные к карточке, без сохранённой даты публикации на трекере — см. «Заполнить даты раздач» в «Действиях»">
+                <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.no_date_torrents.toLocaleString()}</p>
+                <p className={styles.statLabel}>Раздач без даты</p>
               </div>
             )}
             {stats.tmdb_refreshed_today > 0 && (
