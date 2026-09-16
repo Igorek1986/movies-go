@@ -142,6 +142,29 @@ func BackfillTorrentCreatedAtFromSiblings(ctx context.Context) (int64, error) {
 	return tag.RowsAffected(), nil
 }
 
+// BackfillTorrentCreatedAtFromCard is the last-resort fallback after both the
+// tracker crawl and BackfillTorrentCreatedAtFromSiblings: copies
+// media_cards.latest_torrent_date onto any torrent still NULL. That field is
+// a GREATEST()-accumulated high-water mark (db/store/store.go's UpsertMediaCard)
+// that only ever grows — for a card whose only torrent has no created_at, the
+// value here is a historical trace (from this torrent before whatever wiped
+// its own created_at, or from a since-removed sibling torrent) rather than a
+// verified date for the specific row being filled. Unverifiable but still the
+// best available signal, and strictly better than NULL for date comparisons.
+func BackfillTorrentCreatedAtFromCard(ctx context.Context) (int64, error) {
+	tag, err := postgres.Pool.Exec(ctx, `
+		UPDATE torrents t
+		SET created_at = mc.latest_torrent_date
+		FROM media_cards mc
+		WHERE t.card_id = mc.card_id
+		  AND t.created_at IS NULL
+		  AND mc.latest_torrent_date IS NOT NULL`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // CountCardsByTracker returns the number of distinct linked cards per tracker.
 func CountCardsByTracker() map[string]int {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -109,6 +109,15 @@ func RunDateBackfillAll() {
 	} else {
 		log.Printf("date-backfill/siblings: filled %d from dated siblings on the same card", fixed)
 	}
+
+	// Last resort for anything still NULL (no dated sibling either) —
+	// unverifiable historical trace on the card, see the function's doc.
+	fixed, err = store.BackfillTorrentCreatedAtFromCard(context.Background())
+	if err != nil {
+		log.Printf("date-backfill/card: %v", err)
+	} else {
+		log.Printf("date-backfill/card: filled %d from media_cards.latest_torrent_date", fixed)
+	}
 }
 
 func backfillNNMClubDates() {
