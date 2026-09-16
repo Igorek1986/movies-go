@@ -2191,7 +2191,6 @@ var boolSettingKeys = map[string]bool{
 	"images_cache_enabled":       true,
 	"images_cache_warm_original": true,
 	"registration_disabled":      true,
-	"push_notify_combine_all":    true,
 }
 
 // settingsGroupDefs mirrors FastAPI GROUPS.
@@ -2226,7 +2225,7 @@ var settingsGroupDefs = []struct {
 		"registration_disabled", "admin_created_user_delete_days",
 	}},
 	{"Уведомления", []string{
-		"default_timezone", "push_notify_combine_all",
+		"default_timezone",
 	}},
 	{"Аналитика", []string{
 		"yandex_metrika_enabled", "yandex_metrika_id",

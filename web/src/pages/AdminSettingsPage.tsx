@@ -818,7 +818,6 @@ const CHECKBOX_KEYS: Record<string, string> = {
   images_cache_enabled:     '',
   images_cache_warm_original: '',
   registration_disabled:    '',
-  push_notify_combine_all:  '',
 }
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -836,7 +835,6 @@ const DESCRIPTIONS: Record<string, string> = {
   admin_created_user_delete_days: 'Если пользователь так и не вошёл и не сменил выданный пароль — аккаунт удаляется автоматически по ночам (вместе с остальными ежедневными проверками, время — «Час запуска ежедневной задачи»). 0 — не удалять.',
   poster_size: 'Действует для новых/обновляемых карточек. Уже существующие карточки сохранят прежнее качество до своего следующего TMDB-обновления — нужен разовый бэкафилл в БД, чтобы поднять качество сразу у всех.',
   backdrop_size: 'Действует для новых/обновляемых карточек, как и качество постеров.',
-  push_notify_combine_all: 'Выключено (по умолчанию) — одно push-уведомление на сериал за проверку (несколько новых серий одного сериала объединяются в одно). Включено — одно общее уведомление на всю проверку, даже если вышли серии нескольких разных сериалов сразу.',
 }
 
 const LABELS: Record<string, string> = {
@@ -933,7 +931,6 @@ const LABELS: Record<string, string> = {
   rutor_host:   'Домен Rutor.info',
   kinozal_host: 'Домен Kinozal',
   nnmclub_host: 'Домен NNMClub.to',
-  push_notify_combine_all: 'Push «новые серии» — одно уведомление на всё',
 }
 
 const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
@@ -966,7 +963,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'reset_code_ttl_minutes', 'pending_2fa_ttl_sec',
     'registration_disabled', 'admin_created_user_delete_days',
   ]},
-  { name: 'Уведомления', keys: ['default_timezone', 'push_notify_combine_all'] },
+  { name: 'Уведомления', keys: ['default_timezone'] },
   { name: 'Аналитика', keys: [
     'yandex_metrika_enabled', 'yandex_metrika_id',
     'google_analytics_enabled', 'google_analytics_id',

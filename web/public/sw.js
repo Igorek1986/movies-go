@@ -13,6 +13,29 @@ self.addEventListener('push', event => {
   let data = {}
   try { data = event.data ? event.data.json() : {} } catch {}
 
+  // Multiple new episodes across different shows in one check (see
+  // push_notify.go) arrive as ONE push message carrying a "notifications"
+  // array, so the device buzzes/alerts once instead of once per show — this
+  // fans it back out into one stacked notification card per show. Each gets
+  // its own tag (the card url) so re-checks replace that show's card instead
+  // of piling up duplicates, and every card after the first is silent so
+  // only the first one triggers the audible/haptic alert.
+  if (Array.isArray(data.notifications) && data.notifications.length) {
+    event.waitUntil(
+      Promise.all(data.notifications.map((n, i) =>
+        self.registration.showNotification(n.title || 'Movies API', {
+          body: n.body || '',
+          icon: '/web-app-manifest-192x192.png',
+          badge: '/web-app-manifest-192x192.png',
+          tag: n.url || undefined,
+          silent: i > 0,
+          data: { url: n.url || '/' },
+        })
+      ))
+    )
+    return
+  }
+
   const title = data.title || 'Movies API'
   const options = {
     body: data.body || '',
