@@ -1876,6 +1876,7 @@ func handleAPIAdminAllCards(w http.ResponseWriter, r *http.Request) {
 		ReleaseDateFrom: q.Get("release_date_from"),
 		ReleaseDateTo:   q.Get("release_date_to"),
 		NoRuntime:       q.Get("no_runtime"),
+		NoDate:          q.Get("no_date") == "1",
 	}
 	if v, err := strconv.Atoi(q.Get("page")); err == nil && v > 0 {
 		p.Page = v

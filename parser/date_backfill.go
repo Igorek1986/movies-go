@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strconv"
@@ -98,6 +99,16 @@ func RunDateBackfillAll() {
 	}
 	wg.Wait()
 	log.Println("date-backfill: all trackers done")
+
+	// Whatever's still NULL (torrent removed from the tracker, so the crawl
+	// above never re-encountered it) — approximate from a dated sibling on
+	// the same card, better than leaving it out of date comparisons entirely.
+	fixed, err := store.BackfillTorrentCreatedAtFromSiblings(context.Background())
+	if err != nil {
+		log.Printf("date-backfill/siblings: %v", err)
+	} else {
+		log.Printf("date-backfill/siblings: filled %d from dated siblings on the same card", fixed)
+	}
 }
 
 func backfillNNMClubDates() {

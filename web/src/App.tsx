@@ -215,6 +215,7 @@ export default function App() {
         <Route path="/admin/sync-activity" element={<SyncActivityPage />} />
         <Route path="/admin/no-runtime-movies" element={<AllCardsPage noRuntime="movie" />} />
         <Route path="/admin/no-runtime-tv" element={<AllCardsPage noRuntime="tv" />} />
+        <Route path="/admin/no-date-torrents" element={<AllCardsPage noDate />} />
         <Route path="/admin/actors" element={<PersonsAdminPage />} />
         <Route path="/admin/directors" element={<PersonsAdminPage />} />
         <Route path="/admin/users-today" element={<UsersTodayPage />} />

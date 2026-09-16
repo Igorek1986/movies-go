@@ -316,13 +316,15 @@ function EditableDate({ cardId, field, value, onSaved }: {
 
 const PAGE_SIZE = 100
 
-export default function AllCardsPage({ noRuntime }: { noRuntime?: 'movie' | 'tv' } = {}) {
+export default function AllCardsPage({ noRuntime, noDate }: { noRuntime?: 'movie' | 'tv'; noDate?: boolean } = {}) {
   const navigate = useNavigate()
   const basePath = noRuntime === 'movie' ? '/admin/no-runtime-movies'
     : noRuntime === 'tv' ? '/admin/no-runtime-tv'
+    : noDate ? '/admin/no-date-torrents'
     : '/admin/all-cards'
   const pageTitle = noRuntime === 'movie' ? 'Фильмы без runtime'
     : noRuntime === 'tv' ? 'Сериалы без runtime'
+    : noDate ? 'Карточки с раздачами без даты'
     : 'Все карточки'
   const [cards, setCards]       = useState<Card[]>([])
   const [total, setTotal]       = useState(0)
@@ -404,6 +406,7 @@ export default function AllCardsPage({ noRuntime }: { noRuntime?: 'movie' | 'tv'
     if (releaseDateRange.from) q.set('release_date_from', releaseDateRange.from)
     if (releaseDateRange.to)   q.set('release_date_to', releaseDateRange.to)
     if (noRuntime) q.set('no_runtime', noRuntime)
+    if (noDate) q.set('no_date', '1')
 
     setLoading(true)
     fetch('/api/admin/all-cards?' + q, { signal: ctrl.signal })
@@ -413,7 +416,7 @@ export default function AllCardsPage({ noRuntime }: { noRuntime?: 'movie' | 'tv'
       .finally(() => setLoading(false))
 
     return () => ctrl.abort()
-  }, [page, searchQuery, filters, runtimeRange, torrentDateRange, releaseDateRange, dateSort, refreshKey, noRuntime])
+  }, [page, searchQuery, filters, runtimeRange, torrentDateRange, releaseDateRange, dateSort, refreshKey, noRuntime, noDate])
 
   function handleSearch(val: string) {
     setSearchInput(val)

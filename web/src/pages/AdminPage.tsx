@@ -977,9 +977,11 @@ export default function AdminPage() {
               </div>
             )}
             {stats.no_date_torrents > 0 && (
-              <div className={styles.statCard} title="Раздачи, привязанные к карточке, без сохранённой даты публикации на трекере — см. «Заполнить даты раздач» в «Действиях»">
-                <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.no_date_torrents.toLocaleString()}</p>
-                <p className={styles.statLabel}>Раздач без даты</p>
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/no-date-torrents" className={styles.statLink} title="Карточки с хотя бы одной раздачей без даты публикации на трекере — см. «Заполнить даты раздач» в «Действиях»">
+                  <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.no_date_torrents.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Раздач без даты</p>
+                </Link>
               </div>
             )}
             {stats.tmdb_refreshed_today > 0 && (

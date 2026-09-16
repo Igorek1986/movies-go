@@ -116,6 +116,32 @@ func BackfillTorrentCreatedAt(hash, tracker string, createDate time.Time) bool {
 	return err == nil && tag.RowsAffected() > 0
 }
 
+// BackfillTorrentCreatedAtFromSiblings fills created_at for torrents still
+// NULL after the tracker crawl (e.g. the topic/torrent itself was removed
+// from the tracker, so it was never re-encountered) by copying the latest
+// known created_at from another torrent on the SAME card. Not the true post
+// date for that specific torrent, but a reasonable stand-in — a NULL never
+// participates in date comparisons at all (e.g. the "Последние поступления"
+// category's RecentDays filter, media_cards.latest_torrent_date), so a
+// same-card approximation is strictly better than leaving it out entirely.
+// Only fills NULLs; never touches a torrent with no dated sibling.
+func BackfillTorrentCreatedAtFromSiblings(ctx context.Context) (int64, error) {
+	tag, err := postgres.Pool.Exec(ctx, `
+		UPDATE torrents t
+		SET created_at = sub.max_date
+		FROM (
+			SELECT card_id, MAX(created_at) AS max_date
+			FROM torrents
+			WHERE created_at IS NOT NULL AND card_id IS NOT NULL AND card_id <> ''
+			GROUP BY card_id
+		) sub
+		WHERE t.card_id = sub.card_id AND t.created_at IS NULL`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // CountCardsByTracker returns the number of distinct linked cards per tracker.
 func CountCardsByTracker() map[string]int {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -518,6 +544,7 @@ type AllCardsParams struct {
 	RuntimeMin      *int
 	RuntimeMax      *int
 	NoRuntime       string // "movie" or "tv": cards missing runtime / episode_run_time
+	NoDate          bool   // cards with at least one torrent missing created_at (tracker post date)
 	TorrentDateFrom string
 	TorrentDateTo   string
 	ReleaseDateFrom string
@@ -643,6 +670,10 @@ func GetAllCards(ctx context.Context, p AllCardsParams) AllCardsResult {
 		conds = append(conds, "mc.media_type='movie' AND (mc.runtime IS NULL OR mc.runtime=0)")
 	case "tv":
 		conds = append(conds, "mc.media_type='tv' AND (mc.episode_run_time IS NULL OR mc.episode_run_time=0)")
+	}
+
+	if p.NoDate {
+		conds = append(conds, "EXISTS (SELECT 1 FROM torrents t_nd WHERE t_nd.card_id = mc.card_id AND t_nd.created_at IS NULL)")
 	}
 
 	if p.TorrentDateFrom != "" {
