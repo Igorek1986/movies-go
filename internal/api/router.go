@@ -265,6 +265,9 @@ func NewRouter(mode string) http.Handler {
 	r.With(requireAnyAdmin(mode)).Post("/api/admin/fix-imdb", handleAPIAdminFixImdb)
 	r.With(requireAnyAdmin(mode)).Post("/api/admin/fix-imdb/stop", handleAPIAdminFixImdbStop)
 	r.With(requireAnyAdmin(mode)).Get("/api/admin/fix-imdb/status", handleAPIAdminFixImdbStatus)
+	r.With(requireAnyAdmin(mode)).Post("/api/admin/backfill-dates", handleAPIAdminBackfillDates)
+	r.With(requireAnyAdmin(mode)).Post("/api/admin/backfill-dates/stop", handleAPIAdminBackfillDatesStop)
+	r.With(requireAnyAdmin(mode)).Get("/api/admin/backfill-dates/status", handleAPIAdminBackfillDatesStatus)
 
 	// ── TMDB missing cards (admin, both modes) ──────────────────────────────────
 	r.Route("/api/admin/tmdb-missing", func(r chi.Router) {

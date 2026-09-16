@@ -96,6 +96,26 @@ func CacheTorrent(hash, cardID, tracker string, createDate time.Time) {
 	)
 }
 
+// BackfillTorrentCreatedAt fills in created_at for an already-known torrent
+// hash whose created_at is still NULL — legacy rows inserted before the
+// tracker's post date started being persisted (see dev/kinozal.md history).
+// Only ever fills a NULL; never overwrites an existing value, never touches
+// card_id, never re-runs TMDB matching. Safe to call repeatedly (idempotent)
+// and safe to call for a hash that doesn't exist at all (no-op, 0 rows).
+func BackfillTorrentCreatedAt(hash, tracker string, createDate time.Time) bool {
+	if createDate.IsZero() {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	tag, err := postgres.Pool.Exec(ctx,
+		`UPDATE torrents SET created_at = $3
+		 WHERE hash = $1 AND tracker = $2 AND created_at IS NULL`,
+		hash, tracker, createDate,
+	)
+	return err == nil && tag.RowsAffected() > 0
+}
+
 // CountCardsByTracker returns the number of distinct linked cards per tracker.
 func CountCardsByTracker() map[string]int {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

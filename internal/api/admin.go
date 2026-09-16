@@ -17,6 +17,7 @@ import (
 	"movies-api/internal/imagecache"
 	tasks "movies-api/internal/tasks"
 	"movies-api/movies/tmdb"
+	"movies-api/parser"
 	"net/http"
 	"os"
 	"runtime"
@@ -2002,6 +2003,29 @@ func handleAPIAdminFixImdbStop(w http.ResponseWriter, r *http.Request) {
 
 func handleAPIAdminFixImdbStatus(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, tasks.GetFixImdbStatus())
+}
+
+// One-off maintenance — see parser.RunDateBackfillAll. No web/Telegram UI
+// button: triggered manually per instance, not a recurring admin action —
+// each instance's own torrents need their own pass (the sync cursor is
+// first_seen_at, which this never touches, so a backfilled date never
+// propagates to peers on its own).
+func handleAPIAdminBackfillDates(w http.ResponseWriter, r *http.Request) {
+	if parser.GetDateBackfillStatus().Running {
+		JSON(w, http.StatusOK, map[string]any{"status": "already_running"})
+		return
+	}
+	go parser.RunDateBackfillAll()
+	JSON(w, http.StatusOK, map[string]any{"status": "started"})
+}
+
+func handleAPIAdminBackfillDatesStop(w http.ResponseWriter, r *http.Request) {
+	parser.StopDateBackfill()
+	JSON(w, http.StatusOK, map[string]any{"status": "stopped"})
+}
+
+func handleAPIAdminBackfillDatesStatus(w http.ResponseWriter, r *http.Request) {
+	JSON(w, http.StatusOK, parser.GetDateBackfillStatus())
 }
 
 type personListItem struct {
