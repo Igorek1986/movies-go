@@ -511,6 +511,7 @@ type NewTodayCard struct {
 	Categories        []string `json:"categories"`
 	LatestTorrentDate string `json:"latest_torrent_date"`
 	ReleaseDate       string `json:"release_date"`
+	PosterPath        string `json:"poster_path"`
 }
 
 func GetNewTodayCards(ctx context.Context) []NewTodayCard {
@@ -523,14 +524,15 @@ func GetNewTodayCards(ctx context.Context) []NewTodayCard {
 		       COALESCE(mc.runtime, 0), COALESCE(mc.episode_run_time, 0),
 		       COALESCE(mc.best_video_quality, 0), COALESCE(mc.category, ''),
 		       COALESCE(mc.latest_torrent_date::text, ''),
-		       COALESCE(COALESCE(mc.release_date::text, mc.first_air_date::text), '')
+		       COALESCE(COALESCE(mc.release_date::text, mc.first_air_date::text), ''),
+		       COALESCE(mc.poster_path, '')
 		FROM media_cards mc
 		LEFT JOIN torrents t ON t.card_id = mc.card_id
 		WHERE mc.created_at::date = CURRENT_DATE
 		GROUP BY mc.card_id, mc.tmdb_id, mc.media_type, mc.title, mc.original_title,
 		         mc.release_date, mc.first_air_date, mc.vote_average, mc.vote_count, mc.created_at,
 		         mc.original_language, mc.runtime, mc.episode_run_time, mc.best_video_quality, mc.category,
-		         mc.latest_torrent_date
+		         mc.latest_torrent_date, mc.poster_path
 		ORDER BY mc.created_at DESC`)
 	if err != nil {
 		return nil
@@ -543,7 +545,7 @@ func GetNewTodayCards(ctx context.Context) []NewTodayCard {
 		if rows.Scan(&c.CardID, &c.TmdbID, &c.MediaType, &c.Title, &c.OriginalTitle,
 			&c.Year, &c.VoteAverage, &c.VoteCount, &createdAt, &c.Trackers, &c.Language,
 			&c.Runtime, &c.EpisodeRunTime, &c.BestVideoQuality, &c.Category,
-			&c.LatestTorrentDate, &c.ReleaseDate) == nil {
+			&c.LatestTorrentDate, &c.ReleaseDate, &c.PosterPath) == nil {
 			c.CreatedAt = createdAt.Format("15:04")
 			c.Categories = cardCategories(c)
 			out = append(out, c)

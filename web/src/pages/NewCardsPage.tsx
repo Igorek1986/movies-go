@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
+import { posterUrl } from '@/utils/poster'
 import styles from './NewCardsPage.module.scss'
 
 interface NewCard {
@@ -22,6 +23,14 @@ interface NewCard {
   categories: string[]
   latest_torrent_date: string
   release_date: string
+  poster_path: string | null
+}
+
+type ViewMode = 'grid' | 'table'
+
+function fmtDate(s: string): string {
+  if (!s) return ''
+  return s.slice(0, 10).split('-').reverse().join('.')
 }
 
 type FilterKey = 'media_type' | 'year' | 'language' | 'trackers'
@@ -328,6 +337,51 @@ function EditableDate({ cardId, field, value, onSaved }: {
   )
 }
 
+// ── PosterCard ────────────────────────────────────────────────────────────────
+
+function PosterCard({ c, selected, onToggleSelect, onClick }: {
+  c: NewCard
+  selected: boolean
+  onToggleSelect: (id: string) => void
+  onClick: () => void
+}) {
+  const url = posterUrl(c.poster_path)
+  return (
+    <div className={`${styles.card}${selected ? ' ' + styles.cardSelected : ''}`}
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={e => { if (e.key === 'Enter') onClick() }}>
+      <div className={styles.posterWrap}>
+        {url
+          ? <img className={styles.poster} src={url} alt={c.title} loading="lazy" />
+          : <div className={styles.posterPlaceholder}>{c.title}</div>
+        }
+        {c.media_type === 'tv' && <span className={styles.typeBadge}>Сериал</span>}
+        {c.vote_count > 0 && <span className={styles.ratingBadge}>★ {c.vote_average.toFixed(1)}</span>}
+        <label className={styles.selectBox} onClick={e => e.stopPropagation()}>
+          <input type="checkbox" checked={selected} onChange={() => onToggleSelect(c.card_id)} />
+        </label>
+      </div>
+      <div className={styles.cardBody}>
+        <p className={styles.cardTitle} title={c.title}>{c.title}</p>
+        <span className={styles.cardMeta}>
+          {[c.year, fmtRuntime(c)].filter(v => v && v !== '—').join(' · ') || '—'}
+        </span>
+        <span className={styles.cardMeta}>
+          {[c.language ? c.language.toUpperCase() : '', c.trackers].filter(Boolean).join(' · ') || '—'}
+        </span>
+        {(c.release_date || c.latest_torrent_date) && (
+          <span className={styles.cardDates}>
+            {c.release_date && <>Релиз {fmtDate(c.release_date)}</>}
+            {c.release_date && c.latest_torrent_date && <br />}
+            {c.latest_torrent_date && <>Раздача {fmtDate(c.latest_torrent_date)}</>}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function NewCardsPage() {
@@ -345,6 +399,11 @@ export default function NewCardsPage() {
   const [dateSort, setDateSort] = useState<{ key: 'latest_torrent_date' | 'release_date'; dir: 'asc' | 'desc' } | null>({ key: 'latest_torrent_date', dir: 'desc' })
   const [filterDrawer, setFilterDrawer] = useState(false)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
+  const [view, setView] = useState<ViewMode>(() => (localStorage.getItem('newCardsView') as ViewMode) || 'grid')
+
+  useEffect(() => {
+    try { localStorage.setItem('newCardsView', view) } catch { /* ignore */ }
+  }, [view])
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
@@ -562,7 +621,7 @@ export default function NewCardsPage() {
                 background: 'none', color: '#aaa', fontSize: '0.8rem', cursor: 'pointer',
               }}>Сбросить фильтры</button>
             )}
-            {isMobile && (
+            {(isMobile || view === 'grid') && (
               <button onClick={() => setFilterDrawer(true)} style={{
                 padding: '4px 10px', borderRadius: 6, border: '1px solid #555',
                 background: activeFilterCount > 0 ? 'rgba(74,144,226,0.15)' : 'none',
@@ -572,7 +631,7 @@ export default function NewCardsPage() {
                 Фильтры{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
               </button>
             )}
-            {isMobile && sorted.length > 0 && (
+            {(isMobile || view === 'grid') && sorted.length > 0 && (
               <button onClick={toggleSelectAll} style={{
                 padding: '4px 10px', borderRadius: 6, border: '1px solid #555',
                 background: allFilteredSelected ? 'rgba(74,144,226,0.15)' : 'none',
@@ -582,6 +641,12 @@ export default function NewCardsPage() {
                 {allFilteredSelected ? 'Снять выбор' : `Выбрать все (${sorted.length})`}
               </button>
             )}
+            <div className={styles.viewToggle}>
+              <button className={view === 'grid' ? styles.viewToggleActive : ''}
+                onClick={() => setView('grid')} title="Постеры">Постеры</button>
+              <button className={view === 'table' ? styles.viewToggleActive : ''}
+                onClick={() => setView('table')} title="Таблица">Таблица</button>
+            </div>
             <Link to="/admin" className={styles.backLink}>Админ</Link>
           </div>
         </div>
@@ -596,7 +661,17 @@ export default function NewCardsPage() {
           <div className={styles.empty}>Нет карточек по выбранным фильтрам</div>
         )}
 
-        {!loading && filtered.length > 0 && (
+        {!loading && filtered.length > 0 && view === 'grid' && (
+          <div className={styles.grid}>
+            {paginated.map(c => (
+              <PosterCard key={c.card_id} c={c} selected={selected.has(c.card_id)}
+                onToggleSelect={toggleSelect}
+                onClick={() => navigate(`/card/${c.card_id}`, { state: { backUrl: '/admin/cards-today' } })} />
+            ))}
+          </div>
+        )}
+
+        {!loading && filtered.length > 0 && view === 'table' && (
           <table className={styles.table}>
             <thead>
               <tr>
