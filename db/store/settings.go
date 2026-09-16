@@ -69,6 +69,11 @@ var SettingDefaults = map[string]string{
 	// and persisted here; empty until then.
 	"vapid_public_key":  "",
 	"vapid_private_key": "",
+	// "1" = combine every new-episode notification for a subscription into one
+	// push per check, across all shows. "0" (default) = one push per show
+	// (still combining multiple new episodes of the SAME show into one push).
+	// See RunPushNotifyCheck.
+	"push_notify_combine_all": "0",
 	// General
 	"watched_threshold":              "90",
 	"watching_threshold":             "0",
