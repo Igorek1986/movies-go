@@ -819,9 +819,25 @@ func cardCategories(c NewTodayCard) []string {
 	return cats
 }
 
+// DeleteCard removes a media card and clears the now-dangling card_id off its
+// torrents (kept, not deleted — the hash stays cached as "not found", same as
+// a torrent that never matched, giving it the usual overlap-window retry
+// chance instead of being permanently unmatchable via a card_id pointing at
+// nothing).
 func DeleteCard(ctx context.Context, cardID string) error {
-	_, err := postgres.Pool.Exec(ctx, `DELETE FROM media_cards WHERE card_id = $1`, cardID)
-	return err
+	tx, err := postgres.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if _, err := tx.Exec(ctx, `UPDATE torrents SET card_id = NULL WHERE card_id = $1`, cardID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM media_cards WHERE card_id = $1`, cardID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func nilIntFromInt(v int) *int {
