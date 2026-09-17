@@ -325,6 +325,30 @@ CREATE TABLE IF NOT EXISTS torrents (
 
 CREATE INDEX IF NOT EXISTS idx_torrents_card_id ON torrents (card_id) WHERE card_id IS NOT NULL;
 
+-- ─── Parser TMDB match diagnostics ─────────────────────────────────────────────
+-- Every torrent that FAILED to match TMDB (Enrich() returning false) — either
+-- no TMDB candidate at all, or a movie candidate rejected as pre-release
+-- (torrent dated before the matched movie's official release, a likely wrong
+-- match). "enriched" (successful) side of the picture is already in
+-- media_cards/torrents; this is the missing "not found" half, for comparing
+-- match quality across code versions (see dev/*.md, main-vs-dev diagnostic
+-- instance pair, 2026-09-17).
+CREATE TABLE IF NOT EXISTS parser_not_found (
+    id           BIGSERIAL    PRIMARY KEY,
+    tracker      VARCHAR(20)  NOT NULL,
+    hash         TEXT         NOT NULL,
+    reason       VARCHAR(20)  NOT NULL, -- 'not_found' | 'pre_release'
+    raw_title    TEXT         NOT NULL,
+    parsed_name  TEXT,
+    parsed_names JSONB,
+    parsed_year  INT,
+    is_movie     BOOLEAN,
+    checked_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_parser_not_found_hash UNIQUE (hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_parser_not_found_tracker ON parser_not_found (tracker);
+
 -- ─── Statistics ───────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS stats_myshows_users (
     id       BIGSERIAL    PRIMARY KEY,

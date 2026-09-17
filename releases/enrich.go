@@ -21,6 +21,7 @@ func Enrich(label string, isMovie bool, t *models.TorrentDetails) bool {
 	}
 	if md == nil {
 		store.CacheTorrent(t.Hash, "", t.Tracker, t.CreateDate)
+		store.LogNotFound(t.Tracker, t.Hash, "not_found", t.Title, t.Name, t.Names, t.Year, isMovie)
 		log.Printf("%s: not found in TMDB: %s", label, t.Title)
 		return false
 	}
@@ -31,6 +32,7 @@ func Enrich(label string, isMovie bool, t *models.TorrentDetails) bool {
 		if releaseDate, err := time.Parse("02.01.2006", md.ReleaseDate); err == nil {
 			if t.CreateDate.Before(releaseDate) {
 				store.CacheTorrent(t.Hash, "", t.Tracker, t.CreateDate)
+				store.LogNotFound(t.Tracker, t.Hash, "pre_release", t.Title, t.Name, t.Names, t.Year, isMovie)
 				log.Printf("%s: skip (torrent %s before release %s): %s",
 					label, t.CreateDate.Format("2006-01-02"), releaseDate.Format("2006-01-02"), t.Title)
 				return false

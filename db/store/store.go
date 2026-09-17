@@ -96,6 +96,23 @@ func CacheTorrent(hash, cardID, tracker string, createDate time.Time) {
 	)
 }
 
+// LogNotFound records a torrent that Enrich() failed to match — reason is
+// "not_found" (no TMDB candidate at all) or "pre_release" (movie candidate
+// found but rejected as dated before its own release). One row per hash
+// (ON CONFLICT keeps the first record — parse re-runs re-check the same
+// torrent repeatedly, only the initial parse/name is interesting here).
+func LogNotFound(tracker, hash, reason, rawTitle, parsedName string, parsedNames []string, parsedYear int, isMovie bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	names, _ := json.Marshal(parsedNames) //nolint:errcheck
+	postgres.Pool.Exec(ctx, //nolint:errcheck
+		`INSERT INTO parser_not_found (tracker, hash, reason, raw_title, parsed_name, parsed_names, parsed_year, is_movie)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 ON CONFLICT (hash) DO NOTHING`,
+		tracker, hash, reason, rawTitle, parsedName, names, parsedYear, isMovie,
+	)
+}
+
 // BackfillTorrentCreatedAt fills in created_at for an already-known torrent
 // hash whose created_at is still NULL — legacy rows inserted before the
 // tracker's post date started being persisted (see dev/kinozal.md history).
