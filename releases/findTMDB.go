@@ -19,11 +19,14 @@ func filterByYear(isMovie bool, list []*models.Entity, torrYear int) []*models.E
 		return list
 	}
 	return utils.Filter(list, func(i int, e *models.Entity) bool {
-		if len(e.ReleaseDate) >= 4 {
-			// e.ReleaseDate here is TMDB's raw search-result date, always
-			// ISO "YYYY-MM-DD" (unlike tvYearDist's post-FixDate input,
-			// which can also be "DD.MM.YYYY") — year is the first 4 chars.
-			year, err := strconv.Atoi(e.ReleaseDate[:4])
+		// e.Year is set by tmdb.fixEntity from the raw ISO release_date
+		// before ReleaseDate itself gets overwritten to display format
+		// "DD.MM.YYYY" (movies/tmdb/utils.go FixDate) — using ReleaseDate
+		// here instead silently broke this filter for every tracker: e.g.
+		// "01.09.2007"[:4] = "01.0", Atoi fails, err != nil, candidate kept
+		// regardless of actual year (see dev/rutracker.md).
+		if len(e.Year) == 4 {
+			year, err := strconv.Atoi(e.Year)
 			return err == nil && utils.Abs(year-torrYear) > 1 // remove if year is far from torrent year
 		}
 		return false // no release date — keep the candidate
