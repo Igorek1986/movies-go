@@ -117,6 +117,17 @@ func ParseTorrentTitle(d *models.TorrentDetails, title string) {
 	for i := 1; i < len(parts)-1; i++ {
 		p := strings.TrimSpace(parts[i])
 		if yr, ok := extractLeadingYear(p); ok {
+			// A numeric title ("1917", "2012") looks exactly like a year
+			// itself. If the NEXT field is also year-shaped, this one is
+			// really the (numeric) alternate name and the actual year
+			// follows — keep it as a name and let the next part settle it,
+			// rather than locking in the wrong year from the title.
+			if i+1 < len(parts)-1 {
+				if _, nextIsYear := extractLeadingYear(strings.TrimSpace(parts[i+1])); nextIsYear {
+					d.Names = append(d.Names, p)
+					continue
+				}
+			}
 			if d.Year == 0 {
 				d.Year = yr
 			}
