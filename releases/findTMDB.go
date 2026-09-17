@@ -140,6 +140,23 @@ func FindTMDBID(isMovie bool, torr *models.TorrentDetails) *models.Entity {
 	return nil
 }
 
+// movieYearDist returns how far a movie's release year is from the torrent
+// year; a candidate with no usable year is pushed to the back (9999) so a
+// dated match is always preferred over an unstamped one with the same name.
+// e.Year comes from tmdb.fixEntity (set from the raw ISO date before
+// e.ReleaseDate itself gets reformatted, see filterByYear) — reading it
+// directly here avoids the same DD.MM.YYYY trap.
+func movieYearDist(e *models.Entity, torrYear int) int {
+	if len(e.Year) != 4 {
+		return 9999
+	}
+	year, err := strconv.Atoi(e.Year)
+	if err != nil {
+		return 9999
+	}
+	return utils.Abs(year - torrYear)
+}
+
 // tvYearDist returns how many years before the torrent year the show started.
 // Returns 9999 if the show started after the torrent year or has no date.
 // Handles both "YYYY-MM-DD" and "DD.MM.YYYY" (post-FixDate) formats.
@@ -198,8 +215,27 @@ func FindTMDB(isMovie bool, torr *models.TorrentDetails) *models.Entity {
 	if len(matches) == 0 {
 		return nil
 	}
-	if len(matches) == 1 || isMovie || torr.Year == 0 {
+	if len(matches) == 1 || torr.Year == 0 {
 		return matches[0]
+	}
+
+	if isMovie {
+		// Multiple movie candidates: prefer the one whose release year is
+		// closest to the torrent year. filterByYear already drops dated
+		// candidates that are far off, but candidates with NO date at all
+		// pass through unfiltered — without this tie-break, an unrelated,
+		// dateless same-name movie could win by simply appearing first in
+		// TMDB's search order (see dev/rutracker.md: "Сумерки мира" beat
+		// "Сумерки. Сага" this way).
+		best := matches[0]
+		bestDist := movieYearDist(best, torr.Year)
+		for _, cand := range matches[1:] {
+			if d := movieYearDist(cand, torr.Year); d < bestDist {
+				bestDist = d
+				best = cand
+			}
+		}
+		return best
 	}
 
 	// Multiple TV candidates: prefer the one whose first_air_date year is
