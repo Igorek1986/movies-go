@@ -126,7 +126,7 @@ func (self *RutorParser) Parse() {
 						}
 						continue
 					}
-					toEnrich = append(toEnrich, enrichJob{d, isMovieCat(d.Categories)})
+					toEnrich = append(toEnrich, enrichJob{d, isMovieCat(d.Categories, d.Title)})
 				}
 
 				utils.PForLim(toEnrich, 20, func(_ int, job enrichJob) {

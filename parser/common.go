@@ -204,8 +204,18 @@ func parseRuDate(s string) time.Time {
 	return time.Date(year, time.Month(monthNum), day, 0, 0, 0, 0, time.Local)
 }
 
+var reAnimeMovieTag = regexp.MustCompile(`\[[^]]*\bMovie\b[^]]*\]`)
+
 // isMovieCat reports whether the category is a movie (not a series or TV show).
-func isMovieCat(cat string) bool {
+// CatAnime is always TV-searched by category alone, but nnmclub/rutracker
+// both tag standalone theatrical anime with a "[Movie]" (or "[YYYY, Movie]")
+// bracket distinct from "[TV, ...]"/"[OVA]"/"[ONA]" — TMDB catalogs those as
+// movies, and search/tv finds zero results for them (see dev/rutracker.md,
+// "Wolf Children" — a real Ghibli-style theatrical film — case).
+func isMovieCat(cat string, title string) bool {
+	if cat == models.CatAnime {
+		return reAnimeMovieTag.MatchString(title)
+	}
 	return cat == models.CatMovie || cat == models.CatDocMovie || cat == models.CatCartoonMovie
 }
 

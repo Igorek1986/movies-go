@@ -162,7 +162,7 @@ func (k *KinozalParser) parseCategory(catID string, catInfo kzCatInfo, fullScan 
 					store.CacheTorrent(d.Hash, "", "kinozal", d.CreateDate)
 					continue
 				}
-				isMovie := isMovieCat(d.Categories)
+				isMovie := isMovieCat(d.Categories, item.title)
 				cached, cardID := store.TorrentStatus(d.Hash)
 				if cached && cardID != "" {
 					if d.VideoQuality > 0 {

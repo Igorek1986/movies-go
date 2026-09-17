@@ -112,7 +112,7 @@ func (n *NNMClubParser) parseCategory(catID string, catInfo nnmCatInfo, fullScan
 				if d.Categories == models.CatTVShow {
 					continue
 				}
-				isMovie := isMovieCat(d.Categories)
+				isMovie := isMovieCat(d.Categories, item.title)
 				cached, cardID := store.TorrentStatus(d.Hash)
 				if cached && cardID != "" {
 					if d.VideoQuality > 0 {

@@ -133,7 +133,7 @@ func (r *RutrackerParser) parseCategory(catID string, catInfo rtCatInfo, fullSca
 				}
 				processed.Add(1)
 				d := r.buildDetails(item, catInfo)
-				isMovie := isMovieCat(d.Categories)
+				isMovie := isMovieCat(d.Categories, item.title)
 				cached, cardID := store.TorrentStatus(d.Hash)
 				if cached && cardID != "" {
 					if d.VideoQuality > 0 {
