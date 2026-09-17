@@ -51,10 +51,39 @@ func HasEpisodeBrackets(title string) bool {
 	return reTitleBrackets.MatchString(part)
 }
 
+// maskBracketSlashes swaps '/' for a lookalike character while inside
+// "[...]" groups, so the top-level " / " split below doesn't shred a bracket
+// like "[UKR, EN / UKR, EN Sub]" (language/sub tags on rutor's international
+// releases) into two pieces with the closing "]" stranded in the next part
+// — reTitleBrackets then fails to strip the orphaned half, and it leaks into
+// d.Names. Safe because bracket content is discarded wholesale wherever it
+// matters (name extraction, HasEpisodeBrackets) — nothing reads this
+// placeholder back out.
+func maskBracketSlashes(title string) string {
+	depth := 0
+	runes := []rune(title)
+	for i, r := range runes {
+		switch r {
+		case '[':
+			depth++
+		case ']':
+			if depth > 0 {
+				depth--
+			}
+		case '/':
+			if depth > 0 {
+				runes[i] = '⁄' // U+2044 FRACTION SLASH
+			}
+		}
+	}
+	return string(runes)
+}
+
 // ParseTorrentTitle fills Name, Names, Year, VideoQuality, AudioQuality from a torrent title.
 // Format: "RuName / EngName / year / ... / quality" or "RuName / EngName (year) quality".
 func ParseTorrentTitle(d *models.TorrentDetails, title string) {
 	title = strings.ReplaceAll(title, "&amp;", "&")
+	title = maskBracketSlashes(title)
 	parts := strings.Split(title, " / ")
 	if len(parts) < 2 {
 		// nnmclub anime: "Romaji | English | Русский [ТВ] [YYYY, Type, N эп.] Quality raw"
