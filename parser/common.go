@@ -114,6 +114,27 @@ func ParseTorrentTitle(d *models.TorrentDetails, title string) {
 	// "Endgame" (the real TMDB title) get dropped in favor of an earlier,
 	// wrong-language alt name that collided with an unrelated show sharing
 	// its Russian translation — see dev/rutracker.md.
+	// A 2-part title ("RuName / EngName (year) Quality...", common on nnmclub)
+	// has no dedicated quality-only last field — parts[1] is qualPart AND the
+	// only place an alt name could live, so the loop below (which always
+	// excludes the last part) never runs at all and the alt name is lost
+	// entirely. Extract it here the same way the len(parts)<2 branch above
+	// does: only the text before "(year)" is the name, everything after
+	// (quality) is discarded from it. Case: nnmclub "Любовный напиток номер 9
+	// / Love Potion No. 9 (1992) BDRip [H.264/720p] [MVO]" — TMDB's Russian
+	// title uses "№9" not "номер 9", so only the English alt name matches.
+	if len(parts) == 2 {
+		p := parts[1]
+		if m := reTitleYearParen.FindStringIndex(p); m != nil {
+			if d.Year == 0 {
+				d.Year, _ = strconv.Atoi(p[m[0]+1 : m[1]-1])
+			}
+			if altName := strings.TrimSpace(reTitleBrackets.ReplaceAllString(p[:m[0]], "")); altName != "" {
+				d.Names = append(d.Names, altName)
+			}
+		}
+	}
+
 	for i := 1; i < len(parts)-1; i++ {
 		p := strings.TrimSpace(parts[i])
 		if yr, ok := extractLeadingYear(p); ok {
