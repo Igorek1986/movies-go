@@ -52,11 +52,13 @@ type kzCatInfo struct {
 var kinozalCats = map[string]kzCatInfo{
 	"8":  {models.CatMovie},
 	"9":  {models.CatMovie},
-	"10": {models.CatSeries},
-	"11": {models.CatSeries},
+	"10": {models.CatMovie}, // was mislabeled Series — live sample: 86% standalone films, no season/episode markers (see dev/kinozal.md)
+	"11": {models.CatMovie}, // was mislabeled Series — live sample: 99% standalone films (Cutthroat Island, A Fistful of Dollars, ...)
 	"12": {models.CatAnime},
 	"14": {""},
 	"17": {models.CatMovie},
+	"45": {models.CatSeries}, // "Сериал - Русский"
+	"46": {models.CatSeries}, // "Сериал - Буржуйский"
 }
 
 type kzItem struct {

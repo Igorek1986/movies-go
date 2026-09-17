@@ -36,6 +36,35 @@ func ParseTorrentTitle(d *models.TorrentDetails, title string) {
 	title = strings.ReplaceAll(title, "&amp;", "&")
 	parts := strings.Split(title, " / ")
 	if len(parts) < 2 {
+		// nnmclub anime: "Romaji | English | Русский [ТВ] [YYYY, Type, N эп.] Quality raw"
+		// — no " / " at all, alternate names pipe-separated, year in brackets like
+		// rutracker's format. Quality/raw trails the last "]", so split there first
+		// to keep it out of the name/year search.
+		if idx := strings.LastIndex(title, "]"); idx != -1 && strings.Contains(title, "|") {
+			namePart := title[:idx+1]
+			qual := strings.TrimSpace(title[idx+1:])
+			d.VideoQuality = ParseVQuality(qual)
+			d.AudioQuality = ParseAQuality(qual)
+			pipeParts := strings.Split(namePart, "|")
+			d.Name = strings.TrimSpace(reTitleBrackets.ReplaceAllString(pipeParts[0], ""))
+			for _, p := range pipeParts[1:] {
+				if clean := strings.TrimSpace(reTitleBrackets.ReplaceAllString(p, "")); clean != "" {
+					d.Names = append(d.Names, clean)
+				}
+			}
+			if m := reTitleYearBracket.FindStringSubmatch(namePart); m != nil {
+				if yr, err := strconv.Atoi(m[1]); err == nil && yr >= 1900 && yr <= 2100 {
+					d.Year = yr
+				}
+			}
+			if d.Year == 0 {
+				if m := reTitleYearParen.FindStringSubmatch(namePart); m != nil {
+					d.Year, _ = strconv.Atoi(m[1])
+				}
+			}
+			return
+		}
+
 		// "Name (YEAR) Quality..." format — common in rutor/nnmclub without "/" separator
 		if m := reTitleYearParen.FindStringIndex(title); m != nil {
 			d.Year, _ = strconv.Atoi(title[m[0]+1 : m[1]-1])
