@@ -64,7 +64,14 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          # 1024M was enough for kinozal.me but not rutracker.org — its challenge
+          # crashed the Chrome tab at ~883MiB (OOM at the cgroup limit, not a
+          # timeout). 2048M tested with ~725MiB actual peak, comfortable margin.
+          # Watch this on tight hosts (e.g. vps, 3.8GB total) if rutracker is
+          # ever enabled there — normal (sequential, one active solve at a time)
+          # parsing stays well under this; the admin "Заполнить даты раздач"
+          # button runs all trackers concurrently and could stack usage higher.
+          memory: 2048M
           cpus: "2"
 
   # Chrome TLS fingerprint (curl_cffi) fast path, reusing the cf_clearance

@@ -832,12 +832,12 @@ func handleTgAppUpdateSetting(w http.ResponseWriter, r *http.Request) {
 
 func handleTgAppParsers(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
-	trackers := []string{"rutor", "kinozal", "nnmclub"}
+	trackers := []string{"rutor", "kinozal", "nnmclub", "rutracker"}
 	orderVal, _ := store.GetSetting(ctx, "parser_order")
 	if orderVal == "" {
-		orderVal = "rutor,kinozal,nnmclub"
+		orderVal = "rutor,kinozal,nnmclub,rutracker"
 	}
-	defaultEnabled := map[string]bool{"rutor": true, "kinozal": false, "nnmclub": false}
+	defaultEnabled := map[string]bool{"rutor": true, "kinozal": false, "nnmclub": false, "rutracker": false}
 	type trackerStatus struct {
 		Name       string `json:"name"`
 		Enabled    bool   `json:"enabled"`
@@ -892,7 +892,7 @@ func handleTgAppParsersStop(w http.ResponseWriter, r *http.Request) {
 func handleTgAppParserTrackerRun(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	switch name {
-	case "kinozal", "nnmclub", "rutor":
+	case "kinozal", "nnmclub", "rutor", "rutracker":
 	default:
 		Error(w, http.StatusBadRequest, "unknown tracker")
 		return
@@ -907,7 +907,7 @@ func handleTgAppParserTrackerRun(w http.ResponseWriter, r *http.Request) {
 func handleTgAppParserTrackerReset(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	switch name {
-	case "kinozal", "nnmclub", "rutor":
+	case "kinozal", "nnmclub", "rutor", "rutracker":
 	default:
 		Error(w, http.StatusBadRequest, "unknown tracker")
 		return

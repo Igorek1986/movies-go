@@ -2630,6 +2630,11 @@ input[type=number]{flex:none}
           <input type="text" id="nnmclubHostInput" placeholder="https://nnmclub.to">
         </div>
       </label>
+      <label>Хост RuTracker
+        <div class="row" style="margin-top:4px">
+          <input type="text" id="rutrackerHostInput" placeholder="https://rutracker.org">
+        </div>
+      </label>
       <div class="row">
         <button class="btn btn-primary" onclick="saveParserHosts()">Сохранить хосты</button>
         <span id="rutorHostStatus" style="font-size:.82rem;color:#4a90e2"></span>
@@ -2831,6 +2836,7 @@ function loadParsers(){
     document.getElementById('rutorHostInput').value=d.rutor_host||'';
     document.getElementById('kinozalHostInput').value=d.kinozal_host||'';
     document.getElementById('nnmclubHostInput').value=d.nnmclub_host||'';
+    document.getElementById('rutrackerHostInput').value=d.rutracker_host||'';
   }).catch(function(){setParsersStatus('Ошибка загрузки',true);});
 }
 
@@ -2944,7 +2950,8 @@ function saveParserHosts(){
   var body={
     rutor_host:document.getElementById('rutorHostInput').value.trim(),
     kinozal_host:document.getElementById('kinozalHostInput').value.trim(),
-    nnmclub_host:document.getElementById('nnmclubHostInput').value.trim()
+    nnmclub_host:document.getElementById('nnmclubHostInput').value.trim(),
+    rutracker_host:document.getElementById('rutrackerHostInput').value.trim()
   };
   fetch('/api/admin/settings/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
     .then(function(r){if(!r.ok)throw new Error();s.style.color='#4a90e2';s.textContent='Сохранено';setTimeout(function(){s.textContent=''},2000);})

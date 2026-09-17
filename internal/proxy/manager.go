@@ -22,12 +22,13 @@ import (
 
 // Route keys used by callers.
 const (
-	RouteImages        = "images"
-	RouteTMDB          = "tmdb"
-	RouteParserRutor   = "parser_rutor"
-	RouteParserKinozal = "parser_kinozal"
-	RouteParserNNMClub = "parser_nnmclub"
-	RouteTelegram      = "telegram"
+	RouteImages          = "images"
+	RouteTMDB            = "tmdb"
+	RouteParserRutor     = "parser_rutor"
+	RouteParserRutracker = "parser_rutracker"
+	RouteParserKinozal   = "parser_kinozal"
+	RouteParserNNMClub   = "parser_nnmclub"
+	RouteTelegram        = "telegram"
 
 	// Внешние источники runtime-фолбэков (см. internal/externalsources) —
 	// отдельные роуты, потому что каждый может быть заблокирован независимо

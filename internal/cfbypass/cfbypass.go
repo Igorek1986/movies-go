@@ -31,12 +31,17 @@ var (
 	flareURL   = strings.TrimSpace(os.Getenv("FLARESOLVERR_URL"))
 	cffetchURL = strings.TrimSpace(os.Getenv("CFFETCH_URL"))
 
-	httpClient = &http.Client{Timeout: 100 * time.Second}
+	// 340s: buffer above maxTimeoutMs below, so the Go client doesn't give up
+	// on the HTTP round-trip before FlareSolverr's own deadline would.
+	httpClient = &http.Client{Timeout: 340 * time.Second}
 )
 
 const (
-	sessionPrefix     = "movies-go-"
-	maxTimeoutMs      = 60000
+	sessionPrefix = "movies-go-"
+	// 300000ms (5min): kinozal usually solves in 10-45s regardless, but
+	// rutracker.org's heavier challenge has taken up to ~270s in testing
+	// (2026-09-16) — this is a ceiling, not a fixed wait.
+	maxTimeoutMs      = 300000
 	clearanceTTL      = 30 * time.Minute
 	fastPathBlockTTL  = 30 * time.Minute
 	mitigationsToDrop = 3

@@ -78,9 +78,10 @@ func IsStopRequested() bool { return stopRequest.Load() }
 // The CAS is done synchronously so IsRunning() returns true before the caller responds.
 func StartOne(name string) bool {
 	all := map[string]Parser{
-		"kinozal": NewKinozal(),
-		"nnmclub": NewNNMClub(),
-		"rutor":   NewRutor(),
+		"kinozal":   NewKinozal(),
+		"nnmclub":   NewNNMClub(),
+		"rutor":     NewRutor(),
+		"rutracker": NewRutracker(),
 	}
 	p, ok := all[name]
 	if !ok {
@@ -125,20 +126,22 @@ func RunAll() {
 	ctx := context.Background()
 	orderVal, ok := store.GetSetting(ctx, "parser_order")
 	if !ok || strings.TrimSpace(orderVal) == "" {
-		orderVal = "rutor,kinozal,nnmclub"
+		orderVal = "rutor,kinozal,nnmclub,rutracker"
 	}
 
 	all := map[string]Parser{
-		"kinozal": NewKinozal(),
-		"nnmclub": NewNNMClub(),
-		"rutor":   NewRutor(),
+		"kinozal":   NewKinozal(),
+		"nnmclub":   NewNNMClub(),
+		"rutor":     NewRutor(),
+		"rutracker": NewRutracker(),
 	}
 
-	// rutor is on by default; kinozal and nnmclub must be explicitly enabled.
+	// rutor is on by default; the rest must be explicitly enabled.
 	defaultEnabled := map[string]bool{
-		"rutor":   true,
-		"kinozal": false,
-		"nnmclub": false,
+		"rutor":     true,
+		"kinozal":   false,
+		"nnmclub":   false,
+		"rutracker": false,
 	}
 
 	for _, name := range strings.Split(orderVal, ",") {

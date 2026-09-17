@@ -89,12 +89,12 @@ func nameMatches(names []string, e *models.Entity) bool {
 }
 
 // FindTMDBID tries to find a TMDB entity via IMDB/KP ID from the torrent page.
-// Kinozal and NNMClub use pseudo-hashes; their detail pages are not needed — title search suffices.
+// Kinozal, NNMClub and Rutracker use pseudo-hashes; their detail pages are not fetched — title search suffices.
 func FindTMDBID(isMovie bool, torr *models.TorrentDetails) *models.Entity {
 	if torr.IMDBID != "" {
 		return tmdb.FindByID(isMovie, torr.IMDBID, "imdb_id")
 	}
-	if torr.Tracker == "kinozal" || torr.Tracker == "nnmclub" {
+	if torr.Tracker == "kinozal" || torr.Tracker == "nnmclub" || torr.Tracker == "rutracker" {
 		return nil
 	}
 	body := GetBodyLink(torr)

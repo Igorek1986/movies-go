@@ -31,6 +31,7 @@ interface ParsersData {
   rutor_host: string
   kinozal_host: string
   nnmclub_host: string
+  rutracker_host: string
 }
 
 interface Toast {
@@ -43,18 +44,21 @@ const TRACKER_LABELS: Record<string, string> = {
   kinozal: 'Kinozal',
   nnmclub: 'NNMClub.to',
   rutor: 'Rutor.info',
+  rutracker: 'RuTracker.org',
 }
 
 const TRACKER_DOMAINS: Record<string, string> = {
   kinozal: 'kinozal.me',
   nnmclub: 'nnmclub.to',
   rutor: 'rutor.info',
+  rutracker: 'rutracker.org',
 }
 
 const DEFAULT_TRACKER_HOSTS: Record<string, string> = {
   rutor: 'http://rutor.info',
   kinozal: 'https://kinozal.me',
   nnmclub: 'https://nnmclub.to',
+  rutracker: 'https://rutracker.org',
 }
 
 function formatDate(iso: string) {
@@ -116,6 +120,7 @@ export default function ParsersPage() {
       rutor: d.rutor_host ?? '',
       kinozal: d.kinozal_host ?? '',
       nnmclub: d.nnmclub_host ?? '',
+      rutracker: d.rutracker_host ?? '',
     })
 
     setTrackerDates(prev => {

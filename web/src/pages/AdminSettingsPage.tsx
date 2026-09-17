@@ -760,6 +760,7 @@ const PLACEHOLDERS: Record<string, string> = {
   rutor_host:   'http://rutor.info (пусто = по умолчанию)',
   kinozal_host: 'https://kinozal.me (пусто = по умолчанию)',
   nnmclub_host: 'https://nnmclub.to (пусто = по умолчанию)',
+  rutracker_host: 'https://rutracker.org (пусто = по умолчанию)',
 }
 
 // Was a plain free-text input — a typo/copy-paste slip (wrong case, extra
@@ -825,6 +826,7 @@ const DESCRIPTIONS: Record<string, string> = {
   rutor_host:   'Домен трекера Rutor.info. Меняйте на зеркало, если основной домен заблокирован.',
   kinozal_host: 'Домен трекера Kinozal. Меняйте на зеркало, если основной домен заблокирован.',
   nnmclub_host: 'Домен трекера NNMClub.to. Меняйте на зеркало, если основной домен заблокирован.',
+  rutracker_host: 'Домен трекера RuTracker.org. За Cloudflare — нужен включённый обход (COMPOSE_PROFILES=cfbypass).',
   popular_weight_movie: 'Множитель к числу зрителей при ранжировании «Популярного» (1.0 = без поправки).',
   popular_weight_tv: 'Множитель к числу зрителей при ранжировании «Популярного». Сериал набирает зрителей быстрее фильма (много серий/дней) — коэффициент < 1 уравновешивает это.',
   watching_threshold: 'Процент прогресса текущей серии, после которого сериал получает статус «Смотрю» (0 = сразу на любой прогресс).',
@@ -931,6 +933,7 @@ const LABELS: Record<string, string> = {
   rutor_host:   'Домен Rutor.info',
   kinozal_host: 'Домен Kinozal',
   nnmclub_host: 'Домен NNMClub.to',
+  rutracker_host: 'Домен RuTracker.org',
 }
 
 const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
@@ -985,7 +988,7 @@ const GROUPS: { name: string; keys: string[]; requiresRestart?: boolean }[] = [
     'cors_allowed_origins', 'trusted_proxy_secret',
   ]},
   { name: 'MyShows', keys: ['myshows_api_url', 'myshows_auth_url'] },
-  { name: 'Парсер — домены трекеров', keys: ['rutor_host', 'kinozal_host', 'nnmclub_host'] },
+  { name: 'Парсер — домены трекеров', keys: ['rutor_host', 'kinozal_host', 'nnmclub_host', 'rutracker_host'] },
   { name: 'TMDB обновление карточек', keys: [
     'tmdb_refresh_new_year_delta', 'tmdb_refresh_old_batch', 'tmdb_refresh_age_days',
   ]},

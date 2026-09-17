@@ -15,16 +15,17 @@ import (
 func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
-	trackers := []string{"rutor", "kinozal", "nnmclub"}
+	trackers := []string{"rutor", "kinozal", "nnmclub", "rutracker"}
 	orderVal, _ := store.GetSetting(ctx, "parser_order")
 	if orderVal == "" {
-		orderVal = "rutor,kinozal,nnmclub"
+		orderVal = "rutor,kinozal,nnmclub,rutracker"
 	}
 
 	defaultEnabled := map[string]bool{
-		"rutor":   true,
-		"kinozal": false,
-		"nnmclub": false,
+		"rutor":     true,
+		"kinozal":   false,
+		"nnmclub":   false,
+		"rutracker": false,
 	}
 
 	type trackerStatus struct {
@@ -66,7 +67,7 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 	kinozalPassword, _ := store.GetSetting(ctx, "kinozal_password")
 	catalogTrackers, _ := store.GetSetting(ctx, "catalog_trackers")
 	if catalogTrackers == "" {
-		catalogTrackers = "rutor,kinozal,nnmclub"
+		catalogTrackers = "rutor,kinozal,nnmclub,rutracker"
 	}
 
 	nextRunAt := ""
@@ -77,50 +78,54 @@ func handleAPIAdminParsersGet(w http.ResponseWriter, r *http.Request) {
 	rutorHost, _ := store.GetSetting(ctx, "rutor_host")
 	kinozalHost, _ := store.GetSetting(ctx, "kinozal_host")
 	nnmclubHost, _ := store.GetSetting(ctx, "nnmclub_host")
+	rutrackerHost, _ := store.GetSetting(ctx, "rutracker_host")
 
 	JSON(w, http.StatusOK, map[string]any{
-		"parsers":         statuses,
-		"order":           orderVal,
-		"running":         parser.IsRunning(),
-		"stop_requested":  parser.IsStopRequested(),
-		"current_tracker": parser.CurrentTracker(),
-		"next_run_at":     nextRunAt,
-		"retry_attempts":  retryAttempts,
-		"retry_base_wait": retryBaseWait,
-		"retry_max_wait":  retryMaxWait,
-		"retry_ratio":     retryRatio,
+		"parsers":             statuses,
+		"order":               orderVal,
+		"running":             parser.IsRunning(),
+		"stop_requested":      parser.IsStopRequested(),
+		"current_tracker":     parser.CurrentTracker(),
+		"next_run_at":         nextRunAt,
+		"retry_attempts":      retryAttempts,
+		"retry_base_wait":     retryBaseWait,
+		"retry_max_wait":      retryMaxWait,
+		"retry_ratio":         retryRatio,
 		"tmdb_retry_attempts": tmdbRetryAttempts,
 		"tmdb_retry_wait":     tmdbRetryWait,
-		"kinozal_login":    kinozalLogin,
-		"kinozal_password": kinozalPassword,
-		"catalog_trackers": catalogTrackers,
-		"tracker_cards":    store.CountCardsByTracker(),
-		"rutor_host":    rutorHost,
-		"kinozal_host":  kinozalHost,
-		"nnmclub_host":  nnmclubHost,
+		"kinozal_login":       kinozalLogin,
+		"kinozal_password":    kinozalPassword,
+		"catalog_trackers":    catalogTrackers,
+		"tracker_cards":       store.CountCardsByTracker(),
+		"rutor_host":          rutorHost,
+		"kinozal_host":        kinozalHost,
+		"nnmclub_host":        nnmclubHost,
+		"rutracker_host":      rutrackerHost,
 	})
 }
 
 // POST /api/admin/parsers/settings
 func handleAPIAdminParsersSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Order           string  `json:"order"`
-		KinozalEnabled  *bool   `json:"kinozal_enabled"`
-		NNMClubEnabled  *bool   `json:"nnmclub_enabled"`
-		RutorEnabled    *bool   `json:"rutor_enabled"`
-		OverlapDays     *int    `json:"overlap_days"`
-		RetryAttempts   *int    `json:"retry_attempts"`
-		RetryBaseWait   *int    `json:"retry_base_wait"`
-		RetryMaxWait    *int    `json:"retry_max_wait"`
-		RetryRatio      *string `json:"retry_ratio"`
-		TMDBRetryAttempts *int `json:"tmdb_retry_attempts"`
-		TMDBRetryWait     *int `json:"tmdb_retry_wait"`
-		KinozalLogin    *string `json:"kinozal_login"`
-		KinozalPassword *string `json:"kinozal_password"`
-		CatalogTrackers *string `json:"catalog_trackers"`
-		RutorHost       *string `json:"rutor_host"`
-		KinozalHost     *string `json:"kinozal_host"`
-		NNMClubHost     *string `json:"nnmclub_host"`
+		Order             string  `json:"order"`
+		KinozalEnabled    *bool   `json:"kinozal_enabled"`
+		NNMClubEnabled    *bool   `json:"nnmclub_enabled"`
+		RutorEnabled      *bool   `json:"rutor_enabled"`
+		RutrackerEnabled  *bool   `json:"rutracker_enabled"`
+		OverlapDays       *int    `json:"overlap_days"`
+		RetryAttempts     *int    `json:"retry_attempts"`
+		RetryBaseWait     *int    `json:"retry_base_wait"`
+		RetryMaxWait      *int    `json:"retry_max_wait"`
+		RetryRatio        *string `json:"retry_ratio"`
+		TMDBRetryAttempts *int    `json:"tmdb_retry_attempts"`
+		TMDBRetryWait     *int    `json:"tmdb_retry_wait"`
+		KinozalLogin      *string `json:"kinozal_login"`
+		KinozalPassword   *string `json:"kinozal_password"`
+		CatalogTrackers   *string `json:"catalog_trackers"`
+		RutorHost         *string `json:"rutor_host"`
+		KinozalHost       *string `json:"kinozal_host"`
+		NNMClubHost       *string `json:"nnmclub_host"`
+		RutrackerHost     *string `json:"rutracker_host"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		Error(w, http.StatusBadRequest, "bad request")
@@ -150,6 +155,7 @@ func handleAPIAdminParsersSettings(w http.ResponseWriter, r *http.Request) {
 	boolSetting("parser_kinozal_enabled", body.KinozalEnabled)
 	boolSetting("parser_nnmclub_enabled", body.NNMClubEnabled)
 	boolSetting("parser_rutor_enabled", body.RutorEnabled)
+	boolSetting("parser_rutracker_enabled", body.RutrackerEnabled)
 	intSetting("parser_overlap_days", body.OverlapDays)
 	intSetting("parser_retry_attempts", body.RetryAttempts)
 	intSetting("parser_retry_base_wait_sec", body.RetryBaseWait)
@@ -177,6 +183,9 @@ func handleAPIAdminParsersSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.NNMClubHost != nil {
 		store.SetSetting(ctx, "nnmclub_host", *body.NNMClubHost)
+	}
+	if body.RutrackerHost != nil {
+		store.SetSetting(ctx, "rutracker_host", *body.RutrackerHost)
 	}
 
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -206,7 +215,7 @@ func handleAPIAdminParsersStop(w http.ResponseWriter, r *http.Request) {
 func handleAPIAdminParserTrackerRun(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	switch name {
-	case "kinozal", "nnmclub", "rutor":
+	case "kinozal", "nnmclub", "rutor", "rutracker":
 	default:
 		Error(w, http.StatusBadRequest, "unknown tracker")
 		return
@@ -223,7 +232,7 @@ func handleAPIAdminParserTrackerRun(w http.ResponseWriter, r *http.Request) {
 func handleAPIAdminParserTrackerReset(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	switch name {
-	case "kinozal", "nnmclub", "rutor":
+	case "kinozal", "nnmclub", "rutor", "rutracker":
 	default:
 		Error(w, http.StatusBadRequest, "unknown tracker")
 		return

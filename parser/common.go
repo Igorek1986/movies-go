@@ -15,9 +15,10 @@ import (
 )
 
 var (
-	reTitleYearParen = regexp.MustCompile(`\((\d{4})(?:-\d{4})?\)`)
-	reTitleYearRange = regexp.MustCompile(`^(\d{4})-\d{4}`)
-	reTitleBrackets  = regexp.MustCompile(`\[.*?\]`)
+	reTitleYearParen   = regexp.MustCompile(`\((\d{4})(?:-\d{4})?\)`)
+	reTitleYearRange   = regexp.MustCompile(`^(\d{4})-\d{4}`)
+	reTitleBrackets    = regexp.MustCompile(`\[.*?\]`)
+	reTitleYearBracket = regexp.MustCompile(`\[(\d{4})[,\]]`)
 )
 
 // HasEpisodeBrackets reports whether title contains [...] before the year — indicates episode range.
@@ -83,6 +84,18 @@ func ParseTorrentTitle(d *models.TorrentDetails, title string) {
 	if d.Year == 0 {
 		if m := reTitleYearParen.FindStringSubmatch(title); m != nil {
 			d.Year, _ = strconv.Atoi(m[1])
+		}
+	}
+
+	// rutracker embeds the year inside "[YYYY, Country, Genre, Format]" rather
+	// than "(year)" or a dedicated " / year /" field — without it, TV matching
+	// can't disambiguate same-name shows from different years (see FindTMDB's
+	// tvYearDist) and silently picks the most popular one.
+	if d.Year == 0 {
+		if m := reTitleYearBracket.FindStringSubmatch(title); m != nil {
+			if yr, err := strconv.Atoi(m[1]); err == nil && yr >= 1900 && yr <= 2100 {
+				d.Year = yr
+			}
 		}
 	}
 }

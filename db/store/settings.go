@@ -126,12 +126,13 @@ var SettingDefaults = map[string]string{
 	"catalog_director_count":     "3",
 	"tracker_new_days":           "90",
 	// Parser
-	"parser_order":           "rutor,kinozal,nnmclub",
-	"catalog_trackers":       "rutor,kinozal,nnmclub",
-	"parser_kinozal_enabled": "1",
-	"parser_nnmclub_enabled": "1",
-	"parser_rutor_enabled":   "1",
-	"parser_overlap_days":    "2",
+	"parser_order":             "rutor,kinozal,nnmclub,rutracker",
+	"catalog_trackers":         "rutor,kinozal,nnmclub,rutracker",
+	"parser_kinozal_enabled":   "1",
+	"parser_nnmclub_enabled":   "1",
+	"parser_rutor_enabled":     "1",
+	"parser_rutracker_enabled": "0",
+	"parser_overlap_days":      "2",
 	// Retry / backoff (listing fetches for Kinozal and NNMClub)
 	"parser_retry_attempts":      "10",
 	"parser_retry_base_wait_sec": "30",
@@ -183,9 +184,10 @@ var SettingDefaults = map[string]string{
 	// collide on the same name before anyone's renamed them.
 	"instance_name": "",
 	// Parser trackers — override for mirror domains when the primary is blocked
-	"rutor_host":   "",
-	"kinozal_host": "",
-	"nnmclub_host": "",
+	"rutor_host":     "",
+	"kinozal_host":   "",
+	"nnmclub_host":   "",
+	"rutracker_host": "",
 	// Legal
 	"site_name":              "Movies-API",
 	"contact_email":          "",

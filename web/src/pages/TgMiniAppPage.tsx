@@ -489,6 +489,7 @@ const TRACKER_LABELS: Record<string, string> = {
   kinozal: 'Kinozal',
   nnmclub: 'NNMClub.to',
   rutor: 'Rutor.info',
+  rutracker: 'RuTracker.org',
 }
 
 function fmtTrackerDate(iso: string) {
