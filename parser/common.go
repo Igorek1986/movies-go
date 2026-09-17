@@ -18,8 +18,29 @@ var (
 	reTitleYearParen   = regexp.MustCompile(`\((\d{4})(?:-\d{4})?\)`)
 	reTitleYearRange   = regexp.MustCompile(`^(\d{4})-\d{4}`)
 	reTitleBrackets    = regexp.MustCompile(`\[.*?\]`)
-	reTitleYearBracket = regexp.MustCompile(`\[(\d{4})[,\]]`)
+	reTitleYearBracket = regexp.MustCompile(`\[(\d{4})(?:-\d{4})?[,\]\s]`)
+	reSeasonPartHdr    = regexp.MustCompile(`(?i)^(Сезон|Серии|Series|Season)`)
 )
+
+// extractLeadingYear reports whether a " / "-separated title segment IS (or
+// starts with) a year — bare "2025", or "2008-2009 США, комедия" — the
+// classic 3rd-field format for rutor/kinozal titles without extra alt names.
+func extractLeadingYear(p string) (int, bool) {
+	if yr, err := strconv.Atoi(p); err == nil && yr >= 1900 && yr <= 2100 {
+		return yr, true
+	}
+	if m := reTitleYearRange.FindStringSubmatch(p); m != nil {
+		if yr, err := strconv.Atoi(m[1]); err == nil {
+			return yr, true
+		}
+	}
+	if len(p) > 4 && p[4] == ' ' {
+		if yr, err := strconv.Atoi(p[:4]); err == nil && yr >= 1900 && yr <= 2100 {
+			return yr, true
+		}
+	}
+	return 0, false
+}
 
 // HasEpisodeBrackets reports whether title contains [...] before the year — indicates episode range.
 func HasEpisodeBrackets(title string) bool {
@@ -84,28 +105,40 @@ func ParseTorrentTitle(d *models.TorrentDetails, title string) {
 	d.VideoQuality = ParseVQuality(qualPart)
 	d.AudioQuality = ParseAQuality(qualPart)
 
-	p1 := strings.TrimSpace(parts[1])
-	if yr, err := strconv.Atoi(p1); err == nil && yr >= 1900 && yr <= 2100 {
-		d.Year = yr
-		return
-	}
-
-	// parts[1] is an English name — year may be embedded as "(2006)"
-	if m := reTitleYearParen.FindStringSubmatch(p1); m != nil {
-		d.Year, _ = strconv.Atoi(m[1])
-		p1 = strings.TrimSpace(reTitleYearParen.ReplaceAllString(p1, ""))
-	}
-	d.Names = []string{strings.TrimSpace(reTitleBrackets.ReplaceAllString(p1, ""))}
-
-	if d.Year == 0 && len(parts) >= 3 {
-		yearStr := strings.TrimSpace(parts[2])
-		if m := reTitleYearRange.FindStringSubmatch(yearStr); m != nil {
-			yearStr = m[1]
-		}
-		if fields := strings.Fields(yearStr); len(fields) > 0 {
-			if yr, err := strconv.Atoi(fields[0]); err == nil && yr >= 1900 && yr <= 2100 {
+	// Collect every alternate name in parts[1:] — rutracker/nnmclub titles can
+	// list several ("RuName1 / RuName2 / EngName / Сезон: ...", not just one)
+	// — until hitting a structural marker: a leading year (bare or "YYYY[-YYYY]
+	// ..."), a season/episode header, or a fragment with an unbalanced "(" (the
+	// split landed inside a "(Director1 / Director2)" list that itself
+	// contains " / "). Missing the later names this way let e.g. "Эндшпиль"/
+	// "Endgame" (the real TMDB title) get dropped in favor of an earlier,
+	// wrong-language alt name that collided with an unrelated show sharing
+	// its Russian translation — see dev/rutracker.md.
+	for i := 1; i < len(parts)-1; i++ {
+		p := strings.TrimSpace(parts[i])
+		if yr, ok := extractLeadingYear(p); ok {
+			if d.Year == 0 {
 				d.Year = yr
 			}
+			break
+		}
+		if reSeasonPartHdr.MatchString(p) {
+			break
+		}
+		if idx := strings.Index(p, "("); idx != -1 && strings.Count(p, "(") > strings.Count(p, ")") {
+			if prefix := strings.TrimSpace(p[:idx]); prefix != "" {
+				d.Names = append(d.Names, prefix)
+			}
+			break
+		}
+		if m := reTitleYearParen.FindStringSubmatch(p); m != nil {
+			if d.Year == 0 {
+				d.Year, _ = strconv.Atoi(m[1])
+			}
+			p = strings.TrimSpace(reTitleYearParen.ReplaceAllString(p, ""))
+		}
+		if clean := strings.TrimSpace(reTitleBrackets.ReplaceAllString(p, "")); clean != "" {
+			d.Names = append(d.Names, clean)
 		}
 	}
 
