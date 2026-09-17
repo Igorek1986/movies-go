@@ -14,7 +14,15 @@ import (
 // compare) and let unrelated titles collide ("Leoš" → "leo", same as
 // "Leo") — see dev/rutracker.md for the case that surfaced this.
 func ClearStr(str string) string {
-	str = norm.NFD.String(strings.ToLower(str))
+	str = strings.ToLower(str)
+	// "№" (numero sign) is how TMDB spells numbered titles ("Любовный напиток
+	// №9", "Кайдзю № 8") — torrent uploaders almost always spell it out as
+	// "номер" instead. Left as-is, "№" is just dropped (not in the kept
+	// ranges below) while "номер" survives, so the two sides differ by 5
+	// characters and fail the length-sensitive SimilarStr comparison. Expand
+	// it to the same word both sides converge on.
+	str = strings.ReplaceAll(str, "№", "номер")
+	str = norm.NFD.String(str)
 	var b strings.Builder
 	for _, r := range str {
 		if unicode.Is(unicode.Mn, r) {

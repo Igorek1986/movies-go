@@ -95,10 +95,20 @@ func ParseTorrentTitle(d *models.TorrentDetails, title string) {
 			qual := strings.TrimSpace(title[idx+1:])
 			d.VideoQuality = ParseVQuality(qual)
 			d.AudioQuality = ParseAQuality(qual)
+			// Each pipe segment can carry its own redundant "(year)" suffix
+			// ("Kaiju No. 8 (2025)") on top of the shared bracket-year at the
+			// end — strip both, or it survives into Name/Names and the extra
+			// digits break the length-sensitive SimilarStr comparison against
+			// TMDB's plain title (see dev/rutracker.md, "Kaiju No. 8").
+			cleanPipeName := func(p string) string {
+				p = reTitleYearParen.ReplaceAllString(p, "")
+				p = reTitleBrackets.ReplaceAllString(p, "")
+				return strings.TrimSpace(p)
+			}
 			pipeParts := strings.Split(namePart, "|")
-			d.Name = strings.TrimSpace(reTitleBrackets.ReplaceAllString(pipeParts[0], ""))
+			d.Name = cleanPipeName(pipeParts[0])
 			for _, p := range pipeParts[1:] {
-				if clean := strings.TrimSpace(reTitleBrackets.ReplaceAllString(p, "")); clean != "" {
+				if clean := cleanPipeName(p); clean != "" {
 					d.Names = append(d.Names, clean)
 				}
 			}
