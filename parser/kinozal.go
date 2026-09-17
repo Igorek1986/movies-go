@@ -239,7 +239,12 @@ func (k *KinozalParser) buildDetails(item kzItem, catInfo kzCatInfo) *models.Tor
 // ─── Title parsing ────────────────────────────────────────────────────────────
 
 var (
-	reKzSeason    = regexp.MustCompile(`(?i)\(\d+\s*сезон[^)]*\)`)
+	// Matches any "(...)" containing "сезон"/"серии" anywhere inside, not just
+	// "(N сезон...)" — kinozal also writes plural ranges ("1-2 сезоны: ...")
+	// and season-less episode counts ("1-10 серии из 10") that a season-number-
+	// first pattern misses, leaving the descriptor stuck to d.Name and
+	// breaking TMDB name matching (see dev/kinozal.md).
+	reKzSeason    = regexp.MustCompile(`(?i)\([^)]*(?:сезон|серии)[^)]*\)`)
 	reKzSeriesHdr = regexp.MustCompile(`(?i)\d+\s*сезон|серии\s*из`)
 )
 
