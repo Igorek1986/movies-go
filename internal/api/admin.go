@@ -97,6 +97,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	var noRuntimeMovies, noRuntimeTV int
 	var noDateTorrents int
 	var tmdbRefreshedToday, tmdbNotFound int
+	var parserNotFound int
 	var syncActivityToday, syncActivityTotal int
 	var actorCount, directorCount int
 	var popularCards int
@@ -165,6 +166,9 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	})
 	run(func() {
 		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM media_cards WHERE tmdb_not_found_at IS NOT NULL`).Scan(&tmdbNotFound) //nolint:errcheck
+	})
+	run(func() {
+		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM parser_not_found`).Scan(&parserNotFound) //nolint:errcheck
 	})
 	run(func() {
 		postgres.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM sync_activity_log`).Scan(&syncActivityTotal) //nolint:errcheck
@@ -253,6 +257,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"myshows_total":        myshowsTotal,
 		"tmdb_refreshed_today": tmdbRefreshedToday,
 		"tmdb_not_found":       tmdbNotFound,
+		"parser_not_found":     parserNotFound,
 		"sync_activity_today":  syncActivityToday,
 		"sync_activity_total":  syncActivityTotal,
 		"actor_count":          actorCount,
@@ -1899,6 +1904,22 @@ func handleAPIAdminAllCards(w http.ResponseWriter, r *http.Request) {
 
 func handleAPIAdminAllCardsMeta(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, store.GetAllCardsDistinct(r.Context()))
+}
+
+func handleAPIAdminNotFound(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	p := store.NotFoundParams{
+		Tracker: q.Get("tracker"),
+		Reason:  q.Get("reason"),
+		Search:  q.Get("search"),
+	}
+	if v, err := strconv.Atoi(q.Get("page")); err == nil && v > 0 {
+		p.Page = v
+	}
+	if v, err := strconv.Atoi(q.Get("per_page")); err == nil && v > 0 {
+		p.PerPage = v
+	}
+	JSON(w, http.StatusOK, store.ListNotFound(r.Context(), p))
 }
 
 func handleAPIAdminPatchCardDates(w http.ResponseWriter, r *http.Request) {

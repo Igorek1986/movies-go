@@ -63,6 +63,7 @@ const ProxiesPage = lazy(() => import('@/pages/ProxiesPage'))
 const LogsPage = lazy(() => import('@/pages/LogsPage'))
 const BotPage = lazy(() => import('@/pages/BotPage'))
 const TMDBMissingPage = lazy(() => import('@/pages/TMDBMissingPage'))
+const ParserNotFoundPage = lazy(() => import('@/pages/ParserNotFoundPage'))
 const NewCardsPage = lazy(() => import('@/pages/NewCardsPage'))
 const AllCardsPage = lazy(() => import('@/pages/AllCardsPage'))
 const PopularPage = lazy(() => import('@/pages/PopularPage'))
@@ -209,6 +210,7 @@ export default function App() {
         <Route path="/admin/logs" element={<LogsPage />} />
         <Route path="/admin/bot" element={<BotPage />} />
         <Route path="/admin/tmdb-missing" element={<TMDBMissingPage />} />
+        <Route path="/admin/parser-not-found" element={<ParserNotFoundPage />} />
         <Route path="/admin/cards-today" element={<NewCardsPage />} />
         <Route path="/admin/all-cards" element={<AllCardsPage />} />
         <Route path="/admin/popular" element={<PopularPage />} />

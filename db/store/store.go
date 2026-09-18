@@ -113,6 +113,100 @@ func LogNotFound(tracker, hash, reason, rawTitle, parsedName string, parsedNames
 	)
 }
 
+// NotFoundParams holds filter/page params for ListNotFound.
+type NotFoundParams struct {
+	Page    int
+	PerPage int
+	Tracker string // "" = all
+	Reason  string // "" = all ("not_found" | "pre_release")
+	Search  string // matches raw_title or parsed_name, case-insensitive
+}
+
+// NotFoundItem is one parser_not_found row for the admin viewer.
+type NotFoundItem struct {
+	ID         int64  `json:"id"`
+	Tracker    string `json:"tracker"`
+	Reason     string `json:"reason"`
+	RawTitle   string `json:"raw_title"`
+	ParsedName string `json:"parsed_name"`
+	ParsedYear int    `json:"parsed_year"`
+	IsMovie    bool   `json:"is_movie"`
+	CheckedAt  string `json:"checked_at"`
+}
+
+// NotFoundResult is the paginated response for ListNotFound.
+type NotFoundResult struct {
+	Items []NotFoundItem `json:"items"`
+	Total int            `json:"total"`
+}
+
+// ListNotFound returns a paginated, filtered view of parser_not_found for
+// the admin "не найдено в TMDB" page.
+func ListNotFound(ctx context.Context, p NotFoundParams) NotFoundResult {
+	if p.PerPage <= 0 {
+		p.PerPage = 100
+	}
+	if p.Page <= 0 {
+		p.Page = 1
+	}
+
+	var where []string
+	var args []any
+	arg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+
+	if p.Tracker != "" {
+		where = append(where, "tracker = "+arg(p.Tracker))
+	}
+	if p.Reason != "" {
+		where = append(where, "reason = "+arg(p.Reason))
+	}
+	if p.Search != "" {
+		like := "%" + p.Search + "%"
+		a := arg(like)
+		where = append(where, "(raw_title ILIKE "+a+" OR parsed_name ILIKE "+a+")")
+	}
+
+	whereSQL := ""
+	if len(where) > 0 {
+		whereSQL = "WHERE " + strings.Join(where, " AND ")
+	}
+
+	var res NotFoundResult
+	countSQL := "SELECT COUNT(*) FROM parser_not_found " + whereSQL
+	postgres.Pool.QueryRow(ctx, countSQL, args...).Scan(&res.Total) //nolint:errcheck
+
+	limitArg := arg(p.PerPage)
+	offsetArg := arg((p.Page - 1) * p.PerPage)
+	listSQL := fmt.Sprintf(
+		`SELECT id, tracker, reason, raw_title, parsed_name, parsed_year, is_movie, checked_at
+		 FROM parser_not_found %s
+		 ORDER BY checked_at DESC
+		 LIMIT %s OFFSET %s`, whereSQL, limitArg, offsetArg)
+
+	rows, err := postgres.Pool.Query(ctx, listSQL, args...)
+	if err != nil {
+		res.Items = []NotFoundItem{}
+		return res
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var it NotFoundItem
+		var checkedAt time.Time
+		if rows.Scan(&it.ID, &it.Tracker, &it.Reason, &it.RawTitle, &it.ParsedName,
+			&it.ParsedYear, &it.IsMovie, &checkedAt) == nil {
+			it.CheckedAt = checkedAt.Format("2006-01-02 15:04")
+			res.Items = append(res.Items, it)
+		}
+	}
+	if res.Items == nil {
+		res.Items = []NotFoundItem{}
+	}
+	return res
+}
+
 // BackfillTorrentCreatedAt fills in created_at for an already-known torrent
 // hash whose created_at is still NULL — legacy rows inserted before the
 // tracker's post date started being persisted (see dev/kinozal.md history).

@@ -36,6 +36,7 @@ interface Stats {
   no_date_torrents: number
   tmdb_refreshed_today: number
   tmdb_not_found: number
+  parser_not_found: number
   sync_activity_today: number
   sync_activity_total: number
   actor_count: number
@@ -849,6 +850,7 @@ export default function AdminPage() {
             <Link to="/admin/bot" className={styles.navBtn}>Бот</Link>
             <Link to="/admin/logs" className={styles.navBtn}>Логи</Link>
             <Link to="/admin/tmdb-missing" className={styles.navBtn}>TMDB проблемы</Link>
+            <Link to="/admin/parser-not-found" className={styles.navBtn}>Не сопоставлено при парсинге</Link>
             <Link to="/admin/settings" className={styles.navBtn}>Настройки</Link>
           </div>
         </div>
@@ -998,6 +1000,14 @@ export default function AdminPage() {
                   <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.tmdb_not_found.toLocaleString()}</p>
                   <p className={styles.statLabel}>Не найдено в TMDB</p>
 
+                </Link>
+              </div>
+            )}
+            {stats.parser_not_found > 0 && (
+              <div className={`${styles.statCard} ${styles.statCardClickable}`}>
+                <Link to="/admin/parser-not-found" className={styles.statLink}>
+                  <p className={`${styles.statValue} ${styles.statWarn}`}>{stats.parser_not_found.toLocaleString()}</p>
+                  <p className={styles.statLabel}>Не сопоставлено при парсинге</p>
                 </Link>
               </div>
             )}
