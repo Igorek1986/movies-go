@@ -257,9 +257,17 @@
         };
 
         self.full = function (params, onSuccess, onError) {
-            var card = params.card;
-            var certRu = card && card.certification_ru;
-            params.method = !!(card.number_of_seasons || card.seasons || card.last_episode_to_air || card.first_air_date) ? 'tv' : 'movie';
+            // params.card отсутствует при открытии по прямой ссылке/восстановлении по URL
+            // (?card=X&media=Y) — без клика внутри Lampa нет карточки-источника с реальными
+            // TMDB-полями. card.number_of_seasons без "card &&" кидал TypeError прямо тут,
+            // до вызова tmdb.full(...) — ни onSuccess, ни onError не срабатывали, и карточка
+            // висела в бесконечной загрузке вместо того, чтобы хотя бы открыться по method
+            // из params (уже посчитанному тем, кто инициировал переход).
+            var card = params.card || {};
+            var certRu = card.certification_ru;
+            if (params.card) {
+                params.method = !!(card.number_of_seasons || card.seasons || card.last_episode_to_air || card.first_air_date) ? 'tv' : 'movie';
+            }
             Lampa.Api.sources.tmdb.full(params, function (data) {
                 if (data && data.movie && certRu && !data.movie.restrict) {
                     var match = certRu.match(/^(\d+)/);
