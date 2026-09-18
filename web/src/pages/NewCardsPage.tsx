@@ -57,6 +57,35 @@ function fmtRuntime(c: NewCard): string {
 }
 
 interface RuntimeRange { min: string; max: string }
+interface DateRange { from: string; to: string }
+type DateSort = { key: 'latest_torrent_date' | 'release_date'; dir: 'asc' | 'desc' } | null
+
+// Filters live only in this component's state — navigating to a card and
+// back (both the mobile "Назад" button and the browser's own back button)
+// fully unmounts/remounts the page, wiping useState. Persist to
+// sessionStorage (survives that remount within the same tab, unlike
+// localStorage doesn't carry over to a fresh session/day) and restore on
+// mount, same technique already used below for the grid/table view choice.
+const FILTERS_KEY = 'newCardsFilters'
+
+interface StoredFilters {
+  filters: Partial<Record<FilterKey, string[]>>
+  runtimeRange: RuntimeRange
+  torrentDateRange: DateRange
+  releaseDateRange: DateRange
+  dateSort: DateSort
+  searchInput: string
+  page: number
+}
+
+function loadStoredFilters(): StoredFilters | null {
+  try {
+    const raw = sessionStorage.getItem(FILTERS_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
 
 function getRuntimeMin(c: NewCard): number {
   return c.media_type === 'movie' ? c.runtime : c.episode_run_time
@@ -212,8 +241,6 @@ function RuntimeFilterHeader({ range, isOpen, onToggleOpen, onChange, onClear }:
 }
 
 // ── DateRangeFilterHeader ─────────────────────────────────────────────────────
-
-interface DateRange { from: string; to: string }
 
 function DateRangeFilterHeader({ label, range, isOpen, sortDir, onToggleOpen, onChange, onClear, onSort }: {
   label: string
@@ -386,17 +413,24 @@ function PosterCard({ c, selected, onToggleSelect, onClick }: {
 
 export default function NewCardsPage() {
   const navigate = useNavigate()
+  const stored = useRef(loadStoredFilters()).current
   const [cards, setCards]       = useState<NewCard[]>([])
   const [loading, setLoading]   = useState(true)
-  const [filters, setFilters]   = useState<Partial<Record<FilterKey, Set<string>>>>({})
+  const [filters, setFilters]   = useState<Partial<Record<FilterKey, Set<string>>>>(() => {
+    const out: Partial<Record<FilterKey, Set<string>>> = {}
+    if (stored?.filters) {
+      for (const k of Object.keys(stored.filters) as FilterKey[]) out[k] = new Set(stored.filters[k])
+    }
+    return out
+  })
   const [openCol, setOpenCol]   = useState<FilterKey | null>(null)
-  const [runtimeRange, setRuntimeRange] = useState<RuntimeRange>({ min: '', max: '' })
+  const [runtimeRange, setRuntimeRange] = useState<RuntimeRange>(stored?.runtimeRange ?? { min: '', max: '' })
   const [runtimeOpen, setRuntimeOpen]   = useState(false)
-  const [torrentDateRange, setTorrentDateRange] = useState({ from: '', to: '' })
+  const [torrentDateRange, setTorrentDateRange] = useState<DateRange>(stored?.torrentDateRange ?? { from: '', to: '' })
   const [torrentDateOpen, setTorrentDateOpen]   = useState(false)
-  const [releaseDateRange, setReleaseDateRange] = useState({ from: '', to: '' })
+  const [releaseDateRange, setReleaseDateRange] = useState<DateRange>(stored?.releaseDateRange ?? { from: '', to: '' })
   const [releaseDateOpen, setReleaseDateOpen]   = useState(false)
-  const [dateSort, setDateSort] = useState<{ key: 'latest_torrent_date' | 'release_date'; dir: 'asc' | 'desc' } | null>({ key: 'latest_torrent_date', dir: 'desc' })
+  const [dateSort, setDateSort] = useState<DateSort>(stored?.dateSort ?? { key: 'latest_torrent_date', dir: 'desc' })
   const [filterDrawer, setFilterDrawer] = useState(false)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
   const [view, setView] = useState<ViewMode>(() => (localStorage.getItem('newCardsView') as ViewMode) || 'grid')
@@ -430,11 +464,25 @@ export default function NewCardsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [confirm, setConfirm]   = useState(false)
-  const [page, setPage]         = useState(1)
-  const [searchInput, setSearchInput] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [page, setPage]         = useState(stored?.page ?? 1)
+  const [searchInput, setSearchInput] = useState(stored?.searchInput ?? '')
+  const [searchQuery, setSearchQuery] = useState(stored?.searchInput?.length && stored.searchInput.length >= 3 ? stored.searchInput.trim().toLowerCase() : '')
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const PAGE_SIZE = 100
+
+  // Persist filters/sort/page/search across the unmount-remount that
+  // happens when navigating to a card and back (see loadStoredFilters above).
+  useEffect(() => {
+    try {
+      const toStore: StoredFilters = {
+        filters: Object.fromEntries(
+          Object.entries(filters).map(([k, v]) => [k, Array.from(v ?? [])]),
+        ),
+        runtimeRange, torrentDateRange, releaseDateRange, dateSort, searchInput, page,
+      }
+      sessionStorage.setItem(FILTERS_KEY, JSON.stringify(toStore))
+    } catch { /* ignore */ }
+  }, [filters, runtimeRange, torrentDateRange, releaseDateRange, dateSort, searchInput, page])
 
   useEffect(() => {
     fetch('/api/admin/cards-today')
@@ -506,8 +554,14 @@ export default function NewCardsPage() {
     setFilters(prev => ({ ...prev, [key]: new Set() }))
   }
 
-  // Reset page when filter or search changes
-  useEffect(() => { setPage(1) }, [filters, runtimeRange, searchQuery, torrentDateRange, releaseDateRange])
+  // Reset page when filter or search changes — but not on the initial mount,
+  // where these values may have just been restored from sessionStorage
+  // (see loadStoredFilters above) along with a non-1 page to match.
+  const skipPageResetRef = useRef(true)
+  useEffect(() => {
+    if (skipPageResetRef.current) { skipPageResetRef.current = false; return }
+    setPage(1)
+  }, [filters, runtimeRange, searchQuery, torrentDateRange, releaseDateRange])
 
   const sorted = useMemo(() => {
     if (!dateSort) return filtered
