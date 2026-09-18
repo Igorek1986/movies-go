@@ -10,32 +10,61 @@ import (
 	"strings"
 )
 
-// filterByYear filters movie search results by release year (±2).
-// For TV shows year filtering is skipped: first_air_date is the debut year of the show,
-// not the current season, so it can differ from the torrent year by many years.
-// Note: utils.Filter removes items where fn=true, so the predicate is inverted.
+// filterByYear filters movie search results by release year. Tries a strict
+// ±1 pass first; only falls back to a looser ±2 pass when NOTHING is within
+// ±1 — a torrent's own stated year can legitimately be off by 2 from TMDB's
+// release year (production vs. release, uploader rounding, re-releases), and
+// rejecting that candidate outright used to leave only a dateless stub
+// (which always survives, see below) to win by default: "Мечта (1941)" —
+// correct match is 1943 (dist=2), got filtered out, id=864529 (no date at
+// all) won instead (see dev/rutracker.md, main-vs-dev diagnostic run).
+//
+// Trying strict-first instead of a flat ±2 matters: e.g. "Месть" has ~19
+// unrelated TMDB movies from 1960 to 2026, many exactly 2 years apart — a
+// flat ±2 would let a wrong same-titled film compete on equal footing with
+// the correct ±1 one. Falling back only when ±1 is empty means a 2-years-off
+// candidate is never even offered a chance to outrank a closer, more likely
+// correct one via the movieYearDist tie-break in FindTMDB.
+//
+// For TV shows year filtering is skipped: first_air_date is the debut year
+// of the show, not the current season, so it can differ from the torrent
+// year by many years.
 func filterByYear(isMovie bool, list []*models.Entity, torrYear int) []*models.Entity {
 	if !isMovie || torrYear == 0 {
 		return list
 	}
+	if strict := filterByYearTolerance(list, torrYear, 1); hasDatedEntity(strict) {
+		return strict
+	}
+	return filterByYearTolerance(list, torrYear, 2)
+}
+
+// hasDatedEntity reports whether list contains at least one entity with a
+// usable release year — filterByYearTolerance always keeps dateless entries
+// (see below), so an all-dateless result must still fall through to the
+// wider tolerance pass to give a same-titled dated candidate a chance.
+func hasDatedEntity(list []*models.Entity) bool {
+	for _, e := range list {
+		if len(e.Year) == 4 {
+			return true
+		}
+	}
+	return false
+}
+
+// filterByYearTolerance removes entities whose release year differs from
+// torrYear by more than tolerance. e.Year is set by tmdb.fixEntity from the
+// raw ISO release_date before ReleaseDate itself gets overwritten to display
+// format "DD.MM.YYYY" (movies/tmdb/utils.go FixDate) — using ReleaseDate here
+// instead silently broke this filter for every tracker: e.g. "01.09.2007"
+// [:4] = "01.0", Atoi fails, err != nil, candidate kept regardless of actual
+// year (see dev/rutracker.md).
+// Note: utils.Filter removes items where fn=true, so the predicate is inverted.
+func filterByYearTolerance(list []*models.Entity, torrYear, tolerance int) []*models.Entity {
 	return utils.Filter(list, func(i int, e *models.Entity) bool {
-		// e.Year is set by tmdb.fixEntity from the raw ISO release_date
-		// before ReleaseDate itself gets overwritten to display format
-		// "DD.MM.YYYY" (movies/tmdb/utils.go FixDate) — using ReleaseDate
-		// here instead silently broke this filter for every tracker: e.g.
-		// "01.09.2007"[:4] = "01.0", Atoi fails, err != nil, candidate kept
-		// regardless of actual year (see dev/rutracker.md).
 		if len(e.Year) == 4 {
 			year, err := strconv.Atoi(e.Year)
-			// >1 used to be the cutoff, but a torrent's own stated year can
-			// legitimately be off by 2 from TMDB's release year (production
-			// vs. release, uploader rounding, re-releases) — too strict a
-			// gate here drops the correct dated candidate entirely, leaving
-			// only a dateless stub (which always survives, see below) to win
-			// by default. Case: "Мечта (1941)" — correct match is 1943
-			// (dist=2), got filtered out, id=864529 (no date at all) won
-			// instead. See dev/rutracker.md, main-vs-dev diagnostic run.
-			return err == nil && utils.Abs(year-torrYear) > 2 // remove if year is far from torrent year
+			return err == nil && utils.Abs(year-torrYear) > tolerance // remove if year is far from torrent year
 		}
 		return false // no release date — keep the candidate
 	})
