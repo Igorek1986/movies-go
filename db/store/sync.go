@@ -55,8 +55,8 @@ type SyncCard struct {
 	NumberOfSeasons   int             `json:"number_of_seasons"`
 	NumberOfEpisodes  int             `json:"number_of_episodes"`
 	Seasons           json.RawMessage `json:"seasons,omitempty"`
-	LastEpSeason      int             `json:"last_ep_season"`
-	LastEpNumber      int             `json:"last_ep_number"`
+	LastEpSeason      *int            `json:"last_ep_season,omitempty"`
+	LastEpNumber      *int            `json:"last_ep_number,omitempty"`
 	MyshowsID         int             `json:"myshows_id"`
 	KinopoiskID       int64           `json:"kinopoisk_id"`
 	Category          string          `json:"category"`
@@ -76,7 +76,7 @@ const syncCardColumns = `
 	COALESCE(certification_ru, ''), COALESCE(certification_us, ''), COALESCE(age_rating, 0),
 	genres, keywords,
 	COALESCE(number_of_seasons, 0), COALESCE(number_of_episodes, 0), seasons,
-	COALESCE(last_ep_season, 0), COALESCE(last_ep_number, 0),
+	last_ep_season, last_ep_number,
 	COALESCE(myshows_id, 0), COALESCE(kinopoisk_id, 0), COALESCE(category, ''),
 	best_video_quality, COALESCE(latest_torrent_date::text, ''), COALESCE(year, 0), updated_at`
 
@@ -192,8 +192,8 @@ func UpsertSyncedCard(ctx context.Context, c SyncCard) error {
 			number_of_seasons  = COALESCE(NULLIF(media_cards.number_of_seasons,0), EXCLUDED.number_of_seasons),
 			number_of_episodes = COALESCE(NULLIF(media_cards.number_of_episodes,0), EXCLUDED.number_of_episodes),
 			seasons            = COALESCE(media_cards.seasons, EXCLUDED.seasons),
-			last_ep_season     = COALESCE(NULLIF(media_cards.last_ep_season,0), EXCLUDED.last_ep_season),
-			last_ep_number     = COALESCE(NULLIF(media_cards.last_ep_number,0), EXCLUDED.last_ep_number),
+			last_ep_season     = COALESCE(media_cards.last_ep_season, EXCLUDED.last_ep_season),
+			last_ep_number     = COALESCE(media_cards.last_ep_number, EXCLUDED.last_ep_number),
 			myshows_id         = COALESCE(NULLIF(media_cards.myshows_id,0), EXCLUDED.myshows_id),
 			kinopoisk_id       = COALESCE(NULLIF(media_cards.kinopoisk_id,0), EXCLUDED.kinopoisk_id),
 			category           = COALESCE(NULLIF(media_cards.category, ''), EXCLUDED.category),

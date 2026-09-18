@@ -268,6 +268,7 @@
             if (params.card) {
                 params.method = !!(card.number_of_seasons || card.seasons || card.last_episode_to_air || card.first_air_date) ? 'tv' : 'movie';
             }
+
             Lampa.Api.sources.tmdb.full(params, function (data) {
                 if (data && data.movie && certRu && !data.movie.restrict) {
                     var match = certRu.match(/^(\d+)/);
