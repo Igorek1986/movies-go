@@ -44,21 +44,31 @@ func (k *KinozalParser) httpClient() *http.Client {
 func (k *KinozalParser) Name() string { return "kinozal" }
 
 // kinozal category id → (category, base models.Cat*)
-// multiki/anime rows need title-based series detection.
+// multiki/anime/"сериал" rows need title-based movie/series detection —
+// kinozal's own category name is not a reliable signal (see 45/46 below).
 type kzCatInfo struct {
-	baseCat string // empty = detect from title
+	baseCat   string // non-empty = always this category, no title detection
+	movieCat  string // baseCat=="" only: category assigned when title has no season/episode markers
+	seriesCat string // baseCat=="" only: category assigned when title has season/episode markers
 }
 
 var kinozalCats = map[string]kzCatInfo{
-	"8":  {models.CatMovie},
-	"9":  {models.CatMovie},
-	"10": {models.CatMovie}, // was mislabeled Series — live sample: 86% standalone films, no season/episode markers (see dev/kinozal.md)
-	"11": {models.CatMovie}, // was mislabeled Series — live sample: 99% standalone films (Cutthroat Island, A Fistful of Dollars, ...)
-	"12": {models.CatAnime},
-	"14": {""},
-	"17": {models.CatMovie},
-	"45": {models.CatSeries}, // "Сериал - Русский"
-	"46": {models.CatSeries}, // "Сериал - Буржуйский"
+	"8":  {baseCat: models.CatMovie},
+	"9":  {baseCat: models.CatMovie},
+	"10": {baseCat: models.CatMovie}, // was mislabeled Series — live sample: 86% standalone films, no season/episode markers (see dev/kinozal.md)
+	"11": {baseCat: models.CatMovie}, // was mislabeled Series — live sample: 99% standalone films (Cutthroat Island, A Fistful of Dollars, ...)
+	"12": {baseCat: models.CatAnime},
+	"14": {movieCat: models.CatCartoonMovie, seriesCat: models.CatCartoonSeries},
+	"17": {baseCat: models.CatMovie},
+	// "Сериал" in the name is misleading — live sample (parser_not_found,
+	// full scan) found ~21% (392/1833) of not_found entries from these two
+	// categories are standalone movies with zero season/episode markers in
+	// the title (Голый пистолет 2025, Чебурашка 2, Буратино 2025, Сказка о
+	// царе Салтане 2025, Сто лет тому вперёд...), all verified to exist in
+	// TMDB as movies. Forcing CatSeries sent them through search/tv, where
+	// they can never match. Same title-based detection as cat 14 fixes it.
+	"45": {movieCat: models.CatMovie, seriesCat: models.CatSeries}, // "Сериал - Русский"
+	"46": {movieCat: models.CatMovie, seriesCat: models.CatSeries}, // "Сериал - Буржуйский"
 }
 
 type kzItem struct {
@@ -253,9 +263,9 @@ func parseKinozalTitle(d *models.TorrentDetails, title string, catInfo kzCatInfo
 	d.Name = strings.TrimSpace(reKzSeason.ReplaceAllString(d.Name, ""))
 	if catInfo.baseCat == "" {
 		if reKzSeriesHdr.MatchString(title) || HasEpisodeBrackets(title) {
-			d.Categories = models.CatCartoonSeries
+			d.Categories = catInfo.seriesCat
 		} else {
-			d.Categories = models.CatCartoonMovie
+			d.Categories = catInfo.movieCat
 		}
 	}
 }
