@@ -26,6 +26,7 @@ var proxyRouteOrder = []struct{ key, label string }{
 	{proxy.RouteParserKinozal, "Парсер Kinozal"},
 	{proxy.RouteParserNNMClub, "Парсер NNMClub"},
 	{proxy.RouteParserRutor, "Парсер Rutor"},
+	{proxy.RouteParserRutracker, "Парсер Rutracker"},
 	{proxy.RouteTVmaze, "TVmaze (runtime)"},
 	{proxy.RouteTheTVDB, "TheTVDB (runtime)"},
 	{proxy.RoutePoiskkino, "poiskkino.dev (runtime)"},
