@@ -167,6 +167,15 @@ var (
 	reRtSeed  = regexp.MustCompile(`class="seedmed"[^>]*><b>(\d+)</b>`)
 	reRtPeer  = regexp.MustCompile(`class="leechmed"[^>]*><b>(\d+)</b>`)
 	reRtSize  = regexp.MustCompile(`dl-stub">([^<]+)</a>`)
+
+	// Anime multi-season releases carry a "(ТВ-N[, часть M])" season marker
+	// glued onto the Russian name ("Дандадан (ТВ-1)", "Сага о Винланде
+	// (ТВ-2)") — TMDB tracks most such shows as a single entry across
+	// seasons under the plain title, so the extra suffix pushes SimilarStr's
+	// Levenshtein distance past its threshold and the show never matches
+	// (live sample: 17/17 not_found cases carrying this marker, incl.
+	// "Дандадан" — confirmed present in TMDB under its plain name).
+	reRtSeasonSuffix = regexp.MustCompile(`(?i)\s*\(ТВ-\d+(?:\s*,\s*[^)]*)?\)`)
 )
 
 func (r *RutrackerParser) parseListing(body string) []rtItem {
@@ -232,5 +241,9 @@ func (r *RutrackerParser) buildDetails(item rtItem, catInfo rtCatInfo) *models.T
 		Categories: catInfo.baseCat,
 	}
 	ParseTorrentTitle(d, item.title)
+	d.Name = strings.TrimSpace(reRtSeasonSuffix.ReplaceAllString(d.Name, ""))
+	for i, n := range d.Names {
+		d.Names[i] = strings.TrimSpace(reRtSeasonSuffix.ReplaceAllString(n, ""))
+	}
 	return d
 }
