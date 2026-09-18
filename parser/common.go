@@ -213,10 +213,19 @@ func ParseTorrentTitle(d *models.TorrentDetails, title string) {
 		}
 	}
 
-	// Final fallback: scan full title for (year)
+	// Final fallback: scan full title for (year). Unlike the earlier,
+	// narrower extraction sites (isolated name/quality fragments), this
+	// scans the raw, unsplit title — a bare "(dddd)" elsewhere in it (e.g.
+	// rutracker episode-batch IDs like "... (0258, 0261-0263) (2137) /
+	// Santa Barbara ... [1984, США, ...]") can match before the real year
+	// ever gets a look, and win outright since it's checked first. Reject
+	// anything outside a plausible range so a bogus hit like 2137 falls
+	// through to the "[YYYY, ...]" bracket fallback below instead.
 	if d.Year == 0 {
 		if m := reTitleYearParen.FindStringSubmatch(title); m != nil {
-			d.Year, _ = strconv.Atoi(m[1])
+			if yr, err := strconv.Atoi(m[1]); err == nil && yr >= 1900 && yr <= 2100 {
+				d.Year = yr
+			}
 		}
 	}
 
