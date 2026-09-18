@@ -412,7 +412,7 @@
         }
     }
 
-    var _SERVER_CACHE_VERSION = 5; // bump при изменениях логики myshowsId-маппинга
+    var _SERVER_CACHE_VERSION = 6; // bump при изменениях логики myshowsId-маппинга
     var _SERVER_CACHE_VER_KEY = 'myshows_server_cache_ver';
     var _SERVER_CACHE_PATHS   = ['unwatched_serials', 'serial_status', 'movie_status', 'watchlist', 'watched', 'cancelled'];
 
