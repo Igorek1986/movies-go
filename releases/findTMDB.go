@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// filterByYear filters movie search results by release year (±1).
+// filterByYear filters movie search results by release year (±2).
 // For TV shows year filtering is skipped: first_air_date is the debut year of the show,
 // not the current season, so it can differ from the torrent year by many years.
 // Note: utils.Filter removes items where fn=true, so the predicate is inverted.
@@ -27,7 +27,15 @@ func filterByYear(isMovie bool, list []*models.Entity, torrYear int) []*models.E
 		// regardless of actual year (see dev/rutracker.md).
 		if len(e.Year) == 4 {
 			year, err := strconv.Atoi(e.Year)
-			return err == nil && utils.Abs(year-torrYear) > 1 // remove if year is far from torrent year
+			// >1 used to be the cutoff, but a torrent's own stated year can
+			// legitimately be off by 2 from TMDB's release year (production
+			// vs. release, uploader rounding, re-releases) — too strict a
+			// gate here drops the correct dated candidate entirely, leaving
+			// only a dateless stub (which always survives, see below) to win
+			// by default. Case: "Мечта (1941)" — correct match is 1943
+			// (dist=2), got filtered out, id=864529 (no date at all) won
+			// instead. See dev/rutracker.md, main-vs-dev diagnostic run.
+			return err == nil && utils.Abs(year-torrYear) > 2 // remove if year is far from torrent year
 		}
 		return false // no release date — keep the candidate
 	})
