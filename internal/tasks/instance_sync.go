@@ -276,7 +276,7 @@ func pullTorrents(ctx context.Context, peer string) {
 		}
 		peerName = body.InstanceName
 		nextSince, nextTie, hasMore, a, f := applyPulledPage(body.Torrents, since, sinceTie, body.NextSince, body.NextTie, body.HasMore,
-			func(t store.SyncTorrent) time.Time { return t.FirstSeenAt }, func(t store.SyncTorrent) string { return t.Hash },
+			func(t store.SyncTorrent) time.Time { return t.MatchedAt }, func(t store.SyncTorrent) string { return t.Hash },
 			func(t store.SyncTorrent) error {
 				if err := store.UpsertSyncedTorrent(ctx, t); err != nil {
 					log.Printf("tasks: instance_sync pull torrents: upsert %s: %v", t.Hash, err)
@@ -421,7 +421,7 @@ func pushCards(ctx context.Context, peer, token string) {
 // torrent for it, this is what lets that peer's catalog un-hide it too.
 func pushTorrents(ctx context.Context, peer, token string) {
 	syncPushPages(ctx, peer, token, "/api/sync/torrents", "torrents", "sync_push_cursor_torrents",
-		store.ListTorrentsSince, func(t store.SyncTorrent) time.Time { return t.FirstSeenAt }, func(t store.SyncTorrent) string { return t.Hash })
+		store.ListTorrentsSince, func(t store.SyncTorrent) time.Time { return t.MatchedAt }, func(t store.SyncTorrent) string { return t.Hash })
 }
 
 // pushEvents sends local play-events this instance hasn't pushed yet — the

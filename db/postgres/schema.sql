@@ -414,6 +414,25 @@ CREATE INDEX IF NOT EXISTS idx_torrents_created_at   ON torrents (created_at DES
 ALTER TABLE torrents     ADD COLUMN IF NOT EXISTS first_seen_at         TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS idx_torrents_first_seen_at ON torrents (first_seen_at);
 
+-- matched_at: when card_id actually became non-NULL — distinct from
+-- first_seen_at, which was used as the torrents sync cursor for years but is
+-- set once at INSERT and never touched again. A torrent that fails TMDB
+-- matching on first parse keeps a card_id=NULL row from that original
+-- first_seen_at; when a later parser pass (or newly-added TMDB data) matches
+-- it, CacheTorrent only fills card_id — first_seen_at stays in the past. Any
+-- peer whose pull cursor had already advanced past that old first_seen_at by
+-- the time the match happened can then never see the row via
+-- ListTorrentsSince: card_id IS NOT NULL but its timestamp is permanently
+-- "already read". Found live 2026-09-21: 10 torrents stuck on deb-zavod this
+-- way (335909_tv/335941_tv/638571_movie/856351_movie), first_seen_at from
+-- 2024-11 through 2026-09-21 05:00, all matched well after that.
+-- Backfill assumes matched_at==first_seen_at for existing rows (the common
+-- case — most torrents match on their first parse pass); this does NOT fix
+-- already-stuck stragglers like the ones above, only prevents new ones.
+ALTER TABLE torrents ADD COLUMN IF NOT EXISTS matched_at TIMESTAMPTZ;
+UPDATE torrents SET matched_at = first_seen_at WHERE card_id IS NOT NULL AND matched_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_torrents_matched_at ON torrents (matched_at) WHERE matched_at IS NOT NULL;
+
 -- Migration: per-user mobile bottom-nav bar configuration (which buttons,
 -- what order) — comma-separated keys into BOTTOM_NAV_OPTIONS on the
 -- frontend, NULL = use the built-in default set.

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"movies-api/db/models"
 	"movies-api/db/postgres"
-	"movies-api/utils"
 	"log"
 	"strings"
 	"time"
@@ -72,6 +71,10 @@ func TorrentStatus(hash string) (cached bool, cardID string) {
 
 // CacheTorrent records a processed torrent hash with its linked card, tracker and tracker date.
 // On conflict: only upgrades card_id/tracker from NULL → real value; created_at is never changed.
+// matched_at is stamped now() exactly when card_id transitions NULL → non-NULL
+// (first insert with a match, or a later re-parse that finally matches a
+// previously-unmatched hash) — see its schema.sql comment for why this must
+// be tracked separately from first_seen_at (the sync cursor for this table).
 func CacheTorrent(hash, cardID, tracker string, createDate time.Time) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -88,11 +91,13 @@ func CacheTorrent(hash, cardID, tracker string, createDate time.Time) {
 		cd = &createDate
 	}
 	postgres.Pool.Exec(ctx, //nolint:errcheck
-		`INSERT INTO torrents (hash, card_id, tracker, created_at) VALUES ($1, $2, $3, $4)
+		`INSERT INTO torrents (hash, card_id, tracker, created_at, matched_at)
+		 VALUES ($1, $2, $3, $4, CASE WHEN $2 IS NOT NULL THEN now() END)
 		 ON CONFLICT (hash) DO UPDATE SET
 		   card_id    = COALESCE(torrents.card_id, EXCLUDED.card_id),
 		   tracker    = COALESCE(torrents.tracker, EXCLUDED.tracker),
-		   created_at = COALESCE(torrents.created_at, EXCLUDED.created_at)`,
+		   created_at = COALESCE(torrents.created_at, EXCLUDED.created_at),
+		   matched_at = CASE WHEN torrents.card_id IS NULL AND EXCLUDED.card_id IS NOT NULL THEN now() ELSE torrents.matched_at END`,
 		hash, id, tr, cd,
 	)
 }
@@ -492,22 +497,6 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 // RefreshCardTMDB обновляет только TMDB-поля карточки, не трогая торрент-данные.
 // Вызывается из фоновой горутины при сохранении таймкода.
 func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
-	// TMDB изредка "переиспользует" уже известный нам id — например, плейсхолдер
-	// нераскрытого проекта позже наполняется реальными данными совсем другого
-	// фильма (см. кейс 1368337_movie: создана 21.05, 21.09 обновление title
-	// молча подменило её на "Одиссея" Нолана — а 14 привязанных раздач 2010-2022
-	// годов остались от того, что было под этим id раньше). Мы это не блокируем
-	// (иногда наоборот — законное исправление плейсхолдера), только громко логируем,
-	// чтобы можно было найти и разобрать руками, если раздачи после этого не подходят.
-	var oldTitle string
-	if err := postgres.Pool.QueryRow(ctx,
-		`SELECT COALESCE(original_title, '') FROM media_cards WHERE card_id = $1`, cardID,
-	).Scan(&oldTitle); err == nil && oldTitle != "" && e.OriginalTitle != "" {
-		if !utils.SimilarStr(utils.ClearStr(oldTitle), utils.ClearStr(e.OriginalTitle)) {
-			log.Printf("store: refresh card tmdb %s: original_title changed drastically %q -> %q — possible TMDB id reuse, check attached torrents",
-				cardID, oldTitle, e.OriginalTitle)
-		}
-	}
 
 	seasonsJSON := marshalJSON(e.Seasons)
 	genresJSON := marshalJSON(e.Genres)

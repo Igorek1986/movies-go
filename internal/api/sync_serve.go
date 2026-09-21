@@ -112,7 +112,7 @@ func handleSyncTorrents(w http.ResponseWriter, r *http.Request) {
 	nextSince, nextTie := since, sinceTie
 	if len(torrents) > 0 {
 		last := torrents[len(torrents)-1]
-		nextSince, nextTie = last.FirstSeenAt, last.Hash
+		nextSince, nextTie = last.MatchedAt, last.Hash
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"torrents":         torrents,

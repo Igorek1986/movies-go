@@ -295,28 +295,34 @@ func UpsertSyncedPlayEvent(ctx context.Context, e SyncEvent) error {
 // instance doesn't scrape. Rows with no card_id yet are excluded: nothing
 // useful to hand a peer before local resolution has run.
 type SyncTorrent struct {
-	Hash        string    `json:"hash"`
-	CardID      string    `json:"card_id"`
-	Tracker     string    `json:"tracker"`
-	TmdbID      int64     `json:"tmdb_id"`
-	MediaType   string    `json:"media_type"`
-	CreatedAt   string    `json:"created_at,omitempty"` // tracker's own upload date — informational only, never the sync cursor
-	FirstSeenAt time.Time `json:"first_seen_at"`
+	Hash      string    `json:"hash"`
+	CardID    string    `json:"card_id"`
+	Tracker   string    `json:"tracker"`
+	TmdbID    int64     `json:"tmdb_id"`
+	MediaType string    `json:"media_type"`
+	CreatedAt string    `json:"created_at,omitempty"` // tracker's own upload date — informational only, never the sync cursor
+	MatchedAt time.Time `json:"matched_at"`           // when card_id became non-NULL — the sync cursor, see ListTorrentsSince
 }
 
 // ListTorrentsSince returns up to limit torrents rows ordered by
-// (first_seen_at, hash) strictly after (since, sinceTie) — first_seen_at,
-// not created_at, is the cursor: see its schema.sql comment for why the
-// tracker's own upload date can't be used here (an old release discovered
-// late would sit permanently behind any reasonable cursor).
+// (matched_at, hash) strictly after (since, sinceTie). matched_at — when
+// card_id actually became non-NULL — not created_at (tracker's own upload
+// date, can be years old — an old release discovered late would sit
+// permanently behind any reasonable cursor) and not plain first_seen_at
+// (this row's own first INSERT — a torrent that matches TMDB only on a
+// LATER re-parse would then sit behind any cursor that already passed its
+// original, still-unmatched first_seen_at; see matched_at's schema.sql
+// comment). COALESCE to first_seen_at is a defensive fallback only — every
+// write path that sets card_id now also stamps matched_at, but this keeps a
+// row from silently vanishing from the feed if some future path forgets to.
 func ListTorrentsSince(ctx context.Context, since time.Time, sinceTie string, limit int) ([]SyncTorrent, error) {
 	rows, err := postgres.Pool.Query(ctx,
 		`SELECT hash, card_id, COALESCE(tracker, ''), COALESCE(tmdb_id, 0), COALESCE(media_type, ''),
-		        COALESCE(created_at::text, ''), first_seen_at
+		        COALESCE(created_at::text, ''), COALESCE(matched_at, first_seen_at)
 		 FROM torrents
 		 WHERE card_id IS NOT NULL
-		   AND (first_seen_at > $1 OR (first_seen_at = $1 AND hash > $2))
-		 ORDER BY first_seen_at ASC, hash ASC LIMIT $3`,
+		   AND (COALESCE(matched_at, first_seen_at) > $1 OR (COALESCE(matched_at, first_seen_at) = $1 AND hash > $2))
+		 ORDER BY COALESCE(matched_at, first_seen_at) ASC, hash ASC LIMIT $3`,
 		since, sinceTie, limit,
 	)
 	if err != nil {
@@ -326,7 +332,7 @@ func ListTorrentsSince(ctx context.Context, since time.Time, sinceTie string, li
 	var out []SyncTorrent
 	for rows.Next() {
 		var t SyncTorrent
-		if err := rows.Scan(&t.Hash, &t.CardID, &t.Tracker, &t.TmdbID, &t.MediaType, &t.CreatedAt, &t.FirstSeenAt); err != nil {
+		if err := rows.Scan(&t.Hash, &t.CardID, &t.Tracker, &t.TmdbID, &t.MediaType, &t.CreatedAt, &t.MatchedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -336,34 +342,37 @@ func ListTorrentsSince(ctx context.Context, since time.Time, sinceTie string, li
 
 // UpsertSyncedTorrent applies one torrent pulled from a peer. A torrent hash
 // is immutable once known — there's nothing to merge, only fields to fill in
-// if this instance's own copy (if any) has them NULL — and first_seen_at is
-// left out of the UPDATE SET entirely, so an already-known hash keeps
+// if this instance's own copy (if any) has them NULL — and matched_at is
+// left out of the UPDATE SET entirely, so an already-matched local hash keeps
 // whichever timestamp it already has and never looks "new" again to this
 // instance's own push cursor (the same echo-loop risk UpsertSyncedCard's
 // GREATEST comment describes, avoided here by never touching the value
 // post-insert instead of by taking a max).
 //
-// On a genuine INSERT (hash never seen before), first_seen_at is left to its
-// column DEFAULT (now()) rather than carrying over t.FirstSeenAt — the
-// peer's own discovery time. Using the peer's timestamp here silently broke
-// relaying through a hub: a torrent found by a slow-to-catch-up spoke keeps
-// its old first_seen_at all the way through the hub, so any OTHER spoke
-// whose own pull cursor has already advanced past that timestamp (routine,
-// once the historical backlog settles) can never see it via ListTorrentsSince's
-// cursor — the hub genuinely has the row, it's just permanently "in the
-// past" from that spoke's point of view. Stamping our own now() on arrival
-// makes a freshly-relayed row look new to OUR OWN outbound feed, which is
-// exactly what the hub-relay ("Одиссея") scenario needs.
+// On a genuine INSERT (hash never seen before) or a local row that was still
+// unmatched (card_id NULL), matched_at is stamped with our own now() rather
+// than carrying over t.MatchedAt — the peer's own match time. Using the
+// peer's timestamp here silently broke relaying through a hub: a torrent
+// matched by a slow-to-catch-up spoke keeps its old matched_at all the way
+// through the hub, so any OTHER spoke whose own pull cursor has already
+// advanced past that timestamp (routine, once the historical backlog
+// settles) can never see it via ListTorrentsSince's cursor — the hub
+// genuinely has the row, it's just permanently "in the past" from that
+// spoke's point of view. Stamping our own now() on arrival makes a
+// freshly-relayed row look new to OUR OWN outbound feed, which is exactly
+// what the hub-relay ("Одиссея") scenario needs — the same reasoning
+// first_seen_at itself used to rely on before matched_at existed.
 func UpsertSyncedTorrent(ctx context.Context, t SyncTorrent) error {
 	_, err := postgres.Pool.Exec(ctx, `
-		INSERT INTO torrents (hash, card_id, tracker, tmdb_id, media_type, created_at)
-		VALUES ($1, $2, NULLIF($3,''), NULLIF($4,0), NULLIF($5,''), NULLIF($6,'')::timestamptz)
+		INSERT INTO torrents (hash, card_id, tracker, tmdb_id, media_type, created_at, matched_at)
+		VALUES ($1, $2, NULLIF($3,''), NULLIF($4,0), NULLIF($5,''), NULLIF($6,'')::timestamptz, now())
 		ON CONFLICT (hash) DO UPDATE SET
 			card_id    = COALESCE(torrents.card_id, EXCLUDED.card_id),
 			tracker    = COALESCE(torrents.tracker, EXCLUDED.tracker),
 			tmdb_id    = COALESCE(torrents.tmdb_id, EXCLUDED.tmdb_id),
 			media_type = COALESCE(torrents.media_type, EXCLUDED.media_type),
-			created_at = COALESCE(torrents.created_at, EXCLUDED.created_at)`,
+			created_at = COALESCE(torrents.created_at, EXCLUDED.created_at),
+			matched_at = COALESCE(torrents.matched_at, now())`,
 		t.Hash, t.CardID, t.Tracker, t.TmdbID, t.MediaType, t.CreatedAt,
 	)
 	return err
