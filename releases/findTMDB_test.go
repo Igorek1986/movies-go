@@ -2,6 +2,7 @@ package releases
 
 import (
 	"testing"
+	"time"
 
 	"movies-api/db/models"
 )
@@ -66,5 +67,36 @@ func TestFilterByYearNoFallbackWhenStrictHasMatch(t *testing.T) {
 
 	if len(got) != 1 || got[0].ID != 1 {
 		t.Fatalf("filterByYear() = %v, want only id=1 (strict ±1 match present, ±2 must not be offered)", got)
+	}
+}
+
+// movieYearDist alone can't separate two unrelated films sharing both a
+// title and a release year — e.g. TMDB ids 1368337 and 1698863, both titled
+// "The Odyssey" (2026), released 12 days apart. movieDateDist is the
+// tie-break FindTMDB falls back to once year-distance ties: exact release
+// date vs. the torrent's own discovery date, since a torrent almost always
+// surfaces at or shortly after its real release.
+func TestMovieDateDist(t *testing.T) {
+	nolan := &models.Entity{ID: 1368337, ReleaseDate: "15.07.2026"}
+	other := &models.Entity{ID: 1698863, ReleaseDate: "03.07.2026"}
+
+	// Torrent discovered 2026-07-05 — 10 days after Nolan's release, 2 days
+	// after the other film's — the closer one is the real match.
+	torrCreate := time.Date(2026, 7, 5, 0, 0, 0, 0, time.UTC)
+
+	if d := movieDateDist(nolan, torrCreate); d != 10 {
+		t.Errorf("movieDateDist(nolan) = %d, want 10", d)
+	}
+	if d := movieDateDist(other, torrCreate); d != 2 {
+		t.Errorf("movieDateDist(other) = %d, want 2", d)
+	}
+
+	// Missing torrent date or unparseable/empty release date must not crash
+	// or falsely win a tie — sentinel keeps it indifferent to the outcome.
+	if d := movieDateDist(nolan, time.Time{}); d < 1000 {
+		t.Errorf("movieDateDist() with zero torrCreateDate = %d, want sentinel", d)
+	}
+	if d := movieDateDist(&models.Entity{ID: 3, ReleaseDate: ""}, torrCreate); d < 1000 {
+		t.Errorf("movieDateDist() with empty ReleaseDate = %d, want sentinel", d)
 	}
 }

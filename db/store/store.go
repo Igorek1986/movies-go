@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"movies-api/db/models"
 	"movies-api/db/postgres"
+	"movies-api/utils"
 	"log"
 	"strings"
 	"time"
@@ -491,6 +492,23 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 // RefreshCardTMDB обновляет только TMDB-поля карточки, не трогая торрент-данные.
 // Вызывается из фоновой горутины при сохранении таймкода.
 func RefreshCardTMDB(ctx context.Context, cardID string, e *models.Entity) {
+	// TMDB изредка "переиспользует" уже известный нам id — например, плейсхолдер
+	// нераскрытого проекта позже наполняется реальными данными совсем другого
+	// фильма (см. кейс 1368337_movie: создана 21.05, 21.09 обновление title
+	// молча подменило её на "Одиссея" Нолана — а 14 привязанных раздач 2010-2022
+	// годов остались от того, что было под этим id раньше). Мы это не блокируем
+	// (иногда наоборот — законное исправление плейсхолдера), только громко логируем,
+	// чтобы можно было найти и разобрать руками, если раздачи после этого не подходят.
+	var oldTitle string
+	if err := postgres.Pool.QueryRow(ctx,
+		`SELECT COALESCE(original_title, '') FROM media_cards WHERE card_id = $1`, cardID,
+	).Scan(&oldTitle); err == nil && oldTitle != "" && e.OriginalTitle != "" {
+		if !utils.SimilarStr(utils.ClearStr(oldTitle), utils.ClearStr(e.OriginalTitle)) {
+			log.Printf("store: refresh card tmdb %s: original_title changed drastically %q -> %q — possible TMDB id reuse, check attached torrents",
+				cardID, oldTitle, e.OriginalTitle)
+		}
+	}
+
 	seasonsJSON := marshalJSON(e.Seasons)
 	genresJSON := marshalJSON(e.Genres)
 

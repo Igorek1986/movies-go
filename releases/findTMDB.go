@@ -8,6 +8,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // filterByYear filters movie search results by release year. Tries a strict
@@ -194,6 +195,31 @@ func movieYearDist(e *models.Entity, torrYear int) int {
 	return utils.Abs(year - torrYear)
 }
 
+// movieDateDist returns the distance in days between a movie's exact release
+// date and the torrent's own discovery date, or a large sentinel if either
+// is unavailable/unparseable. Only used to break ties movieYearDist itself
+// can't resolve — two unrelated films can legitimately share a title AND a
+// release year (e.g. two different "The Odyssey" (2026) movies, 12 days
+// apart — same year, so movieYearDist alone can't tell them apart and just
+// keeps whichever TMDB happened to return first). A torrent almost always
+// surfaces at or shortly after its real release, so the day-level distance
+// to the torrent's own creation date is a much sharper signal than the bare
+// year once year-distance is already tied.
+// e.ReleaseDate is DD.MM.YYYY here (tmdb.fixEntity → FixDate runs before
+// FindTMDB ever sees these candidates — see Search/listVideo).
+func movieDateDist(e *models.Entity, torrCreateDate time.Time) int {
+	const sentinel = 1 << 30
+	if torrCreateDate.IsZero() || e.ReleaseDate == "" {
+		return sentinel
+	}
+	d, err := time.Parse("02.01.2006", e.ReleaseDate)
+	if err != nil {
+		return sentinel
+	}
+	days := int(torrCreateDate.Sub(d).Hours() / 24)
+	return utils.Abs(days)
+}
+
 // tvYearDist returns how many years before the torrent year the show started.
 // Returns 9999 if the show started after the torrent year or has no date.
 // Handles both "YYYY-MM-DD" and "DD.MM.YYYY" (post-FixDate) formats.
@@ -267,8 +293,16 @@ func FindTMDB(isMovie bool, torr *models.TorrentDetails) *models.Entity {
 		best := matches[0]
 		bestDist := movieYearDist(best, torr.Year)
 		for _, cand := range matches[1:] {
-			if d := movieYearDist(cand, torr.Year); d < bestDist {
+			d := movieYearDist(cand, torr.Year)
+			switch {
+			case d < bestDist:
 				bestDist = d
+				best = cand
+			// Same year-distance as the current best — movieYearDist alone
+			// can't separate them (see its doc comment: two unrelated same-
+			// titled movies sharing a release year). Fall back to exact
+			// release date vs. this torrent's own discovery date.
+			case d == bestDist && movieDateDist(cand, torr.CreateDate) < movieDateDist(best, torr.CreateDate):
 				best = cand
 			}
 		}
