@@ -197,27 +197,38 @@ func movieYearDist(e *models.Entity, torrYear int) int {
 
 // movieDateDist returns the distance in days between a movie's exact release
 // date and the torrent's own discovery date, or a large sentinel if either
-// is unavailable/unparseable. Only used to break ties movieYearDist itself
-// can't resolve — two unrelated films can legitimately share a title AND a
-// release year (e.g. two different "The Odyssey" (2026) movies, 12 days
-// apart — same year, so movieYearDist alone can't tell them apart and just
-// keeps whichever TMDB happened to return first). A torrent almost always
-// surfaces at or shortly after its real release, so the day-level distance
-// to the torrent's own creation date is a much sharper signal than the bare
-// year once year-distance is already tied.
+// is unavailable/unparseable, or the candidate has zero votes on TMDB. Only
+// used to break ties movieYearDist itself can't resolve — two unrelated
+// films can legitimately share a title AND a release year (e.g. two
+// different "The Odyssey" (2026) movies, 12 days apart — same year, so
+// movieYearDist alone can't tell them apart and just keeps whichever TMDB
+// happened to return first). A torrent close to its real release surfaces
+// at or shortly after it, so the day-level distance to the torrent's own
+// creation date is a much sharper signal than the bare year once
+// year-distance is already tied.
+//
+// The zero-vote guard is load-bearing, not defensive dressing: verified live
+// against real TMDB data, a torrent dated well after every candidate's
+// release (still same-year, so movieYearDist alone still ties) let a bare
+// TMDB stub — "The Odyssey of N", 0 votes, no overview — beat both real,
+// popular "Odyssey" films purely because its arbitrary placeholder date
+// happened to fall numerically closer. A capped day-distance doesn't fix
+// this (the stub's date can land anywhere, including well inside any sane
+// cap) — the actual problem is trusting an unconfirmed listing's date at
+// all. Requiring at least one vote excludes it without touching real,
+// already-tracked candidates, however far off their date lands.
 // e.ReleaseDate is DD.MM.YYYY here (tmdb.fixEntity → FixDate runs before
 // FindTMDB ever sees these candidates — see Search/listVideo).
 func movieDateDist(e *models.Entity, torrCreateDate time.Time) int {
 	const sentinel = 1 << 30
-	if torrCreateDate.IsZero() || e.ReleaseDate == "" {
+	if e.VoteCount == 0 || torrCreateDate.IsZero() || e.ReleaseDate == "" {
 		return sentinel
 	}
 	d, err := time.Parse("02.01.2006", e.ReleaseDate)
 	if err != nil {
 		return sentinel
 	}
-	days := int(torrCreateDate.Sub(d).Hours() / 24)
-	return utils.Abs(days)
+	return utils.Abs(int(torrCreateDate.Sub(d).Hours() / 24))
 }
 
 // tvYearDist returns how many years before the torrent year the show started.

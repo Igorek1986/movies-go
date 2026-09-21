@@ -77,8 +77,8 @@ func TestFilterByYearNoFallbackWhenStrictHasMatch(t *testing.T) {
 // date vs. the torrent's own discovery date, since a torrent almost always
 // surfaces at or shortly after its real release.
 func TestMovieDateDist(t *testing.T) {
-	nolan := &models.Entity{ID: 1368337, ReleaseDate: "15.07.2026"}
-	other := &models.Entity{ID: 1698863, ReleaseDate: "03.07.2026"}
+	nolan := &models.Entity{ID: 1368337, ReleaseDate: "15.07.2026", VoteCount: 3826}
+	other := &models.Entity{ID: 1698863, ReleaseDate: "03.07.2026", VoteCount: 571}
 
 	// Torrent discovered 2026-07-05 — 10 days after Nolan's release, 2 days
 	// after the other film's — the closer one is the real match.
@@ -98,5 +98,20 @@ func TestMovieDateDist(t *testing.T) {
 	}
 	if d := movieDateDist(&models.Entity{ID: 3, ReleaseDate: ""}, torrCreate); d < 1000 {
 		t.Errorf("movieDateDist() with empty ReleaseDate = %d, want sentinel", d)
+	}
+
+	// A zero-vote TMDB stub must never win a date tie-break, no matter how
+	// close its (arbitrary, unconfirmed) date lands — verified live: a
+	// torrent dated well after both real "Odyssey" releases let a bare stub
+	// ("The Odyssey of N", 0 votes, no overview, release date 05.08.2026)
+	// beat two real, popular same-titled films purely on date proximity.
+	stub := &models.Entity{ID: 1743113, ReleaseDate: "05.08.2026", VoteCount: 0}
+	farTorrCreate := time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)
+	if d := movieDateDist(stub, farTorrCreate); d < 1000 {
+		t.Errorf("movieDateDist() for a zero-vote stub = %d, want sentinel", d)
+	}
+	// A real (voted) candidate still gets a usable distance even when far off.
+	if d := movieDateDist(nolan, farTorrCreate); d != 59 {
+		t.Errorf("movieDateDist(nolan, far date) = %d, want 59 (still a real film, just a weak match)", d)
 	}
 }
