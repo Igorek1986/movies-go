@@ -36,8 +36,12 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
     saveTheme(next)
   }
 
-  const [navKeys, setNavKeys] = useState<string[]>(() => resolveBottomNavKeys(undefined))
-  const [navPosition, setNavPosition] = useState(() => resolveBottomNavPosition(undefined))
+  // Начальное значение — из user, а не из дефолта: при ремаунте (переход на
+  // другую страницу, pull-to-refresh) useAuth уже отдаёт закешированного
+  // пользователя сразу, и с дефолтом панель на первом кадре стояла бы не там
+  // (иконки/контент сдвигались бы вбок, когда эффект ниже применял настройку).
+  const [navKeys, setNavKeys] = useState<string[]>(() => resolveBottomNavKeys(user?.bottom_nav_keys))
+  const [navPosition, setNavPosition] = useState(() => resolveBottomNavPosition(user?.bottom_nav_position))
   useEffect(() => {
     setNavKeys(resolveBottomNavKeys(user?.bottom_nav_keys))
     setNavPosition(resolveBottomNavPosition(user?.bottom_nav_position))
@@ -365,7 +369,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
   )
 
   return (
-    <div className={styles.layout}>
+    <div data-ptr-root className={styles.layout}>
       {/* Mobile burger — its own fixed element, not a child of .nav. .nav
           establishes its own stacking context (position: fixed + z-index),
           so a z-index on a element INSIDE it can only out-rank other
@@ -449,7 +453,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
         <button className={styles.drawerLogout} onClick={handleLogout}>Выйти</button>
       </div>
 
-      <main className={`${styles.main}${wide ? ' ' + styles.mainWide : ''}${navPosition === 'right' ? ' ' + styles.mainRightNav : ''}${navPosition === 'left' ? ' ' + styles.mainLeftNav : ''}`}>{children}</main>
+      <main data-ptr-move className={`${styles.main}${wide ? ' ' + styles.mainWide : ''}${navPosition === 'right' ? ' ' + styles.mainRightNav : ''}${navPosition === 'left' ? ' ' + styles.mainLeftNav : ''}`}>{children}</main>
 
       <input ref={searchWarmupRef} type="text" aria-hidden="true" tabIndex={-1} className={styles.searchWarmup} />
 

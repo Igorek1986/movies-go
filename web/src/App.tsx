@@ -22,6 +22,8 @@ function ScrollToTop() {
   return null
 }
 import { useAuth } from '@/hooks/useAuth'
+import { PullToRefresh } from '@/components/PullToRefresh'
+import { useSoftRefreshKey } from '@/utils/softRefresh'
 import { useAppConfig } from '@/hooks/useAppConfig'
 import { useLiveSync } from '@/hooks/useLiveSync'
 import { ActiveProfileProvider } from '@/contexts/ActiveProfileContext'
@@ -100,6 +102,7 @@ function LiveSync() {
 
 function PrivateShell() {
   const { user, loading } = useAuth()
+  const refreshKey = useSoftRefreshKey()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
   // Admin-created account, password not changed yet — block every private
@@ -109,7 +112,7 @@ function PrivateShell() {
   return (
     <ActiveProfileProvider>
       <LiveSync />
-      <Outlet />
+      <Outlet key={refreshKey} />
     </ActiveProfileProvider>
   )
 }
@@ -171,6 +174,7 @@ export default function App() {
   return (
     <>
       <ScrollToTop />
+      <PullToRefresh />
       <div style={{ flex: 1 }}>
       <Suspense fallback={null}>
       <Routes>

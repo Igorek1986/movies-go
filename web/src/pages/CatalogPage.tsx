@@ -7,6 +7,7 @@ import { takePendingFocusCatalogSearch } from '@/utils/catalogSearchFocus'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { useAuth } from '@/hooks/useAuth'
 import { subscribeLiveSync } from '@/hooks/useLiveSync'
+import { registerInPlaceRefresh } from '@/utils/inPlaceRefresh'
 import { useHideWatchedFilter, applyHideWatchedParams } from '@/hooks/useHideWatchedFilter'
 import { useUnwatchedSort } from '@/hooks/useUnwatchedSort'
 import { useMenuOrder } from '@/hooks/useMenuOrder'
@@ -65,6 +66,10 @@ interface Category {
 // soft, instant return instead of flashing "Загрузка…" — but CategoryRow
 // treats itself as not-yet-loaded and quietly refetches once its own
 // IntersectionObserver fires, swapping in the corrected list in place.
+// Pull-to-refresh: CatalogPage рассылает это событие, каждая уже загруженная
+// CategoryRow кладёт в detail.promises свой рефетч
+const CATALOG_REFRESH_ROWS_EVENT = 'catalog:refresh-rows'
+
 interface RowCache { items: MediaItem[]; totalPages: number; stale?: boolean }
 interface CatViewCache { id: string; items: MediaItem[]; totalPages: number; currentPage: number; scrollY: number; stale?: boolean }
 const _cache = {
@@ -477,9 +482,24 @@ function CategoryRow({ category, token, profileId, profilesLoaded, hideWatched, 
       setItems(results)
       onItemsLoaded(category.id, { items: results, totalPages: tp })
     } catch {
-      setError(true)
+      // Тихий рефетч уже показанной строки не должен подменять её карточки
+      // плашкой ошибки — оставляем то, что есть
+      if (!itemsRef.current?.length) setError(true)
     }
   }, [category.id, token, profileId, profilesLoaded, hideWatched, hidePercent, hideWatchedLoaded, unwatchedSort, unwatchedSortLoaded, onItemsLoaded])
+
+  // Pull-to-refresh (см. registerInPlaceRefresh в CatalogPage ниже): тот же
+  // тихий рефетч, что и у stale-строки, только по событию, а не по IntersectionObserver.
+  // Ещё не загруженные (loadedRef=false) строки пропускаем — их загрузит сам observer.
+  useEffect(() => {
+    const onRefresh = (e: Event) => {
+      if (!loadedRef.current) return
+      loadedRef.current = false
+      ;(e as CustomEvent<{ promises: Promise<void>[] }>).detail.promises.push(loadItems())
+    }
+    window.addEventListener(CATALOG_REFRESH_ROWS_EVENT, onRefresh)
+    return () => window.removeEventListener(CATALOG_REFRESH_ROWS_EVENT, onRefresh)
+  }, [loadItems])
 
   // Carousel mode: this category has nothing to show — tell the parent to
   // advance instead of leaving a blank screen (Classic layout doesn't pass
@@ -1736,6 +1756,23 @@ export default function CatalogPage() {
   // actually showing the carousel itself, not the expanded/"Все →" grid or
   // search results, which stay normal scrollable views.
   const carouselActive = layout === 'hero' && !expandedCategory && !showSearch
+
+  // Pull-to-refresh: только основной вид со строками — раскрытая категория и
+  // результаты поиска обновляются ремаунтом (softRefresh.ts). canRefresh читает
+  // свежие значения через ref, чтобы регистрация не пересоздавалась на каждый рендер.
+  const inPlaceStateRef = useRef({ expandedCategory, showSearch })
+  inPlaceStateRef.current = { expandedCategory, showSearch }
+  useEffect(() => registerInPlaceRefresh({
+    canRefresh: () => !inPlaceStateRef.current.expandedCategory && !inPlaceStateRef.current.showSearch,
+    refresh: async () => {
+      // Строки, ещё не загруженные в этом маунте, но лежащие в кеше — тоже
+      // помечаем stale: их подтянет observer, когда до них доскроллят
+      invalidateAllCatalogRows()
+      const promises: Promise<void>[] = []
+      window.dispatchEvent(new CustomEvent(CATALOG_REFRESH_ROWS_EVENT, { detail: { promises } }))
+      await Promise.all(promises)
+    },
+  }), [])
   // See emptyIds/nextVisibleIndex above — visibleCategoryCount drives two
   // presentational cases below: 0 (every fetched category came back empty —
   // realistically only "Моё"-style pages, kept here for parity) shows an

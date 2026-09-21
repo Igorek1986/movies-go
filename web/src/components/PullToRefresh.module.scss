@@ -1,0 +1,42 @@
+@use '@/styles/variables' as *;
+
+$size: 26px;
+
+// Лежит в зазоре между верхней панелью и оттянутой страницей: в покое —
+// под .nav (z-index 200), translateY(pull / 2), который ведёт PullToRefresh.tsx,
+// ставит его в середину зазора. Ниже .nav, чтобы не вылезать на неё.
+.spinner {
+  position: fixed;
+  top: calc(#{$nav-height} + env(safe-area-inset-top) - #{$size * 0.5});
+  left: calc(50% - #{$size * 0.5});
+  z-index: 150;
+  width: $size;
+  height: $size;
+  color: $color-primary;
+  opacity: 0;
+  pointer-events: none;
+
+  &[data-loading='true'] .icon {
+    animation: ptr-spin 0.8s linear infinite;
+  }
+}
+
+.icon {
+  display: block;
+  transform: rotate(var(--ptr-rot, 0deg));
+}
+
+// Стартует с угла, на котором остался жест (--ptr-rot задаёт PullToRefresh.tsx)
+@keyframes ptr-spin {
+  from { transform: rotate(var(--ptr-rot, 0deg)); }
+  to   { transform: rotate(calc(var(--ptr-rot, 0deg) + 360deg)); }
+}
+
+// Снимок старой страницы (см. takeSnapshot в PullToRefresh.tsx) — поверх новой
+// страницы и ниже спиннера (150) и панелей (200), чтобы не закрывать их.
+.snapshot {
+  position: absolute;
+  left: 0;
+  z-index: 140;
+  pointer-events: none;
+}

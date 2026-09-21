@@ -72,6 +72,12 @@ interface HistCache {
 
 let _histCache: HistCache | null = null
 
+// Pull-to-refresh (utils/softRefresh.ts): без этого ремаунт страницы взял бы
+// список из кеша и вообще ничего бы не перезапросил.
+export function invalidateHistoryCache() {
+  _histCache = null
+}
+
 function buildFilterKey(devId: number | undefined, profId: string | undefined, mt: string, ip: boolean, st: string, sr: string): string {
   return [devId, profId, mt, ip ? '1' : '0', st, sr].join('|')
 }
