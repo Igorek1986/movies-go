@@ -192,7 +192,8 @@ func RecordPlayEvent(ctx context.Context, cardID, ident string, pct int) {
 	}
 	postgres.Pool.Exec(ctx, //nolint:errcheck
 		`INSERT INTO media_play_events (card_id, ident, date, max_percent, updated_at)
-		 VALUES ($1, $2, CURRENT_DATE, $3, now())
+		 SELECT $1::varchar, $2::varchar, CURRENT_DATE, $3::smallint, now()
+		 WHERE EXISTS (SELECT 1 FROM media_cards WHERE card_id = $1)
 		 ON CONFLICT (card_id, ident, date)
 		 DO UPDATE SET max_percent = GREATEST(media_play_events.max_percent, EXCLUDED.max_percent),
 		               updated_at = now()`,

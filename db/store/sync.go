@@ -272,7 +272,8 @@ func ListPlayEventsSince(ctx context.Context, since time.Time, sinceTie string, 
 func UpsertSyncedPlayEvent(ctx context.Context, e SyncEvent) error {
 	_, err := postgres.Pool.Exec(ctx, `
 		INSERT INTO media_play_events (card_id, ident, date, max_percent, updated_at)
-		VALUES ($1, $2, $3::date, $4, $5)
+		SELECT $1::varchar, $2::varchar, $3::date, $4::smallint, $5::timestamptz
+		WHERE EXISTS (SELECT 1 FROM media_cards WHERE card_id = $1)
 		ON CONFLICT (card_id, ident, date) DO UPDATE SET
 			max_percent = GREATEST(media_play_events.max_percent, EXCLUDED.max_percent),
 			updated_at  = GREATEST(media_play_events.updated_at, EXCLUDED.updated_at)`,
