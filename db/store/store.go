@@ -92,7 +92,7 @@ func CacheTorrent(hash, cardID, tracker string, createDate time.Time) {
 	}
 	postgres.Pool.Exec(ctx, //nolint:errcheck
 		`INSERT INTO torrents (hash, card_id, tracker, created_at, matched_at)
-		 VALUES ($1, $2, $3, $4, CASE WHEN $2 IS NOT NULL THEN now() END)
+		 VALUES ($1, $2, $3, $4, CASE WHEN $2::text IS NOT NULL THEN now() END)
 		 ON CONFLICT (hash) DO UPDATE SET
 		   card_id    = COALESCE(torrents.card_id, EXCLUDED.card_id),
 		   tracker    = COALESCE(torrents.tracker, EXCLUDED.tracker),
