@@ -192,6 +192,20 @@ func bgRefreshEpisodes(cardID string) {
 		if rows := externalsources.FetchSeriesEpisodes(ctx, mc); len(rows) > 0 {
 			if err := store.UpsertEpisodes(ctx, mc.TmdbID, rows); err != nil {
 				log.Printf("episodes: tvmaze upsert %s: %v", cardID, err)
+			} else {
+				// Unlike the MyShows sync below (myshows.SyncEpisodes calls
+				// OnEpisodesUpdated on success), this first-time TVmaze fill had no
+				// invalidation hook at all — a profile whose watched/unwatched cache
+				// was computed while this show had zero episodes (aired=0, so it
+				// never qualified) stayed stuck on that stale answer forever.
+				// InvalidateWatchedForCard alone can't fix this: its reverse index
+				// only knows a cache entry references cardID if that entry already
+				// listed it, which a "never qualified" entry never did (same gap
+				// InvalidateAllUnwatched's own doc comment describes for the
+				// aired-cutoff case) — so a full wipe is the only correct fix here
+				// too. Cheap in practice: gated above on "no rows yet", so this only
+				// runs once per show, ever.
+				InvalidateAllUnwatched()
 			}
 		}
 	}
