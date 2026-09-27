@@ -164,7 +164,12 @@ func bgRefreshEpisodes(cardID string) {
 	// up populating the episode list below — other features (progress /
 	// "непросмотренные" tracking, see internal/api/myshows_cache.go) key off
 	// media_cards.myshows_id on their own, regardless of episodes-table data.
-	if mc.MyshowsID == nil {
+	//
+	// Treat a stored 0 the same as NULL ("never looked up"), not just nil —
+	// legacy rows and a since-fixed sync merge bug (db/store/sync.go) left a
+	// literal 0 instead of NULL on most of the catalog, which used to make
+	// this block skip the lookup forever, believing it had already run.
+	if mc.MyshowsID == nil || *mc.MyshowsID == 0 {
 		if sid := myshows.FindShow(ctx, mc, ""); sid != 0 {
 			if err := store.SetMyshowsID(ctx, cardID, sid); err != nil {
 				log.Printf("episodes: set myshows_id %s: %v", cardID, err)
@@ -198,7 +203,7 @@ func bgRefreshEpisodes(cardID string) {
 	// keeps ongoing shows' episode lists current in production; there's no
 	// separate always-on scheduled task for it (RunRefreshOngoingEpisodes is
 	// admin/Telegram-button-triggered only, see internal/tasks/refresh_episodes.go).
-	if mc.MyshowsID == nil || !myshows.ShouldSync(mc) {
+	if mc.MyshowsID == nil || *mc.MyshowsID == 0 || !myshows.ShouldSync(mc) {
 		return
 	}
 

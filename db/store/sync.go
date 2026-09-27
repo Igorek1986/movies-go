@@ -194,8 +194,8 @@ func UpsertSyncedCard(ctx context.Context, c SyncCard) error {
 			seasons            = COALESCE(media_cards.seasons, EXCLUDED.seasons),
 			last_ep_season     = COALESCE(media_cards.last_ep_season, EXCLUDED.last_ep_season),
 			last_ep_number     = COALESCE(media_cards.last_ep_number, EXCLUDED.last_ep_number),
-			myshows_id         = COALESCE(NULLIF(media_cards.myshows_id,0), EXCLUDED.myshows_id),
-			kinopoisk_id       = COALESCE(NULLIF(media_cards.kinopoisk_id,0), EXCLUDED.kinopoisk_id),
+			myshows_id         = COALESCE(NULLIF(media_cards.myshows_id,0), NULLIF(EXCLUDED.myshows_id,0)),
+			kinopoisk_id       = COALESCE(NULLIF(media_cards.kinopoisk_id,0), NULLIF(EXCLUDED.kinopoisk_id,0)),
 			category           = COALESCE(NULLIF(media_cards.category, ''), EXCLUDED.category),
 			best_video_quality = GREATEST(media_cards.best_video_quality, EXCLUDED.best_video_quality),
 			latest_torrent_date = GREATEST(media_cards.latest_torrent_date, EXCLUDED.latest_torrent_date),
@@ -206,7 +206,7 @@ func UpsertSyncedCard(ctx context.Context, c SyncCard) error {
 		c.VoteAverage, c.VoteCount, c.OriginalLanguage, c.Adult, c.Runtime, c.EpisodeRunTime,
 		c.Status, c.ImdbID, c.CertificationRU, c.CertificationUS, c.AgeRating,
 		nilRaw(c.Genres), nilRaw(c.Keywords), c.NumberOfSeasons, c.NumberOfEpisodes, nilRaw(c.Seasons),
-		c.LastEpSeason, c.LastEpNumber, c.MyshowsID, c.KinopoiskID, c.Category,
+		c.LastEpSeason, c.LastEpNumber, nilInt(c.MyshowsID), nilInt64(c.KinopoiskID), c.Category,
 		c.BestVideoQuality, c.LatestTorrentDate, c.Year, c.UpdatedAt,
 	)
 	if err != nil {
