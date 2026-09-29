@@ -10,7 +10,9 @@ services:
     image: postgres:16-alpine
     container_name: movies-api-db
     restart: unless-stopped
-    command: postgres -c jit=off
+    # shared_buffers по умолчанию 128MB меньше media_cards (~200МБ): после простоя страницы
+    # вымываются и категории с seq scan (legends_id, movies_id_*) читают их заново — секунды.
+    command: postgres -c jit=off -c shared_buffers=${PG_SHARED_BUFFERS:-512MB}
     environment:
       POSTGRES_USER: ${DB_USER:-movies_api}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-movies_api}

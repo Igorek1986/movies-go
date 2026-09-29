@@ -209,6 +209,7 @@ docker compose up -d --build app
 | `SUPERUSER_USERNAME` / `SUPERUSER_PASSWORD` | админ/суперпользователь, создаётся при первом старте |
 | `PORT` | порт HTTP (по умолчанию `8888`) |
 | `DB_USER` / `DB_PASSWORD` / `DB_NAME` | параметры PostgreSQL (по умолчанию `movies_api`) |
+| `PG_SHARED_BUFFERS` | `shared_buffers` PostgreSQL (по умолчанию `512MB`; меньше — если мало RAM) |
 
 > Токен Telegram-бота, доступ к kinozal, параметры трекеров, лимиты и тексты указываются **в настройках админки** (раздел «Настройки»), а не в `.env`.
 

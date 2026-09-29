@@ -2,11 +2,14 @@ package store
 
 import (
 	"context"
+	"errors"
 	"movies-api/db/postgres"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // ─── Defaults (mirrors FastAPI settings_cache.py DEFAULTS) ───────────────────
@@ -211,11 +214,54 @@ var SettingDefaults = map[string]string{
 
 // ─── Generic key-value settings ───────────────────────────────────────────────
 
+// GetSetting returns a raw setting value.
+//
+// Results are cached for settingCacheTTL (and dropped on SetSetting): settings are
+// read on nearly every request (several per /api/categories alone), and each read
+// used to take a pool connection — under load from heavy category queries the
+// tiny pool made such trivial requests wait seconds for a free connection.
+// *_last_parsed_at keys are written behind our back (see store.go) and are
+// always read fresh.
 func GetSetting(ctx context.Context, key string) (string, bool) {
+	cacheable := !strings.HasSuffix(key, "_last_parsed_at")
+	if cacheable {
+		settingCacheMu.RLock()
+		e, ok := settingCache[key]
+		settingCacheMu.RUnlock()
+		if ok && time.Since(e.at) < settingCacheTTL {
+			return e.val, e.ok
+		}
+	}
 	var val string
 	err := postgres.Pool.QueryRow(ctx,
 		`SELECT value FROM app_settings WHERE key = $1`, key).Scan(&val)
-	return val, err == nil
+	found := err == nil
+	// Cache only definitive answers — a DB error must not be remembered as "unset".
+	if cacheable && (found || errors.Is(err, pgx.ErrNoRows)) {
+		settingCacheMu.Lock()
+		settingCache[key] = settingCacheEntry{val: val, ok: found, at: time.Now()}
+		settingCacheMu.Unlock()
+	}
+	return val, found
+}
+
+const settingCacheTTL = 10 * time.Second
+
+type settingCacheEntry struct {
+	val string
+	ok  bool
+	at  time.Time
+}
+
+var (
+	settingCacheMu sync.RWMutex
+	settingCache   = map[string]settingCacheEntry{}
+)
+
+func dropSettingCache(key string) {
+	settingCacheMu.Lock()
+	delete(settingCache, key)
+	settingCacheMu.Unlock()
 }
 
 func SetSetting(ctx context.Context, key, value string) {
@@ -223,6 +269,7 @@ func SetSetting(ctx context.Context, key, value string) {
 		`INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, now())
 		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
 		key, value)
+	dropSettingCache(key)
 }
 
 // GetAllSettings returns all DB settings merged with defaults (DB overrides defaults).
