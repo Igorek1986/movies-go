@@ -51,7 +51,14 @@ func showSummary(episodes []store.NewEpisodeNotification) string {
 	for _, c := range codes[1:] {
 		joined += ", " + c
 	}
-	return fmt.Sprintf("Вышло %d новых серий: %s", len(episodes), joined)
+	n := len(episodes)
+	verb, adj, noun := "Вышло", "новых", "серий"
+	if rem100 := n % 100; rem100 < 11 || rem100 > 14 {
+		if n%10 >= 2 && n%10 <= 4 {
+			verb, adj, noun = "Вышли", "новые", "серии"
+		}
+	}
+	return fmt.Sprintf("%s %d %s %s: %s", verb, n, adj, noun, joined)
 }
 
 // RunPushNotifyCheck sends "new episode" web push notifications for every
