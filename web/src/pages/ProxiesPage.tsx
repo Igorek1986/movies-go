@@ -49,7 +49,7 @@ interface Toast {
 // hysteria2/tuic/wireguard) is auto-detected server-side from the pasted link
 // (see proxy.DetectType), so the form only needs to distinguish "SOCKS5 host/
 // port form" from "paste any other link/config".
-type FormMode = 'socks5' | 'link'
+type FormMode = 'socks5' | 'link' | 'warp'
 
 interface FormState {
   name: string
@@ -97,7 +97,7 @@ function buildSocks5Url(host: string, port: string, login: string, password: str
 }
 
 function formToConfig(f: FormState): string {
-  return f.formMode === 'link' ? f.linkConfig.trim() : buildSocks5Url(f.s5host, f.s5port, f.s5login, f.s5password)
+  return f.formMode === 'link' || f.formMode === 'warp' ? f.linkConfig.trim() : buildSocks5Url(f.s5host, f.s5port, f.s5login, f.s5password)
 }
 
 function configToForm(c: ProxyConfig): FormState {
@@ -105,7 +105,8 @@ function configToForm(c: ProxyConfig): FormState {
     const { host, port, login, password } = parseSocks5(c.config)
     return { ...EMPTY_FORM, name: c.name, formMode: 'socks5', s5host: host, s5port: port, s5login: login, s5password: password, enabled: c.enabled, priority: c.priority }
   }
-  return { ...EMPTY_FORM, name: c.name, formMode: 'link', linkConfig: c.config, enabled: c.enabled, priority: c.priority }
+  // WARP: config is generated at registration — only name/priority/enabled are editable
+  return { ...EMPTY_FORM, name: c.name, formMode: c.type === 'warp' ? 'warp' : 'link', linkConfig: c.config, enabled: c.enabled, priority: c.priority }
 }
 
 // WireGuard configs are raw multi-line .conf text, not a URI — pull the peer
@@ -383,9 +384,7 @@ export default function ProxiesPage() {
                   <button className={styles.btnTest} onClick={() => handleTest(c.id)} disabled={testing === c.id}>
                     {testing === c.id ? '…' : 'Тест'}
                   </button>
-                  {c.type !== 'warp' && (
-                    <button className={styles.btnEdit} onClick={() => openEdit(c)}>Изменить</button>
-                  )}
+                  <button className={styles.btnEdit} onClick={() => openEdit(c)}>Изменить</button>
                   <button className={styles.btnDel} onClick={() => handleDelete(c.id)}>Удалить</button>
                 </div>
               </div>
@@ -402,6 +401,7 @@ export default function ProxiesPage() {
                 <label className={styles.label}>Название</label>
                 <input className={styles.input} value={form.name} onChange={e => sf({ name: e.target.value })} placeholder="Мой прокси" required />
               </div>
+              {form.formMode !== 'warp' && (
               <div className={styles.formRow}>
                 <label className={styles.label}>Тип</label>
                 <div className={styles.typeToggle}>
@@ -409,8 +409,9 @@ export default function ProxiesPage() {
                   <button type="button" className={form.formMode === 'link' ? styles.typeBtnActive : styles.typeBtn} onClick={() => sf({ formMode: 'link' })}>Ссылка / конфиг</button>
                 </div>
               </div>
+              )}
 
-              {form.formMode === 'link' ? (
+              {form.formMode === 'warp' ? null : form.formMode === 'link' ? (
                 <div className={styles.formColumn}>
                   <label className={styles.label}>Ссылка / конфиг</label>
                   <textarea
