@@ -458,7 +458,12 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 			seasons            = COALESCE(EXCLUDED.seasons, media_cards.seasons),
 			myshows_id         = COALESCE(EXCLUDED.myshows_id, media_cards.myshows_id),
 			kinopoisk_id       = COALESCE(EXCLUDED.kinopoisk_id, media_cards.kinopoisk_id),
-			category           = COALESCE(EXCLUDED.category, media_cards.category),
+			category           = CASE
+				WHEN $34::text = 'rutor' THEN COALESCE(EXCLUDED.category, media_cards.category)
+				WHEN EXISTS (SELECT 1 FROM torrents tr WHERE tr.card_id = media_cards.card_id AND tr.tracker = 'rutor')
+					THEN media_cards.category
+				ELSE COALESCE(EXCLUDED.category, media_cards.category)
+			END,
 			best_video_quality = GREATEST(media_cards.best_video_quality, EXCLUDED.best_video_quality),
 			latest_torrent_date = CASE
 				WHEN media_cards.media_type = 'tv'
@@ -484,6 +489,7 @@ func UpsertMediaCard(e *models.Entity, t *models.TorrentDetails) {
 		lastEpSeason, lastEpNumber, episodeRunTime,
 		nilStr(e.CertificationRU), nilStr(e.CertificationUS),
 		nilIntSlice(e.KeywordIDs),
+		t.Tracker,
 	)
 	if err != nil {
 		log.Printf("store: upsert media_card tmdb=%d %s: %v", e.ID, e.MediaType, err)
