@@ -3,6 +3,7 @@ package logbuf
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 
 const maxLines = 20000
 const retainDays = 7
+const maxFileBytes = 10 * 1024 * 1024
+const maxDayFiles = 5
 
 type Line struct {
 	Time  time.Time `json:"t"`
@@ -73,7 +76,9 @@ func (h *Hub) Init(logDir string) {
 	now := time.Now()
 	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	for _, t := range []time.Time{now.AddDate(0, 0, -1), now} {
-		h.loadFile(filepath.Join(logDir, t.Format("2006-01-02")+".log"), startOfToday.AddDate(0, 0, -1))
+		for _, path := range dayFiles(logDir, t.Format("2006-01-02")) {
+			h.loadFile(path, startOfToday.AddDate(0, 0, -1))
+		}
 	}
 	if len(h.buf) > maxLines {
 		h.buf = h.buf[len(h.buf)-maxLines:]
@@ -83,7 +88,27 @@ func (h *Hub) Init(logDir string) {
 
 // ReadDay returns all lines for a specific date (YYYY-MM-DD) from the log file.
 func ReadDay(logDir, date string) ([]Line, error) {
-	path := filepath.Join(logDir, date+".log")
+	var lines []Line
+	for _, path := range dayFiles(logDir, date) {
+		chunk, err := readFile(path)
+		if err != nil {
+			return nil, err
+		}
+		lines = append(lines, chunk...)
+	}
+	return lines, nil
+}
+
+// dayFiles lists rotated files in chronological order, followed by the active file.
+func dayFiles(logDir, date string) []string {
+	paths := make([]string, 0, maxDayFiles)
+	for i := maxDayFiles - 1; i > 0; i-- {
+		paths = append(paths, filepath.Join(logDir, fmt.Sprintf("%s.%d.log", date, i)))
+	}
+	return append(paths, filepath.Join(logDir, date+".log"))
+}
+
+func readFile(path string) ([]Line, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -102,7 +127,7 @@ func ReadDay(logDir, date string) ([]Line, error) {
 			lines = append(lines, line)
 		}
 	}
-	return lines, nil
+	return lines, scanner.Err()
 }
 
 // loadFile appends lines newer than cutoff to h.buf. Must be called with h.mu held.
@@ -142,6 +167,22 @@ func (h *Hub) appendToFile(line Line) {
 		go h.cleanOldFiles()
 	}
 	data, _ := json.Marshal(line)
+	if info, err := h.logFile.Stat(); err == nil && info.Size() > 0 && info.Size()+int64(len(data)+1) > maxFileBytes {
+		h.logFile.Close()
+		h.logFile = nil
+		paths := dayFiles(h.logDir, day)
+		// Rename overwrites the oldest retained chunk on Unix.
+		for i := 1; i < len(paths); i++ {
+			if err := os.Rename(paths[i], paths[i-1]); err != nil && !os.IsNotExist(err) {
+				return
+			}
+		}
+		f, err := os.OpenFile(paths[len(paths)-1], os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			return
+		}
+		h.logFile = f
+	}
 	h.logFile.Write(append(data, '\n')) //nolint:errcheck
 }
 

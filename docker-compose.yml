@@ -7,6 +7,9 @@ include:
 
 services:
   db:
+    extends:
+      file: deploy/compose.logging.yml
+      service: container-logging
     image: postgres:16-alpine
     container_name: movies-api-db
     restart: unless-stopped
@@ -26,6 +29,9 @@ services:
       retries: 10
 
   app:
+    extends:
+      file: deploy/compose.logging.yml
+      service: container-logging
     build: .
     container_name: movies-api
     restart: unless-stopped

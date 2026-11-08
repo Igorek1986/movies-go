@@ -1,0 +1,9 @@
+# Shared by all movies-go Compose services via extends.
+# Keep Docker stdout/stderr logs bounded on every instance.
+services:
+  container-logging:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

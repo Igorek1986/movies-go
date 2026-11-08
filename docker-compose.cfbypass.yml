@@ -27,6 +27,9 @@ services:
   # registration survives restarts (a fresh identity re-triggers challenges
   # more often).
   warp:
+    extends:
+      file: deploy/compose.logging.yml
+      service: container-logging
     image: caomingjun/warp
     container_name: cfbypass-warp
     profiles: ["cfbypass"]
@@ -48,6 +51,9 @@ services:
   # Solves the JS challenge once per host (headless Chromium — the heavy
   # part, ~1GB RAM). Do not publish 8191 externally.
   flaresolverr:
+    extends:
+      file: deploy/compose.logging.yml
+      service: container-logging
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: cfbypass-flaresolverr
     profiles: ["cfbypass"]
@@ -84,6 +90,9 @@ services:
   # passed (200, not mitigated). Re-check if kinozal starts rejecting this
   # profile too — Cloudflare's fingerprint denylist shifts over time.
   cffetch:
+    extends:
+      file: deploy/compose.logging.yml
+      service: container-logging
     image: ghcr.io/jacred-fdb/cffetch:latest
     container_name: cfbypass-cffetch
     profiles: ["cfbypass"]
