@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { getUnsavedChangesGuard } from '@/utils/unsavedChangesGuard'
 import { softRefresh, canRefreshInPlace } from '@/utils/softRefresh'
 import { isNetworkQuiet } from '@/utils/networkActivity'
+import { isPageScrollLocked } from '@/hooks/usePageScrollLock'
 import styles from './PullToRefresh.module.scss'
 
 // Страница едет за пальцем с нарастающим сопротивлением, но не дальше MAX_PULL.
@@ -201,8 +202,7 @@ export function PullToRefresh() {
       if (mode === 'done') return
       mode = 'idle'
       if (e.touches.length !== 1) return
-      // Меню открыто — Layout блокирует body через overflow: hidden
-      if (document.body.style.overflow === 'hidden') return
+      if (isPageScrollLocked()) return
       if (window.scrollY > 0) return
       if (insideScrolledContainer(e.target as Element | null)) return
       targets = Array.from(document.querySelectorAll<HTMLElement>('[data-ptr-move]'))
@@ -216,6 +216,7 @@ export function PullToRefresh() {
 
     function onMove(e: TouchEvent) {
       if (mode !== 'tracking' && mode !== 'pulling') return
+      if (isPageScrollLocked() || e.touches.length !== 1) { reset(); return }
       const t = e.touches[0]
       const dx = t.clientX - startX
       const dy = t.clientY - startY
@@ -235,6 +236,7 @@ export function PullToRefresh() {
     }
 
     function onEnd() {
+      if (isPageScrollLocked()) { reset(); return }
       if (mode !== 'pulling') { mode = 'idle'; return }
       if (pull < THRESHOLD) { reset(); return }
       // Несохранённые правки в настройках — не теряем молча

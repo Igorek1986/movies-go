@@ -15,6 +15,7 @@ import { RemoteDialog } from '@/components/remote/RemoteDialog'
 import { RemoteSelect } from '@/components/remote/RemoteSelect'
 import { RemoteIconPicker } from '@/components/remote/RemoteIconPicker'
 import { useRemoteDialog } from '@/components/remote/useRemoteDialog'
+import { usePageScrollLock } from '@/hooks/usePageScrollLock'
 import { focusTopNavActive } from '@/utils/scrollNav'
 import { ProfileAvatar } from '@/components/ProfileAvatar'
 import { useProfilesPageState } from './useProfilesPageState'
@@ -140,24 +141,8 @@ export default function ProfilesRemoteView() {
     setActiveSectionState(id)
   }
 
-  // Mobile/tablet only ($bp-lg, matches .section's own bottom-sheet media
-  // query in the CSS): the drilled-into section is a `position: fixed`
-  // sheet detached from the page, which otherwise leaves the near-empty
-  // background page still scrollable underneath it — same scroll-lock idea
-  // as Layout's own mobile drawer (see its menuOpen effect).
-  useEffect(() => {
-    if (activeSection && window.innerWidth <= 1024) {
-      document.body.style.overflow = 'hidden'
-      document.body.style.overscrollBehavior = 'contain'
-    } else {
-      document.body.style.overflow = ''
-      document.body.style.overscrollBehavior = ''
-    }
-    return () => {
-      document.body.style.overflow = ''
-      document.body.style.overscrollBehavior = ''
-    }
-  }, [activeSection])
+  // Matches the mobile/tablet fixed sheet in ProfilesRemoteView.module.scss.
+  const pageRef = usePageScrollLock(!!activeSection && window.innerWidth <= 1024)
 
   // Remembers the last horizontal focus index (Left/Right) *globally*, not
   // per row — so Up/Down through a column of same-shaped rows (Панель
@@ -479,7 +464,7 @@ export default function ProfilesRemoteView() {
 
   return (
     <Layout>
-      <div className={styles.page}>
+      <div ref={pageRef} className={styles.page}>
 
         {activeSection === null ? (
           <div className={styles.menu}>

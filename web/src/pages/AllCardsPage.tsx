@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
+import { usePageScrollLock } from '@/hooks/usePageScrollLock'
 import styles from './NewCardsPage.module.scss'
 
 interface Card {
@@ -356,21 +357,7 @@ export default function AllCardsPage({ noRuntime, noDate }: { noRuntime?: 'movie
     return () => window.removeEventListener('resize', handler)
   }, [])
 
-  useEffect(() => {
-    if (!filterDrawer) return
-    const scrollY = window.scrollY
-    document.body.style.position = 'fixed'
-    document.body.style.top = `-${scrollY}px`
-    document.body.style.width = '100%'
-    document.body.style.overflowY = 'scroll'
-    return () => {
-      document.body.style.position = ''
-      document.body.style.top = ''
-      document.body.style.width = ''
-      document.body.style.overflowY = ''
-      window.scrollTo(0, scrollY)
-    }
-  }, [filterDrawer])
+  const filterDrawerRef = usePageScrollLock(filterDrawer)
 
   // Load distinct filter values once
   useEffect(() => {
@@ -696,7 +683,7 @@ export default function AllCardsPage({ noRuntime, noDate }: { noRuntime?: 'movie
 
       {/* ── Mobile filter drawer ── */}
       {filterDrawer && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
+        <div ref={filterDrawerRef} style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
           <div onClick={() => setFilterDrawer(false)}
             style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
           <div style={{

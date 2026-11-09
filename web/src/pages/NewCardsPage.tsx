@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Layout from '@/components/Layout'
+import { usePageScrollLock } from '@/hooks/usePageScrollLock'
 import { posterUrl } from '@/utils/poster'
 import styles from './NewCardsPage.module.scss'
 
@@ -445,22 +446,7 @@ export default function NewCardsPage() {
     return () => window.removeEventListener('resize', handler)
   }, [])
 
-  // Lock body scroll when drawer is open (same technique as Layout nav menu)
-  useEffect(() => {
-    if (!filterDrawer) return
-    const scrollY = window.scrollY
-    document.body.style.position = 'fixed'
-    document.body.style.top = `-${scrollY}px`
-    document.body.style.width = '100%'
-    document.body.style.overflowY = 'scroll'
-    return () => {
-      document.body.style.position = ''
-      document.body.style.top = ''
-      document.body.style.width = ''
-      document.body.style.overflowY = ''
-      window.scrollTo(0, scrollY)
-    }
-  }, [filterDrawer])
+  const filterDrawerRef = usePageScrollLock(filterDrawer)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [confirm, setConfirm]   = useState(false)
@@ -856,7 +842,7 @@ export default function NewCardsPage() {
 
       {/* ── Mobile filter drawer ── */}
       {filterDrawer && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
+        <div ref={filterDrawerRef} style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
           <div onClick={() => setFilterDrawer(false)}
             style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
           <div style={{

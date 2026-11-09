@@ -6,6 +6,7 @@ import { watchedThreshold } from '@/utils/config'
 import { resolveCardLayout } from '@/utils/cardLayout'
 import { qualityLabel, runtimeLabel } from '@/utils/mediaFormat'
 import { useAuth } from '@/hooks/useAuth'
+import { usePageScrollLock } from '@/hooks/usePageScrollLock'
 import { useActiveProfile } from '@/contexts/ActiveProfileContext'
 import { invalidateCatalogRowsForWatchedFilter } from '@/utils/rowCacheSync'
 import { getWebClientId, subscribeLiveSync } from '@/hooks/useLiveSync'
@@ -219,12 +220,13 @@ function TimePicker({ ctx, onConfirm, onCancel }: {
   onConfirm: (ctx: TimePickerCtx, sec: number) => void
   onCancel: () => void
 }) {
+  const overlayRef = usePageScrollLock()
   // ── Percent-only mode when duration is unknown ────────────────────────────
   const [pct, setPct] = useState(ctx.initialSec)  // initialSec is percent (0-100) in this mode
 
   if (ctx.maxSec === 0) {
     return (
-      <div className={styles.tpOverlay} onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
+      <div ref={overlayRef} className={styles.tpOverlay} onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
         <div className={styles.tpDialog}>
           <p className={styles.tpTitle}>Установить прогресс</p>
           <p className={styles.tpNote}>Длительность неизвестна</p>
@@ -278,7 +280,7 @@ function TimePicker({ ctx, onConfirm, onCancel }: {
   }
 
   return (
-    <div className={styles.tpOverlay} onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
+    <div ref={overlayRef} className={styles.tpOverlay} onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
       <div className={styles.tpDialog}>
         <p className={styles.tpTitle}>Установить время</p>
 
@@ -309,8 +311,9 @@ function ConfirmModal({ title, message, confirmLabel, onConfirm, onCancel }: {
   title: string; message?: string; confirmLabel: string
   onConfirm: () => void; onCancel: () => void
 }) {
+  const overlayRef = usePageScrollLock()
   return (
-    <div className={styles.tpOverlay} onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
+    <div ref={overlayRef} className={styles.tpOverlay} onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
       <div className={styles.tpDialog}>
         <p className={styles.tpTitle}>{title}</p>
         {message && <p className={styles.tpNote}>{message}</p>}

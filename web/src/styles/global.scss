@@ -2,8 +2,15 @@
 @use "variables" as *;
 @use "themes"; // :root { --color-*, --radius-*, --shadow-card } — по одной копии на всё приложение
 
-// Google Fonts
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+// Inter 4.1 (SIL OFL 1.1): includes Latin and Cyrillic; served by this app.
+// License: /static/fonts/inter-OFL.txt.
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../assets/fonts/inter-variable.woff2') format('woff2');
+}
 
 // Минимальные переопределения поверх normalize
 *,

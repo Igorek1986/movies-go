@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import { usePageScrollLock } from '@/hooks/usePageScrollLock'
 import { ProfileSwitcher } from '@/components/ProfileSwitcher'
 import { BottomNav, BOTTOM_NAV_ICONS, SearchIcon, type BottomNavItem } from '@/components/BottomNav'
 import { BOTTOM_NAV_OPTIONS, resolveBottomNavKeys, resolveBottomNavPosition, type BottomNavConfig } from '@/utils/bottomNavConfig'
@@ -77,28 +78,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       .catch(() => { /* best-effort prefetch */ })
   }, [user?.is_admin])
 
-  // Scroll-lock while the drawer is open. Deliberately NOT the classic
-  // `body { position: fixed; top: -scrollY }` + restore-scroll trick — that
-  // repositions body's own box, and iOS Safari/PWA (standalone especially)
-  // has known bugs where other `position: fixed` descendants (BottomNav)
-  // visually shift/jump along with it instead of staying viewport-anchored
-  // as the spec says they should. Plain `overflow: hidden` + `overscroll-
-  // behavior: contain` doesn't touch body's box at all, so nothing else on
-  // the page can be dragged along with it — the modern recommended pattern
-  // for this exact class of bug.
-  useEffect(() => {
-    if (menuOpen) {
-      document.body.style.overflow = 'hidden'
-      document.body.style.overscrollBehavior = 'contain'
-    } else {
-      document.body.style.overflow = ''
-      document.body.style.overscrollBehavior = ''
-    }
-    return () => {
-      document.body.style.overflow = ''
-      document.body.style.overscrollBehavior = ''
-    }
-  }, [menuOpen])
+  const drawerRef = usePageScrollLock(menuOpen)
 
   async function handleLogout() {
     await fetch('/api/logout', { method: 'POST' })
@@ -437,7 +417,7 @@ export default function Layout({ children, wide }: { children: React.ReactNode; 
       )}
 
       {/* Mobile drawer */}
-      <div className={`${styles.drawer}${menuOpen ? ' ' + styles.drawerOpen : ''}`}>
+      <div ref={drawerRef} className={`${styles.drawer}${menuOpen ? ' ' + styles.drawerOpen : ''}`}>
         <div className={styles.drawerLinks}>
           <button type="button" className={styles.navLink} onClick={() => { setMenuOpen(false); handleBottomSearch() }}>
             <span className={styles.drawerSearchLabel}><SearchIcon /> Поиск</span>
