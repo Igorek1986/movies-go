@@ -25,6 +25,17 @@ func handleAPIAdminLogsStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
+	// Calendar dates must use the same timezone as the daily log files.
+	sendCalendar := func() {
+		now := time.Now()
+		days := make([]string, 7)
+		for i := range days {
+			days[i] = now.AddDate(0, 0, -i).Format("2006-01-02")
+		}
+		data, _ := json.Marshal(days)
+		fmt.Fprintf(w, "event: calendar\ndata: %s\n\n", data)
+	}
+	sendCalendar()
 	for _, line := range logbuf.Default.History() {
 		data, _ := json.Marshal(line)
 		fmt.Fprintf(w, "data: %s\n\n", data)
@@ -46,6 +57,7 @@ func handleAPIAdminLogsStream(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			f.Flush()
 		case <-tick.C:
+			sendCalendar()
 			fmt.Fprintf(w, ": ping\n\n")
 			f.Flush()
 		}

@@ -1,6 +1,6 @@
 module movies-api
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.0
@@ -11,14 +11,14 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/ilyakaznacheev/cleanenv v1.5.0
-	github.com/jackc/pgx/v5 v5.9.1
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/jasonlvhit/gocron v0.0.1
 	github.com/pquerna/otp v1.5.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	golang.org/x/crypto v0.50.0
-	golang.org/x/net v0.52.0
-	golang.org/x/sync v0.20.0
-	golang.org/x/text v0.36.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/net v0.62.0
+	golang.org/x/sync v0.24.0
+	golang.org/x/text v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

@@ -27,13 +27,19 @@ function toDateKey(t: string) {
   return t.slice(0, 10) // YYYY-MM-DD
 }
 
-function todayKey() {
-  return new Date().toISOString().slice(0, 10)
+function localDateKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function dayLabel(dateKey: string): string {
-  const today = todayKey()
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+function calendarDays() {
+  return Array.from({ length: 7 }, (_, i) => {
+    const date = new Date()
+    date.setDate(date.getDate() - i)
+    return localDateKey(date)
+  })
+}
+
+function dayLabel(dateKey: string, [today, yesterday]: string[]): string {
   if (dateKey === today) return 'Сегодня'
   if (dateKey === yesterday) return 'Вчера'
   const [, m, d] = dateKey.split('-')
@@ -50,7 +56,10 @@ export default function LogsPage() {
   const [histLoading, setHistLoading] = useState(false)
   const [connected, setConnected] = useState(false)
   const [tab, setTab] = useState<Tab>('all')
-  const [selectedDay, setSelectedDay] = useState<string>(todayKey())
+  const [days, setDays] = useState(calendarDays)
+  const today = days[0]
+  const [selectedDay, setSelectedDay] = useState<string>(localDateKey())
+  const todayRef = useRef(today)
   const [autoScroll, setAutoScroll] = useState(true)
   // Snapshot of activeLines taken the moment the user scrolls away from the
   // bottom — while paused, rendering reads from this instead of the live
@@ -83,6 +92,16 @@ export default function LogsPage() {
     }
 
     const es = new EventSource('/api/admin/logs')
+    es.addEventListener('calendar', (event) => {
+      try {
+        const next: string[] = JSON.parse((event as MessageEvent).data)
+        if (next.length !== 7 || !next.every(day => /^\d{4}-\d{2}-\d{2}$/.test(day))) return
+        const previousToday = todayRef.current
+        todayRef.current = next[0]
+        setDays(next)
+        setSelectedDay(previous => previous === previousToday ? next[0] : previous)
+      } catch { /* ignore */ }
+    })
     es.onopen = () => setConnected(true)
     es.onerror = () => setConnected(false)
     es.onmessage = (e) => {
@@ -99,7 +118,7 @@ export default function LogsPage() {
 
   // Load past day from REST
   useEffect(() => {
-    if (selectedDay === todayKey()) {
+    if (selectedDay === today) {
       setHistLines([])
       return
     }
@@ -109,7 +128,7 @@ export default function LogsPage() {
       .then((d: { lines: LogLine[] }) => setHistLines((d.lines ?? []).map(l => ({ ...l, id: idCounter.current++ }))))
       .catch(() => setHistLines([]))
       .finally(() => setHistLoading(false))
-  }, [selectedDay])
+  }, [selectedDay, today])
 
   useLayoutEffect(() => {
     // Trust the autoScroll flag (set only by an actual scroll event, see
@@ -166,24 +185,17 @@ export default function LogsPage() {
     setTab(t)
   }
 
-  const isToday = selectedDay === todayKey()
+  const isToday = selectedDay === today
   const activeLines: LogLine[] = isToday
     ? liveLines.filter(l => toDateKey(l.t) === selectedDay)
     : histLines
 
   // Available days: today + days seen in liveLines + last 7 days with data
   const availableDays = useMemo(() => {
-    const days = new Set<string>()
-    const today = todayKey()
-    days.add(today)
-    for (const l of liveLines) days.add(toDateKey(l.t))
-    // Show last 7 calendar days as options (user can click to load)
-    for (let i = 1; i < 7; i++) {
-      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10)
-      days.add(d)
-    }
-    return [...days].sort().reverse()
-  }, [liveLines])
+    const available = new Set(days)
+    for (const l of liveLines) available.add(toDateKey(l.t))
+    return [...available].sort().reverse()
+  }, [liveLines, days])
 
   // While paused (frozen), render from the snapshot so already-visible lines
   // never shift under the user's scroll position.
@@ -255,7 +267,7 @@ export default function LogsPage() {
               className={`${styles.tab} ${selectedDay === day ? styles.tabActive : ''}`}
               onClick={() => switchDay(day)}
             >
-              {dayLabel(day)}
+              {dayLabel(day, days)}
             </button>
           ))}
         </div>
