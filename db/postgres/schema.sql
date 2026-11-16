@@ -755,3 +755,10 @@ ALTER TABLE stats_api_users DROP COLUMN IF EXISTS country;
 ALTER TABLE stats_api_users DROP COLUMN IF EXISTS city;
 ALTER TABLE stats_api_users DROP COLUMN IF EXISTS region;
 ALTER TABLE stats_api_users DROP COLUMN IF EXISTS flag_emoji;
+
+-- Last complete CUB chart; independent of parser-created and viewing-created cards.
+CREATE TABLE IF NOT EXISTS cub_top_snapshot (
+    id smallint PRIMARY KEY CHECK (id = 1),
+    cards jsonb NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);

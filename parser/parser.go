@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"movies-api/db/store"
+	"movies-api/internal/cubtop"
 )
 
 // Parser is implemented by each tracker parser.
@@ -124,6 +125,7 @@ func RunAll() {
 	}()
 
 	ctx := context.Background()
+	cubtop.Refresh(ctx)
 	orderVal, ok := store.GetSetting(ctx, "parser_order")
 	if !ok || strings.TrimSpace(orderVal) == "" {
 		orderVal = "rutor,kinozal,nnmclub,rutracker"
@@ -176,4 +178,3 @@ func RunAll() {
 		OnComplete()
 	}
 }
-

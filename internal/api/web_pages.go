@@ -182,6 +182,7 @@ var categoryTitles = map[string]string{
 	"cartoon_series": "Мультсериалы",
 	"anime":          "Аниме",
 	"np_popular": "Популярное",
+	"cub_top": "Топ CUB",
 	"genre_comedy":      "Комедии",
 	"genre_action":      "Боевики",
 	"genre_thriller":    "Триллеры",
@@ -289,6 +290,7 @@ func handleAPICategories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := make([]cat, 0, len(pre)+len(genres)+len(post)+20)
+	result = append(result, cat{ID: "cub_top", Name: "Топ CUB"})
 	if store.HasPopularData(r.Context(), 30) {
 		result = append(result, cat{ID: "np_popular", Name: "Популярное"})
 	}
