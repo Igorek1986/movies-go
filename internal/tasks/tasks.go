@@ -20,7 +20,6 @@ func AppCtx() context.Context { return appCtx }
 // Start launches all background tasks. Call once from main().
 func Start(ctx context.Context) {
 	appCtx = ctx
-	go runEpisodeRefreshLoop(ctx)
 	go runDailyLoop(ctx)
 	go runDeliveryLoop(ctx)
 	go runPushNotifyLoop(ctx)

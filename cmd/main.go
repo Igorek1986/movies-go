@@ -131,6 +131,9 @@ func main() {
 	api.LoadCacheSnapshot(appCtx, cacheSnapshotPath)
 	api.StartCacheSnapshotLoop(appCtx, cacheSnapshotPath, 10*time.Minute)
 
+	// Episode data also serves the public parser catalog and instance sync.
+	go tasks.StartEpisodeRefreshLoop(appCtx)
+
 	// Фоновые задачи (проверки премиума/неактивности/т.п.) — только all-режим,
 	// завязаны на систему пользователей, которой в parser-режиме нет.
 	if mode == "all" {

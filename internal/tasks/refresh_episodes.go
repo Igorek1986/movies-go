@@ -82,8 +82,8 @@ done:
 	log.Printf("tasks: refresh_episodes done: synced=%d failed=%d total=%d", synced, failed, total)
 }
 
-// runEpisodeRefreshLoop discovers new seasons without requiring an open card.
-func runEpisodeRefreshLoop(ctx context.Context) {
+// StartEpisodeRefreshLoop discovers new seasons in both parser and all modes.
+func StartEpisodeRefreshLoop(ctx context.Context) {
 	tick := time.NewTicker(time.Hour)
 	defer tick.Stop()
 	for {
