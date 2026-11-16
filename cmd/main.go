@@ -107,15 +107,14 @@ func main() {
 		}
 	}
 
-	// Фоновые задачи (проверки премиума/неактивности/т.п.) — только all-режим,
-	// завязаны на систему пользователей, которой в parser-режиме нет.
-	if mode == "all" {
-		tasks.Start(appCtx)
-	}
 	api.InitCategorySettings()
 	parser.OnComplete = api.InvalidateCategoryCache
 	tasks.OnSyncApplied = api.InvalidateCategoryCache
-	myshows.OnEpisodesUpdated = api.InvalidateWatchedForCard
+	myshows.OnEpisodesUpdated = func(cardID string) {
+		api.InvalidateWatchedForCard(cardID)
+		// A new season can make a previously absent card eligible for the row.
+		api.InvalidateAllUnwatched()
+	}
 
 	// Instance sync pull (dev/instance-sync.md) — оба режима: публичный
 	// parser-инстанс тоже может быть sync-клиентом/шлюзом. Сам цикл
@@ -131,6 +130,12 @@ func main() {
 	const cacheSnapshotPath = "cache/snapshot.gob"
 	api.LoadCacheSnapshot(appCtx, cacheSnapshotPath)
 	api.StartCacheSnapshotLoop(appCtx, cacheSnapshotPath, 10*time.Minute)
+
+	// Фоновые задачи (проверки премиума/неактивности/т.п.) — только all-режим,
+	// завязаны на систему пользователей, которой в parser-режиме нет.
+	if mode == "all" {
+		tasks.Start(appCtx)
+	}
 
 	// Disk cache for /imgproxy (opt-in, see images_cache_enabled) — seed the
 	// in-memory size counters from whatever's already on disk, then start

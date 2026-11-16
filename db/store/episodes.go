@@ -39,33 +39,56 @@ type MediaCardEpInfo struct {
 	CardID           string
 	TmdbID           int64
 	OriginalTitle    string
-	Title            string     // localized (Russian) title from TMDB
-	Year             string     // "2020" from first_air_date or release_date
+	Title            string // localized (Russian) title from TMDB
+	Year             string // "2020" from first_air_date or release_date
 	ImdbID           *string
-	MyshowsID        *int       // myshows show_id (used to fetch episodes)
+	MyshowsID        *int // myshows show_id (used to fetch episodes)
 	EpisodesSyncedAt *time.Time
-	NextEpAirDate    *string
+	Tracked          bool
 	EpisodeRunTime   *int
 	Status           *string
 }
 
+// episodeCardFields uses only a tracking flag; no user data is sent to MyShows.
+const episodeCardFields = `mc.card_id, mc.tmdb_id, COALESCE(mc.original_title,''),
+ COALESCE(mc.title,''), mc.imdb_id, mc.myshows_id, mc.episodes_synced_at,
+ mc.episode_run_time, mc.status,
+ COALESCE(LEFT(COALESCE(mc.first_air_date::text, mc.release_date::text, ''), 4), ''),
+ (EXISTS (SELECT 1 FROM timecodes t WHERE t.card_id = mc.card_id)
+  OR EXISTS (SELECT 1 FROM subjective_statuses ss
+             WHERE ss.card_id = mc.card_id AND ss.status = 'watching'))`
+
+func scanEpisodeCard(scan func(...any) error) (*MediaCardEpInfo, error) {
+	mc := &MediaCardEpInfo{}
+	err := scan(&mc.CardID, &mc.TmdbID, &mc.OriginalTitle, &mc.Title, &mc.ImdbID,
+		&mc.MyshowsID, &mc.EpisodesSyncedAt, &mc.EpisodeRunTime, &mc.Status, &mc.Year, &mc.Tracked)
+	return mc, err
+}
+
 // GetMediaCardEpInfo returns sync-relevant fields for a card. Returns nil if not found.
 func GetMediaCardEpInfo(ctx context.Context, cardID string) *MediaCardEpInfo {
-	var mc MediaCardEpInfo
-	err := postgres.Pool.QueryRow(ctx, `
-		SELECT card_id, tmdb_id, COALESCE(original_title,''), COALESCE(title,''), imdb_id,
-		       myshows_id, episodes_synced_at, next_ep_air_date, episode_run_time, status,
-		       COALESCE(LEFT(COALESCE(first_air_date::text, release_date::text, ''), 4), '')
-		FROM media_cards WHERE card_id = $1`, cardID,
-	).Scan(
-		&mc.CardID, &mc.TmdbID, &mc.OriginalTitle, &mc.Title, &mc.ImdbID,
-		&mc.MyshowsID, &mc.EpisodesSyncedAt, &mc.NextEpAirDate, &mc.EpisodeRunTime, &mc.Status,
-		&mc.Year,
-	)
+	mc, err := scanEpisodeCard(postgres.Pool.QueryRow(ctx,
+		`SELECT `+episodeCardFields+` FROM media_cards mc WHERE mc.card_id = $1`, cardID).Scan)
 	if err != nil {
 		return nil
 	}
-	return &mc
+	return mc
+}
+
+// EpisodeSyncDue is shared by scheduled, device and card-view refreshes.
+// A missing future air date or an obsolete Ended status must not stop discovery.
+func EpisodeSyncDue(mc *MediaCardEpInfo, now time.Time) bool {
+	if mc.MyshowsID == nil || *mc.MyshowsID <= 0 {
+		return false
+	}
+	if mc.EpisodesSyncedAt == nil {
+		return true
+	}
+	interval := 24 * time.Hour
+	if !mc.Tracked && mc.Status != nil && (*mc.Status == "Ended" || *mc.Status == "Canceled") {
+		interval *= 30
+	}
+	return !now.Before(mc.EpisodesSyncedAt.Add(interval))
 }
 
 // SetMyshowsID persists the myshows_id for a media card.
@@ -109,7 +132,7 @@ func GetEpisodes(ctx context.Context, tmdbShowID int64) []EpisodeRow {
 // SetEpisodeSeasonInfo persists TMDB's still_path/overview per episode for
 // one season (episode_number → info, "" meaning TMDB has none/empty). Any
 // local episode in that season not covered by TMDB's response is also
-// stamped with '' for both in the same transaction, so a mismatched/
+// stamped with empty strings for both in the same transaction, so a mismatched/
 // renumbered episode (e.g. a MyShows-only special) doesn't get re-queried
 // against TMDB on every future view.
 func SetEpisodeSeasonInfo(ctx context.Context, tmdbShowID int64, season int16, info map[int]EpisodeSeasonInfo) error {
@@ -137,39 +160,33 @@ func SetEpisodeSeasonInfo(ctx context.Context, tmdbShowID int64, season int16, i
 	return tx.Commit(ctx)
 }
 
-// GetStaleOngoingCards returns TV media cards that have timecodes on a device
-// and need episode sync (episodes_synced_at is NULL or before today UTC).
-func GetStaleOngoingCards(ctx context.Context, deviceID int64) []*MediaCardEpInfo {
-	rows, err := postgres.Pool.Query(ctx, `
-		SELECT DISTINCT mc.card_id, mc.tmdb_id, COALESCE(mc.original_title,''),
-		       COALESCE(mc.title,''), mc.imdb_id, mc.myshows_id,
-		       mc.episodes_synced_at, mc.next_ep_air_date, mc.episode_run_time, mc.status,
-		       COALESCE(LEFT(COALESCE(mc.first_air_date::text, mc.release_date::text,''),4),'')
-		FROM timecodes t
-		JOIN media_cards mc ON mc.card_id = t.card_id
-		WHERE t.device_id = $1
-		  AND mc.media_type = 'tv'
-		  AND mc.myshows_id IS NOT NULL
-		  AND (mc.episodes_synced_at IS NULL
-		       OR mc.episodes_synced_at < CURRENT_DATE)
-		LIMIT 50`, deviceID)
+// GetEpisodeRefreshCandidates loads oldest eligible cards first. deviceID=0
+// means the whole catalog; otherwise restrict to that device's timecodes.
+// EpisodeSyncDue applies the same refresh policy as opening a card.
+func GetEpisodeRefreshCandidates(ctx context.Context, deviceID int64) ([]*MediaCardEpInfo, error) {
+	rows, err := postgres.Pool.Query(ctx, `SELECT `+episodeCardFields+`
+  FROM media_cards mc
+  WHERE mc.media_type = 'tv' AND mc.myshows_id > 0
+    AND (mc.episodes_synced_at IS NULL OR mc.episodes_synced_at <= now() - interval '1 day')
+    AND ($1::bigint = 0 OR EXISTS (SELECT 1 FROM timecodes t
+                                 WHERE t.card_id = mc.card_id AND t.device_id = $1))
+  ORDER BY 11 DESC, mc.episodes_synced_at ASC NULLS FIRST, mc.card_id`, deviceID)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer rows.Close()
-
 	var result []*MediaCardEpInfo
+	now := time.Now()
 	for rows.Next() {
-		mc := &MediaCardEpInfo{}
-		if err := rows.Scan(
-			&mc.CardID, &mc.TmdbID, &mc.OriginalTitle, &mc.Title, &mc.ImdbID,
-			&mc.MyshowsID, &mc.EpisodesSyncedAt, &mc.NextEpAirDate, &mc.EpisodeRunTime,
-			&mc.Status, &mc.Year,
-		); err == nil {
+		mc, err := scanEpisodeCard(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		if EpisodeSyncDue(mc, now) {
 			result = append(result, mc)
 		}
 	}
-	return result
+	return result, rows.Err()
 }
 
 // UpsertEpisodes inserts or updates episodes for a show from MyShows.

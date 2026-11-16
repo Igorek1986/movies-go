@@ -21,6 +21,7 @@ import (
 	"time"
 	"unicode"
 
+	"golang.org/x/sync/singleflight"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -289,22 +290,7 @@ func FindShow(ctx context.Context, mc *store.MediaCardEpInfo, titleEN string) in
 
 // ShouldSync returns true if the episode list needs refreshing.
 func ShouldSync(mc *store.MediaCardEpInfo) bool {
-	if mc.MyshowsID == nil {
-		return false
-	}
-	if mc.EpisodesSyncedAt == nil {
-		return true
-	}
-	// Completed shows — sync only once.
-	if mc.NextEpAirDate == nil || *mc.NextEpAirDate == "" {
-		return false
-	}
-	// Ongoing: re-sync if the next episode air date has passed since last sync.
-	nextAir, err := time.Parse("2006-01-02", *mc.NextEpAirDate)
-	if err != nil {
-		return false
-	}
-	return nextAir.Before(time.Now()) && mc.EpisodesSyncedAt.Before(nextAir)
+	return store.EpisodeSyncDue(mc, time.Now())
 }
 
 // ─── SyncEpisodes ─────────────────────────────────────────────────────────────
@@ -329,8 +315,42 @@ func nextSpecialEpisodeNumber[T ~int | ~int16](seq map[T]T, season T) T {
 	return -seq[season]
 }
 
-// SyncEpisodes fetches episode data from MyShows and upserts into the DB.
+var episodeSyncGroup singleflight.Group
+
+// SyncEpisodes coalesces concurrent refreshes of the same show.
 func SyncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
+	return runEpisodeSync(ctx, mc, true)
+}
+
+// RefreshEpisodes checks freshness again inside the per-show lock: a queued
+// card may have already been refreshed by another request or background worker.
+func RefreshEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
+	return runEpisodeSync(ctx, mc, false)
+}
+
+func runEpisodeSync(ctx context.Context, mc *store.MediaCardEpInfo, force bool) error {
+	result := episodeSyncGroup.DoChan(strconv.FormatInt(mc.TmdbID, 10), func() (any, error) {
+		if !force {
+			fresh := store.GetMediaCardEpInfo(ctx, mc.CardID)
+			if fresh == nil {
+				return nil, fmt.Errorf("episode card unavailable")
+			}
+			if !ShouldSync(fresh) {
+				return nil, nil
+			}
+			mc = fresh
+		}
+		return nil, syncEpisodes(ctx, mc)
+	})
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case r := <-result:
+		return r.Err
+	}
+}
+
+func syncEpisodes(ctx context.Context, mc *store.MediaCardEpInfo) error {
 	if mc.MyshowsID == nil {
 		return fmt.Errorf("no myshows_id for %s", mc.CardID)
 	}

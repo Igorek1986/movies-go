@@ -110,7 +110,10 @@ func handleCheckOngoing(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 
-		cards := store.GetStaleOngoingCards(ctx, deviceID)
+		cards, err := store.GetEpisodeRefreshCandidates(ctx, deviceID)
+		if err != nil {
+			return
+		}
 		for i, mc := range cards {
 			select {
 			case <-ctx.Done():
@@ -118,7 +121,7 @@ func handleCheckOngoing(w http.ResponseWriter, r *http.Request) {
 			default:
 			}
 
-			if err := myshows.SyncEpisodes(ctx, mc); err != nil {
+			if err := myshows.RefreshEpisodes(ctx, mc); err != nil {
 				log.Printf("check-ongoing: sync %s: %v", mc.CardID, err)
 			}
 
@@ -210,18 +213,20 @@ func bgRefreshEpisodes(cardID string) {
 		}
 	}
 
-	// MyShows: first-time discovery (if TVmaze above found nothing) AND the
-	// only source of ongoing incremental re-sync as new episodes air
-	// (ShouldSync checks next_ep_air_date vs episodes_synced_at) — this
-	// fire-and-forget call from every /api/episodes view is what actually
-	// keeps ongoing shows' episode lists current in production; there's no
-	// separate always-on scheduled task for it (RunRefreshOngoingEpisodes is
-	// admin/Telegram-button-triggered only, see internal/tasks/refresh_episodes.go).
+	// Refresh stale lists with the same age policy used by the scheduled task.
 	if mc.MyshowsID == nil || *mc.MyshowsID == 0 || !myshows.ShouldSync(mc) {
 		return
 	}
 
-	if err := myshows.SyncEpisodes(ctx, mc); err != nil {
+	// TVmaze's first fill stamps episodes_synced_at too; still layer in
+	// MyShows IDs/specials on first discovery, as before.
+	var err error
+	if mc.EpisodesSyncedAt == nil {
+		err = myshows.SyncEpisodes(ctx, mc)
+	} else {
+		err = myshows.RefreshEpisodes(ctx, mc)
+	}
+	if err != nil {
 		log.Printf("episodes: sync %s: %v", cardID, err)
 	}
 }

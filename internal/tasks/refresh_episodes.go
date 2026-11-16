@@ -2,10 +2,9 @@ package tasks
 
 import (
 	"context"
-	"movies-api/db/postgres"
+	"log"
 	"movies-api/db/store"
 	"movies-api/internal/myshows"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,8 +14,8 @@ const refreshEpisodesWorkers = 3
 
 var refreshEpisodesRunning atomic.Bool
 
-// RunRefreshOngoingEpisodes syncs episodes from MyShows for all ongoing TV shows
-// that have a myshows_id. Safe to call concurrently — only one instance runs at a time.
+// RunRefreshOngoingEpisodes refreshes stale episode lists, including ended shows.
+// Safe to call concurrently — only one instance runs at a time.
 func RunRefreshOngoingEpisodes(ctx context.Context) {
 	if !refreshEpisodesRunning.CompareAndSwap(false, true) {
 		log.Println("tasks: refresh_episodes already running")
@@ -26,35 +25,11 @@ func RunRefreshOngoingEpisodes(ctx context.Context) {
 
 	log.Println("tasks: refresh_episodes started")
 
-	rows, err := postgres.Pool.Query(ctx, `
-		SELECT card_id, tmdb_id, COALESCE(original_title,''), COALESCE(title,''), imdb_id,
-		       myshows_id, episodes_synced_at, next_ep_air_date, episode_run_time, status,
-		       COALESCE(LEFT(COALESCE(first_air_date::text, release_date::text,''),4),'')
-		FROM media_cards
-		WHERE media_type = 'tv'
-		  AND myshows_id IS NOT NULL
-		  AND (
-		        status IN ('Returning Series','In Production','Pilot')
-		        OR episodes_synced_at IS NULL
-		      )
-		ORDER BY updated_at DESC`)
+	cards, err := store.GetEpisodeRefreshCandidates(ctx, 0)
 	if err != nil {
-		log.Printf("tasks: refresh_episodes query: %v", err)
+		log.Printf("tasks: refresh_episodes query failed")
 		return
 	}
-
-	var cards []*store.MediaCardEpInfo
-	for rows.Next() {
-		mc := &store.MediaCardEpInfo{}
-		if err := rows.Scan(
-			&mc.CardID, &mc.TmdbID, &mc.OriginalTitle, &mc.Title, &mc.ImdbID,
-			&mc.MyshowsID, &mc.EpisodesSyncedAt, &mc.NextEpAirDate, &mc.EpisodeRunTime,
-			&mc.Status, &mc.Year,
-		); err == nil {
-			cards = append(cards, mc)
-		}
-	}
-	rows.Close()
 
 	total := len(cards)
 	log.Printf("tasks: refresh_episodes: %d shows to process", total)
@@ -75,7 +50,7 @@ func RunRefreshOngoingEpisodes(ctx context.Context) {
 					continue
 				}
 				syncCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				err := myshows.SyncEpisodes(syncCtx, mc)
+				err := myshows.RefreshEpisodes(syncCtx, mc)
 				cancel()
 				if err != nil {
 					atomic.AddInt64(&failed, 1)
@@ -86,7 +61,15 @@ func RunRefreshOngoingEpisodes(ctx context.Context) {
 		}()
 	}
 
+	// Bound catalog catch-up traffic to two requests per second.
+	pace := time.NewTicker(500 * time.Millisecond)
+	defer pace.Stop()
 	for _, mc := range cards {
+		select {
+		case <-ctx.Done():
+			goto done
+		case <-pace.C:
+		}
 		select {
 		case <-ctx.Done():
 			goto done
@@ -97,4 +80,18 @@ done:
 	close(work)
 	wg.Wait()
 	log.Printf("tasks: refresh_episodes done: synced=%d failed=%d total=%d", synced, failed, total)
+}
+
+// runEpisodeRefreshLoop discovers new seasons without requiring an open card.
+func runEpisodeRefreshLoop(ctx context.Context) {
+	tick := time.NewTicker(time.Hour)
+	defer tick.Stop()
+	for {
+		RunRefreshOngoingEpisodes(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
 }

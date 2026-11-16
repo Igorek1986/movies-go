@@ -732,13 +732,8 @@ CREATE INDEX IF NOT EXISTS idx_web_extensions_user_id ON web_extensions (user_id
 --     existed in the original Python/FastAPI backend (app/stats.py) and was
 --     never reimplemented after the Go rewrite; only ip/date/requests are
 --     used (db/store/stats.go).
--- NOT dropped despite looking similarly unused — verify before ever touching:
---   media_cards.next_ep_air_date — looked dead by the same heuristic, but IS
---     read by two SELECTs (refresh_episodes.go, episodes.go) and gates a
---     branch in myshows.go:299 — just never written, so that branch always
---     takes the empty path. Dropping the column without also editing those
---     three call sites breaks the SELECTs outright ("column does not
---     exist"). Left in place; see MEMORY (project) for the full story.
+-- Legacy media_cards.next_ep_air_date is retained for compatibility with older
+-- instances. Episode refresh now uses episodes_synced_at and tracking/status.
 -- Kept deliberately (populated via DEFAULT now(), just never read — cheap to
 -- keep for future debugging/admin use, unlike the above which are fully
 -- inert): trusted_devices.last_used_at (table currently has zero rows on
