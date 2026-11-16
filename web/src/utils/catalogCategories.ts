@@ -104,9 +104,10 @@ export function applyMenuOrder(
   // among themselves but left in their own original slots (not grouped into
   // one contiguous run), same as the old randomizeGenres behavior.
   if (!order.length) {
-    if (blockHidden) return categories.filter(c => !isCollectionsBlockMember(c.id))
+    const visible = categories.filter(c => !hiddenSet.has(c.id))
+    if (blockHidden) return visible.filter(c => !isCollectionsBlockMember(c.id))
     let gi = 0
-    return categories.map(c => (isCollectionsBlockMember(c.id) ? block[gi++] : c))
+    return visible.map(c => (isCollectionsBlockMember(c.id) ? block[gi++] : c))
   }
 
   const rest = categories.filter(c => !isCollectionsBlockMember(c.id) && !hiddenSet.has(c.id))
@@ -117,7 +118,16 @@ export function applyMenuOrder(
     const c = restMap.get(id)
     if (c) { result.push(c); restMap.delete(id) }
   }
-  result.push(...restMap.values())
   if (!order.includes(COLLECTIONS_BLOCK_ID)) result.push(...block)
+  // A saved order predates newly added rows (e.g. CUB Top). Insert them
+  // before the next visible default neighbour instead of burying them after
+  // all year categories. Rows already in the saved order keep their order.
+  for (let i = categories.length - 1; i >= 0; i--) {
+    const c = restMap.get(categories[i].id)
+    if (!c) continue
+    const next = categories.slice(i + 1).find(next => result.some(row => row.id === next.id))
+    const nextIndex = next ? result.findIndex(row => row.id === next.id) : -1
+    result.splice(nextIndex < 0 ? result.length : nextIndex, 0, c)
+  }
   return result
 }
