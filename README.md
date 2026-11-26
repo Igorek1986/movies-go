@@ -266,12 +266,19 @@ echo 'COMPOSE_PROFILES=cfbypass' >> .env
 docker compose up -d --build
 ```
 
-*Выключить* (и снести уже поднятые контейнеры) — обычный `up`/`down` их не видит вне активного
-профиля, нужен явный `--profile`:
+*Выключить на конкретном сервере* — уберите `cfbypass` из `COMPOSE_PROFILES` в его `.env`.
+Если это был единственный профиль, удалите строку целиком. Примените новое окружение
+к `app` и остановите три сервиса профиля:
 ```bash
-sed -i '/^COMPOSE_PROFILES=cfbypass/d' .env
-docker compose --profile cfbypass down
+docker compose up -d --no-deps --no-build app
+docker compose --profile cfbypass stop flaresolverr cffetch warp
 ```
+Удалить остановленные контейнеры, сохранив образы и том WARP:
+```bash
+docker compose --profile cfbypass rm -f flaresolverr cffetch warp
+```
+Для парсинга только на одном инстансе выключите Kinozal и RuTracker в разделе «Парсеры»
+на остальных инстансах. Новые раздачи могут поступать через синхронизацию.
 
 *Обычный перезапуск, пока bypass выключен* — ничего особенного, `.env` уже без `COMPOSE_PROFILES`:
 ```bash
